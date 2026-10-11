@@ -187,6 +187,7 @@ From the Mezzano checkout:
 python3 tools/swank/test-lispm-eval.py --port 4006
 sbcl --script tools/swank/test-debugger.lisp 4006
 sbcl --script tools/swank/test-debugger-reconnect.lisp 4006
+sbcl --script tools/swank/test-evaluation-reconnect.lisp 4006
 ```
 
 Run guest Lisp tests with the updated compiler and backend loaded:

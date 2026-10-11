@@ -116,7 +116,7 @@ A job remains `:running` while evaluating, waiting at a retained stop, or printi
 
 Job information associates stops by their target thread.  Stop ownership and release use the existing controller API.  Releasing a job leaves independently retained stop records under that API.
 
-Guest tests cover batch input, output during a stop, source order, package changes, values, duplicate/conflicting submission, condition and printer recovery, GC, abort cleanup, and release.  SWANK job RPCs, interactive input, asynchronous interruption, and evaluation-job restore tests remain to be implemented.
+Guest tests cover batch input, output during a stop, source order, package changes, values, duplicate/conflicting submission, condition and printer recovery, GC, abort cleanup, and release.  SWANK job tests cover unread creation replies, duplicate submissions, session release during execution, fresh-session condition recovery, repeated output reads, foreign-token rejection, and release.  Interactive input, asynchronous interruption, and evaluation-job restore tests remain to be implemented.
 
 ## Compiler guarantees
 
@@ -161,7 +161,7 @@ The operation inventory uses the debugger chapters of Symbolics' [Program Develo
 | Help, reports, and display integration | Pending: client interface and capture of diagnostic state. | The current interface is a Lisp client library. |
 | Reconnection and lost replies | Implemented within one boot and retained command history. | Reconnect test leaves accepted-command replies unread and checks one execution. |
 | Image restore | Partial: parked stop, completed-command history, queued-command expiration, and a running command blocked on a Lisp event. | Guest and remote restore tests.  Other running-command positions and external I/O remain untested. |
-| Retained evaluation and I/O | Partial: guest batch jobs, retained results/output, and condition stops.  SWANK job RPCs, interactive input, and interruption are pending. | Guest evaluation-service test.  Restore and network job tests are pending. |
+| Retained evaluation and I/O | Partial: guest batch jobs, SWANK operations, retained results/output, and condition stops.  Interactive input and interruption are pending. | Guest and network evaluation tests.  Job restore tests are pending. |
 | GUI-free startup | Pending: a build profile and initialization paths that omit graphics and GUI components. | Cold boot and restore with graphics devices absent remain untested. |
 | Startup failure handling | Pending: preserve recoverable failures before unwind, report required-service readiness, and provide bounded early diagnostics. | The journal records error-swallowing startup paths.  Failure tests remain unrun. |
 | QEMU host control | Pending: image selection, QMP/GDB access, and boot diagnostics independent of guest networking.  Bare-metal FEP work is deferred. | Current launchers configure SWANK forwarding and serial output. |
@@ -185,10 +185,13 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-debugger-service.lisp` | Ownership, frames, GC, duplicate commands, child stops, repair, values, release, and cleanup. |
 | `test-debugger-service-restore.lisp` | Guest handles, completed-command history, queued-command expiration, and a running restart blocked on a Lisp event across restore. |
 | `test-evaluation-service.lisp` | Batch submission identity, source order, package changes, input/output, values, condition/printer recovery, GC, abort, and release. |
+| `test-evaluation-reconnect.lisp` | Unread creation reply, duplicate submission, session release during execution, fresh-session condition recovery, output/results, foreign tokens, GC, cleanup, and release. |
 | `test-debugger-reconnect.lisp` | TCP disconnect, exclusive control, token rejection, unread replies, and duplicate restart submission. |
 | `test-debugger-remote-restore.lisp` | Saved/absent sessions, old tokens/frames, storage retirement, and restored-stop recovery. |
 
 Mezzano `6edf42a5` and the Slime implementation listed above passed a fresh full recompilation and CI boot on 2026-10-12.  The CI image reached desktop initialization and exited QEMU with status 3.  Logs are `debugger-current-build.log`, `debugger-current-boot.log`, and `debugger-current-serial.log` in the MBuild directory.  The journal records live tests, restore tests, and failed attempts.  ARM64, bare metal, supervisor traps, and arbitrary suspension points remain outside this evidence.
+
+Mezzano `0381885f`, including the batch service, subsequently passed a fresh full recompilation and CI boot.  Its logs are `evaluation-current-build.log`, `evaluation-current-boot.log`, and `evaluation-current-serial.log`.  The batch user-guide example passed in `evaluation-guide-example.log`.
 
 ## Decisions and development sequence
 
@@ -196,7 +199,7 @@ The next design work concerns retained evaluation and I/O, and type/scope metada
 
 The approved reinvocation defaults use the frame's current argument values and, for a globally named function, its latest definition.  Original arguments will be available through an explicit option.  Invocation metadata, original argument storage, cleanup, and dynamic-binding behavior still require implementation and tests.
 
-The approved evaluation model lets remote evaluations continue after disconnection and retains their results until explicit release.  An explicitly interactive evaluation waits for input or an explicit EOF, and reconnection restores access to its input stream.  A batch evaluation consumes supplied input and then receives EOF.  The guest batch service implements retained jobs and supplied-input EOF.  Interactive input and remote job operations remain to be implemented.
+The approved evaluation model lets remote evaluations continue after disconnection and retains their results until explicit release.  An explicitly interactive evaluation waits for input or an explicit EOF, and reconnection restores access to its input stream.  A batch evaluation consumes supplied input and then receives EOF.  The guest batch service implements retained jobs and supplied-input EOF.  SWANK transports these operations.  Interactive input remains to be implemented.
 
 Breakpoint and stepping work must specify stop locations, interaction with GC and other threads, and the distinction between instruction and source operations.  Review and document each decision under the [standing procedure](../AGENTS.md) before implementing it.
 

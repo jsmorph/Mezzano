@@ -2,7 +2,7 @@
 
 (defpackage #:lispm-debugger-client
   (:use #:cl)
-  (:export #:make-session #:session-name #:call-with-session
+  (:export #:fresh-name #:make-session #:session-name #:call-with-session
            #:request #:send-request #:receive-reply #:call-rpc
            #:request-error #:request-error-reason))
 (in-package #:lispm-debugger-client)
@@ -13,7 +13,7 @@
              (format stream "Debugger request failed: ~S."
                      (request-error-reason condition)))))
 
-(defun fresh-session-name ()
+(defun fresh-name ()
   (with-open-file (stream "/dev/urandom" :element-type '(unsigned-byte 8))
     (format nil "~(~{~2,'0X~}~)"
             (loop repeat 32 collect (read-byte stream)))))
@@ -29,7 +29,7 @@
                      (every (lambda (char) (find char "0123456789abcdef")) resume))
           (error "Invalid debugger session name."))
         (%make-session (copy-seq resume) t))
-      (%make-session (fresh-session-name) nil)))
+      (%make-session (fresh-name) nil)))
 
 (defvar *stream*)
 (defvar *session*)

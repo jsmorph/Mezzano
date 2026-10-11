@@ -1,6 +1,6 @@
 # Remote evaluation and debugging
 
-The host tools run on SBCL with its bundled socket library.  `lispm-eval` evaluates source through ordinary SWANK requests.  `debugger-client.lisp` controls guest-owned debugger stops.
+The host tools run on SBCL with its bundled socket library.  `lispm-eval` evaluates source through ordinary SWANK requests.  `debugger-client.lisp` controls guest-owned debugger stops and evaluation jobs.
 
 The [debugger design](../../doc/debugger.md) defines current capabilities and limitations.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) specifies RPCs and errors.  [Build and VM operations](minideb2/README.md) provides dependency revisions, startup, snapshots, and test commands.
 
@@ -26,6 +26,48 @@ The tested deployment forwards SWANK to host loopback.  From another machine:
 printf '%s\n' '(+ 20 22)' |
   tailscale ssh minideb2 /home/somebody/src/mezzano-boot/Mezzano/tools/swank/lispm-eval --port 4006
 ```
+
+## Retain an evaluation across connections
+
+The batch job API owns its worker, supplied input, output, and results in the guest.  Conditions enter the retained debugger.  Input receives EOF after the supplied string.  Interactive input and asynchronous interruption remain pending.
+
+Run this in host SBCL from the Mezzano checkout.  It creates a job, closes the connection, reconnects, and prints `Computed.`, `42`, and `:DONE` before releasing the job and session:
+
+```lisp
+(load "tools/swank/debugger-client.lisp")
+
+(let ((session (lispm-debugger-client:make-session))
+      (name (lispm-debugger-client:fresh-name))
+      (job nil))
+  (lispm-debugger-client:call-with-session
+   session
+   (lambda ()
+     (setf job
+           (lispm-debugger-client:request
+            :start-evaluation name
+            "(format t \"Computed.~%\") (values (+ 2 (read)) :done)"
+            :input "40")))
+   :port 4006)
+  (lispm-debugger-client:call-with-session
+   session
+   (lambda ()
+     (let ((info
+             (loop for info = (lispm-debugger-client:request :job-information job)
+                   unless (eq (getf info :state) :running) return info
+                   do (sleep 0.01))))
+       (assert (eq (getf info :state) :returned))
+       (assert (equal (getf info :values) '("42" ":DONE")))
+       (write-string
+        (getf (lispm-debugger-client:request :job-output job 0) :text))
+       (dolist (value (getf info :values)) (format t "~A~%" value))
+       (lispm-debugger-client:request :release-job job)
+       (lispm-debugger-client:request :release-session)))
+   :port 4006))
+```
+
+Keep the generated name if the creation reply can be lost.  Repeating the same name, source, package, and input in the same boot returns the existing job.  `:jobs` discovers unreleased jobs through any attached session.  `:job-information` returns active stop tokens in `:stops`, which use the inspection and restart operations below.  Job state remains `:running` while a condition is stopped.
+
+Output reads use character offsets and preserve storage.  `:job-output` returns `:text` and `:end`, so the next read can start at that end offset.  Any attached session can read jobs and release terminal jobs.  Releasing a session leaves its jobs intact.  Output and results consume guest memory until job release.
 
 ## Debug a background computation
 
@@ -171,6 +213,6 @@ Within the callback, `request` sends one synchronous debugger RPC.  `send-reques
 
 Commands that print values execute application printers and can block or enter a child stop.  A client timeout closes its connection while an accepted command can continue in the guest.  Query the recorded outcome before deciding what to submit next.
 
-The guest batch evaluation API retains jobs, output, and results.  Its SWANK operations and interactive input remain pending.  The remote workflow above uses the explicit debugger wrapper.  Public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
+Batch evaluation jobs and the explicit debugger wrapper both retain condition stops.  Interactive job input and asynchronous interruption remain pending.  Public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
 
 The [capability and test tables](../../doc/debugger.md#capability-and-evidence) state the evidence for each operation.  The [operations guide](minideb2/README.md#tests) gives the test commands and restore sequence.  The [development journal](devnotes.md) records diagnoses and historical runs.
