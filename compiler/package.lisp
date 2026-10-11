@@ -244,6 +244,12 @@
    #:release-debugger-stop
    #:submit-debugger-command
    #:debugger-command-result
+   #:start-evaluation-job
+   #:evaluation-jobs
+   #:evaluation-job-information
+   #:evaluation-job-output
+   #:evaluation-job-result-values
+   #:release-evaluation-job
    ;; Backtraces & frames.
    #:backtrace
    #:map-backtrace

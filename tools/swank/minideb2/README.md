@@ -195,7 +195,7 @@ Run guest Lisp tests with the updated compiler and backend loaded:
 for test_name in TEST-STRUCTURE-LAYOUTS TEST-FRAME-LOCALS \
   TEST-DEBUG-BINDINGS TEST-DEBUG-BINDING-WRITES TEST-DEBUG-CLOSURE-WRITES \
   TEST-DEBUG-POLICY TEST-KEYWORD-LOWERING TEST-JUMP-TABLE-BINDINGS \
-  TEST-DEBUGGER-SERVICE
+  TEST-DEBUGGER-SERVICE TEST-EVALUATION-SERVICE
 do
   tools/swank/lispm-eval --port 4006 --timeout 180 \
     "(load (compile-file \"SYS:SOURCE;TOOLS;SWANK;$test_name.LISP\")) (values)" ||

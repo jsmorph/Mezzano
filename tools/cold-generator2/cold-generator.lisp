@@ -161,6 +161,7 @@
     "system/external-format.lisp"
     "system/standard-streams.lisp"
     "system/stream.lisp"
+    "system/evaluation-service.lisp"
     "system/ansi-loop.lisp"
     "system/environment.lisp"
     "compiler/compiler.lisp"

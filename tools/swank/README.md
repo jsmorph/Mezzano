@@ -171,6 +171,6 @@ Within the callback, `request` sends one synchronous debugger RPC.  `send-reques
 
 Commands that print values execute application printers and can block or enter a child stop.  A client timeout closes its connection while an accepted command can continue in the guest.  Query the recorded outcome before deciding what to submit next.
 
-The approved evaluation-job design adds result ownership and interactive/batch input modes.  Its implementation remains pending.  Current retained debugging requires the explicit wrapper shown above.  Public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
+The guest batch evaluation API retains jobs, output, and results.  Its SWANK operations and interactive input remain pending.  The remote workflow above uses the explicit debugger wrapper.  Public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
 
 The [capability and test tables](../../doc/debugger.md#capability-and-evidence) state the evidence for each operation.  The [operations guide](minideb2/README.md#tests) gives the test commands and restore sequence.  The [development journal](devnotes.md) records diagnoses and historical runs.
