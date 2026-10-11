@@ -76,4 +76,6 @@ Unavailable-local browser rendering has source review only.  Actual image restor
 - [x] Run the added live released-reference and expired-session assertions.
 - [ ] Convert or otherwise obtain a browser-usable original font after approval, retaining provenance and notices.
 - [ ] Compare rendered glyphs, metrics, layout, and colors with the original captures.
-- [ ] Review, commit, and push the bounded implementation increment.
+- [x] Review, commit, and push the bounded implementation increment.
+
+The working HTTP client, browser test, guides, and service unit were reviewed and pushed as Mezzano 71f051fb.  The operations guide selects that revision for fresh checkouts.  Original-font conversion and exact visual matching remain open.
