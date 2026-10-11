@@ -1,4 +1,6 @@
-# Swank client and runtime repair
+# Mezzano debugger development journal
+
+Entries record findings, decisions, and implementation status at the time of each entry.  Historical checklists can contain work completed in later entries.  The [current debugger design](../../doc/debugger.md) owns present capability status and test scope.  The [development instructions](../../AGENTS.md) record the standing decision procedure.
 
 ## Sources and setup
 
@@ -469,3 +471,15 @@ The first driver placed the post-snapshot event release in the same evaluation t
 Only the test and documentation changed.  The tested case is a running restart blocked inside Lisp.  Queued commands, other execution positions, and external I/O remain untested.
 
 The VM then saved the completed test state and restarted.  A fresh debugger client listed no active stops and released its session.  Logs are `debug-service-running-clean-snapshot.log` and `debug-service-running-readiness.log`.
+
+## Documentation ownership: 2026-10-12
+
+The user approved one current design document, with separate usage, protocol, operations, and historical references.  The recommendation is to put architecture, capability status, and test scope in `doc/debugger.md`; user workflows in `tools/swank/README.md`; exact RPC forms and errors in Slime's `contrib/swank-mezzano-debugger.md`; and build, VM, snapshot, restore, and test commands in `tools/swank/minideb2/README.md`.  This journal retains decisions and evidence in chronological order.
+
+The user guide will demonstrate the implemented explicit background-thread wrapper.  Its example must pass against the development VM.  Documentation checks will verify repository links and formatting.  Planned evaluation jobs and frame operations will remain identified as implementation work.
+
+The user-guide example passed on port 4006.  It created an explicitly wrapped background computation, inspected `A = 111` and `B = 222`, reconnected through the same session, invoked `CONTINUE`, and checked `333`, `:DONE`, and one cleanup before releasing the stop and session.  Logs are `debugger-guide-guest.log` and `debugger-guide-host.log`.
+
+The latest service metadata changes had live and restore evidence but lacked a fresh cold build.  The recommendation is to run the existing full-recompilation CI build and boot scripts against the current implementation, using the separate `mezzano.image` test image.  This supplies evidence for the pinned build recipe while the live and development VMs keep their separate images.  Logs will be `debugger-current-build.log` and `debugger-current-boot.log`.
+
+The fresh full recompilation and CI boot passed at Mezzano `6edf42a5` with the Slime implementation at `2b2086a9`.  QEMU exited with status 3 and the serial log contained `CI build completed successfully!`.  The serial log was preserved as `debugger-current-serial.log`.  Documentation checks passed for 22 shell blocks and 32 repository links, including section anchors and links between the two repositories.  Shell syntax checks do not establish that the fresh-host provisioning commands have been run.

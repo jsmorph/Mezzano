@@ -1,24 +1,48 @@
 # Mezzano on minideb2
 
-These scripts record the tested build and QEMU setup on `minideb2`: Debian 13, SBCL 2.5.2, QEMU 10.0.13, KVM, two guest CPUs, and 2 GiB guest RAM.  They use `/home/somebody/src/mezzano-boot` as the MBuild working directory and run the services as `somebody`.
+The recorded environment is Debian 13, SBCL 2.5.2, QEMU 10.0.13, and KVM.  Each VM uses two CPUs and 2 GiB RAM.  Commands use `/home/somebody/src/mezzano-boot` as the MBuild directory and run guest services as `somebody`.
 
-## Build directory
+The [debugger design](../../../doc/debugger.md) owns capability status and test scope.  The [user guide](../README.md) explains evaluation and retained debugging.  The [journal](../devnotes.md) records build and test results.
 
-The scripts expect the Mezzano checkout in `Mezzano/`, MBuild's dependencies in `home/`, and the host Quicklisp installation in `quicklisp/`.  The [MBuild instructions](https://github.com/froggey/MBuild/blob/a13448825506c716fb60427f78aafeb6265477b2/README.md) specify the host Lisp dependencies.  The tested MBuild revision is `a13448825506c716fb60427f78aafeb6265477b2`.
+## Sources and dependencies
 
-After initializing MBuild's submodules, select the tested Slime revision:
+| Component | Recorded revision or version |
+|---|---|
+| MBuild | `a13448825506c716fb60427f78aafeb6265477b2` |
+| Mezzano, including running-command restore tests | `6edf42a5bcaa1a95af20d774823f50cc677e2791` |
+| Slime implementation | `2b2086a9951f7b18dc0b88e32729224ba1485029` |
+| Other guest dependencies | Submodule revisions recorded by the MBuild revision above. |
+| Host Quicklisp distribution | `2026-01-01`, recorded in `quicklisp/dists/quicklisp/distinfo.txt`. |
+
+The host needs Git, Make, SBCL, QEMU's x86 system emulator, and ripgrep.  The service user needs access to `/dev/kvm`.  A host Quicklisp installation is expected at `quicklisp/` inside the MBuild directory.  The [MBuild prerequisite instructions](https://github.com/froggey/MBuild/blob/a13448825506c716fb60427f78aafeb6265477b2/README.md) describe its installation.  Host Lisp dependencies include Nibbles, CL-PPCRE, Iterate, Alexandria, Closer-MOP, trivial-gray-streams, and CL-FAD for the file server.  SBCL provides the socket library.
+
+For a fresh checkout:
 
 ```sh
+git clone https://github.com/froggey/MBuild.git /home/somebody/src/mezzano-boot
 cd /home/somebody/src/mezzano-boot
+git checkout a13448825506c716fb60427f78aafeb6265477b2
+git submodule update --init
+git -C Mezzano fetch https://github.com/jsmorph/Mezzano.git debugging
+git -C Mezzano checkout --detach 6edf42a5bcaa1a95af20d774823f50cc677e2791
 git -C home/slime fetch https://github.com/jsmorph/slime.git debugging
 git -C home/slime checkout --detach 2b2086a9951f7b18dc0b88e32729224ba1485029
 ```
 
-MBuild's recorded Slime revision predates the frame-local ID correction and retained-debugger contrib.  Running `git submodule update` again selects that older revision unless the commands above follow it.
+Existing development checkouts use their `debugging` branches.  Another `git submodule update` selects MBuild's older Mezzano and Slime revisions, so explicit revision selection follows submodule initialization.
 
-The branch's `config.lisp` sets the source and home paths for this directory, uses QEMU's host address `10.0.2.2`, and enables parallel guest compilation.  The host file server binds `127.0.0.1:2599`.
+The branch's `config.lisp` supplies the source and home paths, QEMU host address `10.0.2.2`, and parallel guest compilation.  With SBCL, the host file server binds `127.0.0.1:2599`.
 
-Install the scripts from this checkout into the MBuild working directory:
+After installing Quicklisp in this build directory, select the recorded host distribution:
+
+```sh
+cd /home/somebody/src/mezzano-boot
+sbcl --load quicklisp/setup.lisp --eval \
+  '(ql-dist:install-dist "http://beta.quicklisp.org/dist/quicklisp/2026-01-01/distinfo.txt" :replace t :prompt nil)' \
+  --quit
+```
+
+Install the host scripts:
 
 ```sh
 cd /home/somebody/src/mezzano-boot
@@ -27,31 +51,207 @@ cp Mezzano/tools/swank/minideb2/build-image.lisp .
 cp Mezzano/tools/swank/lispm-eval Mezzano/tools/swank/client.lisp .
 ```
 
-## Build and run
+MBuild supplies `run-file-server.lisp`.  The commands below create the development launcher.
+
+## Images and services
+
+| Purpose | Image | Host endpoint | Service |
+|---|---|---|---|
+| Original live VM | `mezzano-live.image` | `127.0.0.1:4005` | `mezzano-vm.service` |
+| Debugger development | `mezzano-debugging.image` | `127.0.0.1:4006` | `mezzano-debugging-vm.service` |
+| CI boot test | `mezzano.image` | Serial log | Foreground `boot-test.sh`. |
+| Shared guest file access | Host source/dependency trees | `127.0.0.1:2599` | `mezzano-files.service` |
+
+Both live launchers provide standard VGA and hide the host display.  The guest still initializes the desktop.  GUI-free startup remains implementation work.
+
+### Build an image
+
+A VM must be stopped before rebuilding its image.  Run builds sequentially because they share the generated target cache.
+
+The original live image uses:
 
 ```sh
+cd /home/somebody/src/mezzano-boot
 ./build-live.sh > build-live.log 2>&1
 ```
 
-This recompiles every target file and builds `mezzano-live.image`.  The bootstrap uses `(safety 3 debug 1 speed 1)` during cross-compiler initialization and image compilation.  The running compiler retains its default `(safety 3 debug 3 speed 1)`.  Bootstrap code retains existing inspection support without a guarantee of mutable source bindings.  The VM must be stopped before rebuilding its image.  First boot compiles and loads the guest system and applications, then saves a startup snapshot.
+The development image uses the same compiler recipe with another output name:
 
-From a machine with Tailscale SSH access:
+```sh
+cd /home/somebody/src/mezzano-boot
+make -C home/asdf
+cd Mezzano
+rm -rf -- build-x86-64
+env -u CI sbcl --dynamic-space-size 2048 \
+  --load ../quicklisp/setup.lisp --script ../build-image.lisp \
+  ../../mezzano-debugging > ../build-debugging.log 2>&1
+```
+
+The relative image base is resolved beneath the generator's build directory, producing the image in the MBuild directory.  The build removes the target cache so every target file is recompiled.  Bootstrap compilation uses `(safety 3 debug 1 speed 1)`.  The running compiler defaults to `(safety 3 debug 3 speed 1)`.
+
+First boot compiles and loads the remaining guest system and applications, then saves a startup snapshot.  The file server must remain available for that work and for later source loading.
+
+### Start the services
+
+The original VM and shared file server use the checked-in startup script, invoked from the SSH client machine:
 
 ```sh
 tailscale ssh root@minideb2 /home/somebody/src/mezzano-boot/start-live.sh
-tailscale ssh root@minideb2 systemctl status mezzano-vm.service mezzano-files.service
-tailscale ssh root@minideb2 systemctl restart mezzano-vm.service
 ```
 
-`start-live.sh` creates transient systemd services for the file server and VM.  Active services keep running.  The services survive SSH logout.  Running the script after a host reboot recreates them.  `run-live.sh` forwards `127.0.0.1:4005` to guest port 4005.  `serial-live.log`, `qemu-live.log`, and `file-server-live.log` record execution.
-
-## Boot test
-
-`build-test.sh` removes the generated `Mezzano/build-x86-64` cache and uses the same build recipe to create the separate CI image, `mezzano.image`.  Every target file is recompiled so compiler changes cannot leave older machine code in the test image.  `boot-test.sh` starts it, waits for desktop initialization, and checks QEMU exit status 3 and `CI build completed successfully!`.  The file server must be running.  `file-server-test.sh` starts it in the foreground when the service is inactive.
+For the development VM, create this launcher in the MBuild directory.  Its contents match the running development setup:
 
 ```sh
-./build-test.sh > build.log 2>&1
-./boot-test.sh
+cat > /home/somebody/src/mezzano-boot/run-debugging.sh <<'SH'
+#!/bin/sh
+set -eu
+cd /home/somebody/src/mezzano-boot
+exec qemu-system-x86_64 \
+  -enable-kvm -smp 2 -m 2G \
+  -drive file=mezzano-debugging.image,format=raw,if=ide \
+  -vga std -display none -monitor none -serial file:serial-debugging.log \
+  -netdev user,id=net0,hostfwd=tcp:127.0.0.1:4006-:4005 \
+  -device virtio-net,netdev=net0 -no-reboot
+SH
+chmod +x /home/somebody/src/mezzano-boot/run-debugging.sh
 ```
 
-The boot test exits the guest after successful initialization.  Its serial output is in `serial.log`.
+In a root SSH session on `minideb2`, start the file server if needed, then the development VM:
+
+```sh
+vm_root=/home/somebody/src/mezzano-boot
+if ! systemctl is-active --quiet mezzano-files.service; then
+  systemd-run --unit=mezzano-files --collect --uid=somebody \
+    --property="WorkingDirectory=$vm_root" \
+    --property="StandardOutput=append:$vm_root/file-server-live.log" \
+    --property=StandardError=inherit "$vm_root/file-server-test.sh"
+fi
+if ! systemctl is-active --quiet mezzano-debugging-vm.service; then
+  systemd-run --unit=mezzano-debugging-vm --collect --uid=somebody \
+    --property="WorkingDirectory=$vm_root" \
+    --property=Requires=mezzano-files.service \
+    --property=After=mezzano-files.service \
+    --property="StandardOutput=append:$vm_root/qemu-debugging.log" \
+    --property=StandardError=inherit "$vm_root/run-debugging.sh"
+fi
+```
+
+These transient services survive SSH logout.  Recreate them after a host reboot.  Logs are `serial-live.log`, `qemu-live.log`, `serial-debugging.log`, `qemu-debugging.log`, and `file-server-live.log`.
+
+A successful guest query establishes SWANK access:
+
+```sh
+cd /home/somebody/src/mezzano-boot/Mezzano
+tools/swank/lispm-eval --port 4006 --timeout 30 \
+  '(list (lisp-implementation-version) (mezzano.debug:debugger-stops))'
+```
+
+### Snapshot and restore
+
+Save the development guest from its Mezzano checkout:
+
+```sh
+tools/swank/lispm-eval --port 4006 --timeout 180 \
+  '(mezzano.supervisor:snapshot) (mezzano.supervisor:wait-for-snapshot-completion) (values)'
+```
+
+After completion, restart from the SSH client machine:
+
+```sh
+tailscale ssh root@minideb2 systemctl restart mezzano-debugging-vm.service
+```
+
+Restart loads the latest saved image.  Unsaved guest changes disappear.  Host source files and test logs have their own persistence.  Restored debugger references follow the [boot and restore rules](../../../doc/debugger.md#disconnect-and-restore).
+
+## Tests
+
+The [test catalog](../../../doc/debugger.md#test-scope-and-provenance) describes what each test establishes.  Run guest tests sequentially on port 4006.  Restore fixtures share counters and require separate runs.  A failed test can leave a stopped fixture available for inspection.
+
+### Full build and CI boot
+
+The file server must be running:
+
+```sh
+cd /home/somebody/src/mezzano-boot
+./build-test.sh > build.log 2>&1
+./boot-test.sh > boot.log 2>&1
+```
+
+The test uses its separate image, initializes the desktop, and expects QEMU status 3 and `CI build completed successfully!`.  Serial output is in `serial.log`.  The build removes the generated target cache.
+
+### Evaluation, compiler, and debugger tests
+
+From the Mezzano checkout:
+
+```sh
+python3 tools/swank/test-lispm-eval.py --port 4006
+sbcl --script tools/swank/test-debugger.lisp 4006
+sbcl --script tools/swank/test-debugger-reconnect.lisp 4006
+```
+
+Run guest Lisp tests with the updated compiler and backend loaded:
+
+```sh
+for test_name in TEST-STRUCTURE-LAYOUTS TEST-FRAME-LOCALS \
+  TEST-DEBUG-BINDINGS TEST-DEBUG-BINDING-WRITES TEST-DEBUG-CLOSURE-WRITES \
+  TEST-DEBUG-POLICY TEST-KEYWORD-LOWERING TEST-JUMP-TABLE-BINDINGS \
+  TEST-DEBUGGER-SERVICE
+do
+  tools/swank/lispm-eval --port 4006 --timeout 180 \
+    "(load (compile-file \"SYS:SOURCE;TOOLS;SWANK;$test_name.LISP\")) (values)" ||
+    exit "$?"
+done
+```
+
+### Guest stop restore
+
+Load the helpers and prepare a parked stop with a completed frame-list command:
+
+```sh
+tools/swank/lispm-eval --port 4006 --timeout 180 <<'LISP'
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-SERVICE.LISP"))
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-SERVICE-RESTORE.LISP"))
+(lispm-service-test::prepare-restore-test)
+(mezzano.supervisor:snapshot)
+(mezzano.supervisor:wait-for-snapshot-completion)
+(values)
+LISP
+```
+
+Restart the development VM using the command above, then run:
+
+```sh
+tools/swank/lispm-eval --port 4006 --timeout 120 \
+  '(lispm-service-test::finish-restore-test) (values)'
+```
+
+For a running command blocked on a Lisp event, use `prepare-running-restore-test` and `finish-running-restore-test` in place of the parked-stop functions.  To test rollback from a completed original execution to the saved running state, issue this separate evaluation after snapshot completion and before VM restart:
+
+```sh
+tools/swank/lispm-eval --port 4006 --timeout 120 <<'LISP'
+(setf (mezzano.supervisor:event-state lispm-service-test::*probe-gate*) t)
+(lispm-service-test::completed-command
+ lispm-service-test::*running-restore-handle*
+ lispm-service-test::*running-restore-command-id*)
+LISP
+```
+
+The completion phase checks the restored state before releasing the event and recovering the application.
+
+### Remote session restore
+
+The host state file must survive the VM restart:
+
+```sh
+sbcl --script tools/swank/test-debugger-remote-restore.lisp \
+  prepare 4006 ../debugger-client-state.sexp
+```
+
+Restart the development VM, then run:
+
+```sh
+sbcl --script tools/swank/test-debugger-remote-restore.lisp \
+  finish 4006 ../debugger-client-state.sexp
+```
+
+After a successful restore test, save the completed guest state using the snapshot command.  That replaces the saved test stop with the completed state.
