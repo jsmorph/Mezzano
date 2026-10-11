@@ -268,3 +268,15 @@ The copied-binding mutation test now returns `(222 111)` when changing `A` and `
 The separate CI image built and booted with these changes.  QEMU exited with status 3 after the CI success message.  Logs are `debug-binding-storage-load.log`, `debug-binding-storage-build.log`, `debug-binding-storage-boot.log`, and `debug-binding-storage-serial.log` in the MBuild directory.
 
 The tests use the existing internal frame writer while the inspected activation is live.  Public mutation, declared-type validation, arbitrary stopping points, and escaped frame references require further implementation.  Captured variables require one shared storage location used by both the defining function and its closures.  That is the next compiler increment.
+
+## Cold-build audit and keyword validation
+
+The cold generator's `maybe-compile-file` checks each source file's timestamp against its compiled output.  It does not invalidate all compiled outputs after a compiler change.  The preceding cold-boot passes therefore used a mixture of earlier compiled system code and rebuilt compiler files.  They establish boot of that mixture, not a complete rebuild with the changed compiler.
+
+The closure-sharing work reproduced two entries for captured `A`.  Changing the environment cell produced `(111 222)` when the defining function and closure read it.  The proposed lowering correction passed live closure tests, but its incremental cold boot failed during filesystem initialization with a disk bounce-buffer allocation error.  A diagnostic rebuild of the disk source failed earlier: `MAKE-DISK` allocated a general-area closure environment during early boot.  These failures remain in `debug-closure-failed-serial.log` and `debug-closure-diagnostic-serial.log`.  The temporary diagnostic source change was removed.
+
+Inspection of the lowered AST showed that generated keyword validation calls `MEMBER`.  Inlining its definition under binding preservation retains closures and their environment.  Keyword validation now emits direct `EQ` comparisons against the known accepted keywords.  This removes closure allocation from that generated check.
+
+Live tests passed for defaults, keyword selection, duplicate keys, `:ALLOW-OTHER-KEYS`, invalid keywords, and odd argument counts.  A per-thread allocation counter measured zero heap bytes for a valid call at debug levels 1 and 3.  The closure tests also passed after reloading keyword lowering.  Logs are `debug-constructor-ast.log`, `debug-keyword-load.log`, and `debug-keyword-test.log` in the MBuild directory.
+
+A full build is running after moving `build-x86-64` to `build-x86-64.before-debug-full`.  The closure correction remains uncommitted pending that test and diagnosis of any further failures.  A separate live test confirmed that a local `(debug 3)` declaration inside a `(debug 0)` function currently loses its binding metadata.  That policy boundary remains open.

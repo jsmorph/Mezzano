@@ -72,12 +72,17 @@
                   (chk-head
                    (progn
                      (let ((current-keyword (call mezzano.runtime::%car chk-itr)))
-                       (if (call member current-keyword (quote (:allow-other-keys ,@valid-keywords)) (quote :test) (quote eq))
-                           (quote nil)
-                           (call error
-                                 'sys.int::simple-program-error
-                                 ':format-control '"Unknown &KEY argument ~S. Expected one of ~S."
-                                 ':format-arguments (call list current-keyword (quote ,valid-keywords)))))
+                       ,(reduce (lambda (keyword otherwise)
+                                  `(if (call eq current-keyword (quote ,keyword))
+                                       (quote nil)
+                                       ,otherwise))
+                                (cons :allow-other-keys valid-keywords)
+                                :from-end t
+                                :initial-value
+                                `(call error
+                                       'sys.int::simple-program-error
+                                       ':format-control '"Unknown &KEY argument ~S. Expected one of ~S."
+                                       ':format-arguments (call list current-keyword (quote ,valid-keywords)))))
                      (setq chk-itr (call mezzano.runtime::%cdr (call mezzano.runtime::%cdr chk-itr)))
                      (go chk-test chk-tb)))
                   (chk-test
