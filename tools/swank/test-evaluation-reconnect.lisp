@@ -138,4 +138,123 @@
     (connected observer (lambda () (request :release-session)))
     (format t "PASS unread creation reply, duplicate submission, session release during evaluation, retained output and values, fresh-session condition recovery, foreign tokens, GC, cleanup, and job release~%")))
 
-(run-tests)
+(defun prepare-restore (path)
+  (let ((session (make-session))
+        (name (fresh-name))
+        (complete-name (fresh-name))
+        (source "(incf cl-user::*evaluation-restore-count*)
+                 (unwind-protect
+                      (let ((first (read-line)))
+                        (write-string first)
+                        (cerror \"Continue the restored job.\" \"Evaluation restore stop.\")
+                        (values first (read-line)
+                                (read-line *standard-input* nil :eof)
+                                cl-user::*evaluation-restore-count*))
+                   (incf cl-user::*evaluation-restore-cleanup*))"))
+    (connected
+     session
+     (lambda ()
+       (evaluate "(defparameter cl-user::*evaluation-restore-count* 0)
+                  (defparameter cl-user::*evaluation-restore-cleanup* 0)
+                  (values)")
+       (let ((finished (request :start-evaluation complete-name
+                                "(write-string \"completed\") (values 17 :complete)"))
+             (job (request :start-evaluation name source :input (format nil "one~%two"))))
+         (assert (eq (getf (completed finished) :state) :returned))
+         (await (lambda () (getf (request :job-information job) :stops)))
+         (assert (equal (request :job-output job 0) '(:text "one" :end 3)))
+         (evaluate
+          (format nil
+                  "(defparameter cl-user::*evaluation-restore-old-handle*
+                     (find ~S (mezzano.debug:evaluation-jobs)
+                           :key (lambda (job)
+                                  (getf (mezzano.debug:evaluation-job-information job) :name))
+                           :test #'equal)) (values)"
+                  name))
+         (with-open-file (out path :direction :output :if-exists :supersede)
+           (let ((*print-readably* t))
+             (write (list :session (session-name session) :name name
+                          :complete-name complete-name :source source :token job)
+                    :stream out)
+             (terpri out)))
+         (evaluate "(mezzano.supervisor:snapshot)
+                    (mezzano.supervisor:wait-for-snapshot-completion)
+                    (values)"))))
+    (format t "Prepared completed and stopped evaluation jobs for restore.~%")))
+
+(defun finish-restore (path)
+  (let* ((state (with-open-file (in path)
+                  (let ((*read-eval* nil)) (read in))))
+         (fresh (make-session)))
+    (expect-error :expired-session
+                  (lambda ()
+                    (connected (make-session :resume (getf state :session))
+                               (lambda () nil))))
+    (connected
+     fresh
+     (lambda ()
+       (expect-error :invalid-handle
+                     (lambda () (request :job-information (getf state :token))))
+       (assert
+        (equal
+         (evaluate
+          "(handler-case
+               (mezzano.debug:evaluation-job-information
+                cl-user::*evaluation-restore-old-handle*)
+             (mezzano.debug:debugger-service-error (condition)
+               (mezzano.debug:debugger-service-error-reason condition)))")
+         '("" ":EXPIRED-JOB")))
+       (evaluate
+        "(maphash
+          (lambda (name session)
+            (declare (ignore name))
+            (unless (eq (swank/mezzano-debugger::session-boot session)
+                        (mezzano.supervisor:current-boot-id))
+              (assert (zerop (hash-table-count
+                              (swank/mezzano-debugger::session-jobs session))))))
+          swank/mezzano-debugger::*sessions*)
+         (values)")
+       (let* ((job (find-job (getf state :name)))
+              (finished (find-job (getf state :complete-name)))
+              (info (request :job-information job))
+              (stop (first (getf info :stops)))
+              (lease (request :attach stop)))
+         (assert (eq (getf info :state) :running))
+         (assert (null (getf info :current-boot-p)))
+         (assert (equal (request :job-output job 0) '(:text "one" :end 3)))
+         (let ((info (request :job-information finished)))
+           (assert (eq (getf info :state) :returned))
+           (assert (null (getf info :current-boot-p)))
+           (assert (equal (getf info :values) '("17" ":COMPLETE"))))
+         (assert (equal (request :job-output finished 0)
+                        '(:text "completed" :end 9)))
+         (expect-error :request-conflict
+                       (lambda ()
+                         (request :start-evaluation (getf state :name)
+                                  (getf state :source) :input (format nil "one~%two"))))
+         (evaluate "(mezzano.extensions:gc :full t) (values)")
+         (let* ((restarts (getf (command stop lease :restarts) :result))
+                (restart (find "CONTINUE" restarts
+                               :key (lambda (entry) (getf entry :name))
+                               :test #'equal)))
+           (assert restart)
+           (assert (eq (getf (command stop lease :invoke-restart (getf restart :index))
+                            :state)
+                       :unwound)))
+         (let ((info (completed job)))
+           (assert (eq (getf info :state) :returned))
+           (assert (null (getf info :current-boot-p)))
+           (assert (equal (getf info :values) '("\"one\"" "\"two\"" ":EOF" "1"))))
+         (assert (equal (evaluate "cl-user::*evaluation-restore-cleanup*") '("" "1")))
+         (request :release-stop lease)
+         (request :release-job job)
+         (request :release-job finished)
+         (request :release-session))))
+    (format t "PASS evaluation restore, completed results, output, input position, expired handles, rejected replay, retired token tables, GC, continuation, and cleanup~%")))
+
+(let ((mode (or (third sb-ext:*posix-argv*) "run"))
+      (path (fourth sb-ext:*posix-argv*)))
+  (cond ((string= mode "run") (run-tests))
+        ((string= mode "prepare") (assert path) (prepare-restore path))
+        ((string= mode "finish") (assert path) (finish-restore path))
+        (t (error "Unknown evaluation test mode ~S." mode))))

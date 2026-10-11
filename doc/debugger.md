@@ -116,7 +116,7 @@ A job remains `:running` while evaluating, waiting at a retained stop, or printi
 
 Job information associates stops by their target thread.  Stop ownership and release use the existing controller API.  Releasing a job leaves independently retained stop records under that API.
 
-Guest tests cover batch input, output during a stop, source order, package changes, values, duplicate/conflicting submission, condition and printer recovery, GC, abort cleanup, and release.  SWANK job tests cover unread creation replies, duplicate submissions, session release during execution, fresh-session condition recovery, repeated output reads, foreign-token rejection, and release.  Interactive input, asynchronous interruption, and evaluation-job restore tests remain to be implemented.
+Guest tests cover batch input, output during a stop, source order, package changes, values, duplicate/conflicting submission, condition and printer recovery, GC, abort cleanup, and release.  SWANK job tests cover unread creation replies, duplicate submissions, session release during execution, fresh-session condition recovery, repeated output reads, foreign-token rejection, and release.  Restore tests cover a completed batch job and a condition-stopped batch job after partial input consumption, including preserved output, stream position, values, old-handle rejection, GC, continuation, and cleanup.  Interactive input and asynchronous interruption remain to be implemented.
 
 ## Compiler guarantees
 
@@ -161,7 +161,7 @@ The operation inventory uses the debugger chapters of Symbolics' [Program Develo
 | Help, reports, and display integration | Pending: client interface and capture of diagnostic state. | The current interface is a Lisp client library. |
 | Reconnection and lost replies | Implemented within one boot and retained command history. | Reconnect test leaves accepted-command replies unread and checks one execution. |
 | Image restore | Partial: parked stop, completed-command history, queued-command expiration, and a running command blocked on a Lisp event. | Guest and remote restore tests.  Other running-command positions and external I/O remain untested. |
-| Retained evaluation and I/O | Partial: guest batch jobs, SWANK operations, retained results/output, and condition stops.  Interactive input and interruption are pending. | Guest and network evaluation tests.  Job restore tests are pending. |
+| Retained evaluation and I/O | Partial: guest batch jobs, SWANK operations, retained results/output, and condition stops.  Interactive input and interruption are pending. | Guest, network, and saved-image evaluation tests.  Restore at other execution positions remains untested. |
 | GUI-free startup | Pending: a build profile and initialization paths that omit graphics and GUI components. | Cold boot and restore with graphics devices absent remain untested. |
 | Startup failure handling | Pending: preserve recoverable failures before unwind, report required-service readiness, and provide bounded early diagnostics. | The journal records error-swallowing startup paths.  Failure tests remain unrun. |
 | QEMU host control | Pending: image selection, QMP/GDB access, and boot diagnostics independent of guest networking.  Bare-metal FEP work is deferred. | Current launchers configure SWANK forwarding and serial output. |
@@ -185,7 +185,7 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-debugger-service.lisp` | Ownership, frames, GC, duplicate commands, child stops, repair, values, release, and cleanup. |
 | `test-debugger-service-restore.lisp` | Guest handles, completed-command history, queued-command expiration, and a running restart blocked on a Lisp event across restore. |
 | `test-evaluation-service.lisp` | Batch submission identity, source order, package changes, input/output, values, condition/printer recovery, GC, abort, and release. |
-| `test-evaluation-reconnect.lisp` | Unread creation reply, duplicate submission, session release during execution, fresh-session condition recovery, output/results, foreign tokens, GC, cleanup, and release. |
+| `test-evaluation-reconnect.lisp` | Unread creation reply, duplicate submission, session release during execution, fresh-session condition recovery, output/results, foreign tokens, GC, cleanup, release, and completed/stopped batch jobs across restore. |
 | `test-debugger-reconnect.lisp` | TCP disconnect, exclusive control, token rejection, unread replies, and duplicate restart submission. |
 | `test-debugger-remote-restore.lisp` | Saved/absent sessions, old tokens/frames, storage retirement, and restored-stop recovery. |
 

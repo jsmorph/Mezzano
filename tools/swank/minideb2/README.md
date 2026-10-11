@@ -257,4 +257,20 @@ sbcl --script tools/swank/test-debugger-remote-restore.lisp \
   finish 4006 ../debugger-client-state.sexp
 ```
 
+### Evaluation job restore
+
+The evaluation test uses a host state file for one completed job and one condition-stopped job with partially consumed batch input:
+
+```sh
+sbcl --script tools/swank/test-evaluation-reconnect.lisp \
+  4006 prepare ../evaluation-restore-state.sexp
+```
+
+Restart the development VM, then run:
+
+```sh
+sbcl --script tools/swank/test-evaluation-reconnect.lisp \
+  4006 finish ../evaluation-restore-state.sexp
+```
+
 After a successful restore test, save the completed guest state using the snapshot command.  That replaces the saved test stop with the completed state.
