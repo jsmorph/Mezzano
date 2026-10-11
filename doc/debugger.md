@@ -204,7 +204,7 @@ The interactive-input implementation passed a fresh full recompilation and CI bo
 
 ## Decisions and development sequence
 
-The next design work concerns retained evaluation and I/O, and type/scope metadata.  Restore coverage needs further tests for running commands at other instruction positions and external I/O.  Public binding mutation follows that metadata.  Lexical evaluation, frame return/reinvocation, trap entry, and stepping require their own semantics and tests before exposure through SWANK.
+The next design work concerns asynchronous evaluation interruption and type/scope metadata.  Restore coverage needs further tests for running commands at other instruction positions and external I/O.  Public binding mutation follows that metadata.  Lexical evaluation, frame return/reinvocation, trap entry, and stepping require their own semantics and tests before exposure through SWANK.
 
 The approved reinvocation defaults use the frame's current argument values and, for a globally named function, its latest definition.  Original arguments will be available through an explicit option.  Invocation metadata, original argument storage, cleanup, and dynamic-binding behavior still require implementation and tests.
 
