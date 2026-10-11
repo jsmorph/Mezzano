@@ -242,3 +242,9 @@ This establishes recovery through an existing restart over one connected session
 - [ ] Publish the Slime dependency change and record its fetchable revision.
 - [ ] Test the corrected backend after boot and restore.
 - [ ] Extend debugging to background failures and reconnection after agreeing on session behavior.
+
+## Approved debugger policy and dependency publication
+
+The user approved publication through `jsmorph/slime` and preservation of source bindings for inspection and mutation at `(debug 3)`.  Lower debug levels retain their current optimization policy.  Compiler implementation will follow the binding through AST transformations, closure conversion, and backend storage.  This approval establishes the target behavior.  Each increment will document the behavior its tests establish.
+
+Slime commit [d2c70f2e](https://github.com/jsmorph/slime/commit/d2c70f2ea5916d8da2fe0a41ff302b2002715f61) is now published on `debugging`.  The build instructions select that exact revision after MBuild submodule initialization.  This resolves the pending dependency destination.

@@ -40,7 +40,7 @@ The Lisp test checks inherited type predicates and slot access, unrelated types,
 
 ## Debugger tests
 
-These tests require Slime commit `d2c70f2ea5916d8da2fe0a41ff302b2002715f61`, which fixes Mezzano's repeated frame-local IDs.  That commit currently exists on `minideb2` in `home/slime` on branch `debugging`.  Its publication awaits the fork destination decision.
+These tests require [Slime commit d2c70f2e](https://github.com/jsmorph/slime/commit/d2c70f2ea5916d8da2fe0a41ff302b2002715f61), which fixes Mezzano's repeated frame-local IDs.  The build instructions record how to select that revision.
 
 With that backend loaded in the guest:
 

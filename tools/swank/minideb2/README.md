@@ -6,6 +6,16 @@ These scripts record the tested build and QEMU setup on `minideb2`: Debian 13, S
 
 The scripts expect the Mezzano checkout in `Mezzano/`, MBuild's dependencies in `home/`, and the host Quicklisp installation in `quicklisp/`.  The [MBuild instructions](https://github.com/froggey/MBuild/blob/a13448825506c716fb60427f78aafeb6265477b2/README.md) specify the host Lisp dependencies.  The tested MBuild revision is `a13448825506c716fb60427f78aafeb6265477b2`.
 
+After initializing MBuild's submodules, select the tested Slime revision:
+
+```sh
+cd /home/somebody/src/mezzano-boot
+git -C home/slime fetch https://github.com/jsmorph/slime.git debugging
+git -C home/slime checkout --detach d2c70f2ea5916d8da2fe0a41ff302b2002715f61
+```
+
+MBuild's recorded Slime revision predates the frame-local ID correction.  Running `git submodule update` again selects that older revision unless the commands above follow it.
+
 The branch's `config.lisp` sets the source and home paths for this directory, uses QEMU's host address `10.0.2.2`, and enables parallel guest compilation.  The host file server binds `127.0.0.1:2599`.
 
 Install the scripts from this checkout into the MBuild working directory:
