@@ -1,6 +1,6 @@
 # Swank evaluation client
 
-`lispm-eval` sends Common Lisp source to Mezzano's Swank server.  It runs on host SBCL and uses its bundled socket library.  Mezzano starts Swank during initial program loading.
+`lispm-eval` sends Common Lisp source to Mezzano's Swank server.  It runs on host SBCL and uses its bundled socket library.  The accompanying `client.lisp` provides the shared connection and packet code and must remain beside the executable.  Mezzano starts Swank during initial program loading.
 
 ## Usage
 

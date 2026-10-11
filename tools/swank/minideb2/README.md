@@ -14,7 +14,7 @@ Install the scripts from this checkout into the MBuild working directory:
 cd /home/somebody/src/mezzano-boot
 cp Mezzano/tools/swank/minideb2/*.sh .
 cp Mezzano/tools/swank/minideb2/build-live.lisp .
-cp Mezzano/tools/swank/lispm-eval .
+cp Mezzano/tools/swank/lispm-eval Mezzano/tools/swank/client.lisp .
 ```
 
 ## Build and run
