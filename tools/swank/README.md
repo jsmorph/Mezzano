@@ -53,7 +53,7 @@ tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-KEYWORD-LOWERING.LISP
 tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-JUMP-TABLE-BINDINGS.LISP") (values)'
 ```
 
-The first test checks that each local has a distinct ID and that selecting it returns the listed value.  The second connects to `127.0.0.1:4005`, loads a compiled fixture, and enters the debugger on an undefined-function call.  It inspects the caller's locals, defines the missing function, invokes its retry restart, and checks multiple values and unwind cleanup.  It also checks that another evaluation can run while the original request remains stopped.  Its connection stays open through recovery.  The test attempts to abort its suspended request if an assertion fails.
+The first test checks that each local has a distinct ID and that selecting it returns the listed value.  The second connects to `127.0.0.1:4005` by default, loads a compiled fixture, and enters the debugger on an undefined-function call.  It inspects the caller's locals, defines the missing function, invokes its retry restart, and checks multiple values and unwind cleanup.  It also checks that another evaluation can run while the original request remains stopped.  An optional command-line port, such as `sbcl --script tools/swank/test-debugger.lisp 4006`, selects another VM.  Its connection stays open through recovery.  The test attempts to abort its suspended request if an assertion fails.
 
 The fixture uses the guest package `LISPM-DEBUGGER-TEST` and resets that package's test definitions and counters on each run.  Neither test saves a guest image.
 

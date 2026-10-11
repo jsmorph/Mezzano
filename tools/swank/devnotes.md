@@ -302,3 +302,9 @@ The resulting image has not passed boot.  KVM QEMU exited with status 0 immediat
 Binding preservation prevents optimizations that the early bootstrap had depended on to avoid calls into pageable code.  The user has been asked to choose between a bootstrap build at debug level 1, retaining debug level 3 as the running compiler's default, and further compiler support for debug level 3 throughout the bootstrap.  This changes the supported code classes and requires explicit approval.  No bootstrap policy change has been made.
 
 GDB 16.3 was installed on `minideb2` under the user's authorization for required host tools.  The diagnostic QEMU instance used host-loopback GDB and a local QMP socket.  It was stopped after inspection.  The original SWANK VM remains running.  A second VM's launch scripts have been prepared for cold-boot and saved-image tests, but that VM has not been started.
+
+## Test setup after the full-build audit
+
+The installed and recorded `build-test.sh` now remove the generated `build-x86-64` cache before building the CI image.  This makes full target recompilation part of every compiler boot test.  The preceding full build exercised the same compiler invocation after moving that cache aside.  The edited shell script passed its syntax check.  Boot still awaits resolution of the debug policy issue above.
+
+`test-debugger.lisp` accepts an optional port.  Its explicit-port run against the existing endpoint passed remote stop, local inspection, function repair, restart, multiple values, and cleanup.  The default remains 4005.  The prepared second VM uses 4006.

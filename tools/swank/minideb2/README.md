@@ -47,7 +47,7 @@ tailscale ssh root@minideb2 systemctl restart mezzano-vm.service
 
 ## Boot test
 
-`build-test.sh` builds the separate CI image, `mezzano.image`.  `boot-test.sh` starts it, waits for desktop initialization, and checks QEMU exit status 3 and `CI build completed successfully!`.  The file server must be running.  `file-server-test.sh` starts it in the foreground when the service is inactive.
+`build-test.sh` removes the generated `Mezzano/build-x86-64` cache and builds the separate CI image, `mezzano.image`.  Every target file is recompiled so compiler changes cannot leave older machine code in the test image.  `boot-test.sh` starts it, waits for desktop initialization, and checks QEMU exit status 3 and `CI build completed successfully!`.  The file server must be running.  `file-server-test.sh` starts it in the foreground when the service is inactive.
 
 ```sh
 ./build-test.sh > build.log 2>&1

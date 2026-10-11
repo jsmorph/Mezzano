@@ -3,6 +3,13 @@
 (defpackage #:lispm-debugger-client-test (:use #:cl #:lispm-swank-client))
 (in-package #:lispm-debugger-client-test)
 
+(defparameter *port*
+  (let ((arguments (cdr sb-ext:*posix-argv*)))
+    (assert (<= (length arguments) 1) () "Usage: test-debugger.lisp [PORT]")
+    (let ((port (if arguments (parse-integer (first arguments)) 4005)))
+      (assert (<= 1 port 65535))
+      port)))
+
 (defvar *stop* nil)
 (defvar *debug-returned* nil)
 
@@ -99,7 +106,7 @@
  (handler-case
      (progn
        (call-with-connection
-        "127.0.0.1" 4005 60
+        "127.0.0.1" *port* 60
         (lambda (stream)
           (unwind-protect (run-test stream)
             (when *stop*
