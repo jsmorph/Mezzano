@@ -532,7 +532,7 @@ This is required to make the GC interrupt safe."
          cycle-kind))
       (when restart
         ;; rip
-        (setf (memref-t interrupt-stack-pointer 15) (+ fn-address entry-offset)))
+        (setf (memref-unsigned-byte-64 interrupt-stack-pointer 15) (+ fn-address entry-offset)))
       (scavenge-regular-stack-frame frame-pointer stack-pointer framep
                                     layout-address layout-length
                                     incoming-arguments

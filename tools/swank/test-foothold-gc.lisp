@@ -15,11 +15,11 @@
                (error "Foothold GC test timed out."))
              (sleep 0.01))))
 
-(defun register-function (register)
+(defun register-function (register &optional restart-p)
   (let ((scratch (if (eq register :r9) :r10 :r9)))
     (eval
      `(mezzano.internals::define-lap-function register-worker ((object))
-        (:gc :no-frame :layout #*0)
+        (:gc :no-frame :layout #*0 ,@(when restart-p '(:restart t)))
         (mezzano.lap.x86:mov64 ,register :r8)
         (mezzano.lap.x86:mov64 ,scratch (:symbol-global-cell *entered*))
         (mezzano.lap.x86:mov64 :rax (:constant t))
@@ -31,6 +31,7 @@
          ,scratch (:object ,scratch ,mezzano.internals::+symbol-value-cell-value+))
         (mezzano.lap.x86:cmp64 ,scratch :r14)
         (mezzano.lap.x86:jz wait)
+        (:gc :no-frame :layout #*0)
         (mezzano.lap.x86:mov64 ,scratch (:symbol-global-cell *root*))
         (mezzano.lap.x86:mov64
          ,scratch (:object ,scratch ,mezzano.internals::+symbol-value-cell-value+))

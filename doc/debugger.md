@@ -148,7 +148,7 @@ Any attached session can request interruption or read its history.  Stop command
 
 Tests cover computing and input-waiting workers, full GC, locals, continuation, abort, cleanup conditions and nonlocal transfers, duplicate IDs, unread replies, existing stops, inhibited delivery, and immediate submission after creation.  The immediate-submission test does not establish which startup scheduling order occurred.  Restore tests cover a queued request expiring without delivery and a running interrupt stop resuming through a fresh session.  Other instruction positions and external I/O require further tests.
 
-The x86-64 saved-interrupt scanner reads saved data registers as Lisp objects so that GC relocates their heap references.  A deterministic test holds a movable vector in each of R8, R9, R10, R11, R12, R13, R15, and RBX while an injected foothold waits across full GC.  Each register must match the relocated object when the interrupted function resumes.  R14 holds NIL.  A second test uses the existing single-step controls to stop at return-thunk entry and before IRET, with both full-save state and an additional foothold above it.  GC and normal resumption pass at those positions.  ARM64, intermediate return instructions, and compiler GC restart regions require separate tests.
+The x86-64 saved-interrupt scanner reads saved data registers as Lisp objects so that GC relocates their heap references.  A deterministic test holds a movable vector in each of R8, R9, R10, R11, R12, R13, R15, and RBX while an injected foothold waits across full GC.  Each register must match the relocated object when the interrupted function resumes.  R14 holds NIL.  A second test uses the existing single-step controls to stop at return-thunk entry and before IRET, with both full-save state and an additional foothold above it.  GC and normal resumption pass at those positions.  A Lisp-assembled GC restart-region test checks the raw saved instruction address and normal resumption in full-save state and beneath a foothold.  ARM64, intermediate return instructions, and individual allocation-routine positions require further tests.
 
 ## Compiler guarantees
 
@@ -208,6 +208,7 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-structure-layouts.lisp` | Inherited structure predicates/access and redefinition. |
 | `test-foothold-gc.lisp` | Movable objects in eight x86-64 data registers across an injected foothold and full GC. |
 | `test-interrupt-return-gc.lisp` | GC and resumption at x86-64 interrupt-return entry and IRET, in full-save state and beneath another foothold. |
+| `test-gc-restart.lisp` | Raw instruction-address rewriting and resumption for an x86-64 GC restart region, in full-save state and beneath a foothold. |
 | `test-frame-locals.lisp` | Distinct SWANK local IDs and lookup. |
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |
 | `test-debug-bindings.lisp` | Preserved binding visibility and lower-debug propagation. |
