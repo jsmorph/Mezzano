@@ -1,0 +1,72 @@
+:root {
+  color-scheme: light;
+  font-family: "CPTFONT", monospace;
+  font-size: 12px;
+  line-height: 12px;
+  color: #000;
+  background: #fff;
+  font-synthesis: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, textarea { font: inherit; color: #000; background: #fff; border-radius: 0; }
+button { cursor: pointer; border: 1px solid transparent; padding: 0 3px; text-align: left; }
+button:hover, button:focus-visible { border-color: #000; outline: none; }
+button:disabled { cursor: default; text-decoration: line-through; }
+input { border: 1px solid #000; padding: 2px; }
+button, input, textarea { max-width: 100%; }
+p { margin: 12px 0; }
+h1, h2, h3 { font-size: inherit; font-weight: normal; }
+h2 { margin: 0 0 12px; font-weight: bold; }
+h3 { margin: 0 0 4px; font-style: italic; }
+pre { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+#monitor { height: 100dvh; min-height: 260px; display: flex; flex-direction: column; padding: 3px; }
+#window { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 8px double #000; padding: 6px 6px 0; outline: 1px solid #000; outline-offset: -12px; }
+#viewport { flex: 1; min-height: 0; display: flex; margin-top: 6px; gap: 10px; }
+#page { flex: 1; overflow: auto; min-width: 0; padding: 0 8px 16px 0; scrollbar-width: none; }
+#page::-webkit-scrollbar { display: none; }
+#vertical-track { width: 7px; flex: 0 0 7px; border: 1px solid #000; margin: 0 0 0 6px; background: repeating-conic-gradient(#fff 0% 25%, #000 0% 50%) 0 0 / 2px 2px; }
+#vertical-track div { height: 20%; min-height: 8px; background: #fff; border-bottom: 1px solid #000; }
+#horizontal-track { height: 7px; border: 1px solid #000; margin: 0 5px 0 23px; background: repeating-conic-gradient(#fff 0% 25%, #000 0% 50%) 0 0 / 2px 2px; }
+#horizontal-track div { width: 100%; height: 100%; background: #fff; border-right: 1px solid #000; }
+#window-label { font-style: italic; margin: 0 0 1px; width: fit-content; }
+#herald { width: min(100%, 560px); margin: 34px auto 100px; text-align: center; }
+#herald h1 { font-size: 24px; line-height: 24px; font-style: italic; margin: 0 0 26px; }
+#herald p { line-height: 12px; }
+#evaluate { display: flex; align-items: start; gap: 8px; margin-top: 12px; }
+textarea { display: block; border: 0; outline: none; padding: 0; resize: none; flex: 1; min-width: 0; line-height: 12px; caret-color: #000; }
+.evaluation { margin: 0 0 24px; }
+.evaluation .job-state { font-style: italic; }
+.input-form { display: flex; align-items: start; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.input-form textarea { border-bottom: 1px solid #000; min-width: 160px; }
+.job-row, .stop-row { margin-bottom: 8px; }
+.job-row button, .stop-row button { display: block; }
+.command-row { margin: 6px 0; }
+.condition { font-weight: bold; margin: 0 0 12px; }
+.restarts { margin: 12px 0; }
+.debugger-transcript { margin: 12px 0; }
+#debug-command { display: flex; gap: 8px; margin-top: 12px; }
+#debugger-command { border: 0; outline: none; padding: 0; flex: 1; min-width: 0; }
+.restarts button, .frame { display: block; }
+.selected { outline: 1px solid #000; }
+.locals { border-collapse: collapse; margin: 8px 0 12px 16px; }
+.locals td { vertical-align: top; padding: 0 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#mouse-documentation { margin-top: 3px; background: #000; color: #fff; min-height: 24px; padding: 0 2px; }
+#mouse-documentation div { min-height: 12px; overflow-wrap: anywhere; }
+#who-line { display: flex; justify-content: space-between; gap: 12px; min-height: 14px; align-items: start; flex-wrap: wrap; }
+#who-line button { padding: 0; }
+dialog { color: #000; background: #fff; border: 4px solid #000; padding: 4px; max-width: calc(100vw - 16px); box-shadow: 4px 4px 0 #000; }
+dialog::backdrop { background: transparent; }
+dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; padding: 0 0 2px; }
+.menu-columns { display: flex; gap: 24px; padding: 2px 12px 8px; flex-wrap: wrap; }
+.menu-columns > div { display: flex; flex-direction: column; align-items: stretch; max-width: 256px; }
+.menu-columns h3 { text-align: center; border-bottom: 1px solid #000; }
+.menu-columns button { text-align: center; }
+.menu-columns label { margin-top: 6px; }
+.menu-columns input:not([type="checkbox"]) { width: 104px; }
+[hidden] { display: none !important; }
+@media (max-width: 640px) {
+  #herald { margin-bottom: 60px; }
+  #who-line { justify-content: start; gap: 8px; }
+  .menu-columns { gap: 12px; padding: 2px; }
+}

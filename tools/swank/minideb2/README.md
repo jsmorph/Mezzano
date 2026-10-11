@@ -60,9 +60,27 @@ MBuild supplies `run-file-server.lisp`.  The commands below create the developme
 | Original live VM | `mezzano-live.image` | `127.0.0.1:4005` | `mezzano-vm.service` |
 | Debugger development | `mezzano-debugging.image` | `127.0.0.1:4006` | `mezzano-debugging-vm.service` |
 | CI boot test | `mezzano.image` | Serial log | Foreground `boot-test.sh`. |
+| Web Listener | Browser HTML/CSS/JavaScript | `0.0.0.0:8765` | `mezzano-web.service` |
 | Shared guest file access | Host source/dependency trees | `127.0.0.1:2599` | `mezzano-files.service` |
 
 Both live launchers provide standard VGA and hide the host display.  The guest still initializes the desktop.  GUI-free startup remains implementation work.
+
+### Web Listener service
+
+The [Web Listener guide](../web/README.md) describes the application and direct uv launch.  The checked-in service uses minideb2 paths and hostnames.  Its SWANK target is the development VM on loopback port 4006.  Install and start it from the SSH client:
+
+```sh
+tailscale ssh root@minideb2 \
+  'install -m 0644 /home/somebody/src/mezzano-boot/Mezzano/tools/swank/web/mezzano-web.service /etc/systemd/system/mezzano-web.service && systemctl daemon-reload && systemctl start mezzano-web.service'
+```
+
+The service runs as somebody and remains active after the SSH connection closes.  It binds all IPv4 interfaces on port 8765.  It does not start or restart the VM.  A stopped guest produces a visible connection error in the Web UI.  The service is installed as a static unit and is started explicitly after a host reboot.
+
+```sh
+tailscale ssh root@minideb2 systemctl status mezzano-web.service --no-pager
+tailscale ssh root@minideb2 journalctl -u mezzano-web.service -n 50 --no-pager
+tailscale ssh root@minideb2 systemctl restart mezzano-web.service
+```
 
 ### Build an image
 

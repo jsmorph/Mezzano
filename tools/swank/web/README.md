@@ -1,0 +1,104 @@
+# Mezzano Web Listener and Debugger
+
+The server exposes the retained SWANK evaluation and debugger services through HTTP.  The browser provides a Lisp Listener, retained evaluations, condition and interruption stops, stack frames, local values, zero-argument restarts, and request history.  Python uses its standard library.  The browser uses native HTML, CSS, and JavaScript.
+
+## Running
+
+Run from this directory on the VM host:
+
+```sh
+uv run --no-python-downloads --python /usr/bin/python3 server.py \
+  --listen 0.0.0.0 --port 8765 --swank-host 127.0.0.1 --swank-port 4006 \
+  --allow-host minideb2 --allow-host minideb2.tail3bfd26.ts.net \
+  --allow-host 100.122.26.31 --allow-host 172.16.0.64
+```
+
+The default HTTP address is 0.0.0.0:8765, as requested by the user.  The default SWANK target is 127.0.0.1:4006.  Port 4005 belongs to the original VM.  The installed Python interpreter is used without downloading another interpreter or adding application dependencies.
+
+Each accessible DNS name or IP address must appear in the Host allowlist.  Localhost, 127.0.0.1, the host name, and its fully qualified name are included by default.  An HTTP client that can reach the service has authority to evaluate Lisp in the machine.  The application provides no account authentication or TLS.  Host and Origin checks reject requests from unrelated browser origins.  POST requests require JSON and the `X-Mezzano-Request: 1` header.  The server grants no CORS permission.
+
+The [systemd unit](mezzano-web.service) records the minideb2 launch configuration.  The [operations guide](../minideb2/README.md) describes the machine and endpoint setup.
+
+## Using the interface
+
+Return evaluates Listener input.  Shift-Return inserts a newline.  Mouse-Right or the lower activity label opens the System Menu.  The menu selects the package, interactive input mode, activity, and connection operations.  Output and returned values appear in the Listener transcript.  Zero values appear as `(No values)`, distinct from a returned `NIL`.
+
+An interactive evaluation accepts text and EOF through its input controls.  Interrupt requests a retained debugger stop.  Release removes a terminal evaluation's stored output and results.  Guest jobs remain retained after session release and can be discovered from a fresh session.
+
+Select an evaluation's Debugger action or a retained stop.  The System Menu's This Debugger column provides Show Condition, Show Restarts, and Show Stack.  These commands also work at the debugger's arrow prompt.  `Frame N` selects a frame from the displayed stack and requests its local values.  Parent Stop and Child Stop select related retained stops.  A printer can itself enter a child stop.  The parent command remains visible as running while the child is inspected.
+
+Restart lines invoke zero-argument restarts.  Available local values use the debugger's printed representation.  Unavailable values display `<unavailable>`.  A selected frame's function and index identify the displayed locals.  Closed stops retain their previously queried results until Release Stop.  The Request History activity records command IDs, states, prior-boot markers, and submissions whose replies remain uncertain.
+
+### Session and request lifetime
+
+A tab saves its guest session name, creation-attempt state, evaluation sources and names, input ranges, interrupt IDs, and command IDs in `sessionStorage`.  Reload resumes that identity.  Independent tabs create different sessions.  Duplicated tabs can inherit one identity.  Requests for a shared identity serialize in the HTTP server, while guest conflicts remain visible.
+
+Each HTTP operation opens a SWANK connection, resumes the saved session, performs its operation, and closes the connection.  Debugger submission and release acquire their lease on that same connection.  Closing the connection relinquishes the controller.  Separate result polls permit child-stop inspection while a printer command runs.
+
+The browser records each mutation before dispatch.  A lost reply preserves the original identity.  Repeat Original Request reuses an evaluation name, input range, interrupt ID, or command ID.  It never assigns a new identity to an uncertain submission.  A definitive rejection has a separate state and can be retained in history.
+
+Release operations have no replay identity.  Check Release Outcome queries the original reference.  A released-object reply establishes the object's present state.  An expired reference establishes unavailability while leaving the original release outcome unknown.  A successful query records that the object remained retained at that check.  Keep in History preserves that observation and permits a later, separate explicit release action.
+
+An expired session remains visible and requires New Session.  New Session archives unresolved records under their original session and discovers retained jobs and stops through fresh tokens.  Archived requests cannot replay under the new identity.  Session release requires the current pending records to be resolved or archived.
+
+### HTTP API
+
+`POST /api` accepts an object with `session`, `operation`, and optional `arguments` fields.  Session and evaluation names contain 64 lowercase hexadecimal digits.  Tokens retain their three-element protocol representation and are checked against the request's session.
+
+| Operations | Arguments |
+|---|---|
+| open-session, resume-session, jobs, release-session | None |
+| stops | Optional include_closed |
+| start-evaluation | name, source.  Optional package, input, interactive |
+| job-information, release-job | job |
+| job-output | job, start.  Optional end |
+| job-input | job, offset, text.  Optional eof |
+| interrupt-job, job-interrupt-result | job, id |
+| information, release-stop | stop |
+| result | stop, id |
+| submit | stop, id, command.  Optional argument |
+
+Submit supports condition, restarts, frames, locals, and invoke-restart.  Locals takes a frame token.  Invoke-restart takes a restart index.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines guest operations, token lifetimes, states, and error reasons.
+
+Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns `{"error": ..., "uncertain": ...}`.  Input validation failures precede SWANK dispatch.  Transport or remote decoding failures report an uncertain outcome.  The default transport deadline is 15 seconds, and the HTTP body limit is one MiB.
+
+## Symbolics display references
+
+The Listener follows Symbolics' [Genera Workbook](https://bitsavers.trailing-edge.com/pdf/symbolics/software/genera_8/Genera_Workbook.pdf), printed pages 5–7 and 10–12, particularly figures 4 and 7.  Those Genera 8 figures show the full Listener text area, multiple borders, lower activity label, left and bottom scroll tracks, two reverse-video mouse-documentation lines, and who-line.  The initial Listener has a centered herald.  The palette uses solid black and white.
+
+The selected debugger follows the [classic Listener debugger capture](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/symbolics-images/source-code-debugging.gif) on the [source-oriented debugging page](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/source-oriented-debugging.html): inline bold condition, function and argument lines, inline restart choices, and an arrow prompt.  The page does not identify a precise Genera release.  The [Program Development Utilities manual](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf), printed pages 189–191, describes this debugger entry display.  Its printed page 206 illustrates the restart popup.
+
+The [Display Debugger capture](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/development-environment/debugger.gif) shows another original debugger layout with separate stack, disassembly, condition, and variable panes.  The present interface follows the classic Listener variant.
+
+Mezzano identity, package, guest process state, and supported commands replace Symbolics-specific content.  The who-line clock uses browser time.  Local values are labeled Local because the API does not supply the original display's argument classification.  Inspection requires explicit commands.  The browser does not reproduce Genera object presentations, source selection, disassembly, local writes, frame evaluation, or stepping.
+
+### Font status and visual limits
+
+The interface currently uses a fallback monospace font.  Exact glyph shape and spacing have not been established, and visual fidelity remains unfinished.
+
+Symbolics' [Programming the User Interface, Volume B](https://ftpmirror.your.org/pub/misc/bitsavers/pdf/symbolics/software/genera_7/999029_Programming_the_User_Interface_Volume_B_Aug86.pdf), printed page 123, maps the default fixed roman normal style to FONTS:CPTFONT.  The [recovered Genera font repository](https://github.com/htayj/genera-fonts/tree/809694a73ece7f840b6541b4781cd47152d1ea35) publishes Genera 8.5 bitmap sources.  CPTFONT has an eight-pixel advance, twelve-pixel character height, and baseline ten.  Its [v0.1.3 release](https://github.com/htayj/genera-fonts/releases/tag/v0.1.3) contains BDF and bitmap-only OTB files, without outline webfonts.
+
+Chromium rejected the released CPTFONT OTB in a native FontFace test with `SyntaxError: Invalid font data in ArrayBuffer`.  Build-only font conversion awaits approval.  The recovery repository's BSD license covers its tooling and documentation.  Its NOTICE treats the historical glyph designs separately.  Any bundled asset must retain that provenance and notice.  The recovered font release and the inspected Genera 8 manual are different versions, so a visual comparison remains necessary.
+
+## Tests
+
+```sh
+uv run --no-python-downloads --python /usr/bin/python3 test_server.py
+uv run --no-python-downloads --python /usr/bin/python3 test_server.py --live-port 4006
+```
+
+Nine isolated tests passed: Lisp string and value encoding, fragmented UTF-8 framing, typed arguments, malformed remote encoding, ordinary SWANK debugger abort and reply draining, session-lock cleanup, browser-origin restrictions, malformed JSON field types, and uncertain failure after dispatch.
+
+The live suite passed through HTTP, SWANK, and the running x86-64 development guest.  It covered Unicode output and character offsets, multiple and zero values, identical creation replay, session resume, interactive input replay, CERROR, stack frames and available locals at debug 3/safety 3, restart continuation, interruption, abort cleanup, and a printer child stop.  It released its jobs, closed stops, and session, and removed its function and condition-class fixtures.  Queries after release returned the expected released-job, released-stop, and expired-session errors.
+
+The browser test runs on a host with Chromium and Node.  The tested versions are Chromium 145.0.7632.109 and Node 24.13.0.  It uses Node's built-in WebSocket API and requires no npm packages.  From the Mezzano checkout on that host:
+
+```sh
+node tools/swank/web/test-browser.mjs http://minideb2:8765/ /tmp/mezzano-browser-test
+```
+
+The first argument is the server URL.  The second is the screenshot and diagnostic directory.  CHROMIUM can select another Chromium executable.  The driver starts an isolated headless profile, sends keyboard and mouse events through CDP, and removes its profile on exit.  A failed interaction saves the browser's session state and leaves its recorded guest fixtures available for inspection.
+
+The Chromium run passed Listener output and multiple values, reload, a 640-pixel viewport overflow check, interactive input, condition and stack inspection, available locals, restart continuation, and release.  Controlled response loss discarded a completed fetch response after server dispatch.  Creation replay recovered the original job.  Lost job-release and session-release replies were reconciled through queries, followed by explicit session replacement and final cleanup.  Two expected HTTP 409 responses represented a released job and an expired session.  No unexpected browser errors occurred.  The driver records font metrics and screenshots, which require visual review against the original references.
+
+Original-font comparison remains unfinished.  Unavailable-local encoding has an isolated test, while unavailable-local browser rendering has source review only.  Actual image restore, ARM64 guest behavior, and byte-for-byte original-screen fidelity have not been tested here.  The [development journal](devnotes.md) records failures, corrections, and test scope.

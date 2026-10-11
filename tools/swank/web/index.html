@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mezzano Lisp Listener</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<main id="monitor">
+  <section id="window">
+    <div id="viewport">
+      <div id="vertical-track" aria-hidden="true"><div></div></div>
+      <div id="page" tabindex="-1">
+        <section id="listener" class="activity">
+          <header id="herald">
+            <h1>Mezzano Lisp Machine</h1>
+            <p>Remote Lisp Listener<br>Mezzano on minideb2</p>
+          </header>
+          <div id="transcript" aria-label="Evaluation history"></div>
+          <form id="evaluate">
+            <label for="source">Command:</label>
+            <textarea id="source" rows="1" spellcheck="false" autocomplete="off"
+              aria-label="Lisp source" data-help="Return: Evaluate Lisp. Shift-Return: Insert a newline."></textarea>
+          </form>
+        </section>
+        <section id="evaluations" class="activity" hidden>
+          <h2>Evaluations</h2>
+          <div id="jobs"></div>
+        </section>
+        <section id="debugger" class="activity" hidden>
+          <h2 id="debugger-heading">Debugger</h2>
+          <div id="stops"></div>
+          <div id="stop-detail"></div>
+          <form id="debug-command" hidden>
+            <label for="debugger-command">→</label>
+            <input id="debugger-command" aria-label="Debugger command" autocomplete="off"
+              spellcheck="false" data-help="Commands: Show Condition, Show Restarts, Show Stack, Frame N, Parent Stop, Child Stop.">
+          </form>
+        </section>
+        <section id="requests" class="activity" hidden>
+          <h2>Request History</h2>
+          <div id="pending"></div>
+        </section>
+        <section id="help" class="activity" hidden>
+          <h2>Mezzano Listener and Debugger</h2>
+          <p>Return evaluates the input as a retained Lisp job. Shift-Return inserts a newline.
+            The package and input mode are in the System Menu.</p>
+          <p>Mouse-Right opens the System Menu. The bottom activity label also opens it.</p>
+          <p>Evaluations retains output and values in the machine. An interactive evaluation
+            waits for supplied input or EOF. Release removes a completed evaluation's storage.</p>
+          <p>Debugger lists retained stops. Select a stop, inspect its condition, frames, and
+            locals, or invoke an available zero-argument restart. A printer can enter a child stop.</p>
+          <p>Requests keeps submissions whose replies were lost. Repeating a recorded request
+            uses its original name, range, or ID. An expired session requires a new session.</p>
+          <p>The clock shows browser time. Printed values are text. Public binding writes,
+            frame evaluation, object browsing, and stepping remain under development.</p>
+          <p id="font-status">Original font conversion and visual comparison are pending.</p>
+        </section>
+      </div>
+    </div>
+    <div id="horizontal-track" aria-hidden="true"><div></div></div>
+    <button id="window-label" data-help="Mouse-Left: Open the System Menu.">Dynamic Lisp Listener 1</button>
+  </section>
+  <div id="mouse-documentation" aria-live="polite">
+    <div id="mouse-help">Mouse-Right: System Menu. Return: Evaluate Lisp.</div>
+    <div id="message">Disconnected.</div>
+  </div>
+  <footer id="who-line"><span id="clock" title="Browser time"></span><span>Remote</span>
+    <button id="package-label">CL CL-USER:</button><span id="process-state">Disconnected</span>
+    <span>Mezzano</span></footer>
+</main>
+<dialog id="system-menu">
+  <h2>The System Menu</h2>
+  <div class="menu-columns">
+    <div><h3>Activities</h3>
+      <button data-activity="listener">Lisp Listener</button>
+      <button data-activity="debugger">Debugger</button>
+      <button data-activity="evaluations">Evaluations</button>
+      <button data-activity="requests">Requests</button>
+      <button data-activity="help">Help</button>
+    </div>
+    <div><h3>This Listener</h3>
+      <button id="evaluate-button">Evaluate</button>
+      <button id="clear-input">Clear Input</button>
+      <button id="refresh">Refresh</button>
+      <label>Package <input id="package" value="CL-USER" aria-label="Evaluation package"></label>
+      <label><input id="interactive" type="checkbox"> Interactive Input</label>
+    </div>
+    <div id="debugger-menu"><h3>This Debugger</h3></div>
+    <div><h3>Connection</h3>
+      <button id="resume-session">Connect / Resume</button>
+      <button id="new-session">New Session</button>
+      <button id="release-session">Release Session</button>
+      <button id="close-menu">Close Menu</button>
+    </div>
+  </div>
+</dialog>
+</body>
+</html>

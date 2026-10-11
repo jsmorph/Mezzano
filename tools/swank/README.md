@@ -4,6 +4,12 @@ The host tools run on SBCL with its bundled socket library.  `lispm-eval` evalua
 
 The [debugger design](../../doc/debugger.md) defines current capabilities and limitations.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) specifies RPCs and errors.  [Build and VM operations](minideb2/README.md) provides dependency revisions, startup, snapshots, and test commands.
 
+## Web Listener
+
+The [Web Listener and Debugger](web/README.md) serves a browser interface on [minideb2 port 8765](http://minideb2:8765/).  Its Python standard-library server translates HTTP requests to the existing SWANK retained-service API on port 4006.  The browser retains its session identity across reloads.  The guest owns evaluations, output, stops, and command results.
+
+The interface supports source evaluation, interactive input, interruption, condition and stack inspection, local values, and zero-argument restarts.  The component guide records launch commands, tests, original Symbolics references, and remaining visual work.  The guest compiler and debugger remain implemented in Lisp.
+
 ## Evaluate source
 
 From the Mezzano repository root on `minideb2`:

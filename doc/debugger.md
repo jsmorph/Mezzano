@@ -10,11 +10,12 @@ The stop-service and compiler baseline reviewed here is Mezzano `37dbb34912616d8
 | [Remote evaluation and debugging](../tools/swank/README.md) | User workflow and executable examples. |
 | [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) | RPC signatures, representations, and rejection reasons. |
 | [Build and VM operations](../tools/swank/minideb2/README.md) | Dependency revisions, build, startup, snapshots, restore, and test commands. |
+| [Web Listener and Debugger](../tools/swank/web/README.md) | HTTP client behavior, browser tests, and Symbolics display references. |
 | [Development journal](../tools/swank/devnotes.md) | Decisions, diagnoses, failed attempts, commits, and historical evidence. |
 
 ## Architecture and ownership
 
-The implementation uses Common Lisp for compiler metadata, stop management, SWANK adaptation, and the host client.  Architecture-specific frame access belongs in the existing runtime and compiler.  Host shell scripts run builds and QEMU.
+The implementation uses Common Lisp for compiler metadata, stop management, SWANK adaptation, and the host client.  Architecture-specific frame access belongs in the existing runtime and compiler.  Host shell scripts run builds and QEMU.  The separately authorized Web UI uses a Python standard-library HTTP server and browser-native JavaScript to call the same SWANK service.
 
 The [guest stop service](../system/debugger-service.lisp) owns stops and accepted commands.  A stop retains the condition, applicable restart objects, captured frames, and the target thread's dynamic environment.  The target thread waits in a command loop and executes inspection, printing, and restart functions.  Other threads continue running.
 

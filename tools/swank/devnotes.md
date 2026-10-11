@@ -617,3 +617,33 @@ All four flow tests passed in `debug-write-flow-test.log`, together with the pre
 The final GC source at Mezzano `5c7ee5bc` passed a fresh full compilation and CI boot.  QEMU exited with status 3 and the success marker appeared in the serial log.  Logs are `gc-restart-build.log`, `gc-restart-boot.log`, and `gc-restart-serial.log`.  The development VM saved the corrections with no unreleased jobs or active stops in `gc-restart-snapshot.log`.  The operations guide now pins this Mezzano revision and Slime `04d5ef6b`.
 
 The operations guide selects Mezzano `6188206f` so a fresh checkout also contains the added binding-flow test.  The tested compiler/runtime source matches `5c7ee5bc`.
+
+## Web UI research: 2026-10-12
+
+The user requested a separate agent to research Symbolics displays and build a uv-runnable Python HTTP interface to the existing SWANK endpoint.  That work owns `tools/swank/web/`.  The [Web UI research and prototype](web/README.md) records the original manuals and visual choices, and the [component journal](web/devnotes.md) records the proposed session and request behavior.
+
+The recommendation uses Python's standard library, browser-native HTML/CSS/JavaScript, loopback HTTP access through SSH, and retained guest jobs and stops.  A short-lived SWANK connection per HTTP request follows the existing Lisp client's connection lifetime.  A debugger submission acquires its lease and submits on that connection.  Later requests query the retained result.  The current session instruction requires confirmation before design decisions, so the architecture question is pending while research and the static prototype are complete.
+
+The official uv installer installed uv 0.13.0 on minideb2 without changing shell profiles.  The temporary static server uses the existing Python 3.13.5.  HTTP delivery through an SSH forward returned status 200 and 5,341 bytes.  The browser tool reported no available browser, so rendered appearance and browser interactions remain untested.  The prototype contains labeled examples and implements no SWANK requests.
+
+The user approved proceeding with a wildcard HTTP listener, specifying `*:PORT`, and required the original Symbolics Listener and Debugger fonts, colors, and layout.  The implementation will use port 8765 by default and keep the SWANK target on loopback port 4006.  The agent is implementing the approved Python HTTP service and researching the original font assets.  Browser access was requested for the rendered comparison.
+
+## Binding identity source review: 2026-10-12
+
+The [assembler](../../compiler/lap.lisp) indexes constants with an EQL hash table.  The [compiled-file serializer](../../system/file-compiler.lisp) uses an identity table and writes backlinks for shared vectors.  The [cold-image serializer](../cold-generator2/serialize.lisp) uses EQUAL for array deduplication, which preserves distinct general vectors.  These source findings support representing a static binding identity with a shared general vector.  They require tests through compilation, loading, closure creation, and GC before becoming a debugger guarantee.
+
+The current AST copier creates a fresh lexical-variable object and copies its debugger-preservation flag.  Closure layout metadata is produced before the final simplification passes.  A descriptor added there must remain associated with the correct variable through those passes.  Runtime activation identity remains separate from static binding identity.  No new metadata or public binding-write API was implemented in this review.
+
+## Web UI browser testing: 2026-10-12
+
+The user authorized headless Chromium.  The workstation provides Chromium 145.0.7632.109 and Node 24.13.0.  The test driver uses Node's built-in WebSocket implementation and the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) with a fresh browser profile.  It adds no npm dependencies.  The Python server and guest continue to run on minideb2.
+
+The first browser interaction test passed evaluation, output, multiple values, reload of a retained result, condition and stack inspection, locals 111 and 222, CONTINUE, returned value 333, and release of its jobs, stop, and session.  Screenshots were inspected against the original Genera Workbook figures and original Listener and Display Debugger captures.  The first rendering exposed a favicon 404, corrected by the server's explicit 204 response.  The successful run produced no browser console errors.  This run used a fallback monospace font and does not establish visual fidelity.
+
+The recovered CPTFONT bitmap OTB failed Chromium's FontFace load with “Invalid font data in ArrayBuffer.”  The recommendation remains conversion of the original glyphs with fontTools as a build-only dependency.  Dependency approval is pending.  The regular font's recorded advance and line height are 8 and 12 pixels.  Browser glyph comparison remains required after conversion.
+
+The recommendation for continued access is a systemd service running the same uv command as user somebody, listening on 0.0.0.0:8765 and talking to SWANK on 127.0.0.1:4006.  The checked-in service records the minideb2 paths and allowed hostnames.  This transfers the HTTP process from an interactive SSH session to systemd without changing either VM.
+
+The revised classic Listener debugger and the final Chromium run passed evaluation, reload, interactive input, condition/stack/locals, CONTINUE returning 333, and cleanup.  Controlled discarded fetch responses tested original-name evaluation replay, job-release reconciliation, expired-session reconciliation, and explicit new-session recovery.  Two expected HTTP 409 responses represented the released job and expired session.  There were no unexpected browser errors.  Screenshots cover the Listener, System Menu, Debugger, request history, and a 640-pixel viewport.  Three earlier driver-readiness failures and their exact fixture cleanup are recorded in the component journal.
+
+The final Python suite passed nine isolated tests and the live HTTP-to-SWANK tests, including child-printer recovery and released-reference checks.  The live log is /tmp/web-final-live.log on minideb2.  Browser evidence is retained in the MBuild directory under web-browser-evidence.  The systemd unit passed systemd-analyze verify and is running.  Font measurement confirms the remaining mismatch: Hello occupies 36.123046875 pixels with fallback rendering, compared with CPTFONT's expected 40 pixels.  This increment is ready for review and publication as a working HTTP client.  Exact Symbolics typography and visual matching remain unfinished.
