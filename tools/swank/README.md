@@ -99,3 +99,14 @@ tools/swank/lispm-eval --port 4006 --timeout 120 '(load (compile-file "SYS:SOURC
 ```
 
 It checks a background failure, locals after full GC, exclusive control, lease expiration, duplicate restart submissions during and after execution, conflicting requests, a nested printer failure, foreign frame rejection, function repair, returned application values, and unwind cleanup.  These tests exercise controller closure through the Lisp API.  Network disconnect and reconnection require the forthcoming SWANK adapter.
+
+The restore test uses two explicit phases after the service test has defined its helpers:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-SERVICE-RESTORE.LISP"))
+(lispm-service-test::prepare-restore-test)
+(mezzano.supervisor:snapshot)
+(mezzano.supervisor:wait-for-snapshot-completion)
+```
+
+After restarting the VM, `(lispm-service-test::finish-restore-test)` checks rejection of the old handles, attachment through a new controller, the retained command record, locals after GC, restart recovery, and cleanup.  This test covers a parked stop and a completed command at snapshot time.

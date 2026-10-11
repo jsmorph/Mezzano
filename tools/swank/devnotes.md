@@ -393,3 +393,14 @@ Review identified a completion race: publishing a returned result before clearin
 - [ ] Add type and scope metadata before public binding mutation.
 
 The reviewed service test passed, including those two checks.  The existing SWANK function-repair and restart test also passed.  The logs are `debug-service-live-test.log` and `debug-service-legacy-test.log`.
+
+## Stop service build and saved-image tests
+
+The full rebuild compiled every target file, including the new warm debugger service.  The CI image reached `CI build completed successfully!` and QEMU exited with status 3.  Logs are `debug-service-build.log`, `debug-service-boot.log`, and `debug-service-serial.log`.
+
+The live debugging VM saved an image with an ordinary thread stopped at an undefined-function call.  The snapshot retained a controller, control lease, stop handle, frame reference, and completed frame-list command.  After restarting that VM, the test rejected the old stop handle, lease, frame reference, and controller.  A fresh controller attached to the restored stop, inspected its locals after GC, repaired the function, and invoked its retry restart.  The application returned `333` and `:RESTORED`, with cleanup running once.  The completed command record survived and reported that it belonged to an earlier boot.  Logs are `debug-service-snapshot.log` and `debug-service-restored-test.log`.
+
+This restore test covers a parked stop and a completed command.  A command in progress at snapshot time and a queued command spanning restore need separate tests.
+
+- [x] Test the warm source addition with a full rebuild and boot.
+- [x] Test a retained stop and stale guest handles across saved-image restore.
