@@ -656,15 +656,23 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
 
 (defun compute-environment-layout-debug-info ()
   (when *environment*
-    (list (second (first *environment-chain*))
-          (mapcar (lambda (env)
-                    (mapcar (lambda (x)
-                              (if (or (tagbody-information-p x)
-                                      (block-information-p x))
-                                  nil
-                                  (lexical-variable-name x)))
-                            (gethash env *environment-layout*)))
-                  *environment*))))
+    (let ((pointer (second (first *environment-chain*)))
+          (layouts (mapcar (lambda (env) (gethash env *environment-layout*))
+                           *environment*))
+          (debug-zero-p (zerop (optimize-quality *current-lambda* 'debug))))
+      (when (some (lambda (layout) (some #'preserve-variable-for-debugger-p layout))
+                  layouts)
+        (setf (getf (lexical-variable-plist pointer) 'preserve-for-debugger) t))
+      (list pointer
+            (mapcar (lambda (layout)
+                      (mapcar (lambda (variable)
+                                (unless (or (tagbody-information-p variable)
+                                            (block-information-p variable)
+                                            (and debug-zero-p
+                                                 (not (preserve-variable-for-debugger-p variable))))
+                                  (lexical-variable-name variable)))
+                              layout))
+                    layouts)))))
 
 (defun generate-make-environment (lambda size)
   (ast (cond ((gethash lambda *environment-layout-dx*)

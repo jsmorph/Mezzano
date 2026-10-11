@@ -50,6 +50,7 @@ sbcl --script tools/swank/test-debugger.lisp
 tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-BINDINGS.LISP") (values)'
 tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-BINDING-WRITES.LISP") (values)'
 tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-CLOSURE-WRITES.LISP") (values)'
+tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-POLICY.LISP") (values)'
 tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-KEYWORD-LOWERING.LISP") (values)'
 tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-JUMP-TABLE-BINDINGS.LISP") (values)'
 ```
@@ -61,6 +62,8 @@ The fixture uses the guest package `LISPM-DEBUGGER-TEST` and resets that package
 The compiler binding test requires the updated compiler in the guest.  It checks copied, constant, unused, and shadowed bindings at function-level `(debug 3)`, and propagation at `(debug 1)`.  The binding-write test checks independent copies, constants, multiple-value bindings, loop updates, and a full GC after mutation.  It uses the runtime's internal frame writer in a callback while the target activation is live.  A public mutation API with lifetime and declared-type checks remains future work.
 
 The closure-write test checks that the defining function, its closures, and frame inspection share one captured binding.  It covers required, optional, supplied-p, rest, and keyword parameters, `LET`, and multiple-value bindings.  Escaped closures retain the changed value after a full GC.
+
+The policy test checks local `(debug 3)` declarations inside functions at debug levels 0, 1, and 2.  It checks independent and captured binding writes, unused heap values, and GC during inspection.  A binding retains the policy under which it was introduced when its body enters a lower-debug region.
 
 The keyword test checks argument validation, defaults, duplicate keys, and zero heap allocation for a valid call at debug levels 1 and 3.
 

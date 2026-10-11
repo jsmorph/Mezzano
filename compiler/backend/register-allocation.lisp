@@ -259,9 +259,10 @@
                            :id-to-vreg id-to-vreg)))))))
 
 (defun virtual-registers-used-by-debug-info (allocator inst)
-  (if (max-debug-p allocator)
-      (mapcar #'second (gethash inst (allocator-debug-variable-value-map allocator)))
-      '()))
+  (loop for (variable vreg) in (gethash inst (allocator-debug-variable-value-map allocator))
+        when (or (max-debug-p allocator)
+                 (mezzano.compiler::preserve-variable-for-debugger-p variable))
+          collect vreg))
 
 (defun build-live-ranges (allocator)
   (let* ((vreg-to-id (allocator-vreg-to-id-table allocator))
@@ -1142,10 +1143,7 @@ Returns the interference graph and the set of spilled virtual registers."
             (build-interference-graph allocator)
           (assign-stack-slots allocator interference-graph spilled-vregs))
       (rewrite-after-allocation allocator)
-      (cond ((= (mezzano.compiler::optimize-quality (ir::ast backend-function) 'debug) 0)
-             (setf (allocator-debug-variable-value-map allocator) (make-hash-table)))
-            (t
-             (rebuild-debug-map allocator)))
+      (rebuild-debug-map allocator)
       (when *log*
         (terpri *log*)
         (finish-output *log*))

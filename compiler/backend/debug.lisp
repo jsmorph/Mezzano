@@ -48,13 +48,16 @@
                     (return)))))))
     result))
 
-(defun remove-debug-variable-instructions (backend-function)
+(defun remove-debug-variable-instructions (backend-function &key keep-preserved)
   (let ((remove-me '()))
     (do-instructions (inst backend-function)
-      (when (typep inst '(or
-                          debug-bind-variable-instruction
-                          debug-update-variable-instruction
-                          debug-unbind-variable-instruction))
+      (when (and (typep inst '(or
+                               debug-bind-variable-instruction
+                               debug-update-variable-instruction
+                               debug-unbind-variable-instruction))
+                 (not (and keep-preserved
+                           (mezzano.compiler::preserve-variable-for-debugger-p
+                            (debug-variable inst)))))
         (push inst remove-me)))
     (dolist (inst remove-me)
       (remove-instruction backend-function inst))

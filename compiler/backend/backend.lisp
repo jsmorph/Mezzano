@@ -223,7 +223,7 @@
   (deconstruct-ssa backend-function)
   (lower-local-variables backend-function)
   (when (= (mezzano.compiler::optimize-quality (ast backend-function) 'debug) 0)
-    (remove-debug-variable-instructions backend-function))
+    (remove-debug-variable-instructions backend-function :keep-preserved t))
   (perform-target-lowering-post-ssa backend-function target)
   (mezzano.compiler.backend.register-allocator::canonicalize-call-operands backend-function target)
   (mezzano.compiler.backend.register-allocator::canonicalize-argument-setup backend-function target)

@@ -330,3 +330,17 @@ The separate image on port 4006 booted from the approved bootstrap profile.  Its
 The initial readiness query used a source-only package nickname.  Its replacement incorrectly expected the debugger hook to be `NIL` inside a SWANK request.  SWANK dynamically binds that hook in `call-with-debugger-hook`.  The corrected query checks desktop initialization and the compiler policy.  The hook assertion failure remains in `debug-bootstrap-readiness-error.log`.
 
 These tests use the internal frame writer during a callback with a live target activation.  Local debug-policy overrides, declared types, scope identities, public mutation, and stop lifetimes remain separate work.
+
+## Saved-image tests of the bootstrap profile
+
+The second VM saved a snapshot containing a newly compiled closure and restarted from it.  That closure returned its captured list after restore, and the running compiler still reported debug level 3.  Binding inspection, local writes, closure writes, GC, frame-local IDs, keyword allocation, jump-table cleanup, structure layouts, client behavior, and remote restart recovery passed again.  Logs are `debug-bootstrap-snapshot.log`, `debug-bootstrap-restored-tests.log`, `debug-bootstrap-restored-client.log`, and `debug-bootstrap-restored-restart.log`.
+
+## Debugger implementation: local compilation policy
+
+The compiler already marked a binding introduced under a local `(debug 3)` declaration, but backend policy decisions used the enclosing function's debug level.  At function-level debug 0, metadata removal and final map construction discarded that binding.  At levels 1 and 2, register allocation did not extend its lifetime for inspection.
+
+Backend removal now retains marked bindings at debug level 0.  The allocator includes each marked binding in debug liveness and rebuilds the retained map at every function debug level.  Closure lowering also preserves the environment pointer needed to reach a marked captured binding.  At function-level debug 0, closure metadata names only preserved bindings.
+
+The new test failed before the correction with no binding for `A`.  After reloading the four compiler files, all cases passed at enclosing debug levels 0, 1, and 2.  The cases check independent copies, captured bindings, an unused heap value, debugger writes, and full GC before and after mutation during inspection.  Further cases check use of a preserved binding inside a nested debug-0 region.  The function's ordinary debug-0 parameters remain absent from its reported locals.  Existing binding, closure, keyword, jump-table, and remote restart tests passed.  Logs are `debug-policy-before.log`, `debug-policy-load.log`, `debug-policy-live-tests.log`, and `debug-policy-live-restart.log`.
+
+The full rebuild completed from an empty target cache.  The CI image reached its success marker and QEMU exited with status 3.  Logs are `debug-policy-full-build.log`, `debug-policy-full-boot.log`, and `debug-policy-full-serial.log`.
