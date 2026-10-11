@@ -138,6 +138,69 @@
     (connected observer (lambda () (request :release-session)))
     (format t "PASS unread creation reply, duplicate submission, session release during evaluation, retained output and values, fresh-session condition recovery, foreign tokens, GC, cleanup, and job release~%")))
 
+(defun run-interactive-tests ()
+  (let ((creator (make-session))
+        (observer (make-session))
+        (name (fresh-name))
+        (job nil))
+    (connected
+     creator
+     (lambda ()
+       (setf job
+             (request :start-evaluation name
+                      "(let ((first (read-line)))
+                         (write-string first)
+                         (values first (read-line)
+                                 (read-line *standard-input* nil :eof)))"
+                      :interactive t))
+       (await (lambda () (getf (request :job-information job) :input-waiting-p)))))
+    (connected
+     observer
+     (lambda ()
+       (let* ((observed (find-job name))
+              (info (request :job-information observed)))
+         (assert (eq (getf info :state) :running))
+         (assert (getf info :input-waiting-p))
+         (assert (zerop (getf info :input-length)))
+         (assert (null (getf info :input-eof-p))))))
+    (connected
+     creator
+     (lambda ()
+       (send-request :job-input job 0 (format nil "one~%"))
+       (connected
+        observer
+        (lambda ()
+          (let ((observed (find-job name)))
+            (await (lambda ()
+                     (let ((info (request :job-information observed)))
+                       (and (= (getf info :input-length) 4)
+                            (getf info :input-waiting-p)
+                            (equal (request :job-output observed 0)
+                                   '(:text "one" :end 3)))))))))))
+    (connected
+     creator
+     (lambda ()
+       (assert (= (request :job-input job 0 (format nil "one~%")) 4))
+       (expect-error :input-conflict
+                     (lambda () (request :job-input job 0 "different")))
+       (evaluate "(mezzano.extensions:gc :full t) (values)")
+       (send-request :job-input job 4 "two" :eof t)
+       (connected
+        observer
+        (lambda ()
+          (assert (eq (getf (completed (find-job name)) :state) :returned))))))
+    (connected
+     creator
+     (lambda ()
+       (assert (= (request :job-input job 4 "two" :eof t) 7))
+       (assert (equal (getf (request :job-information job) :values)
+                      '("\"one\"" "\"two\"" ":EOF")))
+       (assert (equal (request :job-output job 0) '(:text "one" :end 3)))
+       (request :release-job job)
+       (request :release-session)))
+    (connected observer (lambda () (request :release-session)))
+    (format t "PASS interactive input across disconnect, unread input and EOF replies, repeated submission without duplicate text, conflicts, partial final line, GC, and retained results~%")))
+
 (defun prepare-restore (path)
   (let ((session (make-session))
         (name (fresh-name))
@@ -252,9 +315,76 @@
          (request :release-session))))
     (format t "PASS evaluation restore, completed results, output, input position, expired handles, rejected replay, retired token tables, GC, continuation, and cleanup~%")))
 
+(defun prepare-input-restore (path)
+  (let ((session (make-session))
+        (name (fresh-name)))
+    (connected
+     session
+     (lambda ()
+       (evaluate "(defparameter cl-user::*input-restore-count* 0)
+                  (defparameter cl-user::*input-restore-cleanup* 0)
+                  (values)")
+       (let ((job (request
+                   :start-evaluation name
+                   "(incf cl-user::*input-restore-count*)
+                    (unwind-protect
+                         (let ((first (read-line)))
+                           (write-string first)
+                           (values first (read-line)
+                                   (read-line *standard-input* nil :eof)
+                                   cl-user::*input-restore-count*))
+                      (incf cl-user::*input-restore-cleanup*))"
+                   :input (format nil "one~%t") :interactive t)))
+         (await (lambda () (getf (request :job-information job) :input-waiting-p)))
+         (assert (equal (request :job-output job 0) '(:text "one" :end 3)))
+         (with-open-file (out path :direction :output :if-exists :supersede)
+           (let ((*print-readably* t))
+             (write (list :session (session-name session) :name name :token job)
+                    :stream out)
+             (terpri out)))
+         (evaluate "(mezzano.supervisor:snapshot)
+                    (mezzano.supervisor:wait-for-snapshot-completion)
+                    (values)"))))
+    (format t "Prepared an interactive job waiting within READ-LINE for restore.~%")))
+
+(defun finish-input-restore (path)
+  (let* ((state (with-open-file (in path)
+                  (let ((*read-eval* nil)) (read in))))
+         (fresh (make-session)))
+    (expect-error :expired-session
+                  (lambda ()
+                    (connected (make-session :resume (getf state :session))
+                               (lambda () nil))))
+    (connected
+     fresh
+     (lambda ()
+       (expect-error :invalid-handle
+                     (lambda () (request :job-input (getf state :token) 5 "wo" :eof t)))
+       (let* ((job (find-job (getf state :name)))
+              (info (request :job-information job)))
+         (assert (eq (getf info :state) :running))
+         (assert (eq (getf info :input-mode) :interactive))
+         (assert (getf info :input-waiting-p))
+         (assert (= (getf info :input-length) 5))
+         (assert (null (getf info :input-eof-p)))
+         (assert (null (getf info :current-boot-p)))
+         (assert (= (request :job-input job 0 (format nil "one~%t")) 5))
+         (evaluate "(mezzano.extensions:gc :full t) (values)")
+         (assert (= (request :job-input job 5 "wo" :eof t) 7))
+         (let ((info (completed job)))
+           (assert (eq (getf info :state) :returned))
+           (assert (null (getf info :current-boot-p)))
+           (assert (equal (getf info :values) '("\"one\"" "\"two\"" ":EOF" "1"))))
+         (assert (equal (evaluate "cl-user::*input-restore-cleanup*") '("" "1")))
+         (request :release-job job)
+         (request :release-session))))
+    (format t "PASS interactive restore during a partial line read, retained input prefix, old-token rejection, GC, supplied suffix and EOF, values, and cleanup~%")))
+
 (let ((mode (or (third sb-ext:*posix-argv*) "run"))
       (path (fourth sb-ext:*posix-argv*)))
-  (cond ((string= mode "run") (run-tests))
+  (cond ((string= mode "run") (run-tests) (run-interactive-tests))
         ((string= mode "prepare") (assert path) (prepare-restore path))
         ((string= mode "finish") (assert path) (finish-restore path))
+        ((string= mode "prepare-input") (assert path) (prepare-input-restore path))
+        ((string= mode "finish-input") (assert path) (finish-input-restore path))
         (t (error "Unknown evaluation test mode ~S." mode))))

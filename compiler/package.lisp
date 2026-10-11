@@ -248,6 +248,7 @@
    #:evaluation-jobs
    #:evaluation-job-information
    #:evaluation-job-output
+   #:supply-evaluation-input
    #:evaluation-job-result-values
    #:release-evaluation-job
    ;; Backtraces & frames.

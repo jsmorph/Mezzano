@@ -273,4 +273,6 @@ sbcl --script tools/swank/test-evaluation-reconnect.lisp \
   4006 finish ../evaluation-restore-state.sexp
 ```
 
+For an interactive job waiting within a partially read line, use `prepare-input` and `finish-input` in place of `prepare` and `finish`, with a separate host state file.
+
 After a successful restore test, save the completed guest state using the snapshot command.  That replaces the saved test stop with the completed state.

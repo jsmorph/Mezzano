@@ -139,5 +139,109 @@
   (assert (null (evaluation-jobs)))
   (format t "PASS retained batch evaluation, submission identity, source order, package changes, input, output, values, conditions, reader and printer recovery, GC, abort, and release~%"))
 
+(defvar *input-stream* nil)
+
+(defun input-waiting (job)
+  (await (lambda () (getf (information job) :input-waiting-p))))
+
+(defun run-interactive-tests ()
+  (let* ((name (new-name))
+         (source "(assert (interactive-stream-p *standard-input*))
+                  (assert (null (listen)))
+                  (assert (null (read-char-no-hang)))
+                  (values (read-line) (read-char *standard-input* nil :eof))")
+         (job (start-evaluation-job name source :interactive t)))
+    (input-waiting job)
+    (assert (eq (getf (information job) :input-mode) :interactive))
+    (assert (null (getf (information job) :input-eof-p)))
+    (expect-error :request-conflict
+                  (lambda () (start-evaluation-job name source)))
+    (assert (= (supply-evaluation-input job 0 "α") 1))
+    (assert (= (supply-evaluation-input job 0 "α") 1))
+    (expect-error :input-conflict
+                  (lambda () (supply-evaluation-input job 0 "x")))
+    (expect-error :input-conflict
+                  (lambda () (supply-evaluation-input job 2 "x")))
+    (assert (= (supply-evaluation-input job 1 (format nil "β~%")) 3))
+    (assert (= (supply-evaluation-input job 3 "" :eof t) 3))
+    (assert (eq (getf (completed job) :state) :returned))
+    (assert (equal (evaluation-job-result-values job) '("αβ" :eof)))
+    (assert (= (getf (information job) :input-length) 3))
+    (assert (getf (information job) :input-eof-p))
+    (assert (= (supply-evaluation-input job 0 "α") 1))
+    (assert (= (supply-evaluation-input job 3 "" :eof t) 3))
+    (expect-error :input-conflict
+                  (lambda () (supply-evaluation-input job 0 "α" :eof t)))
+    (expect-error :input-closed
+                  (lambda () (supply-evaluation-input job 3 "x")))
+    (release-evaluation-job job))
+  (let ((job
+          (start-evaluation-job
+           (new-name)
+           "(let ((character (peek-char)))
+              (assert (char= character (read-char)))
+              (unread-char character)
+              (assert (listen))
+              (assert (char= character (read-char-no-hang)))
+              (assert (null (read-char-no-hang)))
+              (read-line))"
+           :interactive t :input "A")))
+    (input-waiting job)
+    (mezzano.extensions:gc :full t)
+    (assert (= (supply-evaluation-input job 1 "tail" :eof t) 5))
+    (assert (eq (getf (completed job) :state) :returned))
+    (assert (equal (evaluation-job-result-values job) '("tail" t)))
+    (release-evaluation-job job))
+  (let ((job (start-evaluation-job
+              (new-name) "(values (length (read-line))
+                                  (read-char *standard-input* nil :eof))"
+              :interactive t))
+        (text (make-string 1024 :initial-element (char "λ" 0))))
+    (input-waiting job)
+    (assert (= (supply-evaluation-input job 0 text :eof t) 1024))
+    (assert (= (supply-evaluation-input job 0 text :eof t) 1024))
+    (assert (eq (getf (completed job) :state) :returned))
+    (assert (equal (evaluation-job-result-values job) '(1024 :eof)))
+    (release-evaluation-job job))
+  (let ((job (start-evaluation-job (new-name) "(clear-input) (read-char)"
+                                   :interactive t :input "discard")))
+    (input-waiting job)
+    (supply-evaluation-input job 7 "X" :eof t)
+    (assert (eq (getf (completed job) :state) :returned))
+    (assert (equal (evaluation-job-result-values job) (list #\X)))
+    (release-evaluation-job job))
+  (setf *cleanup-count* 0)
+  (let ((job (start-evaluation-job
+              (new-name)
+              "(setf lispm-evaluation-test::*input-stream* *standard-input*)
+               (unwind-protect (read-char)
+                 (incf lispm-evaluation-test::*cleanup-count*))"
+              :interactive t)))
+    (input-waiting job)
+    (close *input-stream*)
+    (let ((stop (stopped job)))
+      (expect-error :input-closed
+                    (lambda () (supply-evaluation-input job 0 "x")))
+      (invoke stop "ABORT"))
+    (assert (eq (getf (completed job) :state) :aborted))
+    (assert (= *cleanup-count* 1))
+    (release-evaluation-job job)
+    (setf *input-stream* nil))
+  (let ((job (start-evaluation-job
+              (new-name) "(values *standard-input* *standard-output*)"
+              :interactive t)))
+    (assert (eq (getf (completed job) :state) :returned))
+    (assert (every (lambda (stream) (not (open-stream-p stream)))
+                   (evaluation-job-result-values job)))
+    (release-evaluation-job job))
+  (let ((job (start-evaluation-job (new-name) "(values)")))
+    (completed job)
+    (expect-error :input-not-interactive
+                  (lambda () (supply-evaluation-input job 0 "" :eof t)))
+    (release-evaluation-job job))
+  (assert (null (evaluation-jobs)))
+  (format t "PASS interactive waiting, Unicode offsets, input replay and conflicts, EOF, peek/unread/listen, nonblocking input, buffer growth, clear/close, GC, cleanup, and stream closure~%"))
+
 (run-tests)
+(run-interactive-tests)
 (in-package #:cl-user)

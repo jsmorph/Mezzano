@@ -29,7 +29,7 @@ printf '%s\n' '(+ 20 22)' |
 
 ## Retain an evaluation across connections
 
-The batch job API owns its worker, supplied input, output, and results in the guest.  Conditions enter the retained debugger.  Input receives EOF after the supplied string.  Interactive input and asynchronous interruption remain pending.
+The batch job API owns its worker, supplied input, output, and results in the guest.  Conditions enter the retained debugger.  Input receives EOF after the supplied string.
 
 Run this in host SBCL from the Mezzano checkout.  It creates a job, closes the connection, reconnects, and prints `Computed.`, `42`, and `:DONE` before releasing the job and session:
 
@@ -68,6 +68,18 @@ Run this in host SBCL from the Mezzano checkout.  It creates a job, closes the c
 Keep the generated name if the creation reply can be lost.  Repeating the same name, source, package, and input in the same boot returns the existing job.  `:jobs` discovers unreleased jobs through any attached session.  `:job-information` returns active stop tokens in `:stops`, which use the inspection and restart operations below.  Job state remains `:running` while a condition is stopped.
 
 Output reads use character offsets and preserve storage.  `:job-output` returns `:text` and `:end`, so the next read can start at that end offset.  Any attached session can read jobs and release terminal jobs.  Releasing a session leaves its jobs intact.  Output and results consume guest memory until job release.
+
+### Interactive input
+
+Create a job with `:interactive T` to keep input open after its initial text is consumed.  A read then waits for more input or explicit EOF.  Job information reports `:input-length`, `:input-eof-p`, and `:input-waiting-p`.  Connection loss leaves the read pending.
+
+Within a `call-with-session` callback, this call supplies a line and EOF to an interactive job whose input length was zero:
+
+```lisp
+(lispm-debugger-client:request :job-input job 0 (format nil "hello~%") :eof t)
+```
+
+The call returns the ending character offset.  An identical retained range succeeds without appending text again.  A gap, mismatched text, or partial overlap reports `:input-conflict`.  New input starts at the length reported by job information.  EOF can accompany new text or an empty submission at the end.  After an image restore, a fresh session obtains the restored job token and input length before continuing.
 
 ## Debug a background computation
 
@@ -213,6 +225,6 @@ Within the callback, `request` sends one synchronous debugger RPC.  `send-reques
 
 Commands that print values execute application printers and can block or enter a child stop.  A client timeout closes its connection while an accepted command can continue in the guest.  Query the recorded outcome before deciding what to submit next.
 
-Batch evaluation jobs and the explicit debugger wrapper both retain condition stops.  Interactive job input and asynchronous interruption remain pending.  Public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
+Batch evaluation jobs and the explicit debugger wrapper both retain condition stops.  Asynchronous job interruption remains pending.  Public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
 
 The [capability and test tables](../../doc/debugger.md#capability-and-evidence) state the evidence for each operation.  The [operations guide](minideb2/README.md#tests) gives the test commands and restore sequence.  The [development journal](devnotes.md) records diagnoses and historical runs.

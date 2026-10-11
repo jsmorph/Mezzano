@@ -29,8 +29,78 @@
            (newline (position #\Newline buffer :from-end t)))
       (- (length buffer) (if newline (1+ newline) 0)))))
 
+(defclass evaluation-input-stream
+    (mezzano.gray:unread-char-mixin mezzano.gray:fundamental-character-input-stream)
+  ((buffer :initform (make-array 128 :element-type 'character
+                                   :adjustable t :fill-pointer 0)
+           :reader evaluation-input-buffer)
+   (position :initform 0 :accessor evaluation-input-position)
+   (eof-p :initform nil :accessor evaluation-input-eof-p)
+   (waiting-p :initform nil :accessor evaluation-input-waiting-p)
+   (event :initform (mezzano.supervisor:make-event :name 'evaluation-input)
+          :reader evaluation-input-event)))
+
+(defun extend-evaluation-input (stream text)
+  (let* ((buffer (evaluation-input-buffer stream))
+         (start (length buffer))
+         (end (+ start (length text))))
+    (when (> end (array-dimension buffer 0))
+      (adjust-array buffer (max end (* 2 (array-dimension buffer 0)))))
+    (loop for index from 0 below (length text)
+          do (setf (aref buffer (+ start index)) (char text index)))
+    (setf (fill-pointer buffer) end)))
+
+(defun read-evaluation-character (stream)
+  (unless (mezzano.gray:stream-open-p stream)
+    (error 'stream-error :stream stream))
+  (cond ((< (evaluation-input-position stream)
+            (length (evaluation-input-buffer stream)))
+         (prog1 (char (evaluation-input-buffer stream)
+                      (evaluation-input-position stream))
+           (incf (evaluation-input-position stream))))
+        ((evaluation-input-eof-p stream) :eof)
+        (t nil)))
+
+(defmethod mezzano.gray:stream-read-char ((stream evaluation-input-stream))
+  (loop
+    (unwind-protect
+         (let ((character
+                 (with-service-lock
+                   (or (read-evaluation-character stream)
+                       (progn
+                         (setf (mezzano.supervisor:event-state
+                                (evaluation-input-event stream)) nil
+                               (evaluation-input-waiting-p stream) t)
+                         nil)))))
+           (when character (return character))
+           (mezzano.supervisor:event-wait (evaluation-input-event stream)))
+      (with-service-lock
+        (setf (evaluation-input-waiting-p stream) nil)))))
+
+(defmethod mezzano.gray:stream-read-char-no-hang ((stream evaluation-input-stream))
+  (with-service-lock (read-evaluation-character stream)))
+
+(defmethod mezzano.gray:stream-clear-input ((stream evaluation-input-stream))
+  (with-service-lock
+    (setf (evaluation-input-position stream)
+          (length (evaluation-input-buffer stream))))
+  nil)
+
+(defmethod mezzano.gray:interactive-stream-p ((stream evaluation-input-stream))
+  t)
+
+(defun close-evaluation-input (stream)
+  (setf (mezzano.gray:stream-open-p stream) nil)
+  (when (typep stream 'evaluation-input-stream)
+    (setf (mezzano.supervisor:event-state (evaluation-input-event stream)) t))
+  t)
+
+(defmethod mezzano.gray:close ((stream evaluation-input-stream) &key abort)
+  (declare (ignore abort))
+  (with-service-lock (close-evaluation-input stream)))
+
 (defstruct (evaluation-job (:constructor %make-evaluation-job))
-  name boot source package input thread output-stream values representations
+  name boot source package input interactive-p input-stream thread output-stream values representations
   (state :running))
 
 (defstruct (evaluation-handle (:constructor %make-evaluation-handle (boot job)))
@@ -66,7 +136,7 @@
    (lambda ()
      (let* ((*package* (evaluation-job-package job))
             (*readtable* (copy-readtable nil))
-            (*standard-input* (make-string-input-stream (evaluation-job-input job)))
+            (*standard-input* (evaluation-job-input-stream job))
             (*standard-output* (evaluation-job-output-stream job))
             (*error-output* *standard-output*)
             (*trace-output* *standard-output*)
@@ -88,18 +158,20 @@
                       values nil
                       representations nil)))
          (with-service-lock
+           (close-evaluation-input (evaluation-job-input-stream job))
            (setf (mezzano.gray:stream-open-p (evaluation-job-output-stream job)) nil
                  (evaluation-job-values job) values
                  (evaluation-job-representations job) representations
                  (evaluation-job-state job) state)))))))
 
-(defun start-evaluation-job (name source &key (package "CL-USER") (input ""))
+(defun start-evaluation-job (name source &key (package "CL-USER") (input "") interactive)
   (unless (and (stringp name) (= (length name) 64)
                (every (lambda (character) (find character "0123456789abcdef")) name))
     (service-error :invalid-job-name))
   (check-type source string)
   (check-type input string)
-  (let ((package (or (find-package package) (service-error :invalid-package))))
+  (let ((package (or (find-package package) (service-error :invalid-package)))
+        (interactive (not (null interactive))))
     (with-service-lock
       (let ((existing (gethash name *evaluation-jobs*)))
         (when existing
@@ -109,13 +181,20 @@
                            (mezzano.supervisor:current-boot-id))
                        (string= (evaluation-job-source existing) source)
                        (eq (evaluation-job-package existing) package)
-                       (string= (evaluation-job-input existing) input))
+                       (string= (evaluation-job-input existing) input)
+                       (eq (evaluation-job-interactive-p existing) interactive))
             (service-error :request-conflict))
           (return-from start-evaluation-job (evaluation-handle existing))))
       (let ((job (%make-evaluation-job
                   :name (copy-seq name)
                   :boot (mezzano.supervisor:current-boot-id)
                   :source (copy-seq source) :package package :input (copy-seq input)
+                  :interactive-p interactive
+                  :input-stream (if interactive
+                                    (let ((stream (make-instance 'evaluation-input-stream)))
+                                      (extend-evaluation-input stream input)
+                                      stream)
+                                    (make-string-input-stream (copy-seq input)))
                   :output-stream (make-instance 'evaluation-output-stream))))
         (setf (evaluation-job-thread job)
               (mezzano.supervisor:make-thread
@@ -143,6 +222,15 @@
                                        (evaluation-job-thread job))
                                    (eq (service-stop-state stop) :stopped))
                            collect (service-handle stop))
+            :input-mode (if (evaluation-job-interactive-p job) :interactive :batch)
+            :input-length (if (evaluation-job-interactive-p job)
+                              (length (evaluation-input-buffer (evaluation-job-input-stream job)))
+                              (length (evaluation-job-input job)))
+            :input-eof-p (if (evaluation-job-interactive-p job)
+                             (evaluation-input-eof-p (evaluation-job-input-stream job))
+                             t)
+            :input-waiting-p (and (evaluation-job-interactive-p job)
+                                  (evaluation-input-waiting-p (evaluation-job-input-stream job)))
             :values (mapcar #'copy-seq (evaluation-job-representations job))
             :output-length (length (evaluation-output-buffer
                                     (evaluation-job-output-stream job)))))))
@@ -157,6 +245,34 @@
         (service-error :invalid-output-range))
       (values (subseq buffer start end) end))))
 
+(defun supply-evaluation-input (handle offset text &key eof)
+  (check-type text string)
+  (with-service-lock
+    (let* ((job (check-evaluation-handle handle))
+           (stream (evaluation-job-input-stream job)))
+      (unless (evaluation-job-interactive-p job)
+        (service-error :input-not-interactive))
+      (unless (and (integerp offset) (<= 0 offset))
+        (service-error :input-conflict))
+      (let* ((buffer (evaluation-input-buffer stream))
+             (length (length buffer))
+             (end (+ offset (length text))))
+        (when (and (<= end length)
+                   (string= buffer text :start1 offset :end1 end)
+                   (or (not eof)
+                       (and (evaluation-input-eof-p stream) (= end length))))
+          (return-from supply-evaluation-input end))
+        (unless (= offset length)
+          (service-error :input-conflict))
+        (unless (and (eq (evaluation-job-state job) :running)
+                     (mezzano.gray:stream-open-p stream)
+                     (not (evaluation-input-eof-p stream)))
+          (service-error :input-closed))
+        (extend-evaluation-input stream text)
+        (when eof (setf (evaluation-input-eof-p stream) t))
+        (setf (mezzano.supervisor:event-state (evaluation-input-event stream)) t)
+        end))))
+
 (defun evaluation-job-result-values (handle)
   (with-service-lock
     (let ((job (check-evaluation-handle handle)))
@@ -169,10 +285,13 @@
     (let ((job (check-evaluation-handle handle)))
       (when (eq (evaluation-job-state job) :running)
         (service-error :job-active))
+      (when (evaluation-job-interactive-p job)
+        (setf (slot-value (evaluation-job-input-stream job) 'buffer) nil))
       (setf (slot-value (evaluation-job-output-stream job) 'buffer) nil
             (evaluation-job-source job) nil
             (evaluation-job-package job) nil
             (evaluation-job-input job) nil
+            (evaluation-job-input-stream job) nil
             (evaluation-job-thread job) nil
             (evaluation-job-output-stream job) nil
             (evaluation-job-values job) nil
