@@ -227,3 +227,18 @@ Work proceeds on `debugging`, based on `swank`.  The review notes are committed.
 `client.lisp` now contains the socket connection, SWANK packet writer, and message reader used by `lispm-eval`.  Separating those functions permits debugger tests and a debugger client to use the same transport.  The evaluation client's seven existing test groups passed against the guest after the extraction.  Installation instructions now copy both files.
 
 The SWANK local-ID correction has passed its focused live test.  Publication of the Slime change awaits the dependency repository decision.  The compiler-policy question is also pending.  Work on those choices will follow the user's answer.
+
+## Debugger implementation: first remote recovery test
+
+Slime commit `d2c70f2ea5916d8da2fe0a41ff302b2002715f61` changes `frame-locals` from `for id = 0` to `for id from 0`.  The frame-local test failed before this change: three locals had one distinct ID.  After compiling and loading the backend in the running guest, the test passed.  The Slime commit is local to `minideb2` pending a fork destination.
+
+The remote recovery test passed against that backend.  It enters a real SWANK debugger stop on an undefined-function call, inspects the application frame and its distinct argument values, and checks that cleanup has not run.  A separate request succeeds while the failing request is stopped.  The test compiles and installs the missing function, invokes its existing retry restart, receives 333 and `:RESUMED`, and verifies that the caller continued and cleanup ran once.
+
+This establishes recovery through an existing restart over one connected session.  The running guest contains the reloaded backend.  Cold boot, saved-image restore, background-thread debugging, and reconnect behavior require later tests.  The test programs are committed with the fixture and run commands.  Compiler and session policy decisions remain pending.
+
+- [x] Test distinct local IDs and selection against the running guest.
+- [x] Test a retained stop and repair through an existing restart while connected.
+- [x] Verify continuation, multiple values, and cleanup after recovery.
+- [ ] Publish the Slime dependency change and record its fetchable revision.
+- [ ] Test the corrected backend after boot and restore.
+- [ ] Extend debugging to background failures and reconnection after agreeing on session behavior.

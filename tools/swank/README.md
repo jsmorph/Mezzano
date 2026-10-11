@@ -37,3 +37,18 @@ tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-STRUCTURE-LAYOUTS.LIS
 The Python test uses the standard library.  It checks arithmetic, guest identity, UTF-8, output, multiple values, retained definitions, conditions with unwind cleanup, malformed input, Swank flow control, large replies, and timeouts followed by another evaluation.  It creates and removes a temporary guest package.  `--port` selects a forwarded port.
 
 The Lisp test checks inherited type predicates and slot access, unrelated types, and fresh instances after leaf redefinition.  Both test sets passed after a cold boot and after restarting the saved image.  [Development notes](devnotes.md) record the structure-layout defect and its repair.
+
+## Debugger tests
+
+These tests require Slime commit `d2c70f2ea5916d8da2fe0a41ff302b2002715f61`, which fixes Mezzano's repeated frame-local IDs.  That commit currently exists on `minideb2` in `home/slime` on branch `debugging`.  Its publication awaits the fork destination decision.
+
+With that backend loaded in the guest:
+
+```sh
+tools/swank/lispm-eval '(load "SYS:SOURCE;TOOLS;SWANK;TEST-FRAME-LOCALS.LISP") (values)'
+sbcl --script tools/swank/test-debugger.lisp
+```
+
+The first test checks that each local has a distinct ID and that selecting it returns the listed value.  The second connects to `127.0.0.1:4005`, loads a compiled fixture, and enters the debugger on an undefined-function call.  It inspects the caller's locals, defines the missing function, invokes its retry restart, and checks multiple values and unwind cleanup.  It also checks that another evaluation can run while the original request remains stopped.  Its connection stays open through recovery.  The test attempts to abort its suspended request if an assertion fails.
+
+The fixture uses the guest package `LISPM-DEBUGGER-TEST` and resets that package's test definitions and counters on each run.  Neither test saves a guest image.
