@@ -527,3 +527,17 @@ The recommendation is to test evaluation persistence through the existing image 
 The test will save one completed job and one job stopped after reading its first input line.  A fresh session after restart must reject old remote and guest handles, reject resubmission of the earlier-boot job, recover saved output and completed values, and continue the stopped job at its second input line.  It will check one body entry, one cleanup, EOF after the remaining input, and retirement of old session job-token tables.  Tests will preserve their host state file across the VM restart.
 
 The restore test passed for a completed batch job and a condition-stopped job with partially consumed input.  The completed result and output survived.  The stopped job continued with its second input line and then EOF, preserving one body entry and one cleanup.  Old guest/session handles and prior-boot submission replay were rejected.  Old session job-token tables were empty after retirement.  Logs are `evaluation-restore-prepare.log` and `evaluation-restore-finish.log`.  The existing debugger reconnect test also passed with the extended adapter in `evaluation-existing-debugger-test.log`.
+
+After the batch restore test, the VM saved the completed state with no unreleased jobs or active stops.  The log is `evaluation-completed-snapshot.log`.  The operations guide now pins Mezzano `0609f5ee` and Slime `9b2630cd`, including the batch network and restore tests.
+
+## Interactive input decision: 2026-10-12
+
+The recommendation is an explicitly interactive job mode with a guest character-input stream backed by retained input and a supervisor event.  Reads wait when input is exhausted and EOF has not been supplied.  They use no connection-owned state.  Batch jobs keep their existing supplied-input-then-EOF behavior.  Job information reports input mode, accepted length, explicit EOF, and whether a read is waiting.
+
+Input submission uses an expected character offset, text, and an optional EOF flag.  Text appends only at the accepted length.  A repeated range that already matches retained input succeeds without appending.  A conflicting range fails.  EOF closes input after the accepted text, and a repeated EOF succeeds only at the recorded end.  This uses the input history to resolve lost replies without a second request ledger.  Concurrent writers serialize under the service mutex, and an incompatible append at the same offset reports a conflict.
+
+Any attached session can supply input to an interactive job.  The guest validates boot-scoped handles.  After restore, a fresh session discovers the restored input length before supplying further input.  Stored input and output remain until job release.  No quota or automatic truncation is introduced in this increment.
+
+The stream will use existing Gray methods, unread-character support, and event waiting.  Growth and copying complete before advancing the visible input length.  Closing the stream wakes a blocked reader.  Completion closes the job's input and output streams.
+
+Tests will cover waiting across disconnect, character offsets and Unicode, unread/listen/nonblocking reads, supplied EOF, conflicting and repeated input, EOF after a partial line, closure, GC, and restore while waiting for input.  Existing batch and reconnect tests must still pass.

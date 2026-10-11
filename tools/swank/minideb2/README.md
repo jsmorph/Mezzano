@@ -9,8 +9,8 @@ The [debugger design](../../../doc/debugger.md) owns capability status and test 
 | Component | Recorded revision or version |
 |---|---|
 | MBuild | `a13448825506c716fb60427f78aafeb6265477b2` |
-| Mezzano, including running-command restore tests | `6edf42a5bcaa1a95af20d774823f50cc677e2791` |
-| Slime implementation | `2b2086a9951f7b18dc0b88e32729224ba1485029` |
+| Mezzano, including evaluation and restore tests | `0609f5ee7b0f3b55261602b63a4e28e325c1d607` |
+| Slime implementation | `9b2630cd1d72ff15a8a615ab4cfc37d8202865b1` |
 | Other guest dependencies | Submodule revisions recorded by the MBuild revision above. |
 | Host Quicklisp distribution | `2026-01-01`, recorded in `quicklisp/dists/quicklisp/distinfo.txt`. |
 
@@ -24,9 +24,9 @@ cd /home/somebody/src/mezzano-boot
 git checkout a13448825506c716fb60427f78aafeb6265477b2
 git submodule update --init
 git -C Mezzano fetch https://github.com/jsmorph/Mezzano.git debugging
-git -C Mezzano checkout --detach 6edf42a5bcaa1a95af20d774823f50cc677e2791
+git -C Mezzano checkout --detach 0609f5ee7b0f3b55261602b63a4e28e325c1d607
 git -C home/slime fetch https://github.com/jsmorph/slime.git debugging
-git -C home/slime checkout --detach 2b2086a9951f7b18dc0b88e32729224ba1485029
+git -C home/slime checkout --detach 9b2630cd1d72ff15a8a615ab4cfc37d8202865b1
 ```
 
 Existing development checkouts use their `debugging` branches.  Another `git submodule update` selects MBuild's older Mezzano and Slime revisions, so explicit revision selection follows submodule initialization.
