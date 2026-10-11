@@ -152,6 +152,7 @@
     "system/error.lisp"
     "system/coerce.lisp"
     "system/debug.lisp"
+    "system/debugger-service.lisp"
     "system/dispatch.lisp"
     "system/full-eval.lisp"
     "system/fast-eval.lisp"

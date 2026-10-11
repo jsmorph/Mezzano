@@ -233,6 +233,17 @@
   (:use :cl)
   (:export
    #:*global-debugger*
+   #:debugger-service-error
+   #:debugger-service-error-reason
+   #:call-with-debugger-service
+   #:make-debugger-controller
+   #:close-debugger-controller
+   #:debugger-stops
+   #:debugger-stop-information
+   #:attach-debugger-stop
+   #:release-debugger-stop
+   #:submit-debugger-command
+   #:debugger-command-result
    ;; Backtraces & frames.
    #:backtrace
    #:map-backtrace

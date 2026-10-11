@@ -369,3 +369,27 @@ Acceptance tests would disconnect before and after command acceptance, reconnect
 Public binding mutation also requires type and scope metadata.  The [Common Lisp type declaration rules](https://www.lispworks.com/documentation/HyperSpec/Body/d_type.htm) constrain references and assignments within each declaration's scope, including nested declarations.  Mezzano represents those declarations with `AST-THE` nodes, while its current runtime local-variable records contain a name, location, and representation.  One type attached to the binding's initial declaration would omit later scope restrictions.  The metadata and compiler audit must account for those restrictions before a public writer is added.
 
 The user requires the implementation to remain in Lisp wherever possible.  The guest stop service, session state, frame operations, and debugger evaluation will use Common Lisp.  The current SWANK client and compiler/debugger tests use Common Lisp, apart from the existing Python client integration test.  Shell scripts build the images and launch QEMU.
+
+## Approved stop lifetime: guest service
+
+The user approved the proposed stop-lifetime rules.  The first implementation is `system/debugger-service.lisp`, loaded after the existing debugger during warm initialization.  The compiler package definition exports the guest API.  This increment implements opt-in condition stops in ordinary Lisp threads.
+
+The stopped thread owns its condition, restart objects, and captured frames.  A service mutex protects ownership, command acceptance, and recorded outcomes.  Frame inspection, printers, and restart functions execute outside that mutex on the stopped thread.  Cleanup closes the stop and clears live frame and restart references before the failing activation unwinds.  The frame capture starts at the retained debugger activation, identified by its frame pointer, excluding temporary stack-walking activations.
+
+Controllers acquire distinct leases.  Closing a controller releases ownership while accepted commands retain their state.  Each stop records monotonically numbered commands and rejects conflicting reuse.  An identical accepted request returns its existing ID, including after the stop has closed.  The record distinguishes a normal return from a nonlocal exit.  Explicit release removes a closed stop and clears its command records.
+
+Opaque guest handles retain the boot event returned by [the supervisor boot implementation](../../supervisor/entry.lisp).  Validation uses object identity before reading stack memory.  The command loop rejects a queued command from an earlier boot.  Saved-image behavior needs a separate restore test.  External SWANK identifiers need their own representation and validation.  The numeric stop counter does not establish boot identity.
+
+The live test compiled the service and ran it on the debugging VM at port 4006.  It passed background-stop retention, caller locals after GC, exclusive control, closed-controller rejection, restart replay while running and after completion, conflicting-request rejection, nested printer failure and recovery, multiple application values, and one unwind cleanup.  The first test expected unqualified local names, but the new thread's package context produced qualified names.  Correcting those expectations produced the pass in `debug-service-second-test.log`.  The service's first compilation is recorded in `debug-service-load.log`.
+
+Review identified a completion race: publishing a returned result before clearing the active command could make a subsequent request receive a transient busy error.  The final implementation updates both fields under the same lock.  Further checks cover release of an active stop and use of a parent's frame in a child stop.
+
+- [x] Approve stop and controller lifetimes.
+- [x] Implement and test guest-owned background stops and command records.
+- [ ] Test the warm source addition with a full build and boot.
+- [ ] Test retained stops and stale guest handles across saved-image restore.
+- [ ] Add SWANK controller lifecycle and external handle validation.
+- [ ] Test disconnect before acceptance and after acceptance, followed by recovery.
+- [ ] Add type and scope metadata before public binding mutation.
+
+The reviewed service test passed, including those two checks.  The existing SWANK function-repair and restart test also passed.  The logs are `debug-service-live-test.log` and `debug-service-legacy-test.log`.

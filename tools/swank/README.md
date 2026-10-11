@@ -68,3 +68,34 @@ The policy test checks local `(debug 3)` declarations inside functions at debug 
 The keyword test checks argument validation, defaults, duplicate keys, and zero heap allocation for a valid call at debug levels 1 and 3.
 
 The jump-table test checks binding cleanup for `ECASE` inside another expression, including each branch and invalid selectors, at debug levels 1 and 3.
+
+## Guest debugger stop service
+
+`mezzano.debug:call-with-debugger-service` calls a function with a retained debugger for that thread's dynamic extent.  A condition stop keeps the failing activation and restarts alive.  The stopped thread executes inspection and restart commands.  The system's default debugger and SWANK connection handling have not yet been integrated with this service.
+
+The guest Lisp API uses opaque objects for stop handles, controllers, control leases, and frame references.  These objects refer to Mezzano's current boot event.  Numeric stop IDs describe records.  They cannot replace the opaque handles in API calls.
+
+| Function | Result or effect |
+|---|---|
+| `debugger-stops &key include-closed` | Lists stop handles. |
+| `debugger-stop-information handle` | Returns state, thread name, parent and child handles, frame generation, and the next command ID. |
+| `make-debugger-controller` | Creates a controller for this boot. |
+| `attach-debugger-stop handle controller` | Acquires exclusive control and returns a lease. |
+| `close-debugger-controller controller` | Releases its leases.  Accepted commands remain with their stops. |
+| `submit-debugger-command lease id operation &optional argument` | Accepts a command or recognizes an identical submission already recorded under that ID. |
+| `debugger-command-result handle id` | Returns command state, whether it belongs to this boot, and its result. |
+| `release-debugger-stop lease` | Releases a closed stop and its command records. |
+
+All functions are exported from `MEZZANO.DEBUG`.  A new command uses the stop's next command ID.  Reusing an ID with different arguments signals `debugger-service-error`.  A busy stop rejects new commands until the current command and any nested stop finish.  Closing a controller invalidates its leases and permits another controller to attach.
+
+Operations are `:condition`, `:restarts`, `:frames`, `:locals` with a returned frame reference, and `:invoke-restart` with a restart index.  Restart invocation currently supplies zero arguments.  Inspected values and normally returned restart values are printed on the stopped thread.  A printer failure enters a child stop.  Raw frame pointers and local objects remain within the service.
+
+Command states are `:pending`, `:running`, `:returned`, `:unwound`, `:cancelled`, and `:expired`.  `:unwound` records that control left command execution.  Application completion must be checked separately.  The service retains results until explicit stop release.  Frames expire when execution leaves the stop, and boot changes expire handles and controllers.
+
+The guest service test runs through the existing evaluation client:
+
+```sh
+tools/swank/lispm-eval --port 4006 --timeout 120 '(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-SERVICE.LISP")) (values)'
+```
+
+It checks a background failure, locals after full GC, exclusive control, lease expiration, duplicate restart submissions during and after execution, conflicting requests, a nested printer failure, foreign frame rejection, function repair, returned application values, and unwind cleanup.  These tests exercise controller closure through the Lisp API.  Network disconnect and reconnection require the forthcoming SWANK adapter.
