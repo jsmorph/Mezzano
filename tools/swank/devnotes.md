@@ -435,3 +435,9 @@ The final review found that boot validation rejected old sessions but left their
 The remote restore test now checks that prior-boot sessions retain no controller, connection, or handle-table entries.  That test passed, including stop recovery, GC, restart values, and cleanup.  The network reconnect test then passed on the restored VM.  Logs are `debug-service-session-cleanup-load.log`, `debug-service-cleanup-snapshot.log`, `debug-service-session-cleanup-test.log`, and `debug-service-reconnect-restored-test.log`.
 
 The debugging VM saved the published service and adapter with no active debugger stops, then restarted from that image.  A fresh host client connected through the saved adapter, listed no active stops, and released its session.  Logs are `debug-service-published-snapshot.log` and `debug-service-published-readiness.log`.  The original VM on port 4005 remained running.  Development and tests used port 4006.
+
+## Approved reinvocation defaults: 2026-10-12
+
+The user approved current argument values as the default for frame reinvocation, with original arguments available through an explicit option.  Debugger edits to arguments will therefore affect the retried call.  The user also approved using the latest definition when reinvoking a globally named function, so redefining that function changes the code used for the retry.
+
+Frame reinvocation, original argument storage, and their tests remain to be implemented.
