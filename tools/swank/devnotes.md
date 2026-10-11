@@ -615,3 +615,5 @@ Before extending that metadata, the recommendation is to test debugger writes ac
 All four flow tests passed in `debug-write-flow-test.log`, together with the prerequisite binding-write tests.  The computed earlier value remained unchanged, and later reads observed the changed binding, including a different type.  These cases do not establish correctness for every optimization.  Binding identity, active declaration metadata, and the compiler audit remain prerequisites for the public writer.
 
 The final GC source at Mezzano `5c7ee5bc` passed a fresh full compilation and CI boot.  QEMU exited with status 3 and the success marker appeared in the serial log.  Logs are `gc-restart-build.log`, `gc-restart-boot.log`, and `gc-restart-serial.log`.  The development VM saved the corrections with no unreleased jobs or active stops in `gc-restart-snapshot.log`.  The operations guide now pins this Mezzano revision and Slime `04d5ef6b`.
+
+The operations guide selects Mezzano `6188206f` so a fresh checkout also contains the added binding-flow test.  The tested compiler/runtime source matches `5c7ee5bc`.
