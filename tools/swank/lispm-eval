@@ -1,0 +1,155 @@
+#!/usr/bin/sbcl --script
+(require :sb-bsd-sockets)
+
+(defpackage #:lispm-eval (:use #:cl))
+(in-package #:lispm-eval)
+
+(defun usage ()
+  (format t "Usage: lispm-eval [--host HOST] [--port PORT] [--package PACKAGE]~%")
+  (format t "                  [--timeout SECONDS] [FORM | -]~%")
+  (format t "Defaults: 127.0.0.1, 4005, CL-USER, 60 seconds.~%")
+  (format t "Read source from standard input when FORM is absent or -.~%")
+  (format t "Print output followed by each value of the last form.~%")
+  (format t "Exit: 0 success, 1 Lisp condition, 2 client error, 124 timeout.~%")
+  (format t "A timeout closes the connection. Remote computation may continue.~%"))
+
+(defun options (arguments)
+  (let ((host "127.0.0.1") (port 4005) (package "CL-USER")
+        (timeout 60) (source nil))
+    (loop while arguments
+          for option = (pop arguments)
+          do (cond
+               ((string= option "--help")
+                (usage)
+                (return-from options nil))
+               ((member option '("--host" "--port" "--package" "--timeout")
+                        :test #'string=)
+                (unless arguments (error "Missing value for ~A." option))
+                (let ((value (pop arguments)))
+                  (cond ((string= option "--host") (setf host value))
+                        ((string= option "--package") (setf package value))
+                        ((string= option "--port")
+                         (setf port (parse-integer value))
+                         (unless (<= 1 port 65535) (error "Invalid port: ~D." port)))
+                        (t (setf timeout (parse-integer value))
+                           (unless (plusp timeout) (error "Timeout must be positive."))))))
+               ((string= option "--")
+                (unless (= (length arguments) 1) (error "Expected one source argument."))
+                (setf source (pop arguments)))
+               ((and (> (length option) 1) (char= (char option 0) #\-))
+                (error "Unknown option: ~A." option))
+               (t
+                (when (or source arguments) (error "Expected one source argument."))
+                (setf source option))))
+    (when (or (null source) (string= source "-"))
+      (setf source
+            (with-output-to-string (out)
+              (loop for line = (read-line *standard-input* nil nil)
+                    while line do (write-line line out)))))
+    (list host port package timeout source)))
+
+(defun send-packet (stream text)
+  (let* ((bytes (sb-ext:string-to-octets text :external-format :utf-8))
+         (size (length bytes)))
+    (unless (< size #x1000000) (error "Swank request exceeds its 24-bit length field."))
+    (write-sequence (sb-ext:string-to-octets (format nil "~6,'0X" size)
+                                           :external-format :ascii) stream)
+    (write-sequence bytes stream)
+    (finish-output stream)))
+
+(defun read-bytes (stream count)
+  (let* ((bytes (make-array count :element-type '(unsigned-byte 8)))
+         (received (read-sequence bytes stream)))
+    (unless (= received count)
+      (error "Swank closed the connection after ~D of ~D bytes." received count))
+    bytes))
+
+(defun receive-message (stream)
+  (let* ((header (sb-ext:octets-to-string (read-bytes stream 6)
+                                        :external-format :ascii))
+         (text (sb-ext:octets-to-string (read-bytes stream (parse-integer header :radix 16))
+                                       :external-format :utf-8)))
+    (let ((*read-eval* nil))
+      (read-from-string text))))
+
+(defun evaluation-request (source package)
+  (format nil
+          "(:emacs-rex
+  (cl:progn
+    (cl:unless (cl:find-package ~S) (cl:error ~S))
+    (swank::with-buffer-syntax ()
+      (cl:let* ((cl:*standard-input* (cl:make-string-input-stream ~S))
+                (cl:*query-io* (cl:make-two-way-stream cl:*standard-input* cl:*standard-output*))
+                (cl:*print-circle* cl:t) (cl:*print-readably* cl:nil))
+        (cl:mapcar (cl:function cl:prin1-to-string) (swank::eval-region ~S)))))
+  ~S t 3)"
+          package (format nil "No package named ~A." package) "" source package))
+
+(defun receive-result (stream request-id)
+  (let ((failed nil) (next-id 10))
+    (loop for message = (receive-message stream)
+          do (case (first message)
+               (:write-string
+                (write-string (second message))
+                (finish-output))
+               (:ping
+                (send-packet stream
+                             (format nil "(:emacs-pong ~D ~S)"
+                                     (second message) (third message))))
+               (:debug
+                (setf failed t)
+                (format *error-output* "lispm-eval: ~A~%" (first (fourth message)))
+                (finish-output *error-output*)
+                (send-packet stream
+                             (format nil "(:emacs-rex (swank:throw-to-toplevel) ~S ~D ~D)"
+                                     "CL-USER" (second message) (incf next-id))))
+               (:return
+                (when (= (third message) request-id)
+                  (let ((result (second message)))
+                    (ecase (first result)
+                      (:ok
+                       (return (values (if failed 1 0) (second result))))
+                      (:abort
+                       (unless failed
+                         (format *error-output* "lispm-eval: ~A~%"
+                                 (or (second result) "Evaluation aborted.")))
+                       (return 1))))))
+               ((:debug-activate :debug-return :new-package :new-features :indentation-update))
+               (:background-message
+                (format *error-output* "~A~%" (second message)))
+               (otherwise
+                (error "Swank message: ~S" message))))))
+
+(defun evaluate-source (host port package seconds source)
+  (let ((socket (make-instance 'sb-bsd-sockets:inet-socket :type :stream :protocol :tcp)))
+    (unwind-protect
+         (sb-ext:with-timeout seconds
+           (sb-bsd-sockets:socket-connect
+            socket (sb-bsd-sockets:host-ent-address (sb-bsd-sockets:get-host-by-name host)) port)
+           (let ((stream (sb-bsd-sockets:socket-make-stream
+                          socket :input t :output t :element-type '(unsigned-byte 8)
+                          :buffering :full)))
+             (loop for form in '("(swank:swank-require :swank-repl)"
+                                 "(swank-repl:create-repl nil)")
+                   for id from 1
+                   do (send-packet stream
+                                   (format nil "(:emacs-rex ~A ~S t ~D)" form "CL-USER" id))
+                      (unless (zerop (receive-result stream id))
+                        (return-from evaluate-source 1)))
+             (send-packet stream (evaluation-request source package))
+             (multiple-value-bind (status values) (receive-result stream 3)
+               (when (zerop status)
+                 (dolist (value values) (format t "~&~A~%" value)))
+               status)))
+      (sb-bsd-sockets:socket-close socket))))
+
+(sb-ext:exit
+ :code (handler-case
+           (let ((options (options (cdr sb-ext:*posix-argv*))))
+             (if options (apply #'evaluate-source options) 0))
+         (sb-ext:timeout ()
+           (format *error-output* "lispm-eval: Timed out. Remote computation may continue.~%")
+           124)
+         (error (condition)
+           (format *error-output* "lispm-eval: ~A~%" condition)
+           2)))

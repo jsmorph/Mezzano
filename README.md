@@ -18,6 +18,8 @@ requires the user to dig into the code.
 
 See the MBuild repo: (https://github.com/froggey/MBuild)
 
+For remote evaluation, see the [Swank client instructions](tools/swank/README.md).
+
 For help & support or to follow development, join the #mezzano IRC channel on Libera Chat (irc.libera.chat)
 
 ## Major changes since Demo 4
