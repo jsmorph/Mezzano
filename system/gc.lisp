@@ -473,15 +473,15 @@ This is required to make the GC interrupt safe."
         (return-from scavenge-interrupt-stack-frame
           (scavenge-interrupt-stack-frame interrupt-stack-pointer cycle-kind)))
       ;; Unconditionally scavenge the saved data registers.
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 7) cycle-kind) ; r8
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 6) cycle-kind) ; r9
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 5) cycle-kind) ; r10
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 4) cycle-kind) ; r11
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 3) cycle-kind) ; r12
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 2) cycle-kind) ; r13
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 1) cycle-kind) ; r14
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 0) cycle-kind) ; r15
-      (scavengef (memref-signed-byte-64 interrupt-stack-pointer 10) cycle-kind) ; rbx
+      (scavengef (memref-t interrupt-stack-pointer 7) cycle-kind) ; r8
+      (scavengef (memref-t interrupt-stack-pointer 6) cycle-kind) ; r9
+      (scavengef (memref-t interrupt-stack-pointer 5) cycle-kind) ; r10
+      (scavengef (memref-t interrupt-stack-pointer 4) cycle-kind) ; r11
+      (scavengef (memref-t interrupt-stack-pointer 3) cycle-kind) ; r12
+      (scavengef (memref-t interrupt-stack-pointer 2) cycle-kind) ; r13
+      (scavengef (memref-t interrupt-stack-pointer 1) cycle-kind) ; r14
+      (scavengef (memref-t interrupt-stack-pointer 0) cycle-kind) ; r15
+      (scavengef (memref-t interrupt-stack-pointer 10) cycle-kind) ; rbx
       #+x86-64
       (ecase extra-registers
         ((nil))
@@ -501,7 +501,7 @@ This is required to make the GC interrupt safe."
          ;; x9 (rax) contains an interior pointer into :x1 (r9)
          (let ((offset (- (memref-signed-byte-64 interrupt-stack-pointer 13) ; x9
                           (memref-signed-byte-64 interrupt-stack-pointer 6)))) ; x1
-           (scavengef (memref-signed-byte-64 interrupt-stack-pointer 6) cycle-kind)
+           (scavengef (memref-t interrupt-stack-pointer 6) cycle-kind)
            (setf (memref-signed-byte-64 interrupt-stack-pointer 13)
                  (+ (memref-signed-byte-64 interrupt-stack-pointer 6)
                     offset)))))

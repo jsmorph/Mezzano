@@ -125,6 +125,8 @@ Job information associates stops by their target thread.  Stop ownership and rel
 
 Guest tests cover batch input, output during a stop, source order, package changes, values, duplicate/conflicting submission, condition and printer recovery, GC, abort cleanup, and release.  SWANK job tests cover unread creation replies, duplicate submissions, session release during execution, fresh-session condition recovery, repeated output reads, foreign-token rejection, and release.  Restore tests cover a completed batch job and a condition-stopped batch job after partial input consumption, including preserved output, stream position, values, old-handle rejection, GC, continuation, and cleanup.  Interactive tests cover guest stream operations, disconnect, unread text and EOF replies, GC, and restore during a partial line read.  Asynchronous interruption remains to be implemented.
 
+The x86-64 saved-interrupt scanner reads saved data registers as Lisp objects so that GC relocates their heap references.  A deterministic test holds a movable vector in each of R8, R9, R10, R11, R12, R13, R15, and RBX while an injected foothold waits across full GC.  Each register must match the relocated object when the interrupted function resumes.  R14 holds NIL.  ARM64 and collection during the register-restoration thunk require separate tests.
+
 ## Compiler guarantees
 
 The approved bootstrap policy is `(safety 3 debug 1 speed 1)` throughout cross-compiler initialization and image compilation.  The running compiler defaults to `(safety 3 debug 3 speed 1)`.  Bootstrap inspection remains subject to its compilation policy.
@@ -181,6 +183,7 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 |---|---|
 | `test-lispm-eval.py` | Evaluation, encoding, output, multiple values, errors, flow control, and timeout behavior. |
 | `test-structure-layouts.lisp` | Inherited structure predicates/access and redefinition. |
+| `test-foothold-gc.lisp` | Movable objects in eight x86-64 data registers across an injected foothold and full GC. |
 | `test-frame-locals.lisp` | Distinct SWANK local IDs and lookup. |
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |
 | `test-debug-bindings.lisp` | Preserved binding visibility and lower-debug propagation. |
