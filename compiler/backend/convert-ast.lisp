@@ -1004,9 +1004,11 @@
           (t
            (cg-call form result-mode)))))
 
-(defun local-go-p (form)
+(defun direct-go-p (form)
   (and (typep form 'ast-go)
-       (gethash (ast-target form) *go-tag-and-block-labels*)))
+       (let ((target (gethash (ast-target form) *go-tag-and-block-labels*)))
+         (and target
+              (eq (second target) *dynamic-stack*)))))
 
 (defmethod cg-form ((form ast-jump-table) result-mode)
   (let* ((value (ast-value form))
@@ -1017,7 +1019,7 @@
          (targets
           (loop
              for j in jumps
-             collect (if (local-go-p j)
+             collect (if (direct-go-p j)
                          (first (gethash (ast-target j) *go-tag-and-block-labels*))
                          (make-instance 'label :name :jump-table-target)))))
     (when (not tag)
@@ -1028,7 +1030,7 @@
     (loop
        for j in jumps
        for targ in targets
-       when (not (local-go-p j))
+       when (not (direct-go-p j))
        do
          (emit targ)
          (let ((tag (cg-form j :effect)))

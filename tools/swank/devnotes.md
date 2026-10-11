@@ -280,3 +280,13 @@ Inspection of the lowered AST showed that generated keyword validation calls `ME
 Live tests passed for defaults, keyword selection, duplicate keys, `:ALLOW-OTHER-KEYS`, invalid keywords, and odd argument counts.  A per-thread allocation counter measured zero heap bytes for a valid call at debug levels 1 and 3.  The closure tests also passed after reloading keyword lowering.  Logs are `debug-constructor-ast.log`, `debug-keyword-load.log`, and `debug-keyword-test.log` in the MBuild directory.
 
 A full build is running after moving `build-x86-64` to `build-x86-64.before-debug-full`.  The closure correction remains uncommitted pending that test and diagnosis of any further failures.  A separate live test confirmed that a local `(debug 3)` declaration inside a `(debug 0)` function currently loses its binding metadata.  That policy boundary remains open.
+
+## Debugger implementation: jump-table binding cleanup
+
+The full rebuild stopped while compiling `ACPI-GENERIC-ADDRESS`.  Its generated jump table bypassed lexical unbinding instructions.  `cg-form` connected a local `GO` target directly to the switch, even when intervening bindings required cleanup.  Retaining those bindings exposed the malformed control flow.
+
+The shortcut now requires the current dynamic stack to match the target's stack.  Other targets use normal `GO` generation, which emits the required unbinding instructions.  The assertion remains in `dynamic-contours`.
+
+The reduced expression `(1+ (ecase x (1 11) (2 22) (3 33) (4 44)))` failed compilation before the correction in both the host cross-compiler and the guest compiler.  Afterward, arithmetic and list contexts compiled and passed each branch and invalid-selector tests at debug levels 1 and 3.  The ACPI source compiled with a diagnostic check of dynamic contours after each backend pass.  Closure-write tests passed again.  Logs are `debug-contour-fixed.log`, `debug-jump-probe.log`, and `debug-jump-table-load.log`.
+
+The first host diagnostic omitted the target architecture binding.  Its replacement-predicate test then encountered an SBCL function-result type check.  Correcting those test setup errors established the failing cases above.  A second full rebuild started from an empty cache after moving the incomplete first cache to `build-x86-64.before-debug-go`.
