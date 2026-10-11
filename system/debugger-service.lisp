@@ -119,8 +119,13 @@
             :state (service-stop-state stop)
             :thread (copy-service-result
                      (mezzano.supervisor:thread-name (service-stop-thread stop)))
-            :parent (when (service-stop-parent stop)
-                      (service-handle (service-stop-parent stop)))
+            :parent-id (when (service-stop-parent stop)
+                         (service-stop-id (service-stop-parent stop)))
+            :parent (let ((parent (service-stop-parent stop)))
+                      (when (and parent
+                                 (eq (gethash (service-stop-id parent) *service-stops*)
+                                     parent))
+                        (service-handle parent)))
             :child (when (service-stop-child stop)
                      (service-handle (service-stop-child stop)))
             :generation (service-stop-generation stop)
@@ -200,6 +205,7 @@
            (command (gethash id (service-stop-commands stop))))
       (unless command (service-error :unknown-command))
       (list :state (service-command-state command)
+            :operation (service-command-operation command)
             :current-boot-p (eq (service-command-boot command)
                                (mezzano.supervisor:current-boot-id))
             :result (copy-service-result (service-command-result command))))))

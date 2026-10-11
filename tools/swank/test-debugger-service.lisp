@@ -63,26 +63,28 @@
         :key (lambda (handle) (getf (debugger-stop-information handle) :thread))
         :test #'string=))
 
-(defun run-tests ()
+(defun start-test-thread (name)
   (setf *cleanup-count* 0
         *probe-count* 0
         *probe-gate* (mezzano.supervisor:make-event)
         *fail-print* nil)
   (fmakunbound 'missing)
+  (mezzano.supervisor:make-thread
+   (lambda ()
+     (call-with-debugger-service
+      (lambda ()
+        (restart-bind
+            ((probe (lambda ()
+                      (incf *probe-count*)
+                      (mezzano.supervisor:event-wait *probe-gate*)
+                      (values 42 :probe))))
+          (call-missing 111 222 (make-instance 'print-probe))))))
+   :name name))
+
+(defun run-tests ()
   (let* ((controller (make-debugger-controller))
          (other (make-debugger-controller))
-         (thread
-           (mezzano.supervisor:make-thread
-            (lambda ()
-              (call-with-debugger-service
-               (lambda ()
-                 (restart-bind
-                     ((probe (lambda ()
-                               (incf *probe-count*)
-                               (mezzano.supervisor:event-wait *probe-gate*)
-                               (values 42 :probe))))
-                   (call-missing 111 222 (make-instance 'print-probe))))))
-            :name "Debugger service test"))
+         (thread (start-test-thread "Debugger service test"))
          (handle nil)
          (lease nil)
          (child nil)
@@ -167,8 +169,12 @@
                (assert (= *cleanup-count* 1))
                (expect-error :stop-closed
                              (lambda () (submit-debugger-command lease (1+ id) :locals frame))))
-             (release-debugger-stop lease)
-             (expect-error :released-stop (lambda () (debugger-stop-information handle)))
+             (let ((parent-id (getf (debugger-stop-information handle) :id)))
+               (release-debugger-stop lease)
+               (expect-error :released-stop (lambda () (debugger-stop-information handle)))
+               (let ((info (debugger-stop-information child)))
+                 (assert (null (getf info :parent)))
+                 (assert (= (getf info :parent-id) parent-id))))
              (release-debugger-stop child-lease))
            (format t "PASS retained background stop, frames, locals, GC, ownership, command replay, nested printer stop, restart values, and cleanup~%"))
       (setf (mezzano.supervisor:event-state *probe-gate*) t)

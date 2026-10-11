@@ -71,19 +71,19 @@ The jump-table test checks binding cleanup for `ECASE` inside another expression
 
 ## Guest debugger stop service
 
-`mezzano.debug:call-with-debugger-service` calls a function with a retained debugger for that thread's dynamic extent.  A condition stop keeps the failing activation and restarts alive.  The stopped thread executes inspection and restart commands.  The system's default debugger and SWANK connection handling have not yet been integrated with this service.
+`mezzano.debug:call-with-debugger-service` calls a function with a retained debugger for that thread's dynamic extent.  A condition stop keeps the failing activation and restarts alive.  The stopped thread executes inspection and restart commands.  The `swank-mezzano-debugger` contrib provides remote access to these stops.  Entry uses this dynamic wrapper.  Ordinary SWANK evaluation continues to use SLDB.
 
 The guest Lisp API uses opaque objects for stop handles, controllers, control leases, and frame references.  These objects refer to Mezzano's current boot event.  Numeric stop IDs describe records.  They cannot replace the opaque handles in API calls.
 
 | Function | Result or effect |
 |---|---|
 | `debugger-stops &key include-closed` | Lists stop handles. |
-| `debugger-stop-information handle` | Returns state, thread name, parent and child handles, frame generation, and the next command ID. |
+| `debugger-stop-information handle` | Returns state, thread name, parent ID, retained parent and child handles, frame generation, and the next command ID. |
 | `make-debugger-controller` | Creates a controller for this boot. |
 | `attach-debugger-stop handle controller` | Acquires exclusive control and returns a lease. |
 | `close-debugger-controller controller` | Releases its leases.  Accepted commands remain with their stops. |
 | `submit-debugger-command lease id operation &optional argument` | Accepts a command or recognizes an identical submission already recorded under that ID. |
-| `debugger-command-result handle id` | Returns command state, whether it belongs to this boot, and its result. |
+| `debugger-command-result handle id` | Returns command state, operation, whether it belongs to this boot, and its result. |
 | `release-debugger-stop lease` | Releases a closed stop and its command records. |
 
 All functions are exported from `MEZZANO.DEBUG`.  A new command uses the stop's next command ID.  Reusing an ID with different arguments signals `debugger-service-error`.  A busy stop rejects new commands until the current command and any nested stop finish.  Closing a controller invalidates its leases and permits another controller to attach.
@@ -98,7 +98,7 @@ The guest service test runs through the existing evaluation client:
 tools/swank/lispm-eval --port 4006 --timeout 120 '(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-SERVICE.LISP")) (values)'
 ```
 
-It checks a background failure, locals after full GC, exclusive control, lease expiration, duplicate restart submissions during and after execution, conflicting requests, a nested printer failure, foreign frame rejection, function repair, returned application values, and unwind cleanup.  These tests exercise controller closure through the Lisp API.  Network disconnect and reconnection require the forthcoming SWANK adapter.
+It checks a background failure, locals after full GC, exclusive control, lease expiration, duplicate restart submissions during and after execution, conflicting requests, a nested printer failure, foreign frame rejection, function repair, returned application values, and unwind cleanup.  These tests exercise controller closure through the Lisp API.  The remote tests below exercise network disconnect and reconnection.
 
 The restore test uses two explicit phases after the service test has defined its helpers:
 
@@ -110,3 +110,33 @@ The restore test uses two explicit phases after the service test has defined its
 ```
 
 After restarting the VM, `(lispm-service-test::finish-restore-test)` checks rejection of the old handles, attachment through a new controller, the retained command record, locals after GC, restart recovery, and cleanup.  This test covers a parked stop and a completed command at snapshot time.
+
+## Remote retained debugger
+
+The host `debugger-client.lisp` uses SBCL and the shared `client.lisp` transport.  It requires [Slime commit 19b017fe](https://github.com/jsmorph/slime/commit/19b017fe5a53bfe71b095c12c88ffe9ccc002f94), selected by the build instructions.  Its [RPC documentation](https://github.com/jsmorph/slime/blob/19b017fe5a53bfe71b095c12c88ffe9ccc002f94/contrib/swank-mezzano-debugger.md) describes sessions, token formats, and operations.  The client loads the contrib on connection.
+
+```lisp
+(load "tools/swank/debugger-client.lisp")
+(defparameter *debug-session* (lispm-debugger-client:make-session))
+(lispm-debugger-client:call-with-session
+ *debug-session*
+ (lambda () (lispm-debugger-client:request :stops))
+ :port 4006)
+```
+
+Calling `call-with-session` again with the same session reconnects.  Its keyword arguments are `:host`, `:port`, and `:seconds`, defaulting to `"127.0.0.1"`, 4005, and 60.  The timeout covers the connection and callback.  Within the callback, `request` performs one synchronous RPC.  `send-request` and `receive-reply` separate transmission from reception.  The client expects one outstanding RPC per connection.
+
+`session-name` returns the name needed to reconnect from another host Lisp process.  `(make-session :resume saved-name)` resumes that existing session.  New sessions obtain 256 random bits from the host's `/dev/urandom`.  The server validates the saved session's boot-event identity.  A failed resume signals an error and preserves the distinction between an expired session and a new one.
+
+The first request sequence for a selected stop is `(:attach stop-token)`, `(:information stop-token)`, and `(:submit lease-token next-command-id :frames)`.  `(:result stop-token command-id)` queries completion.  A frame token from that result supports `:locals`.  After a lost reply, the client can query the recorded command and repeat an identical submission under a new lease within the same boot.  A new request at the same ID with different arguments is rejected.
+
+The target thread must enter `call-with-debugger-service`.  The adapter operates through separate requests, so its connection can close while the target remains stopped.  Existing SLDB evaluation requests retain their current connection-dependent behavior.  Default debugger installation, retained top-level evaluations and their I/O, public binding mutation, lexical evaluation, frame return/restart, breakpoints, and stepping remain unfinished.
+
+```sh
+sbcl --script tools/swank/test-debugger-reconnect.lisp 4006
+sbcl --script tools/swank/test-debugger-remote-restore.lisp prepare 4006 ../debugger-client-state.sexp
+# Restart the debugging VM after the preparation command completes.
+sbcl --script tools/swank/test-debugger-remote-restore.lisp finish 4006 ../debugger-client-state.sexp
+```
+
+The reconnect test drops connections before any command and after sending accepted restart commands whose replies it leaves unread.  It checks command outcomes, duplicate submissions, exclusive control, stale leases, foreign-session handles, returned application values, and cleanup.  The restore test saves a stopped thread and one remote session, then creates another session after the snapshot.  After VM restart, both old sessions fail to resume.  A fresh session rejects their tokens and old frame references, inspects the restored stop, and resumes it through an existing restart.

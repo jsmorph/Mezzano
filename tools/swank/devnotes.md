@@ -404,3 +404,26 @@ This restore test covers a parked stop and a completed command.  A command in pr
 
 - [x] Test the warm source addition with a full rebuild and boot.
 - [x] Test a retained stop and stale guest handles across saved-image restore.
+
+## Debugger implementation: SWANK sessions and host client
+
+[Slime commit 19b017fe](https://github.com/jsmorph/slime/commit/19b017fe5a53bfe71b095c12c88ffe9ccc002f94) adds the Mezzano debugger contrib.  It uses SWANK's existing [connection-closed hook](https://github.com/jsmorph/slime/blob/19b017fe5a53bfe71b095c12c88ffe9ccc002f94/swank.lisp) to close the guest controller.  The stop service owns accepted commands independently of that connection.  The adapter maps protocol tokens to opaque guest handles and creates a new controller on reconnect.
+
+Session names come from 256 bits read by host Lisp from `/dev/urandom`.  The client creates that name before opening the session.  The guest records its current boot-event object.  Resume requires the existing record and the same boot event.  It rejects both a session restored from an earlier boot and a session absent because the image predates its creation.  Creating a fresh session uses a fresh host-generated name.  A resume failure never creates a session.  The protocol therefore avoids identifying a boot through a guest counter, saved random state, or object address.
+
+The host client uses the existing Common Lisp packet transport.  It supports opening, reconnecting, submitting commands, and querying recorded outcomes.  The core result now includes its operation so the adapter can encode frame results without accessing private service structures.  The background fixture is shared by the guest and remote tests.
+
+The reconnect test passed against port 4006.  One connection closed before submitting a command.  Later connections submitted a returning restart and a nonlocal retry restart, verified acceptance through a second connection, and closed without reading the submission replies.  Reconnection recovered the recorded states.  Repeated submissions did not repeat either restart.  The tests also passed exclusive-control, old-lease, foreign-token, frame-inspection, multiple-value, and cleanup checks.  The first host test draft had two extra closing parentheses and failed before connecting.  Its corrected run is `debug-service-reconnect-second-test.log`.
+
+The remote restore test passed for a session saved in the image and a session created after the snapshot.  Both were rejected after VM restart.  A fresh session rejected old protocol tokens and a prior-boot frame returned by a retained command record.  It inspected the restored caller after GC, repaired the function, and resumed the application with `333`, `:REMOTE-RESTORED`, and one cleanup.  Logs are `debug-service-remote-snapshot.log` and `debug-service-remote-restored-test.log`.
+
+Review also found that a retained child's parent handle could refer to an explicitly released record.  Stop information now reports the parent ID independently and returns a parent handle only while that record remains registered.  The guest test checks release of the parent before inspecting the child.  The final reconnect test includes that guest test and passed.  Existing SLDB recovery also passed.  Logs are `debug-service-final-load.log`, `debug-service-reconnect-final-test.log`, and `debug-service-legacy-final-test.log`.
+
+Entry remains explicit through `call-with-debugger-service`.  Existing SWANK evaluations still use SLDB and its connection-dependent completion path.  Default debugger installation, retained evaluation jobs and I/O, and the remaining compiler/debugger agenda require further implementation.
+
+- [x] Add SWANK controller lifecycle and external handle validation.
+- [x] Test disconnect before commands and lost replies after acceptance.
+- [x] Test rejection of remote sessions and frame references across restore.
+- [ ] Test queued and running commands across image restore.
+- [ ] Integrate retained top-level evaluation and its I/O.
+- [ ] Complete type/scope metadata and the Genera operation inventory.
