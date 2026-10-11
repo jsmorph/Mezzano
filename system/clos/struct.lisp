@@ -114,23 +114,18 @@
 (defun redefine-structure-type (existing-class sdef)
   (assert (not (eql existing-class (find-class 'structure-object)))) ; Can't redefine structure-object.
   (assert (not (class-sealed existing-class)) () "Cannot redefined sealed struct ~S" existing-class)
-  (let ((new-layout (sys.int::make-layout :class existing-class
-                                          :hash (safe-class-hash existing-class)
-                                          :obsolete nil
-                                          :heap-size (sys.int::structure-definition-size sdef)
-                                          :heap-layout (sys.int::layout-heap-layout (sys.int::structure-definition-layout sdef))
-                                          :area (sys.int::structure-definition-area sdef)
-                                          :instance-slots (sys.int::convert-structure-definition-instance-slots sdef)
-                                          ;; TODO
-                                          :compatible (make-array 0 :area :wired)))
-        (prev-layout (class-layout existing-class)))
+  (let ((prev-layout (class-layout existing-class)))
     ;; FIXME: If the parent class changes, call add-/remove-direct-subclass
     (sys.int::populate-struct-class-from-structure-defintion existing-class sdef)
-    (when (not (class-layouts-compatible-p prev-layout new-layout))
-      ;; Make instances obsolete if the layout changes.
-      (setf (mezzano.runtime::instance-access-by-name existing-class 'mezzano.clos::slot-storage-layout)
-            new-layout)
-      (setf (sys.int::layout-obsolete prev-layout) new-layout)))
+    (let ((new-layout (sys.int::make-structure-class-layout existing-class sdef)))
+      (when (or (not (class-layouts-compatible-p prev-layout new-layout))
+                (mismatch (sys.int::layout-compatible prev-layout)
+                          (sys.int::layout-compatible new-layout)
+                          :start1 1 :start2 1 :test #'eq))
+        ;; Make instances obsolete if the layout changes.
+        (setf (mezzano.runtime::instance-access-by-name existing-class 'mezzano.clos::slot-storage-layout)
+              new-layout)
+        (setf (sys.int::layout-obsolete prev-layout) new-layout))))
   existing-class)
 
 (defmethod update-instance-for-redefined-class ((instance structure-object) added-slots discarded-slots property-list &rest initargs)

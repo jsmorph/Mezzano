@@ -422,6 +422,28 @@
     (setf (mezzano.runtime::instance-access-by-name new-class 'mezzano.clos::has-standard-constructor)
           (structure-definition-has-standard-constructor sdef))))
 
+(defun make-structure-class-layout (class sdef)
+  (let* ((parents (loop
+                    for superclass in (cdr (mezzano.runtime::instance-access-by-name
+                                             class 'mezzano.clos::precedence-list))
+                    for layout = (mezzano.runtime::instance-access-by-name
+                                  superclass 'mezzano.clos::slot-storage-layout)
+                    when layout collect layout))
+         (compatible (make-array (1+ (length parents))
+                                 :initial-contents (cons nil parents)
+                                 :area :wired))
+         (layout (make-layout
+                  :class class
+                  :hash (mezzano.runtime::instance-access-by-name class 'mezzano.clos::hash)
+                  :obsolete nil
+                  :heap-size (structure-definition-size sdef)
+                  :heap-layout (layout-heap-layout (structure-definition-layout sdef))
+                  :area (structure-definition-area sdef)
+                  :instance-slots (convert-structure-definition-instance-slots sdef)
+                  :compatible compatible)))
+    (setf (aref compatible 0) layout)
+    layout))
+
 (defun convert-structure-definition-to-class (sdef source-location)
   ;; CLOS might not be fully initialized at this point,
   ;; construct the new class by hand.
@@ -444,16 +466,7 @@
     (setf (mezzano.runtime::instance-access-by-name new-class 'mezzano.clos::prototype)
           mezzano.clos::*secret-unbound-value*)
     (setf (mezzano.runtime::instance-access-by-name new-class 'mezzano.clos::slot-storage-layout)
-          (make-layout :class new-class
-                       :hash (mezzano.runtime::instance-access-by-name
-                              new-class 'mezzano.clos::hash)
-                       :obsolete nil
-                       :heap-size (structure-definition-size sdef)
-                       :heap-layout (layout-heap-layout (structure-definition-layout sdef))
-                       :area (structure-definition-area sdef)
-                       :instance-slots (convert-structure-definition-instance-slots sdef)
-                       ;; TODO
-                       :compatible (make-array 0 :area :wired)))
+          (make-structure-class-layout new-class sdef))
     (setf (mezzano.runtime::instance-access-by-name new-class 'mezzano.clos::source-location)
           source-location)
     (pushnew new-class
