@@ -344,3 +344,28 @@ Backend removal now retains marked bindings at debug level 0.  The allocator inc
 The new test failed before the correction with no binding for `A`.  After reloading the four compiler files, all cases passed at enclosing debug levels 0, 1, and 2.  The cases check independent copies, captured bindings, an unused heap value, debugger writes, and full GC before and after mutation during inspection.  Further cases check use of a preserved binding inside a nested debug-0 region.  The function's ordinary debug-0 parameters remain absent from its reported locals.  Existing binding, closure, keyword, jump-table, and remote restart tests passed.  Logs are `debug-policy-before.log`, `debug-policy-load.log`, `debug-policy-live-tests.log`, and `debug-policy-live-restart.log`.
 
 The full rebuild completed from an empty target cache.  The CI image reached its success marker and QEMU exited with status 3.  Logs are `debug-policy-full-build.log`, `debug-policy-full-boot.log`, and `debug-policy-full-serial.log`.
+
+The updated live compiler was then saved and restored.  The local-policy, binding, closure, GC, keyword, jump-table, and remote restart tests passed after restore.  Logs are `debug-policy-snapshot.log`, `debug-policy-restored-tests.log`, and `debug-policy-restored-restart.log`.
+
+## Proposed debugger stop lifetime
+
+The next proposed increment gives a guest debugger service ownership of condition stops in ordinary Lisp threads, including background threads.  SWANK carries requests to that service.  The stopped thread retains its dynamic environment and executes debugger operations through a command loop.  The current frame structure contains a frame pointer and saved-register data without a lifetime check, so public mutation needs this service before exposing those references remotely.
+
+The proposed lifetime and control rules require approval:
+
+| Event | Proposed behavior |
+|---|---|
+| A condition enters the debugger | Create a stop before unwinding the failing activation.  Retain its condition and restart context. |
+| A connection closes | Keep the stop.  Release that connection's control ownership after accounting for any accepted command.  The thread retains its stack, reachable objects, and any locks it holds. |
+| A client attaches | Grant one controller access to the stop and return a new control token.  Reject commands carrying an older token. |
+| A command identifies a frame or binding | Require the current boot, stop, and frame generation.  Reject expired references before accessing stack memory. |
+| A mutating request loses its reply | Query its recorded state on reconnect.  An accepted operation is executed at most once within that boot.  Keep its outcome with the stop record until explicit release. |
+| A restart or abort transfers control | Invalidate the stop's frame and binding references when execution leaves the stop.  Preserve the operation record for reconnect. |
+| Debugger execution enters another stop | Retain the parent and identify the child.  Frame-changing operations on the parent wait for resolution of the child. |
+| The VM restarts or restores an image | Reject handles from the preceding boot.  Any retained stop and operation state reflects the restored image. |
+
+Acceptance tests would disconnect before and after command acceptance, reconnect to inspect and invoke a restart, reject a second controller and stale references, and verify that a lost reply cannot repeat a write or restart.  Background-thread failures, GC while stopped, nested debugger failures, multiple values, and unwind cleanup each need tests.  The first implementation would expose only operations whose stop-state requirements have passed those tests.
+
+Public binding mutation also requires type and scope metadata.  The [Common Lisp type declaration rules](https://www.lispworks.com/documentation/HyperSpec/Body/d_type.htm) constrain references and assignments within each declaration's scope, including nested declarations.  Mezzano represents those declarations with `AST-THE` nodes, while its current runtime local-variable records contain a name, location, and representation.  One type attached to the binding's initial declaration would omit later scope restrictions.  The metadata and compiler audit must account for those restrictions before a public writer is added.
+      
+The user requires the implementation to remain in Lisp wherever possible.  The guest stop service, session state, frame operations, and debugger evaluation will use Common Lisp.  The current SWANK client and compiler/debugger tests use Common Lisp, apart from the existing Python client integration test.  Shell scripts build the images and launch QEMU.
