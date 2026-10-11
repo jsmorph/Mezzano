@@ -196,7 +196,7 @@ Run guest Lisp tests with the updated compiler and backend loaded:
 for test_name in TEST-FOOTHOLD-GC TEST-STRUCTURE-LAYOUTS TEST-FRAME-LOCALS \
   TEST-DEBUG-BINDINGS TEST-DEBUG-BINDING-WRITES TEST-DEBUG-CLOSURE-WRITES \
   TEST-DEBUG-POLICY TEST-KEYWORD-LOWERING TEST-JUMP-TABLE-BINDINGS \
-  TEST-DEBUGGER-SERVICE TEST-EVALUATION-SERVICE
+  TEST-DEBUGGER-SERVICE TEST-EVALUATION-SERVICE TEST-EVALUATION-INTERRUPT
 do
   tools/swank/lispm-eval --port 4006 --timeout 180 \
     "(load (compile-file \"SYS:SOURCE;TOOLS;SWANK;$test_name.LISP\")) (values)" ||
@@ -274,5 +274,7 @@ sbcl --script tools/swank/test-evaluation-reconnect.lisp \
 ```
 
 For an interactive job waiting within a partially read line, use `prepare-input` and `finish-input` in place of `prepare` and `finish`, with a separate host state file.
+
+For queued and running evaluation interruptions, use `prepare-interrupt` and `finish-interrupt` with a separate host state file.  The queued request must expire after restore.  The running interrupt stop must continue through a fresh session with one body entry and one cleanup.
 
 After a successful restore test, save the completed guest state using the snapshot command.  That replaces the saved test stop with the completed state.

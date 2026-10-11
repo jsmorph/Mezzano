@@ -101,6 +101,9 @@
 
 (defstruct (evaluation-job (:constructor %make-evaluation-job))
   name boot source package input interactive-p input-stream thread output-stream values representations
+  interrupt-ready-p interrupt
+  (next-interrupt-id 0)
+  (interrupts (make-hash-table))
   (state :running))
 
 (defstruct (evaluation-handle (:constructor %make-evaluation-handle (boot job)))
@@ -131,6 +134,99 @@
             do (setf result (multiple-value-list (eval form))))
       result)))
 
+(defstruct (evaluation-interrupt (:constructor %make-evaluation-interrupt))
+  id boot (state :new) result)
+
+(defun deliver-evaluation-interrupt (job interrupt)
+  (let ((entered-p nil))
+    (unwind-protect
+         (progn
+           (with-service-lock
+             (when (eq (evaluation-interrupt-state interrupt) :pending)
+               (cond ((not (eq (evaluation-interrupt-boot interrupt)
+                               (mezzano.supervisor:current-boot-id)))
+                      (setf (evaluation-interrupt-state interrupt) :expired))
+                     ((not (eq (evaluation-job-state job) :running))
+                      (setf (evaluation-interrupt-state interrupt) :cancelled
+                            (evaluation-interrupt-result interrupt) :job-complete))
+                     ((not (evaluation-job-interrupt-ready-p job)))
+                     (*service-current-stop*
+                      (setf (evaluation-interrupt-state interrupt) :cancelled
+                            (evaluation-interrupt-result interrupt) :already-stopped))
+                     (t
+                      (setf entered-p t
+                            (evaluation-interrupt-state interrupt) :running))))
+             (when (and (member (evaluation-interrupt-state interrupt)
+                                '(:expired :cancelled))
+                        (eq (evaluation-job-interrupt job) interrupt))
+               (setf (evaluation-job-interrupt job) nil)))
+           (when entered-p
+             (restart-case
+                 (service-debugger
+                  (make-condition 'simple-condition
+                                  :format-control "Evaluation interrupted."
+                                  :format-arguments nil))
+               (continue ()
+                 :report "Continue evaluation."
+                 nil))
+             (with-service-lock
+               (setf (evaluation-interrupt-state interrupt) :returned)
+               (when (eq (evaluation-job-interrupt job) interrupt)
+                 (setf (evaluation-job-interrupt job) nil)))))
+      (when entered-p
+        (with-service-lock
+          (when (eq (evaluation-interrupt-state interrupt) :running)
+            (setf (evaluation-interrupt-state interrupt) :unwound))
+          (when (eq (evaluation-job-interrupt job) interrupt)
+            (setf (evaluation-job-interrupt job) nil)))))))
+
+(defun arm-evaluation-interrupts (job)
+  (let ((interrupt
+          (with-service-lock
+            (setf (evaluation-job-interrupt-ready-p job) t)
+            (evaluation-job-interrupt job))))
+    (when interrupt (deliver-evaluation-interrupt job interrupt))))
+
+(defun interrupt-evaluation-job (handle id)
+  (with-service-lock
+    (let* ((job (check-evaluation-handle handle))
+           (existing (gethash id (evaluation-job-interrupts job))))
+      (when existing
+        (unless (eq (evaluation-interrupt-boot existing)
+                    (mezzano.supervisor:current-boot-id))
+          (service-error :request-conflict))
+        (return-from interrupt-evaluation-job id))
+      (unless (eql id (evaluation-job-next-interrupt-id job))
+        (service-error :request-order))
+      (unless (eq (evaluation-job-state job) :running)
+        (service-error :job-complete))
+      (when (evaluation-job-interrupt job)
+        (service-error :interrupt-busy))
+      (when (eq (evaluation-job-thread job) (mezzano.supervisor:current-thread))
+        (service-error :self-interrupt))
+      (let ((interrupt (%make-evaluation-interrupt
+                        :id id :boot (mezzano.supervisor:current-boot-id)))
+            (next-id (1+ id)))
+        (when (evaluation-job-interrupt-ready-p job)
+          (mezzano.supervisor:establish-thread-foothold
+           (evaluation-job-thread job)
+           (lambda () (deliver-evaluation-interrupt job interrupt))))
+        (setf (gethash id (evaluation-job-interrupts job)) interrupt
+              (evaluation-job-interrupt job) interrupt
+              (evaluation-job-next-interrupt-id job) next-id
+              (evaluation-interrupt-state interrupt) :pending)
+        id))))
+
+(defun evaluation-job-interrupt-result (handle id)
+  (with-service-lock
+    (let* ((job (check-evaluation-handle handle))
+           (interrupt (or (gethash id (evaluation-job-interrupts job))
+                          (service-error :unknown-interrupt))))
+      (list :state (evaluation-interrupt-state interrupt)
+            :current-boot-p (eq (evaluation-interrupt-boot interrupt)
+                               (mezzano.supervisor:current-boot-id))
+            :result (evaluation-interrupt-result interrupt)))))
+
 (defun run-evaluation-job (job)
   (call-with-debugger-service
    (lambda ()
@@ -148,16 +244,25 @@
             (representations nil))
        (unwind-protect
             (restart-case
-                (progn
-                  (setf values (evaluate-job-source (evaluation-job-source job))
-                        representations (mapcar #'service-print values)
-                        state :returned))
+                (unwind-protect
+                     (progn
+                       (arm-evaluation-interrupts job)
+                       (setf values (evaluate-job-source (evaluation-job-source job))
+                             representations (mapcar #'service-print values)
+                             state :returned))
+                  (with-service-lock
+                    (setf (evaluation-job-interrupt-ready-p job) nil)))
               (abort ()
                 :report "Abort this evaluation job."
                 (setf state :aborted
                       values nil
                       representations nil)))
          (with-service-lock
+           (let ((interrupt (evaluation-job-interrupt job)))
+             (when (and interrupt (eq (evaluation-interrupt-state interrupt) :pending))
+               (setf (evaluation-interrupt-state interrupt) :cancelled
+                     (evaluation-interrupt-result interrupt) :job-complete
+                     (evaluation-job-interrupt job) nil)))
            (close-evaluation-input (evaluation-job-input-stream job))
            (setf (mezzano.gray:stream-open-p (evaluation-job-output-stream job)) nil
                  (evaluation-job-values job) values
@@ -222,6 +327,9 @@
                                        (evaluation-job-thread job))
                                    (eq (service-stop-state stop) :stopped))
                            collect (service-handle stop))
+            :next-interrupt-id (evaluation-job-next-interrupt-id job)
+            :interrupt-id (when (evaluation-job-interrupt job)
+                            (evaluation-interrupt-id (evaluation-job-interrupt job)))
             :input-mode (if (evaluation-job-interactive-p job) :interactive :batch)
             :input-length (if (evaluation-job-interactive-p job)
                               (length (evaluation-input-buffer (evaluation-job-input-stream job)))
@@ -285,6 +393,7 @@
     (let ((job (check-evaluation-handle handle)))
       (when (eq (evaluation-job-state job) :running)
         (service-error :job-active))
+      (clrhash (evaluation-job-interrupts job))
       (when (evaluation-job-interactive-p job)
         (setf (slot-value (evaluation-job-input-stream job) 'buffer) nil))
       (setf (slot-value (evaluation-job-output-stream job) 'buffer) nil

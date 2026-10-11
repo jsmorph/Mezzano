@@ -108,6 +108,8 @@ The worker binds its own standard streams.  Standard, error, and trace output sh
 | `evaluation-job-information handle` | Returns name, state, thread name, acceptance-boot comparison, active stop handles, printed values, and output length. |
 | `evaluation-job-output handle start &optional end` | Returns copied output and the ending character offset.  The default end is the current length. |
 | `supply-evaluation-input handle offset text &key eof` | Supplies or recognizes retained input and returns the ending character offset. |
+| `interrupt-evaluation-job handle id` | Accepts or recognizes a numbered interruption request. |
+| `evaluation-job-interrupt-result handle id` | Returns request state, acceptance-boot comparison, and cancellation reason. |
 | `evaluation-job-result-values handle` | Returns a fresh list containing the retained Lisp values of a returned job. |
 | `release-evaluation-job handle` | Releases terminal job data and retains the used name.  Active jobs reject release. |
 
@@ -119,11 +121,32 @@ Input submission specifies a character offset, text, and optional EOF.  New text
 
 Input growth and copying complete before the accepted length advances under the service mutex.  A connection can retry accepted text after a lost reply without supplying it twice.  Any attached session can supply input.  After restore, it acquires a fresh job token and reads the restored input length.  Input history remains in memory until job release.
 
-A job remains `:running` while evaluating, waiting at a retained stop, or printing results.  The worker prints results inside retained debugging, so a printer condition remains recoverable.  Normal completion records `:returned`.  The job's ABORT restart unwinds through application cleanup and records `:aborted`.  Another nonlocal exit records `:unwound`.  A terminal state distinguishes zero values from an incomplete result.
+A job remains `:running` while evaluating, waiting at a retained stop, or printing results.  The worker prints results inside retained debugging, so a printer condition remains recoverable.  Normal completion records `:returned`.  The job records `:aborted` when control reaches its ABORT restart clause after cleanup.  Cleanup can signal another retained condition or supersede that transfer.  A cleanup transfer back into the computation can let the job return normally.  Another exit from the worker records `:unwound`.  A terminal state distinguishes zero values from an incomplete result.
 
 Job information associates stops by their target thread.  Stop ownership and release use the existing controller API.  Releasing a job leaves independently retained stop records under that API.
 
-Guest tests cover batch input, output during a stop, source order, package changes, values, duplicate/conflicting submission, condition and printer recovery, GC, abort cleanup, and release.  SWANK job tests cover unread creation replies, duplicate submissions, session release during execution, fresh-session condition recovery, repeated output reads, foreign-token rejection, and release.  Restore tests cover a completed batch job and a condition-stopped batch job after partial input consumption, including preserved output, stream position, values, old-handle rejection, GC, continuation, and cleanup.  Interactive tests cover guest stream operations, disconnect, unread text and EOF replies, GC, and restore during a partial line read.  Asynchronous interruption remains to be implemented.
+Guest tests cover batch input, output during a stop, source order, package changes, values, duplicate/conflicting submission, condition and printer recovery, GC, abort cleanup, and release.  SWANK job tests cover unread creation replies, duplicate submissions, session release during execution, fresh-session condition recovery, repeated output reads, foreign-token rejection, and release.  Restore tests cover a completed batch job and a condition-stopped batch job after partial input consumption, including preserved output, stream position, values, old-handle rejection, GC, continuation, and cleanup.  Interactive tests cover guest stream operations, disconnect, unread text and EOF replies, GC, and restore during a partial line read.
+
+### Interruption
+
+A numbered interrupt request uses the supervisor's existing thread foothold mechanism.  Delivery respects `without-footholds` and enters the retained debugger on the evaluation worker.  CONTINUE resumes the interrupted computation.  The job's ABORT restart follows normal Common Lisp unwinding and cleanup rules.
+
+Interrupt IDs start at zero and increase per job.  The job retains their records until release.  Repeating an accepted ID in the same boot returns that ID without another delivery.  Prior-boot requests reject replay.  One request may be pending or running per job.  Job information reports `:next-interrupt-id` and the current `:interrupt-id`, or NIL.
+
+| Interrupt state | Meaning |
+|---|---|
+| `:pending` | Accepted and awaiting delivery. |
+| `:running` | The worker entered interruption handling.  Job information reports its stop once debugger entry registers it. |
+| `:returned` | Control returned through CONTINUE. |
+| `:unwound` | Control left interruption handling through a nonlocal exit.  The job outcome is separate. |
+| `:cancelled` | Delivery found an existing retained stop or a completed job.  The result is `:already-stopped` or `:job-complete`. |
+| `:expired` | Delivery selected a request accepted before the current boot. |
+
+The worker arms delivery inside its stream bindings and ABORT restart, and disarms before leaving that restart's scope.  Early requests wait until it arms.  Completion cancels an undelivered request.  A target already inside a retained stop receives cancellation without another stop, including while it executes a debugger command.  Interruption of running debugger commands remains pending.
+
+Any attached session can request interruption or read its history.  Stop commands retain exclusive controller ownership.  Request publication and scheduling use the service mutex with caller footholds inhibited.  A new request targeting its calling thread reports `:self-interrupt`.
+
+Tests cover computing and input-waiting workers, full GC, locals, continuation, abort, cleanup conditions and nonlocal transfers, duplicate IDs, unread replies, existing stops, inhibited delivery, and immediate submission after creation.  The immediate-submission test does not establish which startup scheduling order occurred.  Restore tests cover a queued request expiring without delivery and a running interrupt stop resuming through a fresh session.  Other instruction positions and external I/O require further tests.
 
 The x86-64 saved-interrupt scanner reads saved data registers as Lisp objects so that GC relocates their heap references.  A deterministic test holds a movable vector in each of R8, R9, R10, R11, R12, R13, R15, and RBX while an injected foothold waits across full GC.  Each register must match the relocated object when the interrupted function resumes.  R14 holds NIL.  ARM64 and collection during the register-restoration thunk require separate tests.
 
@@ -170,7 +193,7 @@ The operation inventory uses the debugger chapters of Symbolics' [Program Develo
 | Help, reports, and display integration | Pending: client interface and capture of diagnostic state. | The current interface is a Lisp client library. |
 | Reconnection and lost replies | Implemented within one boot and retained command history. | Reconnect test leaves accepted-command replies unread and checks one execution. |
 | Image restore | Partial: parked stop, completed-command history, queued-command expiration, and a running command blocked on a Lisp event. | Guest and remote restore tests.  Other running-command positions and external I/O remain untested. |
-| Retained evaluation and I/O | Partial: batch and interactive jobs, SWANK operations, retained results/output, and condition stops.  Asynchronous interruption is pending. | Guest, network, and saved-image evaluation tests.  Restore at other execution positions remains untested. |
+| Retained evaluation and I/O | Partial: batch and interactive jobs, retained results/output, condition stops, and numbered asynchronous interruption.  Running debugger-command interruption is pending. | Guest, network, and saved-image evaluation tests.  Restore at other execution positions remains untested. |
 | GUI-free startup | Pending: a build profile and initialization paths that omit graphics and GUI components. | Cold boot and restore with graphics devices absent remain untested. |
 | Startup failure handling | Pending: preserve recoverable failures before unwind, report required-service readiness, and provide bounded early diagnostics. | The journal records error-swallowing startup paths.  Failure tests remain unrun. |
 | QEMU host control | Pending: image selection, QMP/GDB access, and boot diagnostics independent of guest networking.  Bare-metal FEP work is deferred. | Current launchers configure SWANK forwarding and serial output. |
@@ -195,7 +218,8 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-debugger-service.lisp` | Ownership, frames, GC, duplicate commands, child stops, repair, values, release, and cleanup. |
 | `test-debugger-service-restore.lisp` | Guest handles, completed-command history, queued-command expiration, and a running restart blocked on a Lisp event across restore. |
 | `test-evaluation-service.lisp` | Batch submission identity, source order, package changes, values, condition/printer recovery, GC, abort, release, and interactive stream behavior. |
-| `test-evaluation-reconnect.lisp` | Unread creation reply, duplicate submission, session release during execution, fresh-session condition recovery, output/results, foreign tokens, GC, cleanup, release, completed/stopped batch jobs across restore, interactive disconnect, input/EOF replay, and interactive restore. |
+| `test-evaluation-interrupt.lisp` | Computing/input-waiting interruption, locals, GC, continuation, abort, cleanup conditions/transfers, duplicate requests, existing stops, startup, inhibited delivery, and self-interruption rejection. |
+| `test-evaluation-reconnect.lisp` | Unread creation reply, duplicate submission, session release during execution, fresh-session condition recovery, output/results, foreign tokens, GC, cleanup, release, completed/stopped batch jobs across restore, interactive disconnect, input/EOF replay, interactive restore, unread interrupt replies, and queued/running interrupt restore. |
 | `test-debugger-reconnect.lisp` | TCP disconnect, exclusive control, token rejection, unread replies, and duplicate restart submission. |
 | `test-debugger-remote-restore.lisp` | Saved/absent sessions, old tokens/frames, storage retirement, and restored-stop recovery. |
 
@@ -207,7 +231,7 @@ The interactive-input implementation passed a fresh full recompilation and CI bo
 
 ## Decisions and development sequence
 
-The next design work concerns asynchronous evaluation interruption and type/scope metadata.  Restore coverage needs further tests for running commands at other instruction positions and external I/O.  Public binding mutation follows that metadata.  Lexical evaluation, frame return/reinvocation, trap entry, and stepping require their own semantics and tests before exposure through SWANK.
+The next design work concerns interrupt-scanner edge cases and type/scope metadata.  Restore coverage needs further tests for running commands at other instruction positions and external I/O.  Public binding mutation follows that metadata.  Lexical evaluation, frame return/reinvocation, trap entry, and stepping require their own semantics and tests before exposure through SWANK.
 
 The approved reinvocation defaults use the frame's current argument values and, for a globally named function, its latest definition.  Original arguments will be available through an explicit option.  Invocation metadata, original argument storage, cleanup, and dynamic-binding behavior still require implementation and tests.
 

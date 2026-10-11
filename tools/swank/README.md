@@ -81,6 +81,21 @@ Within a `call-with-session` callback, this call supplies a line and EOF to an i
 
 The call returns the ending character offset.  An identical retained range succeeds without appending text again.  A gap, mismatched text, or partial overlap reports `:input-conflict`.  New input starts at the length reported by job information.  EOF can accompany new text or an empty submission at the end.  After an image restore, a fresh session obtains the restored job token and input length before continuing.
 
+### Interrupt an evaluation
+
+Within a `call-with-session` callback, submit the next interrupt ID and retain it if the reply can be lost:
+
+```lisp
+(let ((id (getf (lispm-debugger-client:request :job-information job)
+                :next-interrupt-id)))
+  (lispm-debugger-client:request :interrupt-job job id)
+  (lispm-debugger-client:request :job-interrupt-result job id))
+```
+
+The result records `:pending`, `:running`, `:returned`, `:unwound`, `:cancelled`, or `:expired`.  Polling job information reveals the retained stop in `:stops`.  The inspection and restart operations below apply to that stop.  CONTINUE resumes computation.  ABORT unwinds through application cleanup.  Cleanup may signal a condition or redirect control, so job information determines the final evaluation outcome.
+
+After an unread reply, query the retained ID or repeat that ID in the same boot.  Reading a new `:next-interrupt-id` and submitting it creates a different request.  A pending or running request rejects a second request.  Delivery waits while footholds are inhibited.  A job already in a retained stop records cancellation with `:already-stopped`.
+
 ## Debug a background computation
 
 This example starts a compiled function with two arguments, stops at a continuable error, inspects its locals, disconnects, reconnects, and invokes the continuation.  Its assertions check application values and cleanup.
@@ -225,6 +240,6 @@ Within the callback, `request` sends one synchronous debugger RPC.  `send-reques
 
 Commands that print values execute application printers and can block or enter a child stop.  A client timeout closes its connection while an accepted command can continue in the guest.  Query the recorded outcome before deciding what to submit next.
 
-Batch evaluation jobs and the explicit debugger wrapper both retain condition stops.  Asynchronous job interruption remains pending.  Public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
+Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers.  Interruption of running debugger commands, public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
 
 The [capability and test tables](../../doc/debugger.md#capability-and-evidence) state the evidence for each operation.  The [operations guide](minideb2/README.md#tests) gives the test commands and restore sequence.  The [development journal](devnotes.md) records diagnoses and historical runs.
