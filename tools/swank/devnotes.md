@@ -449,3 +449,11 @@ The user approved continuing remote evaluations after client disconnection and r
 Input behavior depends on the evaluation mode.  An explicitly interactive evaluation waits for input or an explicit EOF, and reconnection restores access to that input stream.  A batch evaluation consumes supplied input and then receives EOF.  The user approved this distinction after the initial question failed to specify the input mode.
 
 Retained evaluation jobs and their input streams remain to be implemented and tested.
+
+## Decision procedure and running-command restore: 2026-10-12
+
+The user authorized the remaining agenda under a standing procedure: review the implementation and evidence, prioritize simplicity, state a recommendation and its consequences, document it, and proceed with that recommendation.  This replaces separate approval requests for design decisions within the agenda.  The repository instruction files record the procedure and require rereading after compaction.
+
+For a command running at snapshot time, the recommendation is to use Mezzano's existing thread restoration.  [Thread initialization](../../supervisor/thread.lisp) retains ordinary thread state and resumes the saved world.  [Command execution](../../system/debugger-service.lisp) keeps the active command on that thread's stack and records its result when the operation returns.  These source findings support testing the existing behavior before adding implementation code.
+
+The test will snapshot an invoked restart while it waits on an event, let it return in the original execution, restore the snapshot, and complete the restored invocation.  Assertions will check the saved command state, expired old control, rejection of prior-boot resubmission, one restart entry in the restored state, GC, returned values, application recovery, and cleanup.  This tests a running command blocked inside Lisp.  Queued commands, arbitrary instruction positions, and external I/O remain separate cases.
