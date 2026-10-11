@@ -427,3 +427,11 @@ Entry remains explicit through `call-with-debugger-service`.  Existing SWANK eva
 - [ ] Test queued and running commands across image restore.
 - [ ] Integrate retained top-level evaluation and its I/O.
 - [ ] Complete type/scope metadata and the Genera operation inventory.
+
+## Expired session storage
+
+The final review found that boot validation rejected old sessions but left their handle tables reachable.  [Slime commit 2b2086a9](https://github.com/jsmorph/slime/commit/2b2086a9951f7b18dc0b88e32729224ba1485029) releases those tables and controllers on the first adapter operation after a boot change.  Used names remain recorded to reject reuse.  The README and build instructions select this revision.
+
+The remote restore test now checks that prior-boot sessions retain no controller, connection, or handle-table entries.  That test passed, including stop recovery, GC, restart values, and cleanup.  The network reconnect test then passed on the restored VM.  Logs are `debug-service-session-cleanup-load.log`, `debug-service-cleanup-snapshot.log`, `debug-service-session-cleanup-test.log`, and `debug-service-reconnect-restored-test.log`.
+
+The debugging VM saved the published service and adapter with no active debugger stops, then restarted from that image.  A fresh host client connected through the saved adapter, listed no active stops, and released its session.  Logs are `debug-service-published-snapshot.log` and `debug-service-published-readiness.log`.  The original VM on port 4005 remained running.  Development and tests used port 4006.

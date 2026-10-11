@@ -11,7 +11,7 @@ After initializing MBuild's submodules, select the tested Slime revision:
 ```sh
 cd /home/somebody/src/mezzano-boot
 git -C home/slime fetch https://github.com/jsmorph/slime.git debugging
-git -C home/slime checkout --detach 19b017fe5a53bfe71b095c12c88ffe9ccc002f94
+git -C home/slime checkout --detach 2b2086a9951f7b18dc0b88e32729224ba1485029
 ```
 
 MBuild's recorded Slime revision predates the frame-local ID correction and retained-debugger contrib.  Running `git submodule update` again selects that older revision unless the commands above follow it.

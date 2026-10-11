@@ -78,6 +78,24 @@
     (connected
      (make-session)
      (lambda ()
+       (evaluate
+        "(swank/mezzano-debugger::with-lock
+           (maphash
+            (lambda (name session)
+              (declare (ignore name))
+              (unless (eq (swank/mezzano-debugger::session-boot session)
+                          (mezzano.supervisor:current-boot-id))
+                (assert (swank/mezzano-debugger::session-released-p session))
+                (assert (null (swank/mezzano-debugger::session-controller session)))
+                (assert (null (swank/mezzano-debugger::session-connection session)))
+                (assert (zerop (hash-table-count
+                                (swank/mezzano-debugger::session-handles session))))
+                (assert (zerop (hash-table-count
+                                (swank/mezzano-debugger::session-objects session))))
+                (assert (zerop (hash-table-count
+                                (swank/mezzano-debugger::session-stops session))))))
+            swank/mezzano-debugger::*sessions*))
+         (values)")
        (expect-error :invalid-handle
                      (lambda () (request :information (getf state :stop))))
        (let* ((stop (target-stop))

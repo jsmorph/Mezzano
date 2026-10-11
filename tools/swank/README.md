@@ -40,7 +40,7 @@ The Lisp test checks inherited type predicates and slot access, unrelated types,
 
 ## Debugger tests
 
-These tests require [Slime commit d2c70f2e](https://github.com/jsmorph/slime/commit/d2c70f2ea5916d8da2fe0a41ff302b2002715f61), which fixes Mezzano's repeated frame-local IDs.  The build instructions record how to select that revision.
+These tests require [Slime commit d2c70f2e](https://github.com/jsmorph/slime/commit/d2c70f2ea5916d8da2fe0a41ff302b2002715f61), which fixes Mezzano's repeated frame-local IDs.  The build instructions select a later revision containing that correction and the retained-debugger contrib.
 
 With that backend loaded in the guest:
 
@@ -113,7 +113,7 @@ After restarting the VM, `(lispm-service-test::finish-restore-test)` checks reje
 
 ## Remote retained debugger
 
-The host `debugger-client.lisp` uses SBCL and the shared `client.lisp` transport.  It requires [Slime commit 19b017fe](https://github.com/jsmorph/slime/commit/19b017fe5a53bfe71b095c12c88ffe9ccc002f94), selected by the build instructions.  Its [RPC documentation](https://github.com/jsmorph/slime/blob/19b017fe5a53bfe71b095c12c88ffe9ccc002f94/contrib/swank-mezzano-debugger.md) describes sessions, token formats, and operations.  The client loads the contrib on connection.
+The host `debugger-client.lisp` uses SBCL and the shared `client.lisp` transport.  It requires [Slime commit 2b2086a9](https://github.com/jsmorph/slime/commit/2b2086a9951f7b18dc0b88e32729224ba1485029), selected by the build instructions.  Its [RPC documentation](https://github.com/jsmorph/slime/blob/2b2086a9951f7b18dc0b88e32729224ba1485029/contrib/swank-mezzano-debugger.md) describes sessions, token formats, and operations.  The client loads the contrib on connection.
 
 ```lisp
 (load "tools/swank/debugger-client.lisp")
