@@ -318,3 +318,15 @@ The recorded live and CI scripts now load one `build-image.lisp` recipe.  Its po
 The first profile build generated its image, then failed while reading the build script.  I had edited that script while SBCL held it open, changing the text at the remaining file position.  The final recipe accepts one image base pathname, and the full build was restarted with the recipe held fixed.  The failed invocation remains in `debug-bootstrap-build.log`.
 
 The final script completed a full rebuild from an empty target cache.  Its KVM boot reached `CI build completed successfully!` and exited with status 3.  The source tree included the pending closure-sharing correction.  Logs are `debug-bootstrap-final-build.log`, `debug-bootstrap-boot.log`, and `debug-bootstrap-serial.log`.  A separate live image was serialized from those same target files for tests on port 4006.
+
+## Debugger implementation: shared closure storage
+
+Closure lowering now gives each preserved captured binding one environment cell.  Incoming arguments and binding initializers use hidden temporary variables.  Reads in the defining function use the same cell as reads in its closures, including bindings without source assignments.
+
+The earlier probe exposed two entries for captured `A`, and changing the environment cell left the defining function reading 111 while the closure read 222.  After the correction, the test finds one entry and both reads return 222.  Additional cases passed for a closure writer, `LET`, multiple-value bindings, optional parameters with and without supplied arguments, supplied-p variables, rest lists, and keyword parameters.  Escaped closures observe the expected values after a full GC and continue sharing writes.
+
+The separate image on port 4006 booted from the approved bootstrap profile.  Its running compiler reports `(SAFETY 3 DEBUG 3 SPEED 1)`.  All binding and closure tests passed without reloading compiler files.  Frame-local IDs, keyword allocation, jump-table cleanup, structure layouts, the client tests, and remote function repair through a restart also passed.  Logs are `debug-bootstrap-cold-tests.log`, `debug-bootstrap-cold-client.log`, and `debug-bootstrap-cold-restart.log`.
+
+The initial readiness query used a source-only package nickname.  Its replacement incorrectly expected the debugger hook to be `NIL` inside a SWANK request.  SWANK dynamically binds that hook in `call-with-debugger-hook`.  The corrected query checks desktop initialization and the compiler policy.  The hook assertion failure remains in `debug-bootstrap-readiness-error.log`.
+
+These tests use the internal frame writer during a callback with a live target activation.  Local debug-policy overrides, declared types, scope identities, public mutation, and stop lifetimes remain separate work.

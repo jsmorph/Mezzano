@@ -344,35 +344,47 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
         (if-else form) (lower-env-form (if-else form)))
   form)
 
+(defun environment-binding-input (variable)
+  (if (and (preserve-variable-for-debugger-p variable)
+           (not (localp variable)))
+      (make-instance 'lexical-variable
+                     :inherit variable
+                     :name (gensym "Environment-Input")
+                     :definition-point (lexical-variable-definition-point variable)
+                     :plist (list 'hide-from-debug-info t))
+      variable))
+
 (defmethod lower-env-form ((form ast-let))
   (setf (bindings form)
         (loop
            for (variable init-form) in (bindings form)
-           collect (list variable (if (or (typep variable 'special-variable)
-                                          (localp variable))
-                                      (lower-env-form init-form)
-                                      (ast `(call (setf sys.int::%object-ref-t)
-                                                  ,(lower-env-form init-form)
-                                                  ,(second (first *environment-chain*))
-                                                  (quote ,(1+ (position variable (gethash (first *environment*) *environment-layout*)))))
-                                           form)))))
+           collect (list (environment-binding-input variable)
+                         (if (or (typep variable 'special-variable)
+                                 (localp variable))
+                             (lower-env-form init-form)
+                             (ast `(call (setf sys.int::%object-ref-t)
+                                         ,(lower-env-form init-form)
+                                         ,(second (first *environment-chain*))
+                                         (quote ,(1+ (position variable (gethash (first *environment*) *environment-layout*)))))
+                                  form)))))
   (setf (body form) (lower-env-form (body form)))
   form)
 
 (defmethod lower-env-form ((form ast-multiple-value-bind))
-  (ast `(multiple-value-bind ,(bindings form)
-            ,(lower-env-form (value-form form))
-          (progn
-            ,@(mapcan (lambda (var)
-                        (when (and (not (typep var 'special-variable))
-                                   (not (localp var)))
-                          (list `(call (setf sys.int::%object-ref-t)
-                                       ,var
+  (let ((inputs (mapcar #'environment-binding-input (bindings form))))
+    (ast `(multiple-value-bind ,inputs
+              ,(lower-env-form (value-form form))
+            (progn
+              ,@(loop for var in (bindings form)
+                      for input in inputs
+                      when (and (not (typep var 'special-variable))
+                                (not (localp var)))
+                        collect `(call (setf sys.int::%object-ref-t)
+                                       ,input
                                        ,(second (first *environment-chain*))
-                                       (quote ,(1+ (position var (gethash (first *environment*) *environment-layout*))))))))
-                      (bindings form))
-            ,(lower-env-form (body form))))
-       form))
+                                       (quote ,(1+ (position var (gethash (first *environment*) *environment-layout*))))))
+              ,(lower-env-form (body form))))
+         form)))
 
 (defmethod lower-env-form ((form ast-multiple-value-call))
   (ast `(multiple-value-call
@@ -514,10 +526,11 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
 
 (defmethod lower-env-form ((form lexical-variable))
   (if (or (localp form)
-          ;; A lexical defined in the current environment that isn't written
-          ;; to can be refered to directly.
+          ;; Read-only bindings can use the incoming value unless debugger
+          ;; writes require access through the shared cell.
           (and (eql (lexical-variable-definition-point form) *current-lambda*)
-               (zerop (lexical-variable-write-count form))))
+               (zerop (lexical-variable-write-count form))
+               (not (preserve-variable-for-debugger-p form))))
       form
       (dolist (e *environment*
                (error "Can't find variable ~S in environment." form))
@@ -554,12 +567,19 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
                                          :inherit lambda
                                          :name (gensym "Environment")
                                          :definition-point lambda
-                                         :plist (list 'hide-from-debug-info t))))
-             (flet ((set-var (var)
-                      `(call (setf sys.int::%object-ref-t)
-                             ,var
-                             ,new-env
-                             (quote ,(1+ (position var local-env))))))
+                                         :plist (list 'hide-from-debug-info t)))
+                 (inputs '()))
+             (labels ((input-var (var)
+                        (when var
+                          (or (cdr (assoc var inputs))
+                              (let ((input (environment-binding-input var)))
+                                (push (cons var input) inputs)
+                                input))))
+                      (set-var (var)
+                        `(call (setf sys.int::%object-ref-t)
+                               ,(input-var var)
+                               ,new-env
+                               (quote ,(1+ (position var local-env))))))
                (push (list lambda new-env) *environment-chain*)
                (push lambda *environment*)
                (setf (lambda-information-environment-layout lambda) (compute-environment-layout-debug-info))
@@ -593,7 +613,18 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
                                             (not (localp (lambda-information-count-arg lambda))))
                                        (list (set-var (lambda-information-count-arg lambda))))
                                ,(lower-env-form (lambda-information-body lambda))))
-                          lambda)))))
+                          lambda))
+               (setf (lambda-information-required-args lambda)
+                     (mapcar #'input-var (lambda-information-required-args lambda))
+                     (lambda-information-optional-args lambda)
+                     (loop for (var init suppliedp) in (lambda-information-optional-args lambda)
+                           collect (list (input-var var) init (input-var suppliedp)))
+                     (lambda-information-rest-arg lambda)
+                     (input-var (lambda-information-rest-arg lambda))
+                     (lambda-information-closure-arg lambda)
+                     (input-var (lambda-information-closure-arg lambda))
+                     (lambda-information-count-arg lambda)
+                     (input-var (lambda-information-count-arg lambda))))))
           (t (setf (lambda-information-environment-layout lambda) (compute-environment-layout-debug-info))
              (setf (lambda-information-body lambda) (lower-env-form (lambda-information-body lambda)))))
     lambda))
