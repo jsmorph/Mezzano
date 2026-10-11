@@ -75,6 +75,7 @@
 
 (defun temporary-p (varlike &optional context)
   (and (lexical-variable-p varlike)
+       (not (preserve-variable-for-debugger-p varlike))
        (eql (lexical-variable-use-count varlike) 1)
        (zerop (lexical-variable-write-count varlike))
        ;; Don't move D-X variables forwards, this runs the risk

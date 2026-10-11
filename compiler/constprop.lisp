@@ -141,6 +141,7 @@
              (constprop-value-p (first (ast-arguments unwrapped)))
              (constprop-value-p (second (ast-arguments unwrapped))))
         (and (lexical-variable-p unwrapped)
+             (not (preserve-variable-for-debugger-p unwrapped))
              (localp unwrapped)
              (eql (lexical-variable-write-count unwrapped) 0)))))
 
@@ -162,7 +163,8 @@
         ;; Add variables to the new constants list.
         ;; Non-constant variables will be flushed when a BLOCK, TAGBODY
         ;; or lambda is seen.
-        (when (lexical-variable-p var)
+        (when (and (lexical-variable-p var)
+                   (not (preserve-variable-for-debugger-p var)))
           (cond ((copyable-value-p val var)
                  (push (list var val 0 b) *known-variables*))
                 ((and (typep val 'ast-the)

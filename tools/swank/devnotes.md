@@ -248,3 +248,13 @@ This establishes recovery through an existing restart over one connected session
 The user approved publication through `jsmorph/slime` and preservation of source bindings for inspection and mutation at `(debug 3)`.  Lower debug levels retain their current optimization policy.  Compiler implementation will follow the binding through AST transformations, closure conversion, and backend storage.  This approval establishes the target behavior.  Each increment will document the behavior its tests establish.
 
 Slime commit [d2c70f2e](https://github.com/jsmorph/slime/commit/d2c70f2ea5916d8da2fe0a41ff302b2002715f61) is now published on `debugging`.  The build instructions select that exact revision after MBuild submodule initialization.  This resolves the pending dependency destination.
+
+## Debugger implementation: preserving source bindings
+
+The compiler marks variables created under `(debug 3)` during source processing.  Copying an AST variable retains that property.  Constant propagation, unused-binding removal, and temporary elimination now retain marked bindings.  The change uses a binding property rather than changing the compiler's use or write counts.
+
+The live test first failed because the copied binding `B` was absent.  After compiling and loading the five changed compiler files, copied, constant, unused, and shadowed bindings were present with the expected values.  A `(debug 1)` case retained its previous propagation behavior.  The existing evaluation tests and the remote function-repair/restart test passed.  The test helper's first draft had an unmatched parenthesis.  That test error was corrected before establishing the compiler failure.
+
+A separate CI image built and reached `CI build completed successfully!`, with QEMU exit status 3.  Logs are `debugging-build.log`, `debugging-boot.log`, and `debug-binding-preservation-serial.log` in the MBuild directory.  The live compiler-load log is `debug-binding-compiler-load.log`.
+
+This increment establishes the recorded inspection cases.  The subsequent storage test changed `A` through the existing frame writer after `(let ((b a)) ...)`.  Both values became 222.  SSA conversion still shares the value representing those two bindings.  Writable storage, closure sharing, declared-type validation, and binding lifetimes require further work.

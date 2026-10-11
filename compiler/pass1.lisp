@@ -75,12 +75,17 @@
           :format-control "Unused variable ~S."
           :format-arguments (list (lexical-variable-name variable)))))
 
-(defun make-variable (name declares)
+(defun make-variable (name declares env)
   (if (or (sys.int::variable-information name)
           (declared-as-p 'special name declares))
       (make-instance 'special-variable :name name)
       (make-instance 'lexical-variable
                      :name name
+                     :environment env
+                     :plist (when (= (optimize-quality-1
+                                      (optimize-qualities-in-environment env) 'debug)
+                                     3)
+                              (list 'preserve-for-debugger t))
                      :definition-point *current-lambda*
                      :ignore (cond ((declared-as-p 'ignore name declares) t)
                                    ((declared-as-p 'ignorable name declares) :maybe))
@@ -114,7 +119,7 @@
              (aux-bindings '()))
         ;; Add required, optional and rest arguments to the environment & lambda.
         (labels ((add-var (name)
-                   (let ((var (make-variable name declares)))
+                   (let ((var (make-variable name declares optimize-env)))
                      (check-variable-bindable var)
                      (setf env (extend-environment env :variables (list (list name var))))
                      var)))
@@ -550,7 +555,7 @@
              (variables (mapcar (lambda (binding)
                                   (multiple-value-bind (name init-form)
                                       (parse-let-binding binding)
-                                    (let ((var (make-variable name declares)))
+                                    (let ((var (make-variable name declares env)))
                                       (check-variable-bindable var)
                                       (list name init-form var))))
                                 bindings)))
@@ -630,7 +635,7 @@
           (multiple-value-bind (name init-form)
               (parse-let-binding b)
             (push name var-names)
-            (let ((var (make-variable name declares)))
+            (let ((var (make-variable name declares env)))
               (check-variable-bindable var)
               (setf (body inner) (make-instance 'ast-let
                                                 :environment env
