@@ -93,7 +93,7 @@ Within one boot, an accepted command executes at most once under its recorded ID
 
 An image restore resumes the saved guest state and establishes a new boot event.  Old handles, controllers, leases, frames, and remote sessions expire.  A fresh session can discover a restored stop and read retained command history.  Each result reports whether its command belongs to the current boot.  A historical frame result can receive a new session token while its guest frame reference remains expired.
 
-Restore tests cover a parked stop with a completed inspection command, and a running restart command blocked on a Lisp event.  The latter resumes its saved invocation, retains its prior-boot command identity, rejects resubmission, and records its result.  Queued commands, other execution positions, and external I/O across restore remain untested.  Restoring an earlier image also restores an earlier command history.  At-most-once execution within a boot does not prevent repetition of external effects across image rollback.
+Restore tests cover a parked stop with a completed inspection command, a queued restart command, and a running restart command blocked on a Lisp event.  The queued command expires without executing after the target thread resumes.  The running command resumes its saved invocation, retains its prior-boot command identity, rejects resubmission, and records its result.  Other running-command positions and external I/O across restore remain untested.  Restoring an earlier image also restores an earlier command history.  At-most-once execution within a boot does not prevent repetition of external effects across image rollback.
 
 ## Compiler guarantees
 
@@ -137,7 +137,7 @@ The operation inventory uses the debugger chapters of Symbolics' [Program Develo
 | Condition tracing and abort controls | Pending: entry policy and interaction with handlers and nested stops. | No retained-service test. |
 | Help, reports, and display integration | Pending: client interface and capture of diagnostic state. | The current interface is a Lisp client library. |
 | Reconnection and lost replies | Implemented within one boot and retained command history. | Reconnect test leaves accepted-command replies unread and checks one execution. |
-| Image restore | Partial: parked stop, completed-command history, and a running command blocked on a Lisp event. | Guest and remote restore tests.  Queued commands and other running-command cases remain open. |
+| Image restore | Partial: parked stop, completed-command history, queued-command expiration, and a running command blocked on a Lisp event. | Guest and remote restore tests.  Other running-command positions and external I/O remain untested. |
 | Retained evaluation and I/O | Pending: job ownership, streams, output retention, interruption, and completion. | Ordinary evaluation uses SLDB. |
 | GUI-free startup | Pending: a build profile and initialization paths that omit graphics and GUI components. | Cold boot and restore with graphics devices absent remain untested. |
 | Startup failure handling | Pending: preserve recoverable failures before unwind, report required-service readiness, and provide bounded early diagnostics. | The journal records error-swallowing startup paths.  Failure tests remain unrun. |
@@ -160,7 +160,7 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-keyword-lowering.lisp` | Keyword semantics and allocation at debug levels 1 and 3. |
 | `test-jump-table-bindings.lisp` | Branch binding cleanup and invalid selectors. |
 | `test-debugger-service.lisp` | Ownership, frames, GC, duplicate commands, child stops, repair, values, release, and cleanup. |
-| `test-debugger-service-restore.lisp` | Guest handles, completed-command history, and a running restart blocked on a Lisp event across restore. |
+| `test-debugger-service-restore.lisp` | Guest handles, completed-command history, queued-command expiration, and a running restart blocked on a Lisp event across restore. |
 | `test-debugger-reconnect.lisp` | TCP disconnect, exclusive control, token rejection, unread replies, and duplicate restart submission. |
 | `test-debugger-remote-restore.lisp` | Saved/absent sessions, old tokens/frames, storage retirement, and restored-stop recovery. |
 
@@ -168,7 +168,7 @@ Mezzano `6edf42a5` and the Slime implementation listed above passed a fresh full
 
 ## Decisions and development sequence
 
-The next design work concerns queued/running commands across restore, retained evaluation and I/O, and type/scope metadata.  Public binding mutation follows that metadata.  Lexical evaluation, frame return/reinvocation, trap entry, and stepping require their own semantics and tests before exposure through SWANK.
+The next design work concerns retained evaluation and I/O, and type/scope metadata.  Restore coverage needs further tests for running commands at other instruction positions and external I/O.  Public binding mutation follows that metadata.  Lexical evaluation, frame return/reinvocation, trap entry, and stepping require their own semantics and tests before exposure through SWANK.
 
 The approved reinvocation defaults use the frame's current argument values and, for a globally named function, its latest definition.  Original arguments will be available through an explicit option.  Invocation metadata, original argument storage, cleanup, and dynamic-binding behavior still require implementation and tests.
 

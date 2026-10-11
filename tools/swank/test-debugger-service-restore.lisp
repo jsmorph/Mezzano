@@ -184,4 +184,117 @@
       (close-debugger-controller controller)))
   (values))
 
+(defvar *queued-restore-thread* nil)
+(defvar *queued-restore-controller* nil)
+(defvar *queued-restore-handle* nil)
+(defvar *queued-restore-lease* nil)
+(defvar *queued-restore-command-id* nil)
+(defvar *queued-restore-probe* nil)
+
+(defun prepare-queued-restore-test ()
+  (assert (null (stop-for-thread "Debugger queued-command restore test")))
+  (setf *queued-restore-thread*
+        (start-test-thread "Debugger queued-command restore test")
+        *queued-restore-handle*
+        (await (lambda ()
+                 (stop-for-thread "Debugger queued-command restore test")))
+        *queued-restore-controller* (make-debugger-controller)
+        *queued-restore-lease*
+        (attach-debugger-stop *queued-restore-handle*
+                              *queued-restore-controller*)
+        *queued-restore-probe*
+        (restart-index *queued-restore-handle* *queued-restore-lease*
+                       "LISPM-SERVICE-TEST::PROBE")
+        *queued-restore-command-id*
+        (getf (debugger-stop-information *queued-restore-handle*)
+              :next-command-id))
+  (mezzano.supervisor::stop-thread *queued-restore-thread*)
+  (assert (eq (mezzano.supervisor::sample-thread-state *queued-restore-thread*)
+              :stopped))
+  (submit-debugger-command *queued-restore-lease* *queued-restore-command-id*
+                          :invoke-restart *queued-restore-probe*)
+  (let ((result (debugger-command-result *queued-restore-handle*
+                                        *queued-restore-command-id*)))
+    (assert (eq (getf result :state) :pending))
+    (assert (getf result :current-boot-p)))
+  (assert (zerop *probe-count*))
+  (assert (zerop *cleanup-count*))
+  (format t "Prepared a queued restart command on a stopped thread.~%")
+  (values))
+
+(defun finish-queued-restore-test ()
+  (expect-error :expired-stop
+                (lambda ()
+                  (debugger-stop-information *queued-restore-handle*)))
+  (let* ((handle (stop-for-thread "Debugger queued-command restore test"))
+         (controller (make-debugger-controller))
+         (lease nil))
+    (assert handle)
+    (setf lease (attach-debugger-stop handle controller))
+    (unwind-protect
+         (progn
+           (close-debugger-controller *queued-restore-controller*)
+           (assert (eq (mezzano.supervisor::sample-thread-state
+                        *queued-restore-thread*)
+                       :stopped))
+           (let ((result (debugger-command-result
+                          handle *queued-restore-command-id*)))
+             (assert (eq (getf result :state) :pending))
+             (assert (null (getf result :current-boot-p))))
+           (assert (zerop *probe-count*))
+           (assert (zerop *cleanup-count*))
+           (expect-error :expired-stop
+                         (lambda ()
+                           (submit-debugger-command
+                            *queued-restore-lease* *queued-restore-command-id*
+                            :invoke-restart *queued-restore-probe*)))
+           (expect-error :request-conflict
+                         (lambda ()
+                           (submit-debugger-command
+                            lease *queued-restore-command-id*
+                            :invoke-restart *queued-restore-probe*)))
+           (expect-error :stop-busy
+                         (lambda ()
+                           (submit-debugger-command
+                            lease
+                            (getf (debugger-stop-information handle)
+                                  :next-command-id)
+                            :frames)))
+           (mezzano.extensions:gc :full t)
+           (mezzano.supervisor::resume-thread *queued-restore-thread*)
+           (let ((result (completed-command handle *queued-restore-command-id*)))
+             (assert (eq (getf result :state) :expired))
+             (assert (null (getf result :current-boot-p)))
+             (assert (null (getf result :result))))
+           (assert (zerop *probe-count*))
+           (setf (mezzano.supervisor:event-state *probe-gate*) t)
+           (assert (equal (command handle lease :invoke-restart
+                                   *queued-restore-probe*)
+                          '("42" ":PROBE")))
+           (assert (= *probe-count* 1))
+           (assert (zerop *cleanup-count*))
+           (assert (eq (getf (debugger-command-result
+                             handle *queued-restore-command-id*)
+                            :state)
+                       :expired))
+           (setf (symbol-function 'missing)
+                 (compile nil '(lambda (a b object)
+                                 (declare (ignore object))
+                                 (values (+ a b) :queued-restored))))
+           (let ((continue (restart-index handle lease "CONTINUE"))
+                 (id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :invoke-restart continue)
+             (assert (eq (getf (completed-command handle id) :state) :unwound)))
+           (await (lambda ()
+                    (nth-value 1
+                               (mezzano.supervisor:thread-join
+                                *queued-restore-thread* nil))))
+           (assert (equal (mezzano.supervisor:thread-join *queued-restore-thread*)
+                          '(333 :queued-restored)))
+           (assert (= *cleanup-count* 1))
+           (release-debugger-stop lease)
+           (format t "PASS queued command restore, expired control, rejected replay, GC, expiration without execution, fresh invocation, and cleanup~%"))
+      (close-debugger-controller controller)))
+  (values))
+
 (in-package #:cl-user)

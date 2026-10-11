@@ -238,6 +238,8 @@ LISP
 
 The completion phase checks the restored state before releasing the event and recovering the application.
 
+For queued-command expiration, use `prepare-queued-restore-test` and `finish-queued-restore-test` in place of the parked-stop functions.  Preparation stops the target thread with the supervisor's thread controls, then queues a restart command.  After restore, completion resumes the thread and checks that the old command expires without invoking the restart.  It then submits a fresh restart command and recovers the application.
+
 ### Remote session restore
 
 The host state file must survive the VM restart:
