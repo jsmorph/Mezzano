@@ -488,8 +488,8 @@
             (format t "Interval ~S~%" interval)
             (format t "Candidates ~S~%" candidates)
             (format t "hint/reg ~S / ~S~%" hint reg))
-          (cond ((live-range-zombie interval)
-                 ;; Zombie range, spill.
+          (cond ((or (typep vreg 'ir::debug-variable-register)
+                     (live-range-zombie interval))
                  (mark-interval-spilled allocator interval))
                 ((and (typep inst 'ir:argument-setup-instruction)
                       (eql instruction-index (live-range-end interval)))

@@ -9,6 +9,8 @@
    (%kind :initarg :kind :reader virtual-register-kind))
   (:default-initargs :kind :value :name nil))
 
+(defclass debug-variable-register (virtual-register) ())
+
 (defmethod print-object ((object virtual-register) stream)
   (print-unreadable-object (object stream :type t :identity t)
     (format stream "~S ~S" (slot-value object '%name) (virtual-register-kind object))))

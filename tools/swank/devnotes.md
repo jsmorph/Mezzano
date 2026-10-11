@@ -258,3 +258,13 @@ The live test first failed because the copied binding `B` was absent.  After com
 A separate CI image built and reached `CI build completed successfully!`, with QEMU exit status 3.  Logs are `debugging-build.log`, `debugging-boot.log`, and `debug-binding-preservation-serial.log` in the MBuild directory.  The live compiler-load log is `debug-binding-compiler-load.log`.
 
 This increment establishes the recorded inspection cases.  The subsequent storage test changed `A` through the existing frame writer after `(let ((b a)) ...)`.  Both values became 222.  SSA conversion still shares the value representing those two bindings.  Writable storage, closure sharing, declared-type validation, and binding lifetimes require further work.
+
+## Debugger implementation: writable local storage
+
+Preserved bindings now bypass SSA substitution.  Local lowering assigns each one a debug-variable register, and register allocation places that register in stack storage throughout its live ranges.  The existing move lowering emits loads and stores for accesses to the binding.  Other values retain their own registers and spill locations.
+
+The copied-binding mutation test now returns `(222 111)` when changing `A` and `(111 222)` when changing `B`.  Further live tests passed for replacement of a constant initializer, multiple-value bindings, and a variable updated in a loop.  A test stored a new list in a binding, returned from the inspection callback, ran a full GC, and then read both the replacement and the earlier copied value.  The remote restart test also passed.
+
+The separate CI image built and booted with these changes.  QEMU exited with status 3 after the CI success message.  Logs are `debug-binding-storage-load.log`, `debug-binding-storage-build.log`, `debug-binding-storage-boot.log`, and `debug-binding-storage-serial.log` in the MBuild directory.
+
+The tests use the existing internal frame writer while the inspected activation is live.  Public mutation, declared-type validation, arbitrary stopping points, and escaped frame references require further implementation.  Captured variables require one shared storage location used by both the defining function and its closures.  That is the next compiler increment.

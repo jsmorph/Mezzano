@@ -224,7 +224,10 @@
 
 (defun lower-one-local-variable (backend-function binding)
   (let* ((var (bind-local-ast binding))
-         (vreg (make-instance 'virtual-register :name var))
+         (vreg (make-instance (if (mezzano.compiler::preserve-variable-for-debugger-p var)
+                                   'debug-variable-register
+                                   'virtual-register)
+                              :name var))
          (to-remove '()))
     ;; Replace loads & stores with move instructions.
     (do-instructions (inst backend-function)

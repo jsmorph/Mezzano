@@ -179,7 +179,9 @@ Virtual registers must be defined exactly once."
     ;; NLX thunks.
     (do-instructions (inst backend-function)
       (when (typep inst 'bind-local-instruction)
-        (push inst simple-transforms))
+        (if (mezzano.compiler::preserve-variable-for-debugger-p (bind-local-ast inst))
+            (push inst rejected-transforms)
+            (push inst simple-transforms)))
       (when (and (typep inst 'store-local-instruction)
                  (member (store-local-local inst) simple-transforms))
         (setf simple-transforms (remove (store-local-local inst)
@@ -189,7 +191,7 @@ Virtual registers must be defined exactly once."
       ;; Bail if there are any NLX regions in the function at all.
       (do-instructions (inst backend-function)
         (when (typep inst 'begin-nlx-instruction)
-          (setf rejected-transforms full-transforms
+          (setf rejected-transforms (append full-transforms rejected-transforms)
                 full-transforms '())
           (return)))
       ;; Build dynamic contours and eliminate variables live during NLX regions.
