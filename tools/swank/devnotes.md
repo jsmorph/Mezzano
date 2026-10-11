@@ -441,3 +441,11 @@ The debugging VM saved the published service and adapter with no active debugger
 The user approved current argument values as the default for frame reinvocation, with original arguments available through an explicit option.  Debugger edits to arguments will therefore affect the retried call.  The user also approved using the latest definition when reinvoking a globally named function, so redefining that function changes the code used for the retry.
 
 Frame reinvocation, original argument storage, and their tests remain to be implemented.
+
+## Approved evaluation lifetime and input: 2026-10-12
+
+The user approved continuing remote evaluations after client disconnection and retaining their results until explicit release.  This permits reconnection to retrieve the result of work already in progress.
+
+Input behavior depends on the evaluation mode.  An explicitly interactive evaluation waits for input or an explicit EOF, and reconnection restores access to that input stream.  A batch evaluation consumes supplied input and then receives EOF.  The user approved this distinction after the initial question failed to specify the input mode.
+
+Retained evaluation jobs and their input streams remain to be implemented and tested.
