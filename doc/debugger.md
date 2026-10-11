@@ -213,6 +213,7 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |
 | `test-debug-bindings.lisp` | Preserved binding visibility and lower-debug propagation. |
 | `test-debug-binding-writes.lisp` | Internal writes, independent copies, constants, loops, multiple-value bindings, and GC. |
+| `test-debug-write-flow.lisp` | Type-changing internal writes after arithmetic, type, identity, and vector tests at debug 3 and safety 3. |
 | `test-debug-closure-writes.lisp` | Shared captured bindings, parameter forms, escaped closures, and GC. |
 | `test-debug-policy.lisp` | Local debug declarations, preserved heap roots, writes, and GC. |
 | `test-keyword-lowering.lisp` | Keyword semantics and allocation at debug levels 1 and 3. |
@@ -232,6 +233,8 @@ Mezzano `0381885f`, including the batch service, subsequently passed a fresh ful
 The interactive-input implementation passed a fresh full recompilation and CI boot.  Logs are `interactive-final-build.log`, `interactive-final-boot.log`, and `interactive-final-serial.log`.  Guest, reconnect, and partial-line restore tests passed against that source.  The journal records their commands and logs.
 
 The interruption implementation and saved-data-register GC correction passed a fresh full recompilation and CI boot.  QEMU exited with status 3 and the serial success marker.  Logs are `interrupt-gc-corrected-build.log`, `interrupt-gc-corrected-boot.log`, and `interrupt-gc-corrected-serial.log`.
+
+Mezzano `5c7ee5bc` includes the saved-register, interrupt-return, and GC restart-address corrections.  It passed a fresh full recompilation and CI boot.  QEMU exited with status 3 and the serial success marker.  Logs are `gc-restart-build.log`, `gc-restart-boot.log`, and `gc-restart-serial.log`.  The targeted tests cover the x86-64 states listed above.  Individual allocator instruction positions and ARM64 execution remain untested.
 
 ## Decisions and development sequence
 
