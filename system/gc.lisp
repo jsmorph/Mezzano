@@ -471,7 +471,7 @@ This is required to make the GC interrupt safe."
                                      stack-pointer
                                      5)))
         (return-from scavenge-interrupt-stack-frame
-          (scavenge-interrupt-stack-frame interrupt-stack-pointer cycle-kind)))
+          (scavenge-interrupt-stack-frame interrupt-frame-pointer cycle-kind)))
       ;; Unconditionally scavenge the saved data registers.
       (scavengef (memref-t interrupt-stack-pointer 7) cycle-kind) ; r8
       (scavengef (memref-t interrupt-stack-pointer 6) cycle-kind) ; r9
@@ -781,7 +781,7 @@ This is required to make the GC interrupt safe."
                                      mezzano.supervisor::+thread-mv-slots-size+))
               (t
                ;; Only the iret frame remains on the stack.
-               (sys.int::%copy-words (+ (mezzano.supervisor::%object-slot-address thread mezzano.supervisor::+thread-interrupt-save-area+)
+               (sys.int::%copy-words (+ (mezzano.runtime::%object-slot-address thread mezzano.supervisor::+thread-interrupt-save-area+)
                                         (* 15 8))
                                      stack-pointer
                                      5)))

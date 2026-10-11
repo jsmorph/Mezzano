@@ -9,8 +9,8 @@ The [debugger design](../../../doc/debugger.md) owns capability status and test 
 | Component | Recorded revision or version |
 |---|---|
 | MBuild | `a13448825506c716fb60427f78aafeb6265477b2` |
-| Mezzano, including evaluation and restore tests | `26b8bfe3ef6750856946403851db400a0896c052` |
-| Slime implementation | `b8995d2a204797a85aa98427419a2cf1661ed4e1` |
+| Mezzano, including evaluation and restore tests | `bf07d9cbe5f59b6890dbac7cb9b611a3a5acf4c6` |
+| Slime implementation | `04d5ef6b725310f2656dd8d7745a42416bfc22ec` |
 | Other guest dependencies | Submodule revisions recorded by the MBuild revision above. |
 | Host Quicklisp distribution | `2026-01-01`, recorded in `quicklisp/dists/quicklisp/distinfo.txt`. |
 
@@ -24,9 +24,9 @@ cd /home/somebody/src/mezzano-boot
 git checkout a13448825506c716fb60427f78aafeb6265477b2
 git submodule update --init
 git -C Mezzano fetch https://github.com/jsmorph/Mezzano.git debugging
-git -C Mezzano checkout --detach 26b8bfe3ef6750856946403851db400a0896c052
+git -C Mezzano checkout --detach bf07d9cbe5f59b6890dbac7cb9b611a3a5acf4c6
 git -C home/slime fetch https://github.com/jsmorph/slime.git debugging
-git -C home/slime checkout --detach b8995d2a204797a85aa98427419a2cf1661ed4e1
+git -C home/slime checkout --detach 04d5ef6b725310f2656dd8d7745a42416bfc22ec
 ```
 
 Existing development checkouts use their `debugging` branches.  Another `git submodule update` selects MBuild's older Mezzano and Slime revisions, so explicit revision selection follows submodule initialization.
@@ -193,7 +193,8 @@ sbcl --script tools/swank/test-evaluation-reconnect.lisp 4006
 Run guest Lisp tests with the updated compiler and backend loaded:
 
 ```sh
-for test_name in TEST-FOOTHOLD-GC TEST-STRUCTURE-LAYOUTS TEST-FRAME-LOCALS \
+for test_name in TEST-FOOTHOLD-GC TEST-INTERRUPT-RETURN-GC \
+  TEST-STRUCTURE-LAYOUTS TEST-FRAME-LOCALS \
   TEST-DEBUG-BINDINGS TEST-DEBUG-BINDING-WRITES TEST-DEBUG-CLOSURE-WRITES \
   TEST-DEBUG-POLICY TEST-KEYWORD-LOWERING TEST-JUMP-TABLE-BINDINGS \
   TEST-DEBUGGER-SERVICE TEST-EVALUATION-SERVICE TEST-EVALUATION-INTERRUPT

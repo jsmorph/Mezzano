@@ -148,7 +148,7 @@ Any attached session can request interruption or read its history.  Stop command
 
 Tests cover computing and input-waiting workers, full GC, locals, continuation, abort, cleanup conditions and nonlocal transfers, duplicate IDs, unread replies, existing stops, inhibited delivery, and immediate submission after creation.  The immediate-submission test does not establish which startup scheduling order occurred.  Restore tests cover a queued request expiring without delivery and a running interrupt stop resuming through a fresh session.  Other instruction positions and external I/O require further tests.
 
-The x86-64 saved-interrupt scanner reads saved data registers as Lisp objects so that GC relocates their heap references.  A deterministic test holds a movable vector in each of R8, R9, R10, R11, R12, R13, R15, and RBX while an injected foothold waits across full GC.  Each register must match the relocated object when the interrupted function resumes.  R14 holds NIL.  ARM64 and collection during the register-restoration thunk require separate tests.
+The x86-64 saved-interrupt scanner reads saved data registers as Lisp objects so that GC relocates their heap references.  A deterministic test holds a movable vector in each of R8, R9, R10, R11, R12, R13, R15, and RBX while an injected foothold waits across full GC.  Each register must match the relocated object when the interrupted function resumes.  R14 holds NIL.  A second test uses the existing single-step controls to stop at return-thunk entry and before IRET, with both full-save state and an additional foothold above it.  GC and normal resumption pass at those positions.  ARM64, intermediate return instructions, and compiler GC restart regions require separate tests.
 
 ## Compiler guarantees
 
@@ -207,6 +207,7 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-lispm-eval.py` | Evaluation, encoding, output, multiple values, errors, flow control, and timeout behavior. |
 | `test-structure-layouts.lisp` | Inherited structure predicates/access and redefinition. |
 | `test-foothold-gc.lisp` | Movable objects in eight x86-64 data registers across an injected foothold and full GC. |
+| `test-interrupt-return-gc.lisp` | GC and resumption at x86-64 interrupt-return entry and IRET, in full-save state and beneath another foothold. |
 | `test-frame-locals.lisp` | Distinct SWANK local IDs and lookup. |
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |
 | `test-debug-bindings.lisp` | Preserved binding visibility and lower-debug propagation. |
@@ -228,6 +229,8 @@ Mezzano `6edf42a5` and the Slime implementation listed above passed a fresh full
 Mezzano `0381885f`, including the batch service, subsequently passed a fresh full recompilation and CI boot.  Its logs are `evaluation-current-build.log`, `evaluation-current-boot.log`, and `evaluation-current-serial.log`.  The batch user-guide example passed in `evaluation-guide-example.log`.
 
 The interactive-input implementation passed a fresh full recompilation and CI boot.  Logs are `interactive-final-build.log`, `interactive-final-boot.log`, and `interactive-final-serial.log`.  Guest, reconnect, and partial-line restore tests passed against that source.  The journal records their commands and logs.
+
+The interruption implementation and saved-data-register GC correction passed a fresh full recompilation and CI boot.  QEMU exited with status 3 and the serial success marker.  Logs are `interrupt-gc-corrected-build.log`, `interrupt-gc-corrected-boot.log`, and `interrupt-gc-corrected-serial.log`.
 
 ## Decisions and development sequence
 
