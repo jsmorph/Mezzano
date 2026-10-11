@@ -23,7 +23,7 @@ Install the scripts from this checkout into the MBuild working directory:
 ```sh
 cd /home/somebody/src/mezzano-boot
 cp Mezzano/tools/swank/minideb2/*.sh .
-cp Mezzano/tools/swank/minideb2/build-live.lisp .
+cp Mezzano/tools/swank/minideb2/build-image.lisp .
 cp Mezzano/tools/swank/lispm-eval Mezzano/tools/swank/client.lisp .
 ```
 
@@ -33,7 +33,7 @@ cp Mezzano/tools/swank/lispm-eval Mezzano/tools/swank/client.lisp .
 ./build-live.sh > build-live.log 2>&1
 ```
 
-This builds `mezzano-live.image`.  The VM must be stopped before rebuilding its image.  First boot compiles and loads the guest system and applications, then saves a startup snapshot.
+This recompiles every target file and builds `mezzano-live.image`.  The bootstrap uses `(safety 3 debug 1 speed 1)` during cross-compiler initialization and image compilation.  The running compiler retains its default `(safety 3 debug 3 speed 1)`.  Bootstrap code retains existing inspection support without a guarantee of mutable source bindings.  The VM must be stopped before rebuilding its image.  First boot compiles and loads the guest system and applications, then saves a startup snapshot.
 
 From a machine with Tailscale SSH access:
 
@@ -47,7 +47,7 @@ tailscale ssh root@minideb2 systemctl restart mezzano-vm.service
 
 ## Boot test
 
-`build-test.sh` removes the generated `Mezzano/build-x86-64` cache and builds the separate CI image, `mezzano.image`.  Every target file is recompiled so compiler changes cannot leave older machine code in the test image.  `boot-test.sh` starts it, waits for desktop initialization, and checks QEMU exit status 3 and `CI build completed successfully!`.  The file server must be running.  `file-server-test.sh` starts it in the foreground when the service is inactive.
+`build-test.sh` removes the generated `Mezzano/build-x86-64` cache and uses the same build recipe to create the separate CI image, `mezzano.image`.  Every target file is recompiled so compiler changes cannot leave older machine code in the test image.  `boot-test.sh` starts it, waits for desktop initialization, and checks QEMU exit status 3 and `CI build completed successfully!`.  The file server must be running.  `file-server-test.sh` starts it in the foreground when the service is inactive.
 
 ```sh
 ./build-test.sh > build.log 2>&1

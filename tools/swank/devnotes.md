@@ -308,3 +308,13 @@ GDB 16.3 was installed on `minideb2` under the user's authorization for required
 The installed and recorded `build-test.sh` now remove the generated `build-x86-64` cache before building the CI image.  This makes full target recompilation part of every compiler boot test.  The preceding full build exercised the same compiler invocation after moving that cache aside.  The edited shell script passed its syntax check.  Boot still awaits resolution of the debug policy issue above.
 
 `test-debugger.lisp` accepts an optional port.  Its explicit-port run against the existing endpoint passed remote stop, local inspection, function repair, restart, multiple values, and cleanup.  The default remains 4005.  The prepared second VM uses 4006.
+
+## Approved bootstrap compilation profile
+
+The user approved compiling the bootstrap at `(debug 1)` while retaining `(debug 3)` as the running compiler's default.  Bootstrap code retains existing inspection support without guaranteed mutable source bindings.  The source definition of the running compiler's default policy remains unchanged.
+
+The recorded live and CI scripts now load one `build-image.lisp` recipe.  Its policy binding covers cross-compiler initialization and image compilation, since initialization creates inline ASTs whose binding properties survive later copying.  Both scripts remove the generated target cache before compilation.  A full CI rebuild and boot test will validate this profile before publication.
+
+The first profile build generated its image, then failed while reading the build script.  I had edited that script while SBCL held it open, changing the text at the remaining file position.  The final recipe accepts one image base pathname, and the full build was restarted with the recipe held fixed.  The failed invocation remains in `debug-bootstrap-build.log`.
+
+The final script completed a full rebuild from an empty target cache.  Its KVM boot reached `CI build completed successfully!` and exited with status 3.  The source tree included the pending closure-sharing correction.  Logs are `debug-bootstrap-final-build.log`, `debug-bootstrap-boot.log`, and `debug-bootstrap-serial.log`.  A separate live image was serialized from those same target files for tests on port 4006.
