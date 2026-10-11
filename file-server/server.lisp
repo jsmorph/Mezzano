@@ -230,7 +230,7 @@
     (unwind-protect
          (progn
            (setf (sb-bsd-sockets:sockopt-reuse-address socket) t)
-           (sb-bsd-sockets:socket-bind socket (sb-bsd-sockets:make-inet-address "0.0.0.0") port)
+           (sb-bsd-sockets:socket-bind socket (sb-bsd-sockets:make-inet-address "127.0.0.1") port)
            (sb-bsd-sockets:socket-listen socket 5)
            (loop
                 (with-open-stream (client
