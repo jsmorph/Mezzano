@@ -817,6 +817,30 @@ Must not call SERIALIZE-OBJECT."))
                image environment)))
     (setf (object-slot image cell sys.int::+symbol-value-cell-value+) value)))
 
+(defparameter *area-state-variables*
+  '(sys.int::*wired-area-free-bins*
+    sys.int::*pinned-area-free-bins*
+    sys.int::*wired-area-base*
+    sys.int::*wired-area-bump*
+    sys.int::*wired-area-usage*
+    sys.int::*pinned-area-base*
+    sys.int::*pinned-area-bump*
+    sys.int::*pinned-area-usage*
+    sys.int::*general-area-old-gen-bump*
+    sys.int::*general-area-old-gen-limit*
+    sys.int::*cons-area-old-gen-bump*
+    sys.int::*cons-area-old-gen-limit*
+    sys.int::*wired-stack-area-bump*
+    sys.int::*stack-area-bump*
+    sys.int::*bytes-allocated-to-stacks*
+    sys.int::*function-area-base*
+    sys.int::*wired-function-area-limit*
+    sys.int::*wired-function-area-free-bins*
+    sys.int::*wired-function-area-usage*
+    sys.int::*function-area-limit*
+    sys.int::*function-area-free-bins*
+    sys.int::*function-area-usage*))
+
 (defun finalize-areas (image environment)
   "Build pinned/wired freelists and update GC variables with final area information."
   (let ((wired-free-bins (allocate (1+ 64) image :wired sys.int::+tag-object+))
@@ -836,30 +860,7 @@ Must not call SERIALIZE-OBJECT."))
     (allocate (* 1 1024 1024) image :pinned 0)
     ;; No further allocation permitted beyond this point.
     (setf (slot-value image '%finalizedp) t)
-    ;; Make sure all symbols that are about to be touched are present in-image.
-    (dolist (sym '(sys.int::*wired-area-free-bins*
-                   sys.int::*pinned-area-free-bins*
-                   sys.int::*wired-area-base*
-                   sys.int::*wired-area-bump*
-                   sys.int::*wired-area-usage*
-                   sys.int::*pinned-area-base*
-                   sys.int::*pinned-area-bump*
-                   sys.int::*pinned-area-usage*
-                   sys.int::*general-area-old-gen-bump*
-                   sys.int::*general-area-old-gen-limit*
-                   sys.int::*cons-area-old-gen-bump*
-                   sys.int::*cons-area-old-gen-limit*
-                   sys.int::*wired-stack-area-bump*
-                   sys.int::*stack-area-bump*
-                   sys.int::*bytes-allocated-to-stacks*
-                   sys.int::*function-area-base*
-                   sys.int::*wired-function-area-limit*
-                   sys.int::*wired-function-area-free-bins*
-                   sys.int::*wired-function-area-usage*
-                   sys.int::*function-area-limit*
-                   sys.int::*function-area-free-bins*
-                   sys.int::*function-area-usage*))
-      ;; This will fail if they're missing.
+    (dolist (sym *area-state-variables*)
       (serialize-object (env:translate-symbol environment sym) image environment)
       (serialize-object (env:symbol-global-value-cell
                           environment
@@ -1004,6 +1005,8 @@ Must not call SERIALIZE-OBJECT."))
     ;; Serialize NIL as the very first thing, this gives it a reasonably stable
     ;; value across images. Helps with debugging.
     (serialize-object 'nil image environment)
+    (dolist (symbol *area-state-variables*)
+      (env:symbol-global-value-cell environment (env:translate-symbol environment symbol)))
     ;; Main part: Serialize all symbols & objects reachable from them.
     ;; TODO: This traverses the object graph in depth-first order, leading
     ;; to functions being scattered over the image randomly. It'd be nice

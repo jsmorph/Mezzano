@@ -290,3 +290,15 @@ The shortcut now requires the current dynamic stack to match the target's stack.
 The reduced expression `(1+ (ecase x (1 11) (2 22) (3 33) (4 44)))` failed compilation before the correction in both the host cross-compiler and the guest compiler.  Afterward, arithmetic and list contexts compiled and passed each branch and invalid-selector tests at debug levels 1 and 3.  The ACPI source compiled with a diagnostic check of dynamic contours after each backend pass.  Closure-write tests passed again.  Logs are `debug-contour-fixed.log`, `debug-jump-probe.log`, and `debug-jump-table-load.log`.
 
 The first host diagnostic omitted the target architecture binding.  Its replacement-predicate test then encountered an SBCL function-result type check.  Correcting those test setup errors established the failing cases above.  A second full rebuild started from an empty cache after moving the incomplete first cache to `build-x86-64.before-debug-go`.
+
+## Cold-generator allocator state
+
+Every target file compiled after the jump-table correction.  Serialization then rejected creation of the value cell for `*WIRED-AREA-FREE-BINS*` after image finalization.  The serializer had assumed that compiled references would already make every allocator state cell reachable.
+
+The serializer now creates its required allocator state cells before traversing the symbol graph.  Finalization still prohibits allocation and verifies that those cells are present.  The image built successfully using the fully rebuilt target files.  The serializer change affects the host builder, so those target files did not require another compilation.  The build log is `debug-full-serialize-build.log`.
+
+The resulting image has not passed boot.  KVM QEMU exited with status 0 immediately after the bootloader transfer, before supervisor console output.  A QEMU instruction-emulator diagnostic recorded a page fault at `0x8000004970`, followed by a double fault and another page fault.  The generated symbol map identifies that address as `BYTE-POSITION`, in pageable function memory.  Paging and the supervisor exception handlers were not yet initialized.  The traces are `debug-full-early-failure-serial.log` and `debug-tcg-cpu.log`.
+
+Binding preservation prevents optimizations that the early bootstrap had depended on to avoid calls into pageable code.  The user has been asked to choose between a bootstrap build at debug level 1, retaining debug level 3 as the running compiler's default, and further compiler support for debug level 3 throughout the bootstrap.  This changes the supported code classes and requires explicit approval.  No bootstrap policy change has been made.
+
+GDB 16.3 was installed on `minideb2` under the user's authorization for required host tools.  The diagnostic QEMU instance used host-loopback GDB and a local QMP socket.  It was stopped after inspection.  The original SWANK VM remains running.  A second VM's launch scripts have been prepared for cold-boot and saved-image tests, but that VM has not been started.
