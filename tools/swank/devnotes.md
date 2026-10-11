@@ -457,3 +457,15 @@ The user authorized the remaining agenda under a standing procedure: review the 
 For a command running at snapshot time, the recommendation is to use Mezzano's existing thread restoration.  [Thread initialization](../../supervisor/thread.lisp) retains ordinary thread state and resumes the saved world.  [Command execution](../../system/debugger-service.lisp) keeps the active command on that thread's stack and records its result when the operation returns.  These source findings support testing the existing behavior before adding implementation code.
 
 The test will snapshot an invoked restart while it waits on an event, let it return in the original execution, restore the snapshot, and complete the restored invocation.  Assertions will check the saved command state, expired old control, rejection of prior-boot resubmission, one restart entry in the restored state, GC, returned values, application recovery, and cleanup.  This tests a running command blocked inside Lisp.  Queued commands, arbitrary instruction positions, and external I/O remain separate cases.
+
+## Running-command restore test: 2026-10-12
+
+The existing thread-restoration mechanism passed the running-command test.  A restart entered once and waited on an event when the image was saved.  A later request opened the event and let the original execution return.  Restoring the image recovered the earlier `:running` state and closed event.  The restored command retained its prior-boot identity.  Old control was rejected, and resubmitting that command under a new controller reported `:request-conflict`.
+
+After full GC, opening the restored event let the saved invocation return `42` and `:PROBE`.  The restart-entry counter remained one.  Repairing the application's missing function and invoking its continuation then returned `333` and `:RUNNING-RESTORED`, with one cleanup.  The test released the stop and found no active stops.
+
+The first driver placed the post-snapshot event release in the same evaluation that saved the image.  Although that run passed, it left the release in a saved evaluation's continuation.  The final driver sends the release through a separate evaluation created after saving.  That run also passed.  Logs are `debug-service-running-prepare.log`, `debug-service-running-restored-first.log`, `debug-service-running-prepare-final.log`, and `debug-service-running-restored-final.log`.
+
+Only the test and documentation changed.  The tested case is a running restart blocked inside Lisp.  Queued commands, other execution positions, and external I/O remain untested.
+
+The VM then saved the completed test state and restarted.  A fresh debugger client listed no active stops and released its session.  Logs are `debug-service-running-clean-snapshot.log` and `debug-service-running-readiness.log`.

@@ -111,6 +111,8 @@ The restore test uses two explicit phases after the service test has defined its
 
 After restarting the VM, `(lispm-service-test::finish-restore-test)` checks rejection of the old handles, attachment through a new controller, the retained command record, locals after GC, restart recovery, and cleanup.  This test covers a parked stop and a completed command at snapshot time.
 
+For a running command, use `prepare-running-restore-test` before saving and `finish-running-restore-test` after restarting, with the same loaded helpers.  The preparation invokes a returning restart that waits on an event.  The completion checks its restored `:running` state, expired control, rejection of prior-boot resubmission, GC, returned command values, application recovery, and one cleanup.  The existing thread-restoration mechanism passes this case.  Queued commands, other execution positions, and external I/O need separate tests.  Run the restore cases separately because their fixtures share counters.
+
 ## Remote retained debugger
 
 The host `debugger-client.lisp` uses SBCL and the shared `client.lisp` transport.  It requires [Slime commit 2b2086a9](https://github.com/jsmorph/slime/commit/2b2086a9951f7b18dc0b88e32729224ba1485029), selected by the build instructions.  Its [RPC documentation](https://github.com/jsmorph/slime/blob/2b2086a9951f7b18dc0b88e32729224ba1485029/contrib/swank-mezzano-debugger.md) describes sessions, token formats, and operations.  The client loads the contrib on connection.
