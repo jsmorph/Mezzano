@@ -1,0 +1,333 @@
+{
+  "source_url": "https://www.chai.uni-hamburg.de/~moeller/symbolics-info/genera.gif",
+  "source_sha256": "ae41963fe5460cb4a8c9f3a82ea843d9c98287ced7e26b37a5f398c82531328f",
+  "source_size": [
+    1024,
+    768
+  ],
+  "orientation": "Unscaled original GIF, top-to-bottom rows",
+  "samples": [
+    {
+      "role": "title prefix",
+      "text": "Symbolics Genera",
+      "font": "EUREX24I",
+      "font_sha256": "a72438d5d7c09b9650fb6f46be02c7cff2c2184ab2a1ad6fc2273f19b49f0c95",
+      "ink_rectangle": [
+        326,
+        98,
+        273,
+        22
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 276,
+      "metadata_metrics": {
+        "baseline": 18,
+        "blinker_height": 24,
+        "blinker_width": 10,
+        "character_height": 24,
+        "default_character_width": 10,
+        "raster_height": 24,
+        "raster_width": 32,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "machine prefix",
+      "text": "This machine is",
+      "font": "HL12",
+      "font_sha256": "11dbd255500be2ffc39d57d6d0a2279085135731d009a3c55cee6d29bb63f073",
+      "ink_rectangle": [
+        260,
+        154,
+        113,
+        10
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 115,
+      "metadata_metrics": {
+        "baseline": 11,
+        "blinker_height": 14,
+        "blinker_width": 6,
+        "character_height": 14,
+        "default_character_width": 6,
+        "raster_height": 14,
+        "raster_width": 13,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "machine name",
+      "text": "Ivory KOGS20",
+      "font": "HL12BI",
+      "font_sha256": "e2d005605527661949a64c24302d30384b879ad993de551827e88e6171cf5a7a",
+      "ink_rectangle": [
+        381,
+        154,
+        105,
+        13
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 106,
+      "metadata_metrics": {
+        "baseline": 11,
+        "blinker_height": 13,
+        "blinker_width": 5,
+        "character_height": 14,
+        "default_character_width": 7,
+        "raster_height": 14,
+        "raster_width": 13,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "image version",
+      "text": "Symbolics Genera 8.3",
+      "font": "HL12",
+      "font_sha256": "11dbd255500be2ffc39d57d6d0a2279085135731d009a3c55cee6d29bb63f073",
+      "ink_rectangle": [
+        421,
+        194,
+        160,
+        13
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 162,
+      "metadata_metrics": {
+        "baseline": 11,
+        "blinker_height": 14,
+        "blinker_width": 6,
+        "character_height": 14,
+        "default_character_width": 6,
+        "raster_height": 14,
+        "raster_width": 13,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "left system name",
+      "text": "Genera",
+      "font": "HL8",
+      "font_sha256": "c2c2a67d6345a0e77935ecc122f4c70662065796d10bb9503edf306f174148ab",
+      "ink_rectangle": [
+        155,
+        255,
+        35,
+        7
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 37,
+      "metadata_metrics": {
+        "baseline": 8,
+        "blinker_height": 11,
+        "blinker_width": 7,
+        "character_height": 11,
+        "default_character_width": 4,
+        "raster_height": 11,
+        "raster_width": 9,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "left system version",
+      "text": "8.3",
+      "font": "HL8",
+      "font_sha256": "c2c2a67d6345a0e77935ecc122f4c70662065796d10bb9503edf306f174148ab",
+      "ink_rectangle": [
+        442,
+        255,
+        13,
+        7
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 15,
+      "metadata_metrics": {
+        "baseline": 8,
+        "blinker_height": 11,
+        "blinker_width": 7,
+        "character_height": 11,
+        "default_character_width": 4,
+        "raster_height": 11,
+        "raster_width": 9,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "right system name",
+      "text": "HTML Parser",
+      "font": "HL8",
+      "font_sha256": "c2c2a67d6345a0e77935ecc122f4c70662065796d10bb9503edf306f174148ab",
+      "ink_rectangle": [
+        485,
+        255,
+        67,
+        7
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 69,
+      "metadata_metrics": {
+        "baseline": 8,
+        "blinker_height": 11,
+        "blinker_width": 7,
+        "character_height": 11,
+        "default_character_width": 4,
+        "raster_height": 11,
+        "raster_width": 9,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "right system version",
+      "text": "1.0",
+      "font": "HL8",
+      "font_sha256": "c2c2a67d6345a0e77935ecc122f4c70662065796d10bb9503edf306f174148ab",
+      "ink_rectangle": [
+        821,
+        255,
+        13,
+        7
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 15,
+      "metadata_metrics": {
+        "baseline": 8,
+        "blinker_height": 11,
+        "blinker_width": 7,
+        "character_height": 11,
+        "default_character_width": 4,
+        "raster_height": 11,
+        "raster_width": 9,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "left last system name",
+      "text": "HTTP Proxy Server",
+      "font": "HL8",
+      "font_sha256": "c2c2a67d6345a0e77935ecc122f4c70662065796d10bb9503edf306f174148ab",
+      "ink_rectangle": [
+        155,
+        372,
+        104,
+        9
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 106,
+      "metadata_metrics": {
+        "baseline": 8,
+        "blinker_height": 11,
+        "blinker_width": 7,
+        "character_height": 11,
+        "default_character_width": 4,
+        "raster_height": 11,
+        "raster_width": 9,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "help introduction",
+      "text": "You are typing to",
+      "font": "HL12",
+      "font_sha256": "11dbd255500be2ffc39d57d6d0a2279085135731d009a3c55cee6d29bb63f073",
+      "ink_rectangle": [
+        88,
+        419,
+        129,
+        13
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 131,
+      "metadata_metrics": {
+        "baseline": 11,
+        "blinker_height": 14,
+        "blinker_width": 6,
+        "character_height": 14,
+        "default_character_width": 6,
+        "raster_height": 14,
+        "raster_width": 13,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "help Listener name",
+      "text": "Dynamic Lisp Listener 1.",
+      "font": "HL12I",
+      "font_sha256": "9fada15083fbb084a0664ce86ab86823261ad0b28f0d329ee0e70eab2a90f864",
+      "ink_rectangle": [
+        225,
+        419,
+        175,
+        13
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 178,
+      "metadata_metrics": {
+        "baseline": 11,
+        "blinker_height": 13,
+        "blinker_width": 5,
+        "character_height": 14,
+        "default_character_width": 6,
+        "raster_height": 14,
+        "raster_width": 12,
+        "variable_width": true
+      }
+    },
+    {
+      "role": "help key",
+      "text": "HELP",
+      "font": "5X5",
+      "font_sha256": "c97b41ccc67c4801d059c1dfb4a762c2c7d05c0c0926fc79192016785bce7ac1",
+      "ink_rectangle": [
+        199,
+        454,
+        23,
+        5
+      ],
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 24,
+      "metadata_metrics": {
+        "baseline": 5,
+        "blinker_height": 5,
+        "blinker_width": 6,
+        "character_height": 5,
+        "default_character_width": 6,
+        "raster_height": 5,
+        "raster_width": 6,
+        "variable_width": false
+      }
+    },
+    {
+      "role": "help keycap",
+      "text": "HELP",
+      "font": null,
+      "ink_rectangle": [
+        194,
+        452,
+        34,
+        9
+      ],
+      "rows": [
+        "03ffffff0",
+        "040000008",
+        "0917d0784",
+        "111410442",
+        "21f790781",
+        "111410402",
+        "0917de404",
+        "040000008",
+        "03ffffff0"
+      ]
+    }
+  ]
+}

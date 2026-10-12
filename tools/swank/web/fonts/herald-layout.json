@@ -1,0 +1,329 @@
+{
+  "reference_sha256": "ae41963fe5460cb4a8c9f3a82ea843d9c98287ced7e26b37a5f398c82531328f",
+  "application_sha256": "6a49beac98ffc1b08435f55d58b5eb8da6f62df42c2d40d6e09b1886dba1a2cd",
+  "size": [
+    1024,
+    768
+  ],
+  "reference_coordinate_offset": [
+    0,
+    -20
+  ],
+  "offset_reason": "The browser omits the original 20-pixel Macintosh menu bar.",
+  "search_radius": 24,
+  "intermediate_gray_pixels": 998,
+  "samples": [
+    {
+      "role": "title prefix",
+      "text": "Symbolics Genera",
+      "font": "EUREX24I",
+      "reference": [
+        326,
+        98
+      ],
+      "expected_application": [
+        326,
+        78
+      ],
+      "application": [
+        325,
+        78
+      ],
+      "offset": [
+        -1,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "machine prefix",
+      "text": "This machine is",
+      "font": "HL12",
+      "reference": [
+        260,
+        154
+      ],
+      "expected_application": [
+        260,
+        134
+      ],
+      "application": [
+        260,
+        134
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "machine name",
+      "text": "Ivory KOGS20",
+      "font": "HL12BI",
+      "reference": [
+        381,
+        154
+      ],
+      "expected_application": [
+        381,
+        134
+      ],
+      "application": [
+        381,
+        134
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "image version",
+      "text": "Symbolics Genera 8.3",
+      "font": "HL12",
+      "reference": [
+        421,
+        194
+      ],
+      "expected_application": [
+        421,
+        174
+      ],
+      "application": [
+        422,
+        174
+      ],
+      "offset": [
+        1,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "left system name",
+      "text": "Genera",
+      "font": "HL8",
+      "reference": [
+        155,
+        255
+      ],
+      "expected_application": [
+        155,
+        235
+      ],
+      "application": [
+        155,
+        235
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "left system version",
+      "text": "8.3",
+      "font": "HL8",
+      "reference": [
+        442,
+        255
+      ],
+      "expected_application": [
+        442,
+        235
+      ],
+      "application": [
+        442,
+        235
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "right system name",
+      "text": "HTML Parser",
+      "font": "HL8",
+      "reference": [
+        485,
+        255
+      ],
+      "expected_application": [
+        485,
+        235
+      ],
+      "application": [
+        485,
+        235
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "right system version",
+      "text": "1.0",
+      "font": "HL8",
+      "reference": [
+        821,
+        255
+      ],
+      "expected_application": [
+        821,
+        235
+      ],
+      "application": [
+        821,
+        235
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "left last system name",
+      "text": "HTTP Proxy Server",
+      "font": "HL8",
+      "reference": [
+        155,
+        372
+      ],
+      "expected_application": [
+        155,
+        352
+      ],
+      "application": [
+        155,
+        352
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "help introduction",
+      "text": "You are typing to",
+      "font": "HL12",
+      "reference": [
+        88,
+        419
+      ],
+      "expected_application": [
+        88,
+        399
+      ],
+      "application": [
+        88,
+        399
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "help Listener name",
+      "text": "Dynamic Lisp Listener 1.",
+      "font": "HL12I",
+      "reference": [
+        225,
+        419
+      ],
+      "expected_application": [
+        225,
+        399
+      ],
+      "application": [
+        225,
+        399
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "help key",
+      "text": "HELP",
+      "font": "5X5",
+      "reference": [
+        199,
+        454
+      ],
+      "expected_application": [
+        199,
+        434
+      ],
+      "application": [
+        199,
+        442
+      ],
+      "offset": [
+        0,
+        8
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    },
+    {
+      "role": "help keycap",
+      "text": "HELP",
+      "font": null,
+      "reference": [
+        194,
+        452
+      ],
+      "expected_application": [
+        194,
+        432
+      ],
+      "application": [
+        194,
+        440
+      ],
+      "offset": [
+        0,
+        8
+      ],
+      "missing": 0,
+      "extra": 0,
+      "gray": 0
+    }
+  ]
+}

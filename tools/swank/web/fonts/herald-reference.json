@@ -1,0 +1,236 @@
+{
+  "source_url": "https://www.chai.uni-hamburg.de/~moeller/symbolics-info/genera.gif",
+  "source_sha256": "ae41963fe5460cb4a8c9f3a82ea843d9c98287ced7e26b37a5f398c82531328f",
+  "herald": {
+    "title": "Symbolics Genera\u00ae 8.3",
+    "facts": [
+      [
+        {
+          "kind": ":text",
+          "text": "This machine is "
+        },
+        {
+          "kind": ":emphasis",
+          "text": "Ivory KOGS20"
+        },
+        {
+          "kind": ":text",
+          "text": ", a Symbolics MacIvory model 3\u2122."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Symbolics Genera 8.3"
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Loaded from FEP0:>Inc-Genera-8-3-Vollausstattung.ilod.1"
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "7.9M words Physical memory, 36.6M words Swapping space."
+        }
+      ]
+    ],
+    "detailed-p": true,
+    "systems": [
+      {
+        "name": "Genera",
+        "version": "8.3"
+      },
+      {
+        "name": "CLASSIC-EXTENSIONS",
+        "version": "1.0"
+      },
+      {
+        "name": "HTTP Server",
+        "version": "67.4"
+      },
+      {
+        "name": "Showable Procedures",
+        "version": "36.3"
+      },
+      {
+        "name": "Binary Tree",
+        "version": "34.0"
+      },
+      {
+        "name": "W3 Presentation System",
+        "version": "7.0"
+      },
+      {
+        "name": "W4 Constraint-Guide Web Walker",
+        "version": "38.0"
+      },
+      {
+        "name": "HTTP Client Substrate",
+        "version": "1.2"
+      },
+      {
+        "name": "Experimental Lambda Information Retrieval System",
+        "version": "12.14"
+      },
+      {
+        "name": "HTTP Proxy Server",
+        "version": "2.1"
+      },
+      {
+        "name": "HTML Parser",
+        "version": "1.0"
+      },
+      {
+        "name": "CLIM",
+        "version": "52.13"
+      },
+      {
+        "name": "Genera CLIM",
+        "version": "52.5"
+      },
+      {
+        "name": "PostScript CLIM",
+        "version": "52.2"
+      },
+      {
+        "name": "CLIM Demo",
+        "version": "52.1"
+      },
+      {
+        "name": "CLIM Documentation",
+        "version": "52.0"
+      },
+      {
+        "name": "Macintosh System Software",
+        "version": "7.5.3"
+      },
+      {
+        "name": "Patch TCP hang on close when client drops connection.",
+        "version": ""
+      },
+      {
+        "name": "Prevent reset of input buffer on tcp reset by HTTP servers.",
+        "version": ""
+      }
+    ],
+    "help": [
+      [
+        {
+          "kind": ":text",
+          "text": "You are typing to "
+        },
+        {
+          "kind": ":emphasis",
+          "text": "Dynamic Lisp Listener 1."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Control characters are interpreted as commands to edit input."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Press Control-"
+        },
+        {
+          "kind": ":key",
+          "text": "HELP"
+        },
+        {
+          "kind": ":text",
+          "text": " for a list of input editor commands."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Type \"Help Commands\" to display a list of Command Processor commands."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Press "
+        },
+        {
+          "kind": ":key",
+          "text": "SELECT"
+        },
+        {
+          "kind": ":text",
+          "text": " D to select Document Examiner\u00ae to read online documentation."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Press "
+        },
+        {
+          "kind": ":key",
+          "text": "SELECT"
+        },
+        {
+          "kind": ":text",
+          "text": "-"
+        },
+        {
+          "kind": ":key",
+          "text": "HELP"
+        },
+        {
+          "kind": ":text",
+          "text": " for a list of programs."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Press "
+        },
+        {
+          "kind": ":key",
+          "text": "FUNCTION"
+        },
+        {
+          "kind": ":text",
+          "text": "-"
+        },
+        {
+          "kind": ":key",
+          "text": "HELP"
+        },
+        {
+          "kind": ":text",
+          "text": " for a list of asynchronous and window operations."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Hold down Shift and click the rightmost mouse button to select the System Menu of programs and window operations."
+        }
+      ],
+      [
+        {
+          "kind": ":text",
+          "text": "Press Symbol-"
+        },
+        {
+          "kind": ":key",
+          "text": "HELP"
+        },
+        {
+          "kind": ":text",
+          "text": " for a list of special function keys and special character keys."
+        }
+      ]
+    ]
+  }
+}

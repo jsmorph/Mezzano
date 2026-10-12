@@ -1,0 +1,40 @@
+{
+  "reference": "https://www.chai.uni-hamburg.de/~moeller/symbolics-info/genera.gif",
+  "reference_sha256": "ae41963fe5460cb4a8c9f3a82ea843d9c98287ced7e26b37a5f398c82531328f",
+  "chromium": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/145.0.7632.109",
+    "revision": "@61eff07de4f37ac1c6969c91034a447ef6cd394d",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.0.0 Safari/537.36",
+    "jsVersion": "14.5.201.9"
+  },
+  "viewport": [
+    1024,
+    768
+  ],
+  "device_scale_factor": 1,
+  "source": "http://minideb2:8765/",
+  "assets": {
+    "app.js": "8c5fd3b53db262165ec062db67ef24ac6e90ac5d7ffd073bccad584c8d2ea6ed",
+    "style.css": "65a54ba770a958b8464485d0ba95d4df7ad4724d0eadd7de4bcbc5ec74a36e1b",
+    "fonts/eurex24i.ttf": "6fef500143891aaffe91f0d0a28f220ed311666dc14f7213d3e93cccdf4745fa",
+    "fonts/hl12.ttf": "92552ee010f075c08e35b329cfbca09dda7fada9219f8cea5ececced8f907e7b",
+    "fonts/hl12bi.ttf": "0c5d8b2c248d09f7fe02967299525fa127e10daa9fc6fee2bb380bd9818a22d3",
+    "fonts/hl12i.ttf": "b1a49847e6ad58658f0ad7703fd070b793a5111753cd5ce7e52f7118a96c8f80",
+    "fonts/hl8.ttf": "4ba4c32a862ba0f32dc89e30a8090b36c0ed3d2279a8dc83e576833d22f4a376",
+    "fonts/5x5.ttf": "c81c2f18849cf24de57bf35ab651cd3e94956d2aa77922f978481666366b7269"
+  },
+  "requests": [
+    "open-session",
+    "listener-information",
+    "jobs",
+    "stops"
+  ],
+  "errors": [],
+  "limitations": [
+    "The original registered and trademark characters use fallback fonts because the recovered Unicode mapping lacks them.",
+    "The Mezzano help separates its introductory line from command help. The original groups its first three lines.",
+    "The fixture measures the shared herald renderer with historical content. Product content comes from the Lisp guest.",
+    "The comparison covers selected herald rectangles. Macintosh chrome, scrollbars, copyright text, and the full window differ."
+  ]
+}
