@@ -1343,3 +1343,33 @@ Certificate verification remains at its last measured approximately 11.5 seconds
 Arithmetic review found that the fast-fixnum transforms require safety 0 because their unboxed operations can produce invalid tagged values if their assumptions fail.  Enabling them at safety 3 requires validated operand bounds or proof from preceding checks, including a result range that cannot overflow.  The present profile does not distinguish the cost of those checks from other instructions in DIVIDE-DIGITS.  That implementation remains pending.  The completed array increment preserves safety checks and provides a separate measured improvement.
 
 The fresh x86-64 image reached CI build completed successfully and QEMU exited with status 3.  Evidence is array-compiler-ci-serial.log and array-compiler-ci.exit.  The Web service remained active throughout this successful boot.  The array compiler increment is tested in the running guest and in a fresh image.  ARM64 execution and snapshot restoration of this increment have not been tested.
+
+## Certificate verification target: 2026-10-12
+
+The user asked whether modest compiler improvements could reach 100 milliseconds, and requested evaluation of native arithmetic or TLS alternatives.  This is an investigation.  No new dependency or runtime implementation is authorized by this discussion.
+
+Exported the previously captured public chain and trust roots from WEB-HTTPS-DIAGNOSTIC into home/certificate-benchmark-data.sexp.  The file contains three DER certificates, 150 DER trust roots, and the guest universal time.  It contains no credentials.  A compiled SBCL driver parsed those inputs once, then called PURE-TLS::VERIFY-CERTIFICATE-CHAIN seven times with the captured time and :PURPOSE :SERVER-AUTH.  The verifier and P-384 source files have identical SHA-256 hashes in the host and guest source installations.  This Linux run follows the Lisp verifier path.
+
+| Call | Wall milliseconds | CPU milliseconds | Allocated bytes |
+| --- | ---: | ---: | ---: |
+| First | 60.006 | 60.808 | 43,829,872 |
+| Second | 28.002 | 26.855 | 29,021,328 |
+| Third | 24.002 | 22.478 | 29,021,120 |
+| Fourth | 16.002 | 17.112 | 29,021,584 |
+| Fifth | 20.001 | 20.319 | 29,021,792 |
+| Sixth | 20.002 | 20.200 | 29,020,608 |
+| Seventh | 16.001 | 16.970 | 29,053,856 |
+
+Every call succeeded.  The six subsequent calls have a median wall time of approximately 20 milliseconds.  Evidence is certificate-benchmark-sbcl.lisp, certificate-benchmark-sbcl.fasl, and certificate-benchmark-sbcl.log in the build directory.  SBCL is 2.5.2.debian on the same Ryzen host.  Timing includes allocations and any collection during verification.  Library loading, certificate parsing, hostname verification, network communication, and TLS key exchange are outside the measured interval.  The first row is the first call after loading and parsing, rather than a cold-machine measurement.  The guest's earlier approximately 11.5-second trace measured this chain verifier.  These results establish that the Lisp verification stack can meet the requested arithmetic latency on this hardware.
+
+The original Mezzano profile has all 934 verification samples under certificate-signature verification, with 789 under bignum division.  Most samples are in P-384 verification.  The approximately 1.8-second residual calculated earlier assumes only division changes.  Multiplication, shifts, allocation, and normalization in that residual can also improve.
+
+Source inspection identifies three runtime costs.  %%BIGNUM-TRUNCATE uses bit-at-a-time division.  %BIGNUM-LEFT-SHIFT and %BIGNUM-RIGHT-SHIFT perform repeated 32-bit shifts with intermediate allocations.  %%BIGNUM-MULTIPLY-UNSIGNED calls %%BIGNUM-MULTIPLY-STEP for each word product.  That x86-64 assembly primitive allocates a three-word bignum for its 128-bit result.  Reading a full-width word can also allocate a boxed integer.  Compiler optimization of the standalone division loop addresses only part of this work.
+
+The recommendation is to keep the TLS and certificate policy in Lisp and improve the arithmetic primitives through Mezzano's existing Lisp assembler.  Whole-word division, single-pass shifts, and multiplication with register carries and one result allocation address the identified causes.  This is runtime arithmetic work beyond the measured array compiler change.  Meeting 100 milliseconds in Mezzano remains an untested target.  An initial increment should replace repeated-shift allocation and measure the same chain, followed by word multiplication and direct runtime division, with independent arithmetic tests before each installation.
+
+[GMP's low-level interface](https://gmplib.org/manual/Low_002dlevel-Functions) offers word-array operations with caller-provided result storage.  It is the relevant interface if importing arithmetic.  The high-level interface introduces another integer representation and allocation policy.  [GMP's allocation documentation](https://gmplib.org/manual/Custom-Allocation) specifies default malloc/realloc/free use and restrictions on recovery from allocation failure.  No general C foreign-call facility or C-library loader was found in the reviewed Mezzano source.  A GMP port therefore requires calling-convention integration, GC-safe buffer ownership, linked-code loading, and defined error behavior.  Secret-dependent arithmetic also requires operation-specific analysis: GMP distinguishes its secure low-level functions from ordinary operations.
+
+A second alternative is a native complete signature-verification operation.  [BearSSL's ECDSA API](https://bearssl.org/apidoc/bearssl__ec_8h.html) takes a digest, public key, and signature, and returns success or failure.  This boundary would keep certificate parsing, trust, hostname, validity, and chain rules in Lisp while avoiding repeated Lisp/C conversions for each integer operation.  Its [published measurements](https://bearssl.org/speed.html) show 360 P-384 point multiplications per second on a 2012 Xeon with generic i31 code.  Those results support feasibility, but do not measure our guest or a complete certificate check.  Library selection, native integration, and a same-chain benchmark require a separate approved implementation decision.
+
+A complete native TLS port changes a larger part of the system than the measured arithmetic costs require.  The immediate choice is between improving the existing arithmetic primitives and importing a bounded native cryptographic operation.  General compiler development remains useful but has no measured basis for a 115-fold reduction of this complete workload by itself.
