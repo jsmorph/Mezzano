@@ -339,8 +339,8 @@
       (otherwise (error "Unsupported documentation action ~S." action)))))
 
 (defun private-pathname (name)
-  (if (equal name "") #p"SYS:HOME;PRIVATE.PSB"
-      (merge-pathnames name #p"SYS:HOME;PRIVATE.PSB")))
+  (let ((default (pathname "SYS:HOME;PRIVATE.PSB")))
+    (if (equal name "") default (merge-pathnames name default))))
 
 (defun check-private-topic-list (ids)
   (check-type ids list)
