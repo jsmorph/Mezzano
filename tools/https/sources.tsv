@@ -1,0 +1,11 @@
+pure-tls	https://github.com/atgreen/pure-tls.git	439d85b6bc90f335f17fd51f30bba37742c4b652
+drakma	https://github.com/edicl/drakma.git	f9d001b203ebe27b74facf558ba08ed672882ac7
+ironclad	https://github.com/sharplispers/ironclad.git	f6519450b47a7648f837126e9f269857033e352a
+cl-cancel	https://github.com/atgreen/cl-cancel.git	bec34fb37fe713746bdeefaf542f578d174d9ffa
+atomics	https://github.com/Shinmera/atomics.git	bf0e2619ebead47a2d7989a468f90ecc410883bc
+precise-time	https://github.com/Shinmera/precise-time.git	e0bf77d7c200913c0b7920363c26e89ab68c03ad
+bordeaux-threads	https://github.com/sionescu/bordeaux-threads.git	92da6b9d4f2d92273290ab53416028c67a17b1d7
+jzon	https://github.com/jsmorph/jzon.git	8f8099ae762d54de9cbe2a084fc52ae3de96ee7d
+float-features	https://github.com/Shinmera/float-features.git	cd5dab00d2f4a562d65f46b3fc1cecec308e2443
+documentation-utils	https://github.com/Shinmera/documentation-utils.git	fcbd927dee7f311915a27ee557e3db1d4510403c
+trivial-indent	https://github.com/Shinmera/trivial-indent.git	87b35ff9202b107230e35790e93c471cc7880900

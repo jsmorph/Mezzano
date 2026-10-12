@@ -1,0 +1,8 @@
+(require :asdf)
+(unless (find-package "QUICKLISP")
+  (error "Load Quicklisp setup.lisp before this file."))
+(when (member "cl+ssl" (asdf:already-loaded-systems) :test (function equal))
+  (error "Start a fresh Lisp without CL+SSL already loaded."))
+(ql:quickload :pure-tls/cl+ssl-compat)
+(asdf:register-immutable-system "cl+ssl")
+(ql:quickload '(:drakma :com.inuoe.jzon))
