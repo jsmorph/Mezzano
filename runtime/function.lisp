@@ -16,7 +16,10 @@
 
 (defun function-gc-metadata-size (function)
   (%type-check function +object-tag-function+ 'compiled-function)
-  (ldb +function-header-metadata-size+ (%object-header-data function)))
+  (let ((header (%object-header-data function)))
+    (logior (ldb +function-header-metadata-size+ header)
+            (ash (ldb +function-header-metadata-size-high+ header)
+                 (byte-size +function-header-metadata-size+)))))
 
 (defun function-pool-base (function)
   (%type-check function +object-tag-function+ 'compiled-function)
@@ -51,8 +54,10 @@
   "Return the address of and the number of bytes in FUNCTION's GC info."
   (%type-check function +object-tag-function+ 'compiled-function)
   (let* ((address (logand (lisp-object-address function) -16))
-         (gc-length (ldb +function-header-metadata-size+
-                         (%object-header-data function)))
+         (header (%object-header-data function))
+         (gc-length (logior (ldb +function-header-metadata-size+ header)
+                            (ash (ldb +function-header-metadata-size-high+ header)
+                                 (byte-size +function-header-metadata-size+))))
          (mc-size (function-code-size function))
          (n-constants (function-pool-size function)))
     (values (+ address mc-size (* n-constants 8)) ; Address.
@@ -80,7 +85,9 @@ Arguments to FUNCTION:
          (n-constants (ldb +function-header-pool-size+ header-data))
          ;; Address of GC metadata & the length.
          (address (+ fn-address mc-size (* n-constants 8)))
-         (length (ldb +function-header-metadata-size+ header-data))
+         (length (logior (ldb +function-header-metadata-size+ header-data)
+                         (ash (ldb +function-header-metadata-size-high+ header-data)
+                              (byte-size +function-header-metadata-size+))))
          ;; Position within the metadata.
          (position 0))
     (flet ((consume (&optional (errorp t))

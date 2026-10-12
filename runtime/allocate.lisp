@@ -778,12 +778,17 @@
          (total (+ (* mc-size 2) pool-size gc-info-size)))
     (assert (< mc-size (ash 1 (byte-size sys.int::+function-header-code-size+))))
     (assert (< pool-size (ash 1 (byte-size sys.int::+function-header-pool-size+))))
-    (assert (< (length gc-info) (ash 1 (byte-size sys.int::+function-header-metadata-size+))))
+    (assert (< (length gc-info)
+               (ash 1 (+ (byte-size sys.int::+function-header-metadata-size+)
+                         (byte-size sys.int::+function-header-metadata-size-high+)))))
     (let* ((object (%allocate-function
                     tag
                     (logior (dpb mc-size sys.int::+function-header-code-size+ 0)
                             (dpb pool-size sys.int::+function-header-pool-size+ 0)
-                            (dpb (length gc-info) sys.int::+function-header-metadata-size+ 0))
+                            (dpb (length gc-info) sys.int::+function-header-metadata-size+ 0)
+                            (dpb (ash (length gc-info)
+                                      (- (byte-size sys.int::+function-header-metadata-size+)))
+                                 sys.int::+function-header-metadata-size-high+ 0))
                     total
                     wired))
            (address (sys.int::object-base-address object)))

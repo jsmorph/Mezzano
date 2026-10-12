@@ -317,11 +317,16 @@ Must not call SERIALIZE-OBJECT."))
 (defun function-header (code-length pool-length metadata-length &optional (tag sys.int::+object-tag-function+))
   (assert (< (ceiling (+ code-length 16) 16) (expt 2 (cross-cl:byte-size sys.int::+function-header-code-size+))))
   (assert (< pool-length (expt 2 (cross-cl:byte-size sys.int::+function-header-pool-size+))))
-  (assert (< metadata-length (expt 2 (cross-cl:byte-size sys.int::+function-header-metadata-size+))))
+  (assert (< metadata-length
+             (expt 2 (+ (cross-cl:byte-size sys.int::+function-header-metadata-size+)
+                        (cross-cl:byte-size sys.int::+function-header-metadata-size-high+)))))
   (logior (ash tag sys.int::+object-type-shift+)
           (ash (logior (cross-cl:dpb (ceiling (+ code-length 16) 16) sys.int::+function-header-code-size+ 0)
                        (cross-cl:dpb pool-length sys.int::+function-header-pool-size+ 0)
-                       (cross-cl:dpb metadata-length sys.int::+function-header-metadata-size+ 0))
+                       (cross-cl:dpb metadata-length sys.int::+function-header-metadata-size+ 0)
+                       (cross-cl:dpb (ash metadata-length
+                                          (- (cross-cl:byte-size sys.int::+function-header-metadata-size+)))
+                                     sys.int::+function-header-metadata-size-high+ 0))
                sys.int::+object-data-shift+)))
 
 (defmethod initialize-object ((object env:cross-compiled-function) object-value image environment)

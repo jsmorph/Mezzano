@@ -173,6 +173,7 @@
 (defconstant +function-header-code-size+ (byte 16 8))
 (defconstant +function-header-pool-size+ (byte 16 24))
 (defconstant +function-header-metadata-size+ (byte 16 40))
+(defconstant +function-header-metadata-size-high+ (byte 8 0))
 
 ;;; Layout of functions.
 ;;; Common to all functions.

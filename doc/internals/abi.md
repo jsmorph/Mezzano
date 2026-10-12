@@ -334,6 +334,29 @@ instruction is executed.
 The complete GC information for a function is stored in a packed representation
 after the function's constant pool.
 
+The function header's 56-bit data field stores these lengths:
+
+| Data bits | Meaning |
+|-----------|---------|
+| 0–7 | High eight bits of GC metadata length |
+| 8–23 | Code area length in 16-byte units, including the header |
+| 24–39 | Constant-pool length in eight-byte words |
+| 40–55 | Low 16 bits of GC metadata length |
+
+GC metadata length is measured in bytes and may range from zero through
+16,777,215.  Earlier headers used zero in data bits 0–7 and retain their
+meaning.  Images containing extended lengths require readers and collectors
+that implement this encoding.
+
+The guest test in tools/test-function-metadata.lisp checks allocation boundaries,
+length readers, and collector object sizing.  On x86-64, its RUN function also
+creates an 83,923-byte metadata fixture and runs a full collection with that
+function on the stack.  Its CHECK function repeats the metadata, constant-pool,
+and active-frame tests after snapshot restoration.  The host test in
+tools/test-cold-function-metadata.lisp checks cold-image header encoding and the
+24-bit upper bound under SBCL, with Quicklisp loaded and the checkout as the
+working directory.
+
 ### :FRAME/:NO-FRAME
 
 Specifies if a frame-pointer-based stack frame is active.

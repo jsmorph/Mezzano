@@ -1326,7 +1326,9 @@ a pointer to the new object. Leaves a forwarding pointer in place."
           ;; The size of a function is the sum of the MC, the GC info and the constant pool.
           (let ((sz (ceiling (+ (* (ldb +function-header-code-size+ length) 16)  ; mc size
                                 (* (ldb +function-header-pool-size+ length) 8)  ; pool size
-                                (ldb +function-header-metadata-size+ length)) ; gc-info size.
+                                (logior (ldb +function-header-metadata-size+ length)
+                                        (ash (ldb +function-header-metadata-size-high+ length)
+                                             (byte-size +function-header-metadata-size+))))
                              8)))
             ;; And rounded up to 4 words/32 bytes.
             (align-up sz 4)))
