@@ -25,6 +25,10 @@ The Viewer occupies the left pane.  Current Candidates and Bookmarks occupy the 
 | Reselect Candidates | Selects a prior candidate list for the current viewer. |
 | Select Viewer name | Selects an existing viewer or creates one. |
 | Remove Viewer name | Removes a viewer and its reading history. |
+| Save Private Document pathname | Saves the current viewer's bookmarks in their displayed order. |
+| Read Private Document pathname | Displays the referenced topics. |
+| Load Private Document pathname | Adds new references as deferred bookmarks. |
+| Hardcopy Private Document pathname | Prints the referenced sections without changing the viewer. |
 | Hardcopy Viewer | Prints the displayed topics through the browser's print dialog. |
 
 SPACE completes a command word, Tab completes a name, and F12 requests HELP.  Topic names, search terms, and viewer names may contain spaces.  Quoting the complete argument also works.  Commands and topic lookup ignore case.  Topic IDs identify repeated titles without ambiguity.
@@ -39,7 +43,7 @@ The initial default is Substring.  Genera's default uses heuristic stemming.  Th
 
 ## Private documents
 
-The Lisp APIs provide Save and Read.  The command parser also recognizes Load and Hardcopy Private Document and returns plans for browser actions.  Browser support for all four commands remains under development.
+Load defers fetching topic bodies until viewing.  Hardcopy prints each referenced section once.  Mouse-Right on Read Private Document opens Save, Load, and Hardcopy choices.
 
 A private document stores ordered topic references in a guest file.  Its format is a Mezzano Lisp record:
 
@@ -51,7 +55,7 @@ The reader requires one complete record, a finite proper list of string referenc
 
 An empty pathname uses `SYS:HOME;PRIVATE.PSB`.  Nonempty names follow guest pathname rules.  A logical pathname beginning with a semicolon, such as `;MY-NOTES.PSB`, is relative to the default HOME directory.  The pathname prompt shows its default, and a second SPACE accepts that default.
 
-Save uses a retained evaluation job.  Repeating its original request after a lost reply returns the same job within the same boot.  Request identity includes the job name, canonical pathname, and original ordered reference strings.  Replay uses those recorded strings even after the catalog changes.  The writer resolves them before opening the file.  Changing the pathname or ordered topic IDs under that name reports a conflict.  File I/O errors enter the retained debugger.  Save opens with `:if-exists :supersede`.  An I/O error or machine failure during writing can leave an incomplete file.
+Save uses a retained evaluation job.  Repeating its original request after a lost reply returns the same job within the same boot.  Request identity includes the job name, canonical pathname, and original ordered reference strings.  Replay uses those recorded strings even after the catalog changes.  The writer resolves them before opening the file.  Changing the pathname or ordered reference strings under that name reports a conflict.  The browser retains the original request and typed command through reload and replays the original name.  File I/O errors enter the retained debugger.  Save opens with `:if-exists :supersede`.  An I/O error or machine failure during writing can leave an incomplete file.
 
 ## APIs and tests
 
@@ -59,7 +63,11 @@ The Lisp package exports `LOAD-CATALOG`, `QUERY`, `ASSISTANCE`, `SAVE-PRIVATE-DO
 
 SWANK exposes `:document-query`, `:document-assistance`, `:save-private-document`, and `:read-private-document`.  Save takes a retained job name, pathname, and ordered topic list.  Read takes a pathname and returns its canonical namestring and ordered topic summaries.  The HTTP operations use the same names without the colon and JSON strings for actions and modes.  Lisp returns structured topic, block, inline-reference, search, and command-plan records.  Python validates request types and transports them.  The browser renders the records.
 
-The Lisp transport test passes catalog coverage, hierarchy, lookup ambiguity, search modes and adjacency, cross-references, formatting records, command assistance, and Unicode offsets.  The private-document test passes ordered, duplicate, and empty reference roundtrips, command defaults, Unicode physical pathnames, malformed/circular/trailing/reader-eval rejection, file preservation after invalid save input, unread creation reply recovery, replay without rewriting, replay under changed printer case or catalog contents, conflicting topic lists, and fixture cleanup.  Nine Python tests pass typed-request validation and the existing HTTP/transport cases.  Headless Chromium passes lookup, topic reuse, mouse operations, temporary overviews, viewed/deferred bookmark order, candidate history, search-option selection, named viewers, reload with exact reading-position restoration, Help, print dispatch and print CSS, a 640-pixel viewport, and session cleanup.  The browser test intercepts print dispatch.  Physical printer output remains untested.
+The Lisp transport test passes catalog coverage, hierarchy, lookup ambiguity, search modes and adjacency, cross-references, formatting records, command assistance, and Unicode offsets.  The private-document test passes ordered, duplicate, and empty reference roundtrips, command defaults, Unicode physical pathnames, malformed/circular/trailing/reader-eval rejection, file preservation after invalid save input, unread creation reply recovery, replay without rewriting, replay under changed printer case or catalog contents, conflicting topic lists, and fixture cleanup.
+
+Nine Python tests pass typed-request validation and the existing HTTP/transport cases.  Headless Chromium passes lookup, topic reuse, mouse operations, temporary overviews, viewed/deferred bookmark order, candidate history, search-option selection, named viewers, reload with exact reading-position restoration, Help, print dispatch and print CSS, a 640-pixel viewport, and session cleanup.
+
+The private-document Chromium test passes the command menus and default pathname, displayed bookmark order, lost Save response and reload, replay of the original job and typed command, deferred Load, Read, Hardcopy dispatch with unique sections and preserved viewer state, and file/job/session cleanup.  Both browser tests intercept print dispatch.  Physical printer output remains untested.
 
 Run from the Mezzano repository root on minideb2:
 
@@ -72,12 +80,13 @@ Run the browser test on a machine with Node 24 and Chromium:
 
 ```sh
 node tools/swank/web/test-document-examiner.mjs http://minideb2:8765/ /tmp/examiner-test
+node tools/swank/web/test-private-document.mjs http://minideb2:8765/ /tmp/private-document-test
 ```
 
 The journals retain the failed attempts and tested source state.
 
 ## Symbolics references and remaining work
 
-The [Genera User's Guide](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Genera-Users-Guide.pdf), Document Examiner chapter, printed pages 2906–2924 in that edition, specifies topic records, the four panes, lookup, candidate searches, overviews, tables of contents, bookmarks, named viewers, and private documents.  The [Genera Workbook](https://bitsavers.trailing-edge.com/pdf/symbolics/software/genera_8/Genera_Workbook.pdf) supplies the introductory walkthrough.  [Genera 8.3 MacIvory captures](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/docex/docex.html) provide the screen reference.
+The [Genera User's Guide](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Genera-Users-Guide.pdf), Document Examiner chapter and Creating a Private Document section, specifies topic records, the four panes, lookup, candidate searches, overviews, tables of contents, bookmarks, named viewers, and private documents.  The [Genera Workbook](https://bitsavers.trailing-edge.com/pdf/symbolics/software/genera_8/Genera_Workbook.pdf) supplies the introductory walkthrough.  [Genera 8.3 MacIvory captures](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/docex/docex.html) provide the screen reference.
 
-Original stemming, private-document browser actions, Listener-to-Background-viewer integration, Concordia authoring, automatic Lisp-object documentation records, and full Symbolics keyboard compatibility remain unfinished.  Current topics come from the checked-in documents.  The [font conversion and comparison report](../tools/swank/web/fonts/README.md) records measured glyph and layout matches and remaining visual differences.
+Original stemming, Listener-to-Background-viewer integration, Concordia authoring, automatic Lisp-object documentation records, and full Symbolics keyboard compatibility remain unfinished.  Current topics come from the checked-in documents.  The [font conversion and comparison report](../tools/swank/web/fonts/README.md) records measured glyph and layout matches and remaining visual differences.
