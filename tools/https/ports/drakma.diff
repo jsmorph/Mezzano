@@ -1,5 +1,5 @@
 diff --git a/request.lisp b/request.lisp
-index 1a7a080..2c11cdd 100644
+index 1a7a080..e8e0237 100644
 --- a/request.lisp
 +++ b/request.lisp
 @@ -260,7 +260,7 @@ headers of the chunked stream \(if any) as a second value."
@@ -23,3 +23,18 @@ index 1a7a080..2c11cdd 100644
                                                               connection-timeout
                                                               :nodelay :if-supported)))
                      raw-http-stream http-stream)
+@@ -879,7 +879,7 @@ safety when making concurrent HTTPS requests."
+                                                              (not force-ssl))))
+                                      ;; close stream if we can't re-use it
+                                      (unless re-use-stream
+-                                       (ignore-errors (close http-stream)))
++                                       (close http-stream))
+                                      (setq done t)
+                                      (return-from http-request
+                                        (let ((method (if (and (member status-code +redirect-to-get-codes+)
+@@ -956,4 +956,4 @@ safety when making concurrent HTTPS requests."
+                        (and must-close
+                             (not want-stream)))
+                    (not (eq content :continuation)))
+-          (ignore-errors (close http-stream)))))))
++          (close http-stream :abort (not done)))))))

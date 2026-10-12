@@ -13,7 +13,7 @@ index 8fa115c..d2a077b 100644
      :initform 0
      :accessor tls-stream-warning-alert-count
 @@ -89,27 +92,25 @@
- 
+
  (defmethod close ((stream tls-stream) &key abort)
    (unless (tls-stream-closed-p stream)
 -    ;; Flush pending output unless aborting
@@ -57,7 +57,7 @@ index 8fa115c..d2a077b 100644
 +            (when (tls-stream-close-callback stream)
 +              (funcall (tls-stream-close-callback stream) stream)))))))
    t)
- 
+
  ;;;; Input Methods
 @@ -582,8 +583,7 @@ flat no matter how many records arrive."
                                            :max-send-fragment (or max-send-fragment
@@ -93,7 +93,7 @@ index 8fa115c..d2a077b 100644
 +            stream)
 +      (setf completed t)))
 +      (unless completed (close stream :abort t)))))
- 
+
  (defun make-tls-server-stream (socket &key
                                          context
 @@ -719,8 +726,7 @@ flat no matter how many records arrive."
@@ -130,6 +130,20 @@ index 8fa115c..d2a077b 100644
 +            stream)
 +      (setf completed t)))
 +      (unless completed (close stream :abort t)))))
- 
+
  ;;;; Convenience Macros
- 
+
+diff --git a/src/utils.lisp b/src/utils.lisp
+index 7670bbf..65ac03d 100644
+--- a/src/utils.lisp
++++ b/src/utils.lisp
+@@ -312,7 +312,8 @@ the same length.  Selection is performed byte-by-byte without branching."
+   #+abcl (ext:getenv name)
+   #+cmucl (rest (assoc name ext:*environment-list* :test #'string=))
+   #+clasp (ext:getenv name)
+-  #-(or sbcl ccl ecl clisp allegro lispworks abcl cmucl clasp)
++  #+mezzano (uiop:getenv name)
++  #-(or sbcl ccl ecl clisp allegro lispworks abcl cmucl clasp mezzano)
+   (error "get-environment-variable not implemented for this Lisp"))
+
+ ;;;; XOR Operations

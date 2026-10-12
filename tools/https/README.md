@@ -78,7 +78,7 @@ On 2026-10-12, the Linux SBCL tests negotiated TLS 1.3 with TLS_CHACHA20_POLY130
 
 These tests cover one service and the two stated verification failures.  Streaming responses, certificate revocation, and the upstream TLS test suite remain untested.  The cancellation tests below check blocked input and handshake cleanup.  The corrected fractional deadline tests passed under SBCL.
 
-The guest entropy and connection controls below have passed their tests.  Library portability edits are retained in ports/.  Guest compilation of the TLS/HTTP stack is in progress.  Guest TLS verification and the authenticated OpenAI request remain untested.
+The guest entropy and connection controls below have passed their tests.  Library portability edits are retained in ports/.  The guest TLS/HTTP stack compiled and loaded.  The guest cancellation tests below passed.  The guest passed a verified TLS handshake and both certificate-rejection tests.  Its Drakma GET currently fails while writing to a closed TCP connection.  The authenticated guest OpenAI request remains untested.
 
 ## Guest entropy
 
@@ -137,7 +137,7 @@ The files in ports/ contain source edits against the revisions and releases list
 
     git -C "$TLS_SOURCES/pure-tls" apply /path/to/Mezzano/tools/https/ports/pure-tls.diff
 
-The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, USOCKET listener addresses, a Bordeaux-Threads declaration error, precise-time's Mezzano clock, cl-cancel clock units and monitor cleanup, and TLS stream cleanup.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.  Guest HTTPS execution remains incomplete.
+The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, USOCKET listener addresses, a Bordeaux-Threads declaration error, precise-time's Mezzano clock, cl-cancel clock units and monitor cleanup, TLS stream cleanup, and propagation of HTTP close errors.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.  Guest HTTPS execution remains incomplete.
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-ATOMICS.LISP")
     (lispm-atomics-test:run)
@@ -147,7 +147,7 @@ The cancellation test requires the edited cl-cancel and pure-tls sources.  After
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-CANCELLATION.LISP")
     (lispm-cancellation-test:run)
 
-For SBCL, load tools/https/test-cancellation.lisp and call the same function.  The tests passed under SBCL on Linux for early cleanup, close failures, blocked input, blocked handshake, monitor cleanup, clock continuity, and fractional deadlines.  Timing assertions check both elapsed-time bounds.  Durations cover rational, single-float, and double-float values.  Guest cancellation tests remain pending.
+For SBCL, load tools/https/test-cancellation.lisp and call the same function.  The tests passed under SBCL on Linux for early cleanup, close failures, blocked input, blocked handshake, monitor cleanup, clock continuity, and fractional deadlines.  Timing assertions check both elapsed-time bounds.  Durations cover rational, single-float, and double-float values.  The same tests passed in the x86-64 guest.  They also exercise USOCKET's assigned listener port.
 
 ## Guest source preparation
 
@@ -167,7 +167,7 @@ Prepare the pinned Git sources using the installation loop above with TLS_SOURCE
 
 Use a maintained PEM CA bundle from the host's certificate package.  The copied bundle supplies trust anchors for the guest.  Recopy it when those anchors change.
 
-The guest loader is prepared for the pinned sources.  Its complete load remains under test:
+The guest loader selects the pinned sources and loads the Responses function:
 
     (load "SYS:SOURCE;TOOLS;HTTPS;LOAD-MEZZANO.LISP")
 
@@ -177,4 +177,12 @@ After loading, the shared transport tests accept the guest CA pathname:
     (lispm-https-test:run-transport-tests
      :ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT")
 
-The same CA-FILE argument applies to CREATE-RESPONSE, RUN-OPENAI-TEST, and LISPM-OPENAI-TEST:RUN.  The explicit bundle passed the transport tests under SBCL.  Guest TLS tests remain pending.
+The same CA-FILE argument applies to CREATE-RESPONSE, RUN-OPENAI-TEST, and LISPM-OPENAI-TEST:RUN.  The explicit bundle passed the transport tests under SBCL.  The guest passed the handshake and certificate-rejection tests.  Its HTTP GET fails while writing to a closed TCP connection.
+
+The combined guest test runs entropy, atomics, cancellation, HTTP cleanup, certificate verification, and invalid-credential checks:
+
+    (load "SYS:SOURCE;TOOLS;HTTPS;TEST-MEZZANO.LISP")
+    (lispm-https-guest-test:run
+     :ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT")
+
+The HTTP cleanup fixture uses in-memory response streams.  It requires an injected close failure to reach the caller and requires abort close after an incomplete response.  Load test-http-cleanup.lisp and call LISPM-HTTP-CLEANUP-TEST:RUN to run it separately.  This fixture passed under SBCL and Mezzano.
