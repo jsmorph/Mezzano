@@ -283,6 +283,15 @@ def operation_arguments(operation, args, session):
     if operation == "stops":
         fields(args, (), ("include_closed",))
         return [boolean(args.get("include_closed", False))]
+    if operation == "save-private-document":
+        fields(args, ("name", "pathname", "topics"))
+        if not isinstance(args["topics"], list):
+            raise ValueError("Documentation topics must be a list of strings.")
+        return [require_name(args["name"]), string(args["pathname"]),
+                [string(topic) for topic in args["topics"]]]
+    if operation == "read-private-document":
+        fields(args, ("pathname",))
+        return [string(args["pathname"])]
     if operation == "document-query":
         fields(args, ("action",), ("topic", "query", "mode", "adjacent"))
         action = string(args["action"])

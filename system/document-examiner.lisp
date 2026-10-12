@@ -338,6 +338,49 @@
                     :related (mapcar (lambda (id) (summary (lookup id))) (nreverse related))))))))
       (otherwise (error "Unsupported documentation action ~S." action)))))
 
+(defun private-pathname (name)
+  (if (equal name "") #p"SYS:HOME;PRIVATE.PSB"
+      (merge-pathnames name #p"SYS:HOME;PRIVATE.PSB")))
+
+(defun check-private-topic-list (ids)
+  (check-type ids list)
+  (unless (list-length ids) (error "Private-document topic references must form a finite proper list."))
+  (dolist (id ids)
+    (unless (stringp id) (error "Private-document topic references must be strings.")))
+  ids)
+
+(defun private-topic-ids (ids)
+  (mapcar (lambda (id) (topic-id (resolve-topic id))) (check-private-topic-list ids)))
+
+(defun save-private-document (name ids)
+  (let ((path (private-pathname name)) (ids (private-topic-ids ids)))
+    (with-open-file (stream path :direction :output :if-exists :supersede :if-does-not-exist :create)
+      (with-standard-io-syntax
+        (write (list :mezzano-document 1 :topics ids) :stream stream)
+        (terpri stream)))
+    (namestring path)))
+
+(defun read-private-document (name)
+  (let ((path (private-pathname name)))
+    (with-open-file (stream path)
+      (with-standard-io-syntax
+        (let* ((*read-eval* nil) (eof (cons nil nil)) (record (read stream nil eof)))
+          (unless (and (listp record) (eql (list-length record) 4)
+                       (eq (first record) :mezzano-document) (eql (second record) 1)
+                       (eq (third record) :topics) (listp (fourth record))
+                       (eq (read stream nil eof) eof))
+            (error "Invalid Mezzano private document ~A." path))
+          (let ((ids (private-topic-ids (fourth record))))
+            (list :pathname (namestring path) :topics (mapcar (lambda (id) (summary (lookup id))) ids))))))))
+
+(defun start-save-private-document (name pathname ids)
+  (let* ((path (namestring (private-pathname pathname)))
+         (ids (check-private-topic-list ids))
+         (source (with-standard-io-syntax
+                   (let ((*package* (find-package :keyword)))
+                     (write-to-string (list 'save-private-document path (list 'quote ids)))))))
+    (mezzano.debug:start-evaluation-job name source :package "COMMON-LISP-USER")))
+
 (defparameter *commands*
   '((:name "Help" :operation "help" :help "Display the Document Examiner command summary.")
     (:name "Document Examiner Documentation" :operation "documentation" :help "Read the Document Examiner guide.")
@@ -348,6 +391,10 @@
     (:name "Reselect Candidates" :operation "reselect-candidates" :help "Select a previous candidate list for this viewer.")
     (:name "Select Viewer" :operation "select-viewer" :type :viewer :help "Select a named viewer, or create it if absent.")
     (:name "Remove Viewer" :operation "remove-viewer" :type :viewer :help "Remove a named viewer and its reading history.")
+    (:name "Save Private Document" :operation "save-private-document" :type :private-file :help "Save this viewer's ordered bookmarks to a guest file.")
+    (:name "Read Private Document" :operation "read-private-document" :type :private-file :help "Read a bookmark file and display its topics.")
+    (:name "Load Private Document" :operation "load-private-document" :type :private-file :help "Read a bookmark file and add its topics as deferred bookmarks.")
+    (:name "Hardcopy Private Document" :operation "hardcopy-private-document" :type :private-file :help "Print the topics referenced by a guest bookmark file.")
     (:name "Hardcopy Viewer" :operation "hardcopy-viewer" :help "Print this viewer through the browser's print dialog.")))
 
 (defun argument-text (text)
@@ -404,8 +451,13 @@
                         (getf response :expected-type) type
                         (getf response :prompt) (case type (:topic "(documentation topic)") (:query "(search terms)")
                                                      (:viewer "(viewer name)") (t "(RETURN)")))
+                  (when (eq type :private-file)
+                    (setf (getf response :default) (namestring (private-pathname ""))
+                          (getf response :prompt) (format nil "(private document pathname [default ~A])" (getf response :default))))
                   (when (and (zerop (length argument)) (member action '(:space :complete)))
-                    (replace-input base))
+                    (replace-input (if (and (eq type :private-file)
+                                           (> (- (length prefix) (length (string-right-trim '(#\Space #\Tab) prefix))) 1))
+                                      (concatenate 'string base (getf response :default) " ") base)))
                   (when (eq type :topic)
                     (let* ((choices (remove-if-not
                                      (lambda (topic) (or (mezzano.command-processor::prefixp argument (topic-title topic))
@@ -419,12 +471,13 @@
                       (when (and unique (member action '(:space :complete)))
                         (replace-input (concatenate 'string base (topic-id (first choices)) " ")))))
                   (when (eq action :parse)
-                    (when (and type (zerop (length argument))) (error "~A requires an argument." (getf command :name)))
+                    (when (and type (not (eq type :private-file)) (zerop (length argument))) (error "~A requires an argument." (getf command :name)))
                     (when (and (null type) (plusp (length argument))) (error "~A takes no argument." (getf command :name)))
                     (setf (getf response :complete-p) t
                           (getf response :operation) (getf command :operation)
                           (getf response :argument)
                           (cond ((eq type :topic) (topic-id (resolve-topic argument)))
+                                ((eq type :private-file) (namestring (private-pathname argument)))
                                 ((string= (getf command :operation) "documentation") "doc/document-examiner.md")
                                 (type argument)))
                     (when (string= (getf command :operation) "help")

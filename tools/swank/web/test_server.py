@@ -65,6 +65,10 @@ class ProtocolTests(unittest.TestCase):
             {"source": "🚀", "cursor": 1, "action": "help"}, session)[:3],
             ["🚀", 1, server.Symbol(":help")])
         for operation, arguments in [
+            ("save-private-document", {"name": session, "pathname": "x", "topics": "x"}),
+            ("save-private-document", {"name": session, "pathname": "x", "topics": [1]}),
+            ("save-private-document", {"name": "bad", "pathname": "x", "topics": []}),
+            ("read-private-document", {"pathname": 1}),
             ("document-query", {"action": "topic"}),
             ("document-query", {"action": "search"}),
             ("document-query", {"action": "search", "query": "x", "mode": "unknown"}),
@@ -77,6 +81,11 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(server.operation_arguments("document-assistance",
             {"source": "🚀", "cursor": 1, "action": "help"}, session),
             ["🚀", 1, server.Symbol(":help")])
+        self.assertEqual(server.operation_arguments("save-private-document",
+            {"name": session, "pathname": "🚀.psb", "topics": ["a", "b"]}, session),
+            [session, "🚀.psb", ["a", "b"]])
+        self.assertEqual(server.operation_arguments("read-private-document",
+            {"pathname": "x.psb"}, session), ["x.psb"])
         with self.assertRaises(ValueError):
             server.integer(True)
 

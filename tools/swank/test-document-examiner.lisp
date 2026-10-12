@@ -64,7 +64,7 @@
      (assert (null (ids (request :document-query :search :query "no-such-documentation-term-728613" :mode :exact))))
      (assert (equal (getf (assist "Show D" :complete) :text) "Show Documentation "))
      (assert (equal (getf (assist "Select V " :space) :text) "Select Viewer "))
-     (assert (= (length (getf (assist "" :help) :candidates)) 10))
+     (assert (= (length (getf (assist "" :help) :candidates)) 14))
      (assert (search "Show Documentation" (getf (assist "Help" :parse) :help)))
      (assert (equal (getf (assist "Document Examiner Documentation" :parse) :argument) "doc/document-examiner.md"))
      (assert (equal (getf (assist "Show Documentation Compiler guarantees" :parse) :argument)

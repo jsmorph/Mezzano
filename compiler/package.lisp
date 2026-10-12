@@ -1259,4 +1259,5 @@
 
 (defpackage :mezzano.document-examiner
   (:use :cl)
-  (:export #:load-catalog #:query #:assistance))
+  (:export #:load-catalog #:query #:assistance
+           #:save-private-document #:read-private-document #:start-save-private-document))
