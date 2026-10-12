@@ -14,9 +14,9 @@ The browser can retain and identify the unavailable reference while allowing oth
 - [x] The same session accepts a subsequent catalog query without creating a stop or evaluation job.
 - [x] Command assistance preserves its missing-topic error text.
 - [x] Chromium tests restore mixed valid and unavailable references and distinguish transport failures.
-- [ ] The cold image builds and boots with the correction.
+- [x] The cold image builds and boots with the correction.
 
-The catalog and transport test also include the approved Peek guide addition, bringing the product catalog to 14 books.  Guest compilation and load succeeded.  The transport suite passed with 14 documents, 110 topics, and 83 references, including catalog structure, search, commands, Unicode cursor offsets, and release of its session.  The logs are `examiner-missing-topic-load.log` and `examiner-missing-topic-test.log` in the development boot directory.  The Chromium test passed missing-root and missing-heading recovery, retained bookmarks, and separate transport-error recovery.  It released its session.  The cold-image boot remains a separate checkpoint.
+The catalog and transport test also include the approved Peek guide addition, bringing the product catalog to 14 books.  Guest compilation and load succeeded.  The transport suite passed with 14 documents, 110 topics, and 83 references, including catalog structure, search, commands, Unicode cursor offsets, and release of its session.  The logs are `examiner-missing-topic-load.log` and `examiner-missing-topic-test.log` in the development boot directory.  The Chromium test passed missing-root and missing-heading recovery, retained bookmarks, and separate transport-error recovery.  It released its session.  The subsequent fresh x86-64 build and CI boot passed, with QEMU exit status 3 and the CI success marker.  The catalog and transport suite passed again after restoring the development snapshot.  Evidence is peek-pager-build.log, peek-pager-ci-serial.log, peek-pager-ci.exit, and peek-examiner-restored-test.log.
 
 ## Literal documentation text
 

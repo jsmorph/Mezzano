@@ -20,7 +20,7 @@ Required tests:
 - [x] Thread creation and exit during repeated queries.
 - [x] Runtime units and counter growth after yielding.
 - [x] SWANK serialization, Show Processes help/completion/output, and repeated queries without thread-handle retention.
-- [ ] Fresh build and boot, coordinated with the main development task.
+- [x] Fresh x86-64 build and CI boot, coordinated with the main development task.
 
 ## Review findings
 
@@ -40,4 +40,4 @@ The corrected targeted hotload passed on the recovered x86-64 QEMU guest.  Compi
 
 `sbcl --script tools/swank/test-processes.lisp 4006` exited 0.  It compiled and ran the guest fixture, then checked SWANK serialization, shared stop tokens across discovery and Processes, token equality through 15 refreshes, unchanged session handle-table size, cyclic job-name serialization, command assistance, and Show Processes output.  Guest assertions covered duplicate names, nested stops, event/mutex waits, stale waits after wakeup, hostile printers, circular names, the 160/161-character boundary, Unicode, recorded runtime growth, 30 transient thread creations/exits, captured-summary printing after release, and rejection of released stops.  The fixture released its workers, stops, job, controller, and session.
 
-These results cover the hotloaded x86-64 implementation.  Cold-build/CI boot and ARM64 execution remain untested for this increment.  The main development task will run the cold-build/CI check after the concurrent source changes settle.
+These results cover the hotloaded x86-64 implementation.  The subsequent fresh x86-64 build and CI boot passed with the final pager correction.  QEMU exited with status 3 and printed the CI success marker.  The development VM also restored its snapshot, and the Processes transport test passed after restoration.  Evidence is peek-pager-build.log, peek-pager-ci-serial.log, peek-pager-ci.exit, and peek-processes-restored-test.log.  ARM64 execution remains untested for this increment.
