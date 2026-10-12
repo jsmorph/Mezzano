@@ -5,7 +5,8 @@
 (in-package #:lispm-https-test)
 
 (defun call-with-openai-tls (function &key (hostname "api.openai.com")
-                                         (context (pure-tls:make-tls-context)))
+                                         ca-file
+                                         (context (pure-tls:make-tls-context :ca-file ca-file)))
   (let ((socket (usocket:socket-connect "api.openai.com" 443
                                        :element-type '(unsigned-byte 8)
                                        :timeout 15))
@@ -32,16 +33,17 @@
     (pure-tls:tls-verification-error (condition)
       (format t "~A rejected: ~A~%" label condition))))
 
-(defun run-transport-tests ()
+(defun run-transport-tests (&key ca-file)
   (call-with-openai-tls
    (lambda (stream)
      (format t "Verified handshake: version ~S, cipher ~S.~%"
              (pure-tls:tls-version stream)
-             (pure-tls:tls-cipher-suite stream))))
+             (pure-tls:tls-cipher-suite stream)))
+   :ca-file ca-file)
   (expect-verification-error
    (lambda ()
      (call-with-openai-tls
-      (constantly nil) :hostname "hostname-mismatch.invalid"))
+      (constantly nil) :hostname "hostname-mismatch.invalid" :ca-file ca-file))
    "Mismatched hostname")
   (let ((pure-tls::*auto-load-system-trust-store* nil))
     (expect-verification-error
@@ -56,7 +58,7 @@
       (multiple-value-bind (body status)
           (drakma:http-request "https://api.openai.com/v1/models"
                                :verify :required :redirect nil
-                               :force-binary t :connection-timeout 15)
+                               :force-binary t :connection-timeout 15 :ca-file ca-file)
         (unless (= status 401)
           (error "Unauthenticated request returned HTTP ~D; expected 401." status))
         (assert (hash-table-p (gethash "error" (com.inuoe.jzon:parse body))))

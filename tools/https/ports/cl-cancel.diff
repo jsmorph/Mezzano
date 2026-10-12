@@ -1,10 +1,10 @@
 diff --git a/deadline.lisp b/deadline.lisp
-index 4c90001..bbdc3e9 100644
+index 4c90001..59747e4 100644
 --- a/deadline.lisp
 +++ b/deadline.lisp
 @@ -8,11 +8,11 @@
  ;;; Precise time utilities
- 
+
  (defun get-current-time ()
 -  "Get current time as fractional seconds since epoch.
 -   Returns a rational number with nanosecond precision."
@@ -15,9 +15,18 @@ index 4c90001..bbdc3e9 100644
 -    (+ universal-time (/ nanoseconds 1000000000))))
 +    (+ universal-time
 +       (/ fraction org.shirakumo.precise-time:precise-time-units-per-second))))
- 
+
  (defun sleep-fractional (seconds)
    "Sleep for SECONDS, which can be fractional.
+@@ -338,7 +338,7 @@ call cancel as soon as the operations running in this cancellable complete.
+
+ Returns (values cancellable cancel-function)
+ The cancel function is a lambda accepting an optional error parameter."
+-  (with-deadline parent (+ (get-current-time) timeout-seconds)))
++  (with-deadline parent (+ (get-current-time) (rational timeout-seconds))))
+
+ (defmacro with-deadline-context ((var deadline-time &optional (parent '*current-cancel-context*)) &body body)
+   "Convenience macro to execute BODY with a deadline context.
 diff --git a/streams.lisp b/streams.lisp
 index d91cabe..07ae07d 100644
 --- a/streams.lisp

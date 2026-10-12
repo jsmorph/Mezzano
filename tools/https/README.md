@@ -18,7 +18,7 @@ MBUILD_ROOT denotes the directory containing Mezzano, home, and quicklisp.  TLS_
     done < tools/https/sources.tsv
     export CL_SOURCE_REGISTRY="(:source-registry (:tree \"$TLS_SOURCES/\") (:tree \"$MBUILD_ROOT/home/\") :ignore-inherited-configuration)"
 
-The source manifest pins pure-tls, Drakma, Ironclad, cl-cancel, atomics, precise-time, Bordeaux-Threads, Jzon, float-features, documentation-utils, and trivial-indent.  Quicklisp supplies the remaining dependencies.  The tested distribution is 2026-01-01.  Its additional releases are cl-base64-20201016, idna-20120107, usocket-0.8.9, global-vars-20141106, puri-20201016, chunga-20260101, and cffi-20260101.  Existing MBuild sources supply Alexandria, Babel, Chipz, CL-PPCRE, Flexi Streams, split-sequence, trivial-features, trivial-garbage, trivial-gray-streams, and Closer-MOP.
+The source manifest pins pure-tls, Drakma, Ironclad, cl-cancel, atomics, precise-time, Bordeaux-Threads, Jzon, float-features, documentation-utils, trivial-indent, and the existing Mezzano fork of trivial-garbage.  Quicklisp supplies the remaining dependencies.  The tested distribution is 2026-01-01.  Its additional releases are cl-base64-20201016, idna-20120107, usocket-0.8.9, global-vars-20141106, puri-20201016, chunga-20260101, and cffi-20260101.  Existing MBuild sources supply Alexandria, Babel, Chipz, CL-PPCRE, Flexi Streams, split-sequence, trivial-features, trivial-garbage, trivial-gray-streams, and Closer-MOP.
 
 The loader initializes pure-tls's CL+SSL compatibility system and registers it with ASDF before loading Drakma.  Start a fresh SBCL process for each command.
 
@@ -64,7 +64,7 @@ Loading load-sbcl.lisp also loads openai.lisp.  After loading the same dependenc
 
 CREATE-RESPONSE takes an API key string and a Jzon request hash table.  It returns the parsed response and the x-request-id header as two values.  The optional CA-FILE argument names a PEM trust bundle.  Certificate verification is required.  Redirects and header logging are disabled.  The function sends the caller's request fields unchanged, including the model and storage policy.  STREAM must be absent or NIL.  No retry is performed.
 
-TIMEOUT is a positive duration in seconds, defaulting to 60.  It starts after request JSON encoding.  Connection establishment receives the smaller of 15 seconds and the remaining request time.  CL-CANCEL supplies the subsequent TLS cancellation context.  Fractional durations require the pending clock correction.  Deadline cancellation does not establish whether the remote service processed a request.
+TIMEOUT is a positive duration in seconds, defaulting to 60.  It starts after request JSON encoding.  Connection establishment receives the smaller of 15 seconds and the remaining request time.  CL-CANCEL supplies the subsequent TLS cancellation context.  Fractional durations require the cl-cancel edit in ports/.  Deadline cancellation does not establish whether the remote service processed a request.
 
 HTTP-ERROR retains the status, request ID, and response octets through HTTP-ERROR-STATUS, HTTP-ERROR-REQUEST-ID, and HTTP-ERROR-BODY.  Its printed report includes only the status and request ID.  Transport, certificate, cancellation, and JSON errors propagate.  A successful HTTP response can have an application status other than completed.  The caller examines the returned JSON.
 
@@ -76,7 +76,7 @@ The [OpenAI API overview](https://developers.openai.com/api/reference/overview) 
 
 On 2026-10-12, the Linux SBCL tests negotiated TLS 1.3 with TLS_CHACHA20_POLY1305_SHA256.  Both certificate-rejection tests passed.  The authenticated POST returned HTTP 200 and "Lisp HTTPS works.", with 15 input tokens and 6 output tokens.
 
-These tests cover one service and the two stated verification failures.  Streaming responses, certificate revocation, and the upstream TLS test suite remain untested.  The cancellation tests below check blocked input and handshake cleanup.  Fractional deadline accuracy requires the corrections described there.
+These tests cover one service and the two stated verification failures.  Streaming responses, certificate revocation, and the upstream TLS test suite remain untested.  The cancellation tests below check blocked input and handshake cleanup.  The corrected fractional deadline tests passed under SBCL.
 
 The guest entropy and connection controls below have passed their tests.  Library portability edits are retained in ports/.  Guest compilation of the TLS/HTTP stack is in progress.  Guest TLS verification and the authenticated OpenAI request remain untested.
 
@@ -137,7 +137,7 @@ The files in ports/ contain source edits against the revisions and releases list
 
     git -C "$TLS_SOURCES/pure-tls" apply /path/to/Mezzano/tools/https/ports/pure-tls.diff
 
-The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, a Bordeaux-Threads declaration error, cl-cancel clock units and monitor cleanup, and TLS stream cleanup.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.  Guest HTTPS execution remains incomplete.
+The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, USOCKET listener addresses, a Bordeaux-Threads declaration error, precise-time's Mezzano clock, cl-cancel clock units and monitor cleanup, and TLS stream cleanup.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.  Guest HTTPS execution remains incomplete.
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-ATOMICS.LISP")
     (lispm-atomics-test:run)
@@ -147,4 +147,34 @@ The cancellation test requires the edited cl-cancel and pure-tls sources.  After
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-CANCELLATION.LISP")
     (lispm-cancellation-test:run)
 
-For SBCL, load tools/https/test-cancellation.lisp and call the same function.  The original tests passed under SBCL on Linux for early cleanup, close failures, blocked input, blocked handshake, and monitor cleanup.  Their timing assertion allowed an immediately expired deadline to pass.  The expanded tests check both elapsed-time bounds, rational and floating-point durations, and clock continuity.  They currently fail on single-float timeout arithmetic.  The clock corrections and guest cancellation tests remain pending.
+For SBCL, load tools/https/test-cancellation.lisp and call the same function.  The tests passed under SBCL on Linux for early cleanup, close failures, blocked input, blocked handshake, monitor cleanup, clock continuity, and fractional deadlines.  Timing assertions check both elapsed-time bounds.  Durations cover rational, single-float, and double-float values.  Guest cancellation tests remain pending.
+
+## Guest source preparation
+
+Prepare the pinned Git sources using the installation loop above with TLS_SOURCES set to "$MBUILD_ROOT/home/https-sources".  The guest loader gives that directory precedence over the older MBuild dependencies.  Install the additional Quicklisp libraries through the host loader, then copy their pinned releases:
+
+    while read -r project release
+    do
+      cp -a "$MBUILD_ROOT/quicklisp/dists/quicklisp/software/$release" "$TLS_SOURCES/$project" || exit "$?"
+    done < tools/https/quicklisp.tsv
+    for edit in tools/https/ports/*.diff
+    do
+      project="${edit##*/}"
+      project="${project%.diff}"
+      git -C "$TLS_SOURCES/$project" apply "$PWD/$edit" || exit "$?"
+    done
+    cp /etc/ssl/certs/ca-certificates.crt "$MBUILD_ROOT/home/https-ca-certificates.crt"
+
+Use a maintained PEM CA bundle from the host's certificate package.  The copied bundle supplies trust anchors for the guest.  Recopy it when those anchors change.
+
+The guest loader is prepared for the pinned sources.  Its complete load remains under test:
+
+    (load "SYS:SOURCE;TOOLS;HTTPS;LOAD-MEZZANO.LISP")
+
+After loading, the shared transport tests accept the guest CA pathname:
+
+    (load "SYS:SOURCE;TOOLS;HTTPS;TEST-SBCL.LISP")
+    (lispm-https-test:run-transport-tests
+     :ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT")
+
+The same CA-FILE argument applies to CREATE-RESPONSE, RUN-OPENAI-TEST, and LISPM-OPENAI-TEST:RUN.  The explicit bundle passed the transport tests under SBCL.  Guest TLS tests remain pending.

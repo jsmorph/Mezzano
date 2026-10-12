@@ -51,12 +51,16 @@
                (setf previous now))
              (sleep 0.005)))
   (dolist (duration '(1/4 0.25 0.25d0))
-    (let ((start (get-internal-real-time)))
+    (let ((start (get-internal-real-time))
+          (before (cl-cancel:get-current-time)))
       (cl-cancel:with-timeout-context (context duration)
-        (let ((remaining (- (cl-cancel:deadline context) (cl-cancel:get-current-time))))
-          (assert (<= 1/5 remaining 1/4) ()
-                  "Timeout ~S yielded remaining time ~S." duration remaining))
-        (cl-cancel:wait-until-done context)
+        (let ((deadline (cl-cancel:deadline context))
+              (after (cl-cancel:get-current-time)))
+          (assert (rationalp deadline))
+          (assert (<= (+ before (rational duration))
+                      deadline
+                      (+ after (rational duration)))))
+        (cl-cancel:wait-until-done context 3)
         (assert (typep (cl-cancel:err context) 'cl-cancel:deadline-exceeded)))
       (let ((elapsed (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
         (assert (<= 6/25 elapsed 3) ()
@@ -102,7 +106,7 @@
        (timed-cancellation
         (lambda (context)
           (pure-tls:make-tls-client-stream client :hostname "localhost"
-                                                :verify :none
+                                                :verify pure-tls:+verify-none+
                                                 :request-context context)))
        (assert (not (open-stream-p client)))))
     (assert (= baseline (monitors))))

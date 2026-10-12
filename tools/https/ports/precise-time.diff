@@ -1,0 +1,16 @@
+diff --git a/mezzano.lisp b/mezzano.lisp
+index 8c71ddd..59e86a3 100644
+--- a/mezzano.lisp
++++ b/mezzano.lisp
+@@ -7,9 +7,8 @@
+   INTERNAL-TIME-UNITS-PER-SECOND)
+
+ (define-implementation get-precise-time ()
+-  (let ((time (mezzano.supervisor:high-precision-time-units-to-internal-time-units
+-               (mezzano.supervisor:get-high-precision-timer))))
+-    (values (get-universal-time)
++  (let ((time (get-internal-real-time)))
++    (values (truncate time INTERNAL-TIME-UNITS-PER-SECOND)
+             (mod time INTERNAL-TIME-UNITS-PER-SECOND))))
+
+ (define-implementation get-monotonic-time ()
