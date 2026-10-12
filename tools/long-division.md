@@ -78,6 +78,8 @@ The build-directory logs are `long-division-sbcl-bench.log`, `long-division-mezz
 
 ## Preallocated division loop
 
+These measurements record revision 97444acd.
+
 The integer wrapper and [array benchmark](bench-long-division-kernel.lisp) now share `divide-digits`.  It mutates a normalized dividend array U and writes quotient digits into Q.  V holds the normalized divisor.  Each array element is below 2^30.  V's highest digit is at least 2^29.  U includes one leading work digit, and Q has `(- (length u) (length v))` elements.  The remainder occupies the low `(length v)` digits of U.
 
 The array benchmark prepares all operands and result arrays before timing.  Each division restores U from a saved array.  Restoration alone is measured separately.  Both operations use the same 32 cases, five one-second samples, and alternating order.  Tests compared the prepared-array quotient and remainder with TRUNCATE before and after timing.  The refactored integer wrapper passed all 7,276 cases under both implementations.
@@ -148,3 +150,22 @@ The Mezzano sampling profile used:
 ```
 
 Build-directory evidence includes `long-division-kernel-{sbcl,mezzano}-bench.log`, `long-division-allocation-{sbcl,mezzano}.log`, and `long-division-compiler-probe.log`.  Disassemblies are `long-division-kernel-sbcl.asm`, `long-division-probes-sbcl.asm`, `home/long-division-kernel-mezzano.asm`, and `home/long-division-probes-mezzano.asm`.  The sample profile is `home/long-division-kernel-profile.txt`.
+
+## Type declarations
+
+The first step added FIXNUM declarations to the two inner-loop counters and THE FIXNUM assertions to computed array indices.  The arithmetic, array representation, and compiler policy remain unchanged.  All 7,276 cases passed in both implementations, and prepared-array results matched TRUNCATE before and after timing.
+
+Times below are microseconds per restoration plus division, with median followed by minimum and maximum.  SBCL and Mezzano ran sequentially on the same host as the preceding measurements.
+
+| System | Operand bits | Original declarations | Index declarations |
+| --- | ---: | ---: | ---: |
+| SBCL | 768/384 | 0.698 (0.690–0.698) | 0.697 (0.691–0.701) |
+| Mezzano | 768/384 | 16.259 (16.200–17.898) | 9.467 (9.438–9.513) |
+| SBCL | 4096/2048 | 15.373 (15.343–15.388) | 15.297 (15.245–15.373) |
+| Mezzano | 4096/2048 | 351.124 (339.674–351.124) | 194.099 (194.099–195.313) |
+
+The ratios of the original and updated Mezzano medians are 1.72 and 1.81.  The updated Mezzano/SBCL ratios are 13.6 and 12.7.  Restoration-only medians were 1.183 and 5.911 microseconds in Mezzano, and 0.016 and 0.053 in SBCL.  Both implementations reported median allocation of zero in each row.
+
+The computed-index assertions follow from the array bounds.  During each access, J lies between zero and SIZE-N, and I lies between zero and N-1.  Consequently J+I, J+N, J+N-1, and the guarded J+N-2 fit in FIXNUM and identify elements of U.  N-1 and the guarded N-2 identify elements of V.  The loop-counter declarations also admit their termination values.
+
+Evidence is in the build-directory logs `long-division-indices-{sbcl,mezzano}-{build,bench}.log` and disassemblies `long-division-indices-sbcl.asm` and `home/long-division-indices-mezzano.asm`.

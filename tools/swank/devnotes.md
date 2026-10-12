@@ -1296,3 +1296,17 @@ The integer wrapper allocated 56,940 bytes per 768/384-bit division and 5,533,78
 Mezzano emitted 5,016 instruction bytes for DIVIDE-DIGITS, versus SBCL's 1,059.  Its 4096/2048-bit sample profile places 790 of 1,013 samples within DIVIDE-DIGITS in array-access functions.  The compiler probes show that AREF with an index of (+ I J) calls AREF-1, while (THE FIXNUM (+ I J)) lets the existing transform emit a direct load with type and bounds checks.  Both probes use safety 3.  File-level and local optimization declarations both selected speed 3, safety 3, debug 1.  The [long-division report](../long-division.md#preallocated-division-loop) records ranges, source references, reproduction commands, and evidence paths.
 
 The recommendation is to address arbitrary-distance bignum shifts before runtime integration of division, then review the checked array-access transforms.  A shift can determine the whole-word offset and residual bit count once and construct its result in one pass.  The current 32-bit repetition creates unnecessary intermediate integers.  Such a runtime change requires separate approval and must preserve both shift directions, both integer signs, sign extension, zero and large counts, input immutability, and canonical integer results.  Compare against SBCL and remeasure this experiment before any TLS test.
+
+## Long-division type declarations: 2026-10-12
+
+The user approved adding declarations and measuring their effect.  Keep the algorithm, array representation, and speed 3, safety 3, debug 1 policy.  First declare inner-loop indices and computed array indices as fixnums.  Then add bounded types for arithmetic variables and digit reads.  Compare each stage with the recorded preallocated-array benchmark, retaining compiled output and disassemblies on both systems.
+
+For each array access, J is between zero and SIZE-N, and I is between zero and N-1.  Thus J+I, J+N, J+N-1, and the guarded J+N-2 are valid nonnegative array indices.  N-1 and the guarded N-2 are valid divisor indices.  The loop counters can reach their termination values, so their declarations retain the full FIXNUM range.
+
+Let B=2^30.  Digits and quotient estimates lie in [0,B-1].  NUMERATOR lies in [0,B^2-1].  A conservative BORROW bound of [0,B] gives PRODUCT at most B^2-B+1, preserving the unsigned-60-bit bound.  The next borrow is at most B, completing that induction.  DIFFERENCE lies in [-B,B-1].  CARRY is zero or one, and SUM is at most 2B-1.  REMAINDER is nonnegative and bounded by NUMERATOR initially.  Its correction increments occur only below B and leave it below 2B, so unsigned 60 bits suffice.  These bounds support declarations without changing arithmetic.
+
+- [x] Test and measure declarations on array indices.
+- [ ] Test and measure bounded arithmetic declarations.
+- [ ] Inspect remaining calls and document the measured effects.
+
+The index declarations passed 7,276 cases under both implementations.  Mezzano's restoration-plus-division medians improved from 16.259 to 9.467 microseconds at 768/384 bits and from 351.124 to 194.099 at 4096/2048 bits.  SBCL measured 0.697 and 15.297 microseconds.  Prepared results passed before and after timing.  The [report](../long-division.md#type-declarations) records ranges and evidence paths.
