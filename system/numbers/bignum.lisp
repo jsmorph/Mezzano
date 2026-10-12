@@ -66,9 +66,9 @@
 (defun bignum-to-float (bignum float-zero digits)
   (let* ((negative (minusp bignum))
          (bignum (if negative (- bignum) bignum))
-         (length (integer-length bignum))
-         (sig (ldb (byte digits (- length digits)) bignum))
-         (exp (expt (float 2 float-zero) (- length digits))))
+         (shift (max 0 (- (integer-length bignum) digits)))
+         (sig (round bignum (ash 1 shift)))
+         (exp (expt (float 2 float-zero) shift)))
     (* (float sig float-zero) exp (if negative -1 1))))
 
 (defun mezzano.runtime::%%coerce-bignum-to-short-float (bignum)
