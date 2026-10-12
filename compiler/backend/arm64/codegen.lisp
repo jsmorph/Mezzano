@@ -22,22 +22,25 @@
   (dolist (i instructions)
     (push i *emitted-lap*)))
 
-(defun emit-debug-info (info spill-locations)
-  (emit `(:debug ,(append
-                   (loop for (reg . slot) in *callee-save-loc*
-                         collect (list reg slot :value :hidden t))
-                   (loop
-                     for (variable location repr) in info
-                     collect (list* (c:lexical-variable-name variable)
-                                    (if (typep location 'ir:virtual-register)
-                                        (or (gethash location spill-locations)
-                                            (error "Missing stack slot for spilled virtual ~S" location))
-                                        location)
-                                    repr
-                                    (if (getf (c:lexical-variable-plist variable)
-                                              'c::hide-from-debug-info)
-                                        (list :hidden t)
-                                        ())))))))
+(defun emit-debug-info (info spill-locations layout-cache)
+  (multiple-value-bind (layout presentp) (gethash info layout-cache)
+    (unless presentp
+      (setf layout
+            (append (loop for (reg . slot) in *callee-save-loc*
+                          collect (list reg slot :value :hidden t))
+                    (loop for (variable location repr) in info
+                          collect (list* (c:lexical-variable-name variable)
+                                         (if (typep location 'ir:virtual-register)
+                                             (or (gethash location spill-locations)
+                                                 (error "Missing stack slot for spilled virtual ~S" location))
+                                             location)
+                                         repr
+                                         (if (getf (c:lexical-variable-plist variable)
+                                                   'c::hide-from-debug-info)
+                                             (list :hidden t)
+                                             ()))))
+            (gethash info layout-cache) layout))
+    (emit (list :debug layout))))
 
 (defun emit-gc-info (&rest metadata)
   (emit `(:gc :frame :layout ,*current-frame-layout* ,@metadata)))
@@ -188,6 +191,7 @@
                 (t
                  (lap-prepass backend-function inst-or-label uses defs))))
         (let ((*emitted-lap* '())
+              (debug-layouts (make-hash-table :test 'eq))
               (*callee-save-loc* (loop for reg in uses-callee-save-regs
                                        collect (cons reg (allocate-stack-slots 1))))
               (*current-frame-layout* (coerce (loop
@@ -227,7 +231,7 @@
                          (emit-stack-store :x26 i)))))
           (emit-gc-info :incoming-arguments :rcx)
           (ir:do-instructions (inst-or-label backend-function)
-            (emit-debug-info (gethash inst-or-label debug-map '()) *spill-locations*)
+            (emit-debug-info (gethash inst-or-label debug-map '()) *spill-locations* debug-layouts)
             (cond ((typep inst-or-label 'ir:label)
                    (push (gethash inst-or-label *labels*) *emitted-lap*))
                   (t

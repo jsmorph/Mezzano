@@ -950,33 +950,43 @@
 
 (defun rebuild-debug-map (allocator)
   (let ((result (make-hash-table))
+        (records (make-hash-table :test 'eq))
+        (layouts (make-hash-table :test 'eq))
         (original-debug-map (allocator-debug-variable-value-map allocator)))
     ;; Walk ranges & known instructions to produce a partial debug map.
     ;; Only valid for instructions originally in the function.
     (loop
        with starts = (allocator-range-starts allocator)
-       with active-ranges = '()
        with active-vreg-to-range-table = (make-hash-table)
        with range-allocations = (allocator-range-allocations allocator)
        for index from 0
        for inst in (allocator-instruction-ordering allocator)
        do
-         (setf active-ranges (remove-if (lambda (range)
-                                          (< (live-range-end range) index))
-                                        active-ranges))
          (dolist (new-range (gethash index starts))
-           (setf (gethash (live-range-vreg new-range) active-vreg-to-range-table) new-range)
-           (push new-range active-ranges))
+           (setf (gethash (live-range-vreg new-range) active-vreg-to-range-table) new-range))
          (loop
-            for (variable vreg repr) in (gethash inst original-debug-map)
+            with layout = '()
+            for tail on (gethash inst original-debug-map)
+            for entry = (first tail)
+            for (variable vreg repr) = entry
             for range = (gethash vreg active-vreg-to-range-table)
             for location = (if (interval-spilled-p allocator range)
                                vreg
                                (gethash range range-allocations))
+            for record = (gethash entry records)
+            for cached = (gethash tail layouts)
             do
-            ;; Mark vregs as used.
               (setf (gethash vreg result) t)
-              (push (list variable location repr) (gethash inst result '()))))
+              (unless (and record (eql (second record) location))
+                (setf record (list variable location repr)
+                      (gethash entry records) record))
+              (setf layout (if (and cached
+                                    (eq (first cached) record)
+                                    (eq (rest cached) layout))
+                               cached
+                               (setf (gethash tail layouts) (cons record layout))))
+            finally (when layout
+                      (setf (gethash inst result) layout))))
     ;; Now loop over all instructions & patch up any that were missed.
     (let ((last-entry '()))
       (ir:do-instructions (inst (allocator-backend-function allocator))
