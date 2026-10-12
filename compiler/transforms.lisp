@@ -814,20 +814,27 @@
           ;; Type check, array must be of the right type.
           ,(insert-type-check array `(simple-array ,',type (*)))
           ,(insert-bounds-check array array-type index index-type :force t)
-          (the ,',type (call (setf ,',accessor) ,value ,array ,index))))))
-
-(define-fast-array-transform t sys.int::%object-ref-t)
-(define-fast-array-transform fixnum sys.int::%object-ref-t)
-(define-fast-array-transform (unsigned-byte 64) sys.int::%%object-ref-unsigned-byte-64)
-(define-fast-array-transform (unsigned-byte 32) sys.int::%%object-ref-unsigned-byte-32)
-(define-fast-array-transform (unsigned-byte 16) sys.int::%%object-ref-unsigned-byte-16)
-(define-fast-array-transform (unsigned-byte 8) sys.int::%%object-ref-unsigned-byte-8)
-(define-fast-array-transform (signed-byte 64) sys.int::%object-ref-signed-byte-64)
-(define-fast-array-transform (signed-byte 32) sys.int::%%object-ref-signed-byte-32)
-(define-fast-array-transform (signed-byte 16) sys.int::%%object-ref-signed-byte-16)
-(define-fast-array-transform (signed-byte 8) sys.int::%%object-ref-signed-byte-8)
-(define-fast-array-transform single-float sys.int::%%object-ref-single-float)
-(define-fast-array-transform double-float sys.int::%object-ref-double-float)
+          (the ,',type (call (setf ,',accessor) ,value ,array ,index))))
+     ,@(loop for name in '(aref sys.int::aref-1)
+             collect
+             `(progn
+                (define-transform ,name ((array (simple-array ,type (*)) array-type)
+                                         (index fixnum))
+                    ((:optimize (/= safety 0) (= speed 3)))
+                  `(progn
+                     ,(insert-type-check array array-type '(simple-array * (*)))
+                     (call sys.int::%complex-bounds-check
+                           ,array ,index (call sys.int::%object-header-data ,array) '0)
+                     (the ,',type (call ,',accessor ,array ,index))))
+                (define-transform (setf ,name)
+                    (value (array (simple-array ,type (*)) array-type) (index fixnum))
+                    ((:optimize (/= safety 0) (= speed 3)))
+                  `(progn
+                     ,(insert-type-check array array-type '(simple-array * (*)))
+                     (call sys.int::%complex-bounds-check
+                           ,array ,index (call sys.int::%object-header-data ,array) '0)
+                     ,(insert-type-check value ',type)
+                     (the ,',type (call (setf ,',accessor) ,value ,array ,index))))))))
 
 ;;; AREF and AREF-n transforms.
 ;;; Transform to a call to row-major-aref+array-row-major-index
@@ -873,6 +880,19 @@
   1 (setf sys.int::aref-2) (setf row-major-aref))
 (define-array-transform sys.int::aref-3 row-major-aref * 3
   1 (setf sys.int::aref-3) (setf row-major-aref))
+
+(define-fast-array-transform t sys.int::%object-ref-t)
+(define-fast-array-transform fixnum sys.int::%object-ref-t)
+(define-fast-array-transform (unsigned-byte 64) sys.int::%%object-ref-unsigned-byte-64)
+(define-fast-array-transform (unsigned-byte 32) sys.int::%%object-ref-unsigned-byte-32)
+(define-fast-array-transform (unsigned-byte 16) sys.int::%%object-ref-unsigned-byte-16)
+(define-fast-array-transform (unsigned-byte 8) sys.int::%%object-ref-unsigned-byte-8)
+(define-fast-array-transform (signed-byte 64) sys.int::%object-ref-signed-byte-64)
+(define-fast-array-transform (signed-byte 32) sys.int::%%object-ref-signed-byte-32)
+(define-fast-array-transform (signed-byte 16) sys.int::%%object-ref-signed-byte-16)
+(define-fast-array-transform (signed-byte 8) sys.int::%%object-ref-signed-byte-8)
+(define-fast-array-transform single-float sys.int::%%object-ref-single-float)
+(define-fast-array-transform double-float sys.int::%object-ref-double-float)
 
 ;;; ARRAY-ROW-MAJOR-INDEX transforms.
 (macrolet ((def (n)

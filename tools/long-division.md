@@ -200,14 +200,43 @@ Times are microseconds per restoration plus division, with median followed by mi
 
 The arithmetic declarations improved SBCL's medians by factors of 1.54 and 1.66.  Mezzano's sample ranges overlap, with identical larger-case medians.  The final Mezzano/SBCL ratios are 20.9 and 21.1.  Restoration-only medians were 1.180 and 5.891 microseconds in Mezzano, and 0.016 and 0.053 in SBCL.  Both implementations reported median allocation of zero in each row.
 
-### Remaining compiler costs
+### Compiler costs after declarations
 
 After the index declarations, Mezzano emitted direct element accesses and expanded the function from 5,016 to 9,591 instruction bytes.  Each of the 16 element-access sites calls ARRAY-DIMENSION, checks the dimension bound, and checks the storage bound.  The arithmetic declarations left the instruction count, byte count, and call-site counts unchanged.  SBCL's arithmetic declarations reduced its function from 1,059 to 1,007 instruction bytes.
 
 A profile of 64,000 prepared 4096/2048-bit divisions recorded 1,216 samples.  Within DIVIDE-DIGITS, 262 of 1,163 samples descended into ARRAY-DIMENSION, and 901 remained in DIVIDE-DIGITS.  The profile sampled the benchmark thread and excluded collection.  It measures function-level costs and does not divide the remaining time among inline checks, arithmetic, branches, and memory operations.
 
-The [array transforms](../compiler/transforms.lisp) route a typed one-dimensional AREF through ARRAY-ROW-MAJOR-INDEX and ROW-MAJOR-AREF, producing two bounds checks.  [ARRAY-DIMENSION simplification](../compiler/simplify.lisp) and the fast bounded-arithmetic transforms are restricted to safety 0.  The numeric declarations therefore leave specific optimization opportunities at safety 3.
+At that revision, the [array transforms](../compiler/transforms.lisp) routed a typed one-dimensional AREF through ARRAY-ROW-MAJOR-INDEX and ROW-MAJOR-AREF, producing two bounds checks.  [ARRAY-DIMENSION simplification](../compiler/simplify.lisp) and the fast bounded-arithmetic transforms are restricted to safety 0.  The numeric declarations therefore leave specific optimization opportunities at safety 3.
 
-The next compiler recommendation is a checked specialization of one-dimensional simple-array access: validate the array, index, and stored value as required, perform one bounds check, and access the element.  Tests must preserve argument evaluation order, returned values, and errors for invalid arrays, indices, and values.  Subsequent work should address arithmetic specialization using checked or derived bounds.  These compiler changes require separate approval.
+This measurement led to the checked array specialization described below.  Arithmetic specialization using checked or derived bounds remains pending.
 
 Evidence is in `long-division-types-{sbcl,mezzano}-{build,bench}.log`, `long-division-types-mezzano-checked.log`, `long-division-types-sbcl.asm`, `home/long-division-types-mezzano.asm`, and `home/long-division-types-profile.txt`.  The profile used the preceding reproduction form with 2,000 iterations and a separate output path.
+
+## Checked array specialization
+
+The compiler now specializes one-dimensional AREF and its setter at speed 3 with nonzero safety for the existing direct-access element types.  It checks the array type, checks the index against the vector length once, and accesses the element.  Stores also check the value.  Character and bit arrays retain their existing paths.
+
+[The compiler tests](test-array-transforms.lisp) passed 608 cases at safety 3 with debug 1 and 3.  Functions compiled before and after the change agreed on values, evaluation order, and condition details.  The cases cover all 12 supported element types, boundary values, invalid arrays and indices, empty arrays, invalid stored values, and failure before mutation.  The count includes four declared-dimension and element-type checks at debug 1.  The existing traced setter at debug 3 does not enforce those declarations.  The division implementation passed all 7,276 cases after recompilation.
+
+Times below are microseconds per restoration plus division.  Each cell gives the median followed by the minimum and maximum.  The Lisp division source and speed 3, safety 3, debug 1 policy are unchanged.
+
+| Operand bits | Previous Mezzano compiler | Checked array specialization | SBCL |
+| --- | ---: | ---: | ---: |
+| 768/384 | 9.438 (9.376–9.522) | 6.105 (6.096–6.761) | 0.452 (0.452–0.454) |
+| 4096/2048 | 194.099 (194.099–195.313) | 119.275 (118.821–119.275) | 9.192 (9.192–9.246) |
+
+The updated Mezzano compiler improves these medians by factors of 1.55 and 1.63.  The Mezzano/SBCL ratios are 13.5 and 13.0.  Mezzano's restoration-only medians are 1.175 and 5.891 microseconds.  Every timed sample reported zero allocation.  Prepared-array results agreed with TRUNCATE before and after timing.  The SBCL column repeats the preceding measurement of the same division source.
+
+The compiled division function shrank from 9,591 to 8,372 instruction bytes and from 2,447 to 2,135 instructions.  Each of its 16 element-access sites retains one bounds check.  The disassembly contains no ARRAY-DIMENSION calls or second storage-bounds checks.  Arithmetic checks and overflow paths remain.  Certificate verification still uses the existing runtime division, so these loop measurements do not establish a new certificate-verification time.
+
+To compare compiler behavior in a running development guest, compile and load the test file, call CAPTURE before loading the updated compiled transforms, and pass its result to RUN afterward:
+
+```lisp
+(defparameter *array-reference* (mezzano-array-transform-test:capture))
+;; Load the updated compiler transforms here.
+(mezzano-array-transform-test:run *array-reference*)
+```
+
+RUN without an argument checks the current compiler's behavior without comparison to a previous compiler.  Evidence is in the build-directory logs `array-transform-reference.log`, `array-transform-load.log`, and `long-division-array-compiler.log`.  The disassembly is `home/long-division-array-compiler.asm`.
+
+A fresh x86-64 image built from an empty target-code directory and booted to the CI completion marker with QEMU exit status 3.  Build and boot evidence is `array-compiler-build.log`, `array-compiler-ci-serial.log`, and `array-compiler-ci.exit`.  ARM64 execution and snapshot restoration of this compiler increment have not been tested.
