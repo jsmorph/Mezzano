@@ -38,6 +38,10 @@ def main():
         miny = min(y for x, y in expected)
         width = max(x for x, y in expected) - minx + 1
         height = max(y for x, y in expected) - miny + 1
+        clipped_pixels = 0
+        if reference["role"] == "title":
+            clipped_pixels = sum(x >= advance for x, y in expected)
+            expected = {(x, y) for x, y in expected if x < advance}
         expected = {(x-minx, y-miny) for x, y in expected}
         refx, refy = reference["ink_rectangle"][:2]
         best = None
@@ -56,7 +60,8 @@ def main():
         _, _, x, y, missing, extra, gray = best
         results.append({"role": reference["role"], "font": reference["font"], "text": reference["text"],
                         "position": [x, y], "reference_position": [refx, refy], "offset": [x-refx,y-refy],
-                        "missing_pixels": missing, "extra_pixels": extra, "gray_pixels": gray})
+                        "missing_pixels": missing, "extra_pixels": extra, "gray_pixels": gray,
+                        "source_pixels_clipped_at_advance": clipped_pixels})
     palette = Counter(image)
     print(json.dumps({"screenshot": args.screenshot.name,
                       "sha256": hashlib.sha256(args.screenshot.read_bytes()).hexdigest(),

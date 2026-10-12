@@ -200,3 +200,5 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 
 .command-prompt { display: inline-block; width: 7px; height: 7px; font-size: 0; line-height: 0; }
 .command-prompt svg { display: block; }
+
+#examiner-viewer > h1 .pixel-text { display: inline-block; vertical-align: top; overflow: hidden; }

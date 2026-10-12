@@ -1,6 +1,6 @@
 {
-  "screenshot": "reference-aligned.png",
-  "sha256": "5f6d679964cbe2878575d1823c046a12599aa32364e82dc11fbd30f0fdadbb1f",
+  "screenshot": "lispm-title-app.png",
+  "sha256": "0e42e51093dd42a42b67a8e05cd1d40a93f394361b9478bf30de43aad03ec196",
   "reference": "https://www.chai.uni-hamburg.de/~moeller/symbolics-info/docex/de2.gif",
   "reference_sha256": "cb8cfecd08d3e6013ea9479edbb2e83492d3f5a5e89523c30d89d542c39ac849",
   "whole_image_intermediate_gray_pixels": 0,
@@ -23,7 +23,8 @@
       ],
       "missing_pixels": 0,
       "extra_pixels": 0,
-      "gray_pixels": 0
+      "gray_pixels": 0,
+      "source_pixels_clipped_at_advance": 6
     },
     {
       "role": "title prefix",
@@ -43,7 +44,8 @@
       ],
       "missing_pixels": 0,
       "extra_pixels": 0,
-      "gray_pixels": 0
+      "gray_pixels": 0,
+      "source_pixels_clipped_at_advance": 0
     },
     {
       "role": "candidates label",
@@ -63,7 +65,8 @@
       ],
       "missing_pixels": 0,
       "extra_pixels": 0,
-      "gray_pixels": 0
+      "gray_pixels": 0,
+      "source_pixels_clipped_at_advance": 0
     },
     {
       "role": "bookmarks label",
@@ -83,7 +86,8 @@
       ],
       "missing_pixels": 0,
       "extra_pixels": 0,
-      "gray_pixels": 0
+      "gray_pixels": 0,
+      "source_pixels_clipped_at_advance": 0
     },
     {
       "role": "viewer label",
@@ -103,7 +107,8 @@
       ],
       "missing_pixels": 0,
       "extra_pixels": 0,
-      "gray_pixels": 0
+      "gray_pixels": 0,
+      "source_pixels_clipped_at_advance": 0
     },
     {
       "role": "commands label",
@@ -123,7 +128,8 @@
       ],
       "missing_pixels": 0,
       "extra_pixels": 0,
-      "gray_pixels": 0
+      "gray_pixels": 0,
+      "source_pixels_clipped_at_advance": 0
     },
     {
       "role": "command menu",
@@ -143,7 +149,8 @@
       ],
       "missing_pixels": 0,
       "extra_pixels": 0,
-      "gray_pixels": 0
+      "gray_pixels": 0,
+      "source_pixels_clipped_at_advance": 0
     }
   ]
 }

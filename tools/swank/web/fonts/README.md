@@ -53,7 +53,7 @@ The tests establish the recovered font rasterization.  Historical source matchin
 
 ## Application comparison
 
-`compare-layout.py` compares a 1160 by 852 application screenshot with the selected historical title, pane-label, and command-menu positions.  It searches within ten pixels of each reference position and reports ink differences against the recovered glyph rasters, position differences against the original capture, and the complete screenshot's intermediate-gray pixel count.  The [measured application positions](application-layout.json) have zero offsets for all seven samples and zero intermediate-gray pixels in the complete screenshot.  The historical full-title mismatch remains separate: six recovered pixels are absent from the original title capture.
+`compare-layout.py` compares a 1160 by 852 application screenshot with the selected historical title, pane-label, and command-menu positions.  It searches within ten pixels of each reference position and reports ink differences against the recovered glyph rasters, position differences against the original capture, and the complete screenshot's intermediate-gray pixel count.  The [measured application positions](application-layout.json) have zero offsets for all seven samples and zero intermediate-gray pixels in the complete screenshot.  The title clips its final glyph overhang at the string advance, as detailed below.  Other samples compare the complete recovered ink.
 
 ```sh
 python3 compare-layout.py /path/to/reference-size.png
@@ -64,3 +64,15 @@ The application uses left-aligned paragraphs.  The reference uses justified para
 Application tests caught a table-width feedback error, in which an existing table's width became the next layout input and grew on successive renders.  Column widths now derive from the parent width.  The browser test asserts that every table fits its parent.  A data-URL command marker then failed the server's content-security policy.  The marker now uses an inline SVG path, and the final Examiner run reported no browser errors.  A separate diagnostic run found a late Chromium profile-file write during cleanup.  The harness now uses bounded retries when removing its own temporary profile.
 
 The final Examiner browser run passed its functional suite, source-link and table-width assertions, exact 100-pixel reading-position restoration, and session cleanup with zero browser errors.  The full Listener/Debugger suite passed after the shared typography changes, released its owned files, jobs, stops, and session, and reported only the two expected HTTP 409 responses from release reconciliation.
+
+## Title clipping
+
+The six pixels absent from the original title are the final `r` glyph's two-column by three-row overhang beyond the 313-pixel string advance.  Both [de1.gif](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/docex/de1.gif) and [de2.gif](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/docex/de2.gif) omit exactly those pixels.  The application clips the title's inline block at its advance.  Its 320 by 24 title rectangle then matches both original captures pixel for pixel.  The original drawing code's clipping behavior remains an inference.  The fonts retain the complete glyphs.
+
+The focused test verifies the source image's hash, checks the unclipped six-pixel difference, and requires zero differences after clipping, exact 313 by 24 metrics, and zero intermediate-gray pixels.  It uses Chromium and the installed ImageMagick image decoder.
+
+```sh
+node fonts/test-title.mjs /path/to/de2.gif /tmp/title-test
+```
+
+The final application screenshot and comparison retain zero offsets for all seven selected samples and zero gray pixels across the complete image.  This closes the measured title mismatch.  Paragraph justification and complete-window comparison remain unfinished.
