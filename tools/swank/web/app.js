@@ -3,7 +3,7 @@
 const $ = id => document.getElementById(id);
 const storageKey = "mezzano-monitor-v1";
 const defaultState = {session: null, attempted: false, jobs: {}, pending: [], commands: [],
-                      package: "CL-USER", interactive: false, history: [], inputHistory: [], nextInputSequence: 0};
+                      package: "CL-USER", interactive: false, history: [], inputHistory: [], nextInputSequence: 0, initialHerald: null};
 let state = defaultState;
 let storageError = null;
 try {
@@ -393,6 +393,61 @@ function editorChanged(editor, event) {
   if (editor.id === "source") { historyIndex = null; resizeSource(); }
   scheduleAssistance(editor, event.inputType === "insertText" && event.data === " " ? "space" : "inspect");
 }
+function heraldInline(parent, line) {
+  if (!Array.isArray(line)) throw new Error("Invalid herald line.");
+  for (const part of line) {
+    if (typeof part.text !== "string") throw new Error("Invalid herald text.");
+    if (part.kind === ":text") parent.append(document.createTextNode(part.text));
+    else if (part.kind === ":emphasis") parent.append(node("em", part.text));
+    else if (part.kind === ":key") {
+      const key = node("kbd", part.text, "herald-key");
+      const outline = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      outline.setAttribute("aria-hidden", "true");
+      const path = document.createElementNS(outline.namespaceURI, "path");
+      outline.append(path); key.append(outline); parent.append(key);
+    } else throw new Error("Unknown herald inline kind: " + part.kind);
+  }
+}
+function renderHerald(payload) {
+  if (typeof payload?.title !== "string" || !Array.isArray(payload.facts) || !Array.isArray(payload.help)) {
+    throw new Error("Invalid herald presentation.");
+  }
+  const herald = node("section", undefined, "herald");
+  herald.setAttribute("aria-label", "System herald");
+  herald.dataset.detailed = String(Boolean(payload["detailed-p"]));
+  const summary = node("div", undefined, "herald-summary");
+  summary.append(node("h1", payload.title, "herald-title"));
+  const facts = node("div", undefined, "herald-facts");
+  for (const line of payload.facts) { const row = node("p"); heraldInline(row, line); facts.append(row); }
+  summary.append(facts);
+  if (payload["detailed-p"]) {
+    const systems = payload.systems || [];
+    if (!Array.isArray(systems)) throw new Error("Invalid herald systems.");
+    const tables = node("div", undefined, "herald-systems");
+    const split = Math.ceil(systems.length / 2);
+    for (const group of [systems.slice(0, split), systems.slice(split)]) {
+      const table = node("table");
+      table.setAttribute("aria-label", "Loaded ASDF systems");
+      for (const system of group) {
+        if (typeof system.name !== "string" || (system.version !== null && typeof system.version !== "string")) {
+          throw new Error("Invalid herald system record.");
+        }
+        const row = node("tr");
+        const version = node("td", system.version ?? "-");
+        if (system.version === null) version.title = "Version not specified.";
+        row.append(node("td", system.name), version); table.append(row);
+      }
+      tables.append(table);
+    }
+    if (!systems.length) tables.append(node("p", "No ASDF systems loaded."));
+    summary.append(tables);
+  }
+  const help = node("div", undefined, "herald-help");
+  for (const line of payload.help) { const row = node("p"); heraldInline(row, line); help.append(row); }
+  herald.append(summary, help);
+  return herald;
+}
+
 function renderOutput(view, presentations) {
   const signature = JSON.stringify([view.text, presentations]);
   if (signature === view.outputSignature) return;
@@ -400,25 +455,28 @@ function renderOutput(view, presentations) {
   const pieces = [];
   let offset = 0;
   for (const presentation of presentations || []) {
-    if (presentation.type !== ":pathname" || !Number.isInteger(presentation.start)
-        || !Number.isInteger(presentation.end) || presentation.start < offset
-        || presentation.end < presentation.start || presentation.end > chars.length
-        || typeof presentation.value !== "string") {
-      throw new Error("Invalid pathname presentation in Listener output.");
+    if (!Number.isInteger(presentation.start) || !Number.isInteger(presentation.end)
+        || presentation.start < offset || presentation.end < presentation.start || presentation.end > chars.length) {
+      throw new Error("Invalid Listener presentation range.");
     }
     pieces.push(document.createTextNode(chars.slice(offset, presentation.start).join("")));
-    const pathname = button(chars.slice(presentation.start, presentation.end).join(""), async () => {
-      showActivity("listener");
-      scheduleAssistance($("source"), "insert", presentation.value);
-    }, "Mouse-Left: Insert this pathname into the current command argument.");
-    pathname.className = "presentation";
-    pathname.title = presentation.value;
-    pieces.push(pathname);
+    if (presentation.type === ":pathname") {
+      if (typeof presentation.value !== "string") throw new Error("Invalid pathname presentation.");
+      const pathname = button(chars.slice(presentation.start, presentation.end).join(""), async () => {
+        showActivity("listener");
+        scheduleAssistance($("source"), "insert", presentation.value);
+      }, "Mouse-Left: Insert this pathname into the current command argument.");
+      pathname.className = "presentation";
+      pathname.title = presentation.value;
+      pieces.push(pathname);
+    } else if (presentation.type === ":herald") pieces.push(renderHerald(presentation.herald));
+    else throw new Error("Unknown Listener presentation type: " + presentation.type);
     offset = presentation.end;
   }
   pieces.push(document.createTextNode(chars.slice(offset).join("")));
   view.output.replaceChildren(...pieces);
   view.outputSignature = signature;
+  placeHeraldOnPixels();
 }
 function applyListenerEffects(job, info) {
   const result = info["listener-result"];
@@ -426,6 +484,7 @@ function applyListenerEffects(job, info) {
       || !job.listener || job.effectsApplied || !result) return;
   for (const effect of result.effects || []) {
     if (effect.operation === ":clear-output-history") {
+      if (state.initialHerald?.session === state.session) state.initialHerald.hidden = true;
       for (const name of job.clearBefore || []) {
         if (state.jobs[name]) state.jobs[name].hidden = true;
         if (views.has(name)) views.get(name).element.hidden = true;
@@ -449,7 +508,7 @@ function createView(job) {
   element.dataset.job = job.name;
   const source = node("pre", job.source ? "Command: " + job.source : "Retained evaluation " + job.name.slice(0, 12));
   source.title = job.name;
-  const output = node("pre");
+  const output = node("div", undefined, "job-output");
   const values = node("pre", undefined, "returned-values");
   const status = node("span", "", "job-state");
   const operations = node("div", undefined, "command-row");
@@ -519,6 +578,11 @@ async function updateJob(job, info) {
 async function refresh() {
   if (!connected) return;
   const listenerInfo = await api("listener-information");
+  if (state.initialHerald?.session !== state.session) state.initialHerald = {session: state.session, hidden: false};
+  if ($("herald").dataset.session !== state.session && listenerInfo.herald) {
+    $("herald").replaceChildren(renderHerald(listenerInfo.herald));
+    $("herald").dataset.session = state.session;
+  }
   state.package = listenerInfo.package;
   $("listener-prompt").textContent = listenerInfo.prompt;
   $("package").textContent = listenerInfo.package;
@@ -557,7 +621,8 @@ async function refresh() {
     }
   }
   save();
-  $("herald").hidden = Object.keys(state.jobs).length > 0;
+  $("herald").hidden = !$("herald").firstElementChild || Boolean(state.initialHerald?.hidden);
+  placeHeraldOnPixels();
   renderJobs();
   renderInputHistory();
   renderStops();
@@ -911,11 +976,30 @@ $("horizontal-track").onclick = event => {
 window.addEventListener("resize", updateTracks);
 function placeHeraldOnPixels() {
   document.fonts.ready.then(() => {
-    for (const element of document.querySelectorAll("#herald h1, #herald p > span")) placeTextOnPixels(element);
+    for (const herald of document.querySelectorAll(".herald")) {
+      if (!herald.getClientRects().length || !herald.clientWidth) continue;
+      herald.style.left = "0px";
+      herald.style.left = (Math.round(herald.getBoundingClientRect().left) - herald.getBoundingClientRect().left) + "px";
+      for (const element of herald.querySelectorAll(".herald-title, .herald-facts > p")) placeTextOnPixels(element);
+      const tables = herald.querySelector(".herald-systems");
+      if (tables) {
+        tables.style.left = "0px";
+        tables.style.left = (Math.round(tables.getBoundingClientRect().left) - tables.getBoundingClientRect().left) + "px";
+        const first = Math.floor(Math.max(0, tables.clientWidth - 8) * 322 / 696);
+        tables.style.gridTemplateColumns = first + "px minmax(0, 1fr)";
+      }
+      for (const key of herald.querySelectorAll(".herald-key")) {
+        const width = key.offsetWidth;
+        key.querySelector("svg").setAttribute("viewBox", "0 0 " + width + " 9");
+        key.querySelector("path").setAttribute("d", "M0.5 4.5L4.5 0.5H" + (width - 4.5) + "L" + (width - 0.5)
+          + " 4.5L" + (width - 4.5) + " 8.5H4.5Z");
+      }
+    }
   }).catch(report);
 }
 placeHeraldOnPixels();
 window.addEventListener("resize", placeHeraldOnPixels);
+document.addEventListener("activitychange", placeHeraldOnPixels);
 window.addEventListener("resize", () => {
   for (const element of $("who-line").children) placeTextOnPixels(element);
   for (const dialog of document.querySelectorAll("dialog[open]")) placeDialogOnPixels(dialog);

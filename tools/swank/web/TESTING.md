@@ -67,3 +67,14 @@ node tools/swank/web/test-missing-document.mjs \
 ```
 
 The test creates no guest jobs or files and releases its session.  Its four live missing-topic requests must produce HTTP 409 responses.  Constructed error responses do not generate browser network errors.  The driver rejects unexpected browser errors and preserves its session record on failure.
+
+## Listener herald
+
+The focused herald driver tests the initial system display with existing retained jobs, plain and detailed Show Herald commands, original-request replay after a discarded reply, Unicode presentation ranges, untrusted text, activity switching, narrow layout, and Clear Output History across reply loss and reload.  It verifies that ordinary output containing the command name remains ordinary text.  It releases only the jobs and session it creates.
+
+```sh
+node tools/swank/web/test-herald.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-herald-test
+```
+
+The test records command identities before replay and preserves failed-run state for cleanup.  The isolated HTTP suite also verifies both herald font routes.  Recovered-glyph and historical-position comparisons remain separate from command and recovery tests.

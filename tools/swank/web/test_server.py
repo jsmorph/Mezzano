@@ -175,6 +175,19 @@ class HTTPTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_herald_font_routes(self):
+        for name in ("hl8", "5x5"):
+            with self.subTest(font=name):
+                conn = http.client.HTTPConnection("127.0.0.1", self.http.server_port, timeout=3)
+                try:
+                    conn.request("GET", f"/fonts/{name}.ttf")
+                    reply = conn.getresponse()
+                    self.assertEqual(reply.status, 200)
+                    self.assertEqual(reply.getheader("Content-Type"), "font/ttf")
+                    self.assertEqual(reply.read(), (server.ROOT / "fonts" / f"{name}.ttf").read_bytes())
+                finally:
+                    conn.close()
+
     def test_browser_origin_and_host(self):
         good = {"Content-Type": "application/json", "X-Mezzano-Request": "1"}
         cases = [{**good, "Origin": "http://unrelated.example"},

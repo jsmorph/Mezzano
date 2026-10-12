@@ -47,9 +47,6 @@ pre { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; 
 #horizontal-track { height: 7px; border: 1px solid #000; margin: 0 5px 0 23px; background: repeating-conic-gradient(#fff 0% 25%, #000 0% 50%) 0 0 / 2px 2px; }
 #horizontal-track div { width: 100%; height: 100%; background: #fff; border-right: 1px solid #000; }
 #window-label { font-style: italic; margin: 0 0 1px; width: fit-content; }
-#herald { width: min(100%, 560px); margin: 34px auto 100px; text-align: center; }
-#herald h1 { font-size: 24px; line-height: 24px; font-style: italic; margin: 0 0 26px; }
-#herald p { line-height: 12px; }
 #evaluate { display: flex; align-items: start; gap: 8px; margin-top: 12px; }
 textarea { display: block; border: 0; outline: none; padding: 0; resize: none; flex: 1; min-width: 0; line-height: 12px; caret-color: #000; }
 .evaluation { margin: 0 0 24px; }
@@ -83,7 +80,6 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 .menu-columns input:not([type="checkbox"]) { width: 104px; }
 [hidden] { display: none !important; }
 @media (max-width: 640px) {
-  #herald { margin-bottom: 60px; }
   #who-line { justify-content: start; gap: 8px; }
   .menu-columns { gap: 12px; padding: 2px; }
 }
@@ -180,8 +176,6 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 #window-label { font-family: "HL12I", sans-serif; font-size: 14px; line-height: 14px; font-style: normal; }
 #monitor:has(#debugger:not([hidden])) #window-label { font-family: "TR12I", serif; }
 #debugger { line-height: 14px; }
-#herald h1 { font-family: "EUREX24I", serif; font-style: normal; }
-#herald p { font-family: "HL12", sans-serif; font-size: 14px; line-height: 14px; }
 #mouse-documentation { font-family: "SWISS12B-CCAPS", sans-serif; font-size: 14px; line-height: 14px; min-height: 28px; }
 #mouse-documentation div { min-height: 14px; }
 #system-menu h2 { font-family: "HL12BI", sans-serif; font-size: 14px; line-height: 14px; font-weight: normal; font-style: normal; }
@@ -194,7 +188,6 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 .document-source { overflow-wrap: anywhere; }
 
 .pixel-text { position: relative; }
-#herald p > span { display: block; }
 #examiner-pages tr:last-child > * { border-bottom: 0; }
 #examiner-pages tr > :last-child { border-right: 0; }
 
@@ -236,3 +229,28 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 .peek-active #page:focus { outline: none; }
 .peek-active #mouse-documentation { margin-top: 0; min-height: 33px; padding: 3px 2px 2px; }
 .peek-active #who-line { min-height: 17px; border: 1px solid #000; }
+
+@font-face { font-family: "HL8"; src: url("/fonts/hl8.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "5X5"; src: url("/fonts/5x5.ttf") format("truetype"); font-display: block; }
+.job-output { white-space: pre-wrap; overflow-wrap: anywhere; }
+.herald { position: relative; width: min(100%, 866px); margin: 54px auto 28px; white-space: normal; font-family: "HL12", sans-serif; font-size: 14px; line-height: 16px; }
+.herald-summary { width: min(100%, 830px); }
+.herald-title { font-family: "EUREX24I", serif; font-size: 24px; line-height: 24px; text-align: center; margin: 0 0 31px; }
+.herald-facts { text-align: center; }
+.herald-facts p { margin: 0; }
+.herald-facts p:first-child { margin-bottom: 24px; }
+.herald em { font-family: "HL12I", sans-serif; font-style: normal; }
+.herald-facts em { font-family: "HL12BI", sans-serif; }
+.herald-systems { position: relative; width: min(100%, 704px); margin: 13px 0 0 max(0px, calc((100% - 696px) / 2)); display: grid; grid-template-columns: 322px minmax(0, 1fr); gap: 8px; align-items: start; font-family: "HL8", sans-serif; font-size: 11px; line-height: 13px; }
+.herald-systems table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.herald-systems td { padding: 0; vertical-align: top; overflow-wrap: anywhere; }
+.herald-systems td:last-child { width: 43px; padding-left: 8px; }
+.herald-systems table:last-child td:last-child { width: 46px; }
+.herald-help { width: min(900px, calc(100% + 34px)); max-width: calc(100vw - 80px); margin-top: 28px; padding-top: 6px; padding-bottom: 4px; position: relative; }
+.herald-help::before, .herald-help::after { content: ""; display: block; width: min(100%, 601px); border-top: 1px solid #000; position: absolute; left: 0; }
+.herald-help::before { top: 0; }
+.herald-help::after { bottom: 0; }
+.herald-help p { margin: 0; }
+.herald-help p:first-child { margin-bottom: 8px; }
+.herald-key { font-family: "5X5", monospace; font-size: 5px; line-height: 5px; font-weight: normal; display: inline-block; position: relative; padding: 2px 5px; vertical-align: 2px; white-space: nowrap; }
+.herald-key svg { position: absolute; inset: 0; width: 100%; height: 9px; fill: none; stroke: #000; stroke-width: 1; shape-rendering: crispEdges; }

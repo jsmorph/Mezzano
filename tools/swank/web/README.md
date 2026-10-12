@@ -35,6 +35,8 @@ POST requests require JSON and the `X-Mezzano-Request: 1` header.  An Origin hea
 
 ## Lisp Listener
 
+The initial Listener displays a system herald with the image version, architecture, memory and backing-store totals, loaded ASDF systems and versions, and keyboard help.  `Show Herald` prints the title, facts, and help in the transcript.  `Show Herald :Detailed` also lists loaded systems.  A dash marks a system without a declared version.  Reload samples fresh startup facts.  Retained command output keeps the facts captured when that command ran.
+
 Return submits a command or Lisp form.  Shift-Return inserts a newline.  Alphabetic input and an initial colon introduce commands.  A bound variable name is accepted when it does not identify a command.  Other input is Lisp source, and a leading comma forces Lisp reading.  For example:
 
 ```text
@@ -47,7 +49,7 @@ SPACE completes a command word, Tab completes a name, and F12 requests contextua
 
 Mouse-Right or the lower activity label opens the System Menu.  The menu selects an activity, package, interactive-input mode, or connection operation.  The Listener displays program output and each returned value.  A form returning zero values displays `(No values)`.  One Listener job runs at a time in a session.
 
-Interactive evaluations accept text and EOF through their input controls.  Interrupt requests a debugger stop.  Evaluations lists retained jobs and their states.  Release removes a completed job's stored output and results.  Clear Output History clears the displayed transcript while preserving input history and retained jobs.
+Interactive evaluations accept text and EOF through their input controls.  Interrupt requests a debugger stop.  Evaluations lists retained jobs and their states.  Release removes a completed job's stored output and results.  Clear Output History clears the displayed transcript and initial herald while preserving input history and retained jobs.  The cleared state persists across tab reloads.
 
 ## Debugger
 

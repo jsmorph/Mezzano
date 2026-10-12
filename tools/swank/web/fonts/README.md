@@ -4,7 +4,7 @@ These TrueType files preserve recovered Genera 8.5 bitmap glyphs as integer pixe
 
 ## Build and provenance
 
-The user approved fontTools as a build dependency.  The server has no font conversion dependency.  The conversion script pins fontTools 4.60.1 and verifies SHA-256 hashes for each input font and the Unicode mapping.  Build on minideb2 with the existing Python interpreter:
+The user approved fontTools as a build dependency.  The server has no font conversion dependency.  The conversion script pins fontTools 4.60.1 and verifies SHA-256 hashes for each input font and the Unicode mapping.  Build with an installed Python interpreter:
 
 ```sh
 uv run --no-python-downloads --python /usr/bin/python3 build.py /path/to/genera-fonts
@@ -40,6 +40,8 @@ Chromium 145.0.7632.109 passed all 1,555 mapped glyphs in twelve fonts with zero
 | Debugger bold text | CPTFONTCB | 12 / 10 pixels |
 | Fixed-width italic text | CPTFONTI | 12 / 10 pixels |
 | Herald and document body | HL12 | 14 / 11 pixels |
+| Herald systems and versions | HL8 | 11 / 8 pixels |
+| Herald keycap lettering | 5X5 | 5 / 5 pixels |
 | Document headings | HL12B | 14 / 11 pixels |
 | Listener label and menu headings | HL12I | 14 / 11 pixels |
 | System Menu title and Examiner pane labels | HL12BI | 14 / 11 pixels |
@@ -95,3 +97,21 @@ python3 compare-peek-layout.py /path/to/peek-fixture-processes.png
 ```
 
 These five strings are measured in a fixture capture.  The live Mezzano field set, current thread names, supported menus, and other layout details differ from the source.  The measurements do not establish complete original-window equivalence.
+
+## Listener herald typography
+
+The [Genera herald reference](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/genera.gif) supplies the title, centered facts, two system columns, ruled help block, and keycap lettering.  The application uses the current Mezzano image facts, loaded ASDF systems, supported keyboard commands, and its existing window controls.
+
+HL8 and 5X5 add 225 mapped glyphs.  The fifteen-font Chromium DPR1 test passed all 1,922 mapped glyphs with zero missing, extra, or intermediate-gray pixels, exact advances, and exact CSS baselines and line heights.  The source hashes and generated file hashes are retained in `pixels.json`.  The reference's HL8 system lines use thirteen-pixel spacing.  The application preserves that spacing when the available width permits a single line.
+
+The live Mezzano capture places the four name/version column starts at the reference's horizontal positions.  Tables retain their own row heights instead of stretching the shorter table.  The current system list and help text determine the block's vertical extent.
+
+The [herald reference record](herald-reference.json) and [glyph matches](herald-matches.json) retain the original image URL, hash, sampled rectangles, and source font metadata.  The application fixture uses the production renderer with intercepted historical-content records and makes no guest requests.  From the Web directory:
+
+```sh
+python3 fonts/identify-herald.py /path/to/genera-fonts /path/to/genera.gif
+node fonts/capture-herald.mjs http://127.0.0.1:8765/ /tmp/herald-layout
+python3 fonts/compare-herald-layout.py /tmp/herald-layout/reference-content.png
+```
+
+Twelve sampled text rasters and the complete HELP keycap match their source rectangles.  After subtracting the twenty-pixel Macintosh menu, nine sampled positions match.  The title is one pixel above its reference position, the image-version line is one pixel below, and HELP is eight pixels below because the application groups its help paragraphs differently.  The historical-content fixture contains 998 intermediate-gray pixels from trademark-glyph fallback.  The current Mezzano herald uses its own title and factual content.  These comparisons establish the sampled glyphs and positions, with the remaining differences retained in the report.
