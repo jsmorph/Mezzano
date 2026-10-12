@@ -46,6 +46,16 @@ do
 done
 ```
 
+## Pager reservation tests
+
+From the Mezzano checkout, run the isolated host test:
+
+```sh
+sbcl --script tools/swank/test-pager-accounting.lisp
+```
+
+The test reads the production block-map constants and six pager functions.  Its one-page fixture replaces disk allocation, physical memory, page tables, and locking.  It checks reservation changes when releasing eager or lazy pages, realizing a lazy page during swap, rejecting a failed disk allocation, and releasing or replacing a snapshot-owned page.  Read-only and early-allocation cases check the existing paths.  These tests cover local accounting transitions.  Guest collection, paging, and snapshot tests provide separate system evidence.
+
 ## Snapshot and restore tests
 
 Preparation saves a guest snapshot containing the fixture.  Completion runs after the VM starts from that image.  A test that has prepared a snapshot must finish before another restore fixture starts.

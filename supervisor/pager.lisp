@@ -285,7 +285,10 @@ Returns NIL if the entry is missing and ALLOCATE is false."
            (block-id (block-info-block-id bme)))
       (cond ((block-info-committed-p bme)
              (cond ((not (eql block-id sys.int::+block-map-id-lazy+))
-                    (store-free block-id 1))
+                    (store-free block-id 1)
+                    (when (and *pager-lazy-block-allocation-enabled*
+                               (logtest bme sys.int::+block-map-wired+))
+                      (decf *store-fudge-factor*)))
                    (t
                     (decf *store-fudge-factor*))))
             (t
@@ -757,6 +760,7 @@ mapped, then the entry will be NIL."
           (when (block-info-lazy-block-p bme)
             (let ((new-block (or (store-alloc 1)
                                  (panic "Unable to allocate lazy block!"))))
+              (decf *store-fudge-factor*)
               (setf bme (logior (ash new-block sys.int::+block-map-id-shift+)
                                 (logand bme sys.int::+block-map-flag-mask+))
                     (sys.int::memref-unsigned-byte-64 bme-addr 0) bme)))
