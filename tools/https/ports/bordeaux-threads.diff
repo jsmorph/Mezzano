@@ -1,0 +1,13 @@
+diff --git a/apiv2/impl-mezzano.lisp b/apiv2/impl-mezzano.lisp
+index 18865f9..4b32875 100644
+--- a/apiv2/impl-mezzano.lisp
++++ b/apiv2/impl-mezzano.lisp
+@@ -88,7 +88,7 @@
+   (declare (ignore lock waitp timeout))
+   (signal-not-implemented 'acquire-recursive-lock))
+ 
+-(release-not-implemented 'release-recursive-lock)
++(mark-not-implemented 'release-recursive-lock)
+ (defun %release-recursive-lock (lock)
+   (declare (ignore lock))
+   (signal-not-implemented 'release-recursive-lock))

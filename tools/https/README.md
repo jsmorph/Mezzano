@@ -110,3 +110,18 @@ After restarting QEMU from that snapshot:
     (lispm-network-test::finish-restore-test)
 
 These tests passed on x86-64 QEMU.  They do not exercise a route disappearing while an abort reset is being sent.
+
+## Guest library source edits
+
+The files in ports/ contain source edits against the revisions and releases listed above.  Apply each file from its corresponding library's source directory with git apply.  For example:
+
+    git -C "$TLS_SOURCES/pure-tls" apply /path/to/Mezzano/tools/https/ports/pure-tls.diff
+
+The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, a Bordeaux-Threads declaration error, cl-cancel clock units and monitor cleanup, and TLS stream cleanup.  The current Bordeaux-Threads edits still lack the atomic operations required for guest loading.  Guest HTTPS execution remains incomplete.
+
+The cancellation test requires the edited cl-cancel and pure-tls sources.  After loading the HTTPS libraries:
+
+    (load "SYS:SOURCE;TOOLS;HTTPS;TEST-CANCELLATION.LISP")
+    (lispm-cancellation-test:run)
+
+For SBCL, load tools/https/test-cancellation.lisp and call the same function.  The tests passed under SBCL on Linux.  They check that early cleanup preserves the parent context and stream, close failures reach the caller, deadlines interrupt a blocked read and handshake, and monitor threads terminate.

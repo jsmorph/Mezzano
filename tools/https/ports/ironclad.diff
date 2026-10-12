@@ -1,0 +1,47 @@
+diff --git a/src/prng/os-prng.lisp b/src/prng/os-prng.lisp
+index df80d3d..0d0814a 100644
+--- a/src/prng/os-prng.lisp
++++ b/src/prng/os-prng.lisp
+@@ -12,6 +12,8 @@
+   ())
+ 
+ (defmethod prng-random-data (num-bytes (prng os-prng))
++  #+mezzano
++  (mezzano.driver.virtio-entropy:random-data num-bytes)
+   #+unix
+   (let* ((seq (make-array num-bytes :element-type '(unsigned-byte 8)))
+          (n (bt2:with-lock-held (*os-prng-stream-lock*)
+@@ -53,7 +55,7 @@
+       (error 'ironclad-error :format-control "RtlGenRandom failed"))
+     (copy-seq buff))
+ 
+-  #-(or unix
++  #-(or mezzano unix
+         (and win32 sbcl)
+         (and os-windows ccl)
+         (and os-windows allegro)
+diff --git a/src/prng/prng.lisp b/src/prng/prng.lisp
+index dbb4cf7..2cea4ee 100644
+--- a/src/prng/prng.lisp
++++ b/src/prng/prng.lisp
+@@ -63,6 +63,11 @@ replacement for COMMON-LISP:RANDOM."
+ #+(and mswindows lispworks)(fli:define-foreign-function (rtl-gen-random "SystemFunction036") ((buff :pointer) (num-bytes (:unsigned :long))) :result-type :boolean)
+ 
+ (defun os-random-seed (source num-bytes)
++  #+mezzano
++  (progn
++    (unless (member source '(:random :urandom))
++      (error 'ironclad-error :format-control "Source must be either :random or :urandom"))
++    (mezzano.driver.virtio-entropy:random-data num-bytes))
+   #+unix(let ((path (cond
+                       ((eq source :random) #P"/dev/random")
+                       ((eq source :urandom) #P"/dev/urandom")
+@@ -87,7 +92,7 @@ replacement for COMMON-LISP:RANDOM."
+   #+(and mswindows lispworks)(let ((buff (sys:in-static-area (make-array num-bytes :element-type '(unsigned-byte 8)))))
+                                 (unless (fli:with-dynamic-lisp-array-pointer (buff buff) (rtl-gen-random buff num-bytes)) (error 'ironclad-error :format-control "RtlGenRandom failed"))
+                                 (copy-seq buff))
+-  #-(or unix (and win32 sbcl) (and os-windows ccl) (and os-windows allegro) (and mswindows lispworks))(error 'ironclad-error :format-control "OS-RANDOM-SEED is not supported on your platform."))
++  #-(or mezzano unix (and win32 sbcl) (and os-windows ccl) (and os-windows allegro) (and mswindows lispworks))(error 'ironclad-error :format-control "OS-RANDOM-SEED is not supported on your platform."))
+ 
+ (defun read-seed (path &optional (prng *prng*))
+   "Reseed PRNG from PATH.  If PATH doesn't

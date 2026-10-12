@@ -1,0 +1,70 @@
+diff --git a/deadline.lisp b/deadline.lisp
+index 4c90001..bbdc3e9 100644
+--- a/deadline.lisp
++++ b/deadline.lisp
+@@ -8,11 +8,11 @@
+ ;;; Precise time utilities
+ 
+ (defun get-current-time ()
+-  "Get current time as fractional seconds since epoch.
+-   Returns a rational number with nanosecond precision."
+-  (multiple-value-bind (universal-time nanoseconds)
++  "Return fractional seconds using the clock's reported units."
++  (multiple-value-bind (universal-time fraction)
+       (org.shirakumo.precise-time:get-precise-time)
+-    (+ universal-time (/ nanoseconds 1000000000))))
++    (+ universal-time
++       (/ fraction org.shirakumo.precise-time:precise-time-units-per-second))))
+ 
+ (defun sleep-fractional (seconds)
+   "Sleep for SECONDS, which can be fractional.
+diff --git a/streams.lisp b/streams.lisp
+index d91cabe..07ae07d 100644
+--- a/streams.lisp
++++ b/streams.lisp
+@@ -59,26 +59,24 @@
+            (unwind-protect
+                 (process-large-file stream)
+              (funcall cancel-monitor)))))"
+-  ;; Only monitor if we have a cancellable context
+   (if (typep cancellable 'cancellable-context)
+-      (let* ((done nil)
+-             (done-lock (bordeaux-threads:make-lock))
+-             (monitor-thread
+-               (bordeaux-threads:make-thread
+-                (lambda ()
+-                  ;; Wait until cancellable is done (no polling!)
+-                  (let ((err (wait-until-done cancellable)))
+-                    ;; Only close stream if cancellable actually became done (err is non-NIL)
+-                    (when err
+-                      (bordeaux-threads:with-lock-held (done-lock)
+-                        (unless done
+-                          ;; Cancellable was cancelled - abort the stream to interrupt blocked I/O
+-                          (ignore-errors (close stream :abort t)))))))
+-                :name "cancel-stream-monitor")))
+-        ;; Return cleanup function
+-        (lambda ()
+-          (bordeaux-threads:with-lock-held (done-lock)
+-            (setf done t))
+-          (bordeaux-threads:join-thread monitor-thread :timeout 0.1)))
+-      ;; No monitor needed for non-cancellable contexts
++      (multiple-value-bind (child cancel-child) (with-cancel cancellable)
++        (let* ((done nil)
++               (failure nil)
++               (done-lock (bordeaux-threads:make-lock))
++               (monitor-thread
++                 (bordeaux-threads:make-thread
++                  (lambda ()
++                    (wait-until-done child)
++                    (bordeaux-threads:with-lock-held (done-lock)
++                      (unless done
++                        (handler-case (close stream :abort t)
++                          (error (condition) (setf failure condition))))))
++                  :name "cancel-stream-monitor")))
++          (lambda ()
++            (bordeaux-threads:with-lock-held (done-lock)
++              (setf done t))
++            (funcall cancel-child)
++            (bordeaux-threads:join-thread monitor-thread)
++            (when failure (error failure)))))
+       (lambda () nil)))

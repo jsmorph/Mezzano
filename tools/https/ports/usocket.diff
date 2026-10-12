@@ -1,0 +1,26 @@
+--- a/backend/mezzano.lisp
++++ b/backend/mezzano.lisp
+@@ -7,7 +7,7 @@
+ (defun handle-condition (condition &optional (socket nil) (host-or-ip nil))
+   (typecase condition
+     ;; TODO: Add additional conditions as appropriate
+-    (mezzano.network.tcp:connection-timed-out
++    (mezzano.network:network-timeout
+      (error 'timeout-error :socket socket))))
+ 
+ (defun socket-connect-internal (host &key port (protocol :stream) element-type
+@@ -18,12 +18,11 @@
+     (unsupported 'deadline 'socket-connect))
+   (when (and nodelay-p (not (eq nodelay :if-supported)))
+     (unsupported 'nodelay 'socket-connect))
+-  (when timeout
+-    (unsupported 'timeout 'socket-connect))
+   (with-mapped-conditions ()
+     (ecase protocol
+       (:stream
+-       (let ((s (mezzano.network.tcp:tcp-stream-connect host port :element-type element-type)))
++       (let ((s (mezzano.network.tcp:tcp-stream-connect host port :element-type element-type
++                                                        :connect-timeout timeout)))
+          (make-stream-socket :socket s
+                              :stream s)))
+       (:datagram

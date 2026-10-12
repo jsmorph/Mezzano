@@ -1,0 +1,25 @@
+diff --git a/request.lisp b/request.lisp
+index 1a7a080..2c11cdd 100644
+--- a/request.lisp
++++ b/request.lisp
+@@ -260,7 +260,7 @@ headers of the chunked stream \(if any) as a second value."
+                               stream
+                               preserve-uri
+                               decode-content ; default to nil for backwards compatibility
+-                              #+(or abcl clisp lispworks mcl openmcl sbcl)
++                              #+(or abcl clisp lispworks mcl mezzano openmcl sbcl)
+                               (connection-timeout 20)
+                               #+:lispworks7+ (read-timeout 20)
+                               #+(and :lispworks7+ (not :lw-does-not-have-write-timeout))
+@@ -615,9 +615,9 @@ safety when making concurrent HTTPS requests."
+                                                              :element-type 'octet
+                                                              #+:openmcl :deadline
+                                                              #+:openmcl deadline
+-                                                             #+(or abcl clisp lispworks mcl openmcl sbcl)
++                                                             #+(or abcl clisp lispworks mcl mezzano openmcl sbcl)
+                                                              :timeout
+-                                                             #+(or abcl clisp lispworks mcl openmcl sbcl)
++                                                             #+(or abcl clisp lispworks mcl mezzano openmcl sbcl)
+                                                              connection-timeout
+                                                              :nodelay :if-supported)))
+                     raw-http-stream http-stream)
