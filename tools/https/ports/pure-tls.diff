@@ -1,5 +1,128 @@
+diff --git a/src/handshake/client.lisp b/src/handshake/client.lisp
+index 693f56a..579f360 100644
+--- a/src/handshake/client.lisp
++++ b/src/handshake/client.lisp
+@@ -1615,6 +1615,25 @@
+     (when (asn1-sequence-p parsed)
+       (asn1-node-value (second (asn1-children parsed))))))
+
++(defun verify-client-peer-certificate (hs)
++  (when (member (client-handshake-verify-mode hs)
++                (list +verify-peer+ +verify-required+))
++    (let* ((cert (client-handshake-peer-certificate hs))
++           (chain (client-handshake-peer-certificate-chain hs))
++           (trust-store (client-handshake-trust-store hs))
++           (hostname (unless (client-handshake-skip-hostname-verify hs)
++                       (client-handshake-hostname hs))))
++      (unless (and cert chain)
++        (error 'tls-verification-error
++               :message "Peer certificate chain is unavailable"))
++      (when hostname
++        (verify-hostname cert hostname :policy (client-handshake-hostname-policy hs)))
++      (verify-certificate-chain chain
++                                (when trust-store (trust-store-certificates trust-store))
++                                :now (get-universal-time)
++                                :hostname hostname
++                                :purpose :server-auth))))
++
+ (defun process-certificate-verify (hs message raw-bytes)
+   "Process CertificateVerify message.
+    RAW-BYTES are the serialized message bytes for updating transcript after verification.
+@@ -1623,11 +1642,7 @@
+   (let* ((cert-verify (handshake-message-body message))
+          (algorithm (certificate-verify-algorithm cert-verify))
+          (signature (certificate-verify-signature cert-verify))
+-         (cert (client-handshake-peer-certificate hs))
+-         (chain (client-handshake-peer-certificate-chain hs))
+-         (verify-mode (client-handshake-verify-mode hs))
+-         (hostname (client-handshake-hostname hs))
+-         (trust-store (client-handshake-trust-store hs)))
++         (cert (client-handshake-peer-certificate hs)))
+     ;; Must have a certificate to verify
+     (unless cert
+       (error 'tls-handshake-error
+@@ -1642,25 +1657,7 @@
+        :allowed-algorithms (supported-signature-algorithms-tls13)))
+     ;; NOW update transcript with CertificateVerify (after verification)
+     (client-handshake-update-transcript hs raw-bytes)
+-    ;; Now perform full certificate verification if required
+-    ;; This prevents bypass when using perform-client-handshake directly
+-    (when (member verify-mode (list +verify-peer+ +verify-required+))
+-      ;; Verify hostname matches certificate (unless skip-hostname-verify is set)
+-      (when (and hostname (not (client-handshake-skip-hostname-verify hs)))
+-        (verify-hostname cert hostname :policy (client-handshake-hostname-policy hs)))
+-      ;; Verify certificate chain
+-      ;; Pass nil for hostname when skip-hostname-verify is set to avoid
+-      ;; platform-specific hostname verification (macOS/Windows)
+-      (when chain
+-        (let ((trusted-roots (when trust-store
+-                               (trust-store-certificates trust-store)))
+-              (verify-hostname (if (client-handshake-skip-hostname-verify hs)
+-                                   nil
+-                                   hostname)))
+-          (verify-certificate-chain chain trusted-roots
+-                                    :now (get-universal-time)
+-                                    :hostname verify-hostname
+-                                    :purpose :server-auth))))
++    (verify-client-peer-certificate hs)
+     (setf (client-handshake-state hs) :wait-finished)))
+
+ ;;;; Finished Processing
+@@ -2071,6 +2068,12 @@
+                     ;; warm-cache resumptions working.
+                     (setf (client-handshake-verified-hostname hs)
+                           (session-ticket-verified-hostname ticket))))
++                (when (client-handshake-psk-accepted hs)
++                  (let ((chain (session-ticket-peer-certificate-chain
++                                (client-handshake-offered-psk hs))))
++                    (setf (client-handshake-peer-certificate-chain hs) chain
++                          (client-handshake-peer-certificate hs) (first chain))))
++                (verify-client-peer-certificate hs)
+                 ;; Don't update transcript yet - process-server-finished will do it after verification
+                 (setf (client-handshake-state hs) :wait-finished)
+                 (process-server-finished hs message raw-bytes))
+diff --git a/src/handshake/resumption.lisp b/src/handshake/resumption.lisp
+index 34634f4..f62bcb0 100644
+--- a/src/handshake/resumption.lisp
++++ b/src/handshake/resumption.lisp
+@@ -39,7 +39,8 @@
+   ;; of that original handshake.  NIL means the origin proved no such
+   ;; verification, so a resumption offering this ticket must fail closed under
+   ;; +verify-required+.
+-  (verified-hostname nil :type (or null string)))
++  (verified-hostname nil :type (or null string))
++  (peer-certificate-chain nil :type list))
+
+ ;;;; Session Ticket Cache
+
+@@ -134,13 +135,14 @@ Expiry eviction is atomic with the lookup."
+ ;;;; NewSessionTicket Handling
+
+ (defun process-new-session-ticket (nst resumption-master-secret cipher-suite hostname
+-                                   &optional verified-hostname)
++                                   &optional verified-hostname peer-certificate-chain)
+   "Process a NewSessionTicket message and cache the ticket.
+    NST is the parsed new-session-ticket structure.
+    VERIFIED-HOSTNAME, when non-NIL, is the hostname the minting handshake
+    certificate-verified under +verify-required+; it is recorded on the ticket
+    so a later resumption can carry that authentication forward (RFC 8446
+    Section 4.2.11).
++   PEER-CERTIFICATE-CHAIN is retained for verification on resumed connections.
+    Returns the session-ticket structure."
+   (let ((ticket (make-session-ticket
+                  :identity (new-session-ticket-ticket nst)
+@@ -150,7 +152,8 @@ Expiry eviction is atomic with the lookup."
+                  :age-add (new-session-ticket-ticket-age-add nst)
+                  :nonce (new-session-ticket-ticket-nonce nst)
+                  :hostname hostname
+-                 :verified-hostname verified-hostname)))
++                 :verified-hostname verified-hostname
++                 :peer-certificate-chain peer-certificate-chain)))
+     ;; Check for early_data extension
+     ;; RFC 8446 Section 4.6.1: early_data in NewSessionTicket contains
+     ;; uint32 max_early_data_size
 diff --git a/src/streams.lisp b/src/streams.lisp
-index 8fa115c..4c64997 100644
+index 8fa115c..85a2c50 100644
 --- a/src/streams.lisp
 +++ b/src/streams.lisp
 @@ -46,6 +46,9 @@
@@ -59,7 +182,17 @@ index 8fa115c..4c64997 100644
    t)
 
  ;;;; Input Methods
-@@ -582,8 +583,7 @@ flat no matter how many records arrive."
+@@ -142,7 +143,8 @@
+             (hostname (client-handshake-hostname hs)))
+         (when (and resumption-secret hostname)
+           (process-new-session-ticket nst resumption-secret cipher-suite hostname
+-                                      (client-handshake-verified-hostname hs)))))))
++                                      (client-handshake-verified-hostname hs)
++                                      (client-handshake-peer-certificate-chain hs)))))))
+
+ (defun tls-stream-process-key-update (stream key-update)
+   "Process a KeyUpdate message, updating read keys and responding if requested."
+@@ -582,8 +584,7 @@ flat no matter how many records arrive."
                                            :max-send-fragment (or max-send-fragment
                                                                   +max-record-size+)
                                            :request-context request-context))
@@ -69,7 +202,7 @@ index 8fa115c..4c64997 100644
           (trust-store (effective-trust-store context verify))
           ;; SNI uses sni-hostname if provided, otherwise hostname
           (sni-name (or sni-hostname hostname))
-@@ -608,6 +608,10 @@ flat no matter how many records arrive."
+@@ -608,6 +609,10 @@ flat no matter how many records arrive."
                             (when key-source
                               (load-private-key key-source))))
                          (t client-key))))  ; Already an Ironclad key object
@@ -80,7 +213,7 @@ index 8fa115c..4c64997 100644
      (setf (tls-stream-record-layer stream) record-layer)
      ;; Perform handshake (CertificateVerify is verified during handshake)
      ;; Skip hostname verification if only sni-hostname is provided (no hostname)
-@@ -640,7 +644,7 @@ flat no matter how many records arrive."
+@@ -640,7 +645,7 @@ flat no matter how many records arrive."
                                       (tls-context-cipher-suites context))
                    :hostname-policy (tls-context-hostname-policy context))))
          (setf (tls-stream-handshake stream) hs)
@@ -89,7 +222,7 @@ index 8fa115c..4c64997 100644
          (when (and (member verify (list +verify-peer+ +verify-required+))
                     (client-handshake-peer-certificate hs))
            (let ((cert (client-handshake-peer-certificate hs))
-@@ -648,28 +652,20 @@ flat no matter how many records arrive."
+@@ -648,28 +653,20 @@ flat no matter how many records arrive."
              ;; Verify hostname - only if hostname (not just sni-hostname) was provided
              (when hostname
                (verify-hostname cert hostname :policy (tls-context-hostname-policy context)))
@@ -125,7 +258,7 @@ index 8fa115c..4c64997 100644
 
  (defun make-tls-server-stream (socket &key
                                          context
-@@ -719,8 +715,7 @@ flat no matter how many records arrive."
+@@ -719,8 +716,7 @@ flat no matter how many records arrive."
                                            :max-send-fragment (or max-send-fragment
                                                                   +max-record-size+)
                                            :request-context request-context))
@@ -135,7 +268,7 @@ index 8fa115c..4c64997 100644
           ;; Get certificate chain (from parameter, context, or file)
           (cert-chain (cond
                         ((listp certificate) certificate)
-@@ -745,6 +740,10 @@ flat no matter how many records arrive."
+@@ -745,6 +741,10 @@ flat no matter how many records arrive."
           (client-trust-store trust-store)
           ;; Get ALPN protocols
           (alpn (or alpn-protocols (tls-context-alpn-protocols context))))
@@ -146,7 +279,7 @@ index 8fa115c..4c64997 100644
      ;; Validate we have certificate and key
      (unless cert-chain
        (error 'tls-error :message "Server requires a certificate chain"))
-@@ -771,9 +770,12 @@ flat no matter how many records arrive."
+@@ -771,9 +771,12 @@ flat no matter how many records arrive."
                                    (tls-context-cipher-suites context)))))
        (setf (tls-stream-handshake stream) hs))
      ;; Wrap with flexi-stream if external-format specified

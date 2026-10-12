@@ -32,7 +32,7 @@ The loader initializes pure-tls's CL+SSL compatibility system and registers it w
       --load tools/https/test-sbcl.lisp \
       --eval '(lispm-https-test:run-transport-tests)'
 
-The tests connect to api.openai.com.  They require a verified handshake, reject a mismatched hostname while retaining the correct SNI hostname, reject an empty trust store, and require an unauthenticated Drakma GET to return HTTP 401 with a JSON error.  The tests need network access and the system CA store.
+The tests connect to api.openai.com.  They require full and resumed handshakes to verify the certificate chain exactly once.  Both paths must reject a mismatched requested hostname with correct SNI and an empty trust store.  A cached ticket without peer certificates must also fail verification.  The HTTP GET must return 401 with a parsed JSON error and supply a session ticket for the resumption checks.  The tests need network access and the system CA store.
 
 ## OpenAI request
 
@@ -72,7 +72,7 @@ HTTP-ERROR retains the status, request ID, and response octets through HTTP-ERRO
 
 The function overwrites its Authorization string on exit.  The caller owns the key string.  Lisp allocation and library internals can retain other copies.
 
-The [OpenAI API overview](https://developers.openai.com/api/reference/overview) documents authentication and request IDs.  To test HTTP error handling without a credential, load test-openai.lisp and call LISPM-OPENAI-TEST:RUN.  Its invalid-key request must return a typed HTTP 401 with a JSON error.  This test passed under SBCL on Linux.  The reusable function also passed an authenticated request through RUN-OPENAI-TEST: HTTP 200, completed status, and the text "Lisp HTTPS works."
+The [OpenAI API overview](https://developers.openai.com/api/reference/overview) documents authentication and request IDs.  To test HTTP error handling without a credential, load test-openai.lisp and call LISPM-OPENAI-TEST:RUN.  Its invalid-key request must return a typed HTTP 401 with a JSON error.  This test passed under SBCL on Linux and Mezzano.  Under SBCL, the reusable function also passed an authenticated request through RUN-OPENAI-TEST: HTTP 200, completed status, and the text "Lisp HTTPS works."
 
 ## Tested scope and Mezzano work
 
@@ -80,7 +80,7 @@ On 2026-10-12, the Linux SBCL tests negotiated TLS 1.3 with TLS_CHACHA20_POLY130
 
 These tests cover one service and the two stated verification failures.  Streaming responses, certificate revocation, and the upstream TLS test suite remain untested.  The cancellation tests below check blocked input and handshake cleanup.  The corrected fractional deadline tests passed under SBCL.
 
-The guest entropy and connection controls below have passed their tests.  Library portability edits are retained in ports/.  The guest TLS/HTTP stack compiled and loaded.  The guest cancellation tests below passed.  The guest passed a verified TLS handshake and both certificate-rejection tests.  Its Drakma GET currently fails while writing to a closed TCP connection.  The authenticated guest OpenAI request remains untested.
+The guest entropy, connection controls, and cancellation tests below passed.  Library portability edits are retained in ports/.  The guest TLS/HTTP stack compiled and loaded.  Full and resumed handshakes passed, each verifying the certificate chain once.  Both paths rejected a mismatched hostname and an empty trust store.  A cached ticket without peer certificates also failed verification.  The guest GET and invalid-credential POST returned HTTP 401 with parsed JSON and normal TLS close.  Authenticated guest inference remains untested.
 
 ## Guest entropy
 
@@ -116,6 +116,15 @@ MEZZANO.NETWORK.TCP:TCP-STREAM-CONNECT accepts :CONNECT-TIMEOUT in seconds.  It 
 
 CLOSE with :ABORT T closes local TCP state and wakes a blocked reader with a connection error.  The network queue sends a reset when the TCP state requires one and removes the connection's timers and dispatch sources.
 
+TCP supports receiving EOF while its sending direction remains open.  OPEN-STREAM-P remains true in CLOSE-WAIT, and subsequent writes remain subject to normal acknowledgment and retransmission.  Local FIN consumes a sequence number.  A data acknowledgment alone cannot complete local close.
+
+The half-close tests include the connection tests:
+
+    (load "SYS:SOURCE;TOOLS;HTTPS;TEST-HALF-CLOSE.LISP")
+    (lispm-network-test::run-half-close)
+
+They cover output after EOF, forced retransmission, sequence wraparound, separate data and FIN acknowledgments, invalid acknowledgments, and FIN with buffered data.
+
 Inside the guest:
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-NETWORK.LISP")
@@ -139,7 +148,7 @@ The files in ports/ contain source edits against the revisions and releases list
 
     git -C "$TLS_SOURCES/pure-tls" apply /path/to/Mezzano/tools/https/ports/pure-tls.diff
 
-The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, USOCKET listener addresses, a Bordeaux-Threads declaration error, precise-time's Mezzano clock, cl-cancel clock units and monitor cleanup, TLS stream cleanup, and propagation of HTTP close errors.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.  Guest HTTPS execution remains incomplete.
+The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, USOCKET listener addresses, a Bordeaux-Threads declaration error, precise-time's Mezzano clock, cl-cancel clock units and monitor cleanup, TLS stream cleanup, certificate-chain verification on resumption, and propagation of HTTP close errors.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-ATOMICS.LISP")
     (lispm-atomics-test:run)
@@ -179,7 +188,7 @@ After loading, the shared transport tests accept the guest CA pathname:
     (lispm-https-test:run-transport-tests
      :ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT")
 
-The same CA-FILE argument applies to CREATE-RESPONSE, RUN-OPENAI-TEST, and LISPM-OPENAI-TEST:RUN.  The explicit bundle passed the transport tests under SBCL.  The guest passed the handshake and certificate-rejection tests.  Its HTTP GET fails while writing to a closed TCP connection.
+The same CA-FILE argument applies to CREATE-RESPONSE, RUN-OPENAI-TEST, and LISPM-OPENAI-TEST:RUN.  The explicit bundle passed the full transport tests under SBCL and Mezzano.
 
 The combined guest test runs entropy, atomics, cancellation, HTTP cleanup, certificate verification, and invalid-credential checks:
 

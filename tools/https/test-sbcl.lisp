@@ -26,9 +26,8 @@
           (close tls :abort t)
           (usocket:socket-close socket)))))
 
-(defun call-with-chain-verification-count (function)
-  (let* ((pure-tls::*session-ticket-cache* (make-hash-table :test 'equal))
-         (name 'pure-tls::verify-certificate-chain)
+(defun call-with-chain-verification-count (function label)
+  (let* ((name 'pure-tls::verify-certificate-chain)
          (original (fdefinition name))
          (thread (bt:current-thread))
          (count 0)
@@ -40,8 +39,8 @@
          (progn
            (setf (fdefinition name) wrapper)
            (funcall function)
-           (assert (= count 1) () "Full handshake verified the chain ~D times." count)
-           (format t "Full handshake verified the certificate chain once.~%"))
+           (assert (= count 1) () "~A verified the chain ~D times." label count)
+           (format t "~A verified the certificate chain once.~%" label))
       (when (eq (fdefinition name) wrapper)
         (setf (fdefinition name) original)))))
 
@@ -52,27 +51,21 @@
     (pure-tls:tls-verification-error (condition)
       (format t "~A rejected: ~A~%" label condition))))
 
-(defun run-transport-tests (&key ca-file)
-  (call-with-chain-verification-count
-   (lambda ()
-     (call-with-openai-tls
-      (lambda (stream)
-        (format t "Verified handshake: version ~S, cipher ~S.~%"
-                (pure-tls:tls-version stream)
-                (pure-tls:tls-cipher-suite stream)))
-      :ca-file ca-file)))
+(defun test-verification-failures (ca-file label)
   (expect-verification-error
    (lambda ()
      (call-with-openai-tls
       (constantly nil) :hostname "hostname-mismatch.invalid" :ca-file ca-file))
-   "Mismatched hostname")
+   (format nil "~A mismatched hostname" label))
   (let ((pure-tls::*auto-load-system-trust-store* nil))
     (expect-verification-error
      (lambda ()
        (call-with-openai-tls
         (constantly nil)
         :context (pure-tls:make-tls-context :auto-load-system-ca nil)))
-     "Empty trust store"))
+     (format nil "~A empty trust store" label))))
+
+(defun test-unauthenticated-get (ca-file)
   (cl-cancel:with-timeout-context (deadline 30)
     (declare (ignore deadline))
     (let ((drakma:*header-stream* nil))
@@ -83,7 +76,44 @@
         (unless (= status 401)
           (error "Unauthenticated request returned HTTP ~D; expected 401." status))
         (assert (hash-table-p (gethash "error" (com.inuoe.jzon:parse body))))
-        (format t "Unauthenticated HTTPS GET: HTTP ~D, JSON error parsed.~%" status))))
+        (format t "Unauthenticated HTTPS GET: HTTP ~D, JSON error parsed.~%" status)))))
+
+(defun run-transport-tests (&key ca-file)
+  (let ((pure-tls::*session-ticket-cache* (make-hash-table :test 'equal)))
+    (call-with-chain-verification-count
+     (lambda ()
+       (call-with-openai-tls
+        (lambda (stream)
+          (assert (not (pure-tls::client-handshake-psk-accepted
+                        (pure-tls::tls-stream-handshake stream))))
+          (format t "Verified handshake: version ~S, cipher ~S.~%"
+                  (pure-tls:tls-version stream)
+                  (pure-tls:tls-cipher-suite stream)))
+        :ca-file ca-file))
+     "Full handshake")
+    (test-verification-failures ca-file "Full handshake")
+    (test-unauthenticated-get ca-file)
+    (let ((ticket (pure-tls::session-ticket-cache-get "api.openai.com")))
+      (assert ticket () "The HTTP exchange did not receive a session ticket.")
+      (assert (pure-tls::session-ticket-peer-certificate-chain ticket))
+      (call-with-chain-verification-count
+       (lambda ()
+         (call-with-openai-tls
+          (lambda (stream)
+            (assert (pure-tls::client-handshake-psk-accepted
+                     (pure-tls::tls-stream-handshake stream)))
+            (assert (pure-tls:tls-peer-certificate stream)))
+          :ca-file ca-file))
+       "Resumed handshake")
+      (test-verification-failures ca-file "Populated cache")
+      (let ((without-chain (pure-tls::copy-session-ticket ticket)))
+        (setf (pure-tls::session-ticket-peer-certificate-chain without-chain) nil)
+        (pure-tls::session-ticket-cache-put "api.openai.com" without-chain)
+        (unwind-protect
+             (expect-verification-error
+              (lambda () (call-with-openai-tls (constantly nil) :ca-file ca-file))
+              "Cached ticket without peer certificates")
+          (pure-tls::session-ticket-cache-put "api.openai.com" ticket)))))
   t)
 
 (defun run-openai-test (api-key &key (model "gpt-4.1-nano") ca-file)

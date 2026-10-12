@@ -2,7 +2,7 @@
 
 Mezzano's HTTPS integration uses Drakma for HTTP, pure-tls for TLS 1.3, Ironclad for cryptography, and [Jzon](json.md) for JSON.  TLS and cryptographic operations execute in Lisp.  The guest obtains entropy from a VirtIO entropy device and trust anchors from a PEM CA bundle.
 
-The libraries compiled and loaded on x86-64 QEMU.  Guest tests passed certificate verification, rejection of an incorrect hostname and an empty trust store, blocked-I/O cancellation, and HTTP cleanup.  The guest's first HTTP exchange currently fails after the peer closes during certificate processing.  Authenticated guest inference remains untested.  The reusable Responses client passed authenticated inference under SBCL on Linux.
+The libraries compiled and loaded on x86-64 QEMU.  Guest tests passed full and resumed TLS handshakes, certificate rejection checks, blocked-I/O cancellation, HTTP cleanup, an unauthenticated GET, and an invalid-credential POST.  Authenticated guest inference remains untested.  The reusable Responses client passed authenticated inference under SBCL on Linux.
 
 ## Installation
 
@@ -31,7 +31,7 @@ LISPM-OPENAI:CREATE-RESPONSE sends one non-streaming POST to the OpenAI Response
 
 The function returns the parsed response hash table and the HTTP x-request-id header as two values.  It sends the caller's request fields unchanged.  The caller selects the model and storage policy and examines the response's status and output fields.  STREAM must be absent or NIL.  The client performs no automatic retry.
 
-Certificate verification is required.  Redirects and Drakma header logging are disabled.  The function rejects an empty key or a key containing carriage returns or newlines.  The [OpenAI API overview](https://developers.openai.com/api/reference/overview) describes Bearer authentication and request IDs.
+Certificate verification is required.  Session tickets retain the peer certificate chain, which each resumed connection checks against its current trust store, validity time, hostname, purpose, and verification depth.  Redirects and Drakma header logging are disabled.  The function rejects an empty key or a key containing carriage returns or newlines.  The [OpenAI API overview](https://developers.openai.com/api/reference/overview) describes Bearer authentication and request IDs.
 
 ## Deadlines and errors
 
@@ -65,6 +65,6 @@ The combined guest test covers entropy, atomic operations, fractional deadlines,
  :ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT")
 ```
 
-The combined test currently stops at the unauthenticated HTTP GET.  Its invalid-credential POST has not run in the guest.  The corresponding SBCL tests passed, including a verified authenticated Responses request that returned HTTP 200, completed status, and "Lisp HTTPS works."
+The combined guest test passed, including full and resumed handshakes with one chain verification per connection, rejection of mismatched hostnames and empty trust stores, rejection of a ticket without peer certificates, HTTP 401 JSON parsing, and normal TLS close.  The corresponding SBCL tests passed, including an authenticated Responses request that returned HTTP 200, completed status, and "Lisp HTTPS works."
 
 These tests cover the OpenAI endpoint and the stated error cases.  Streaming responses, certificate revocation, the upstream TLS test suite, ARM64 execution, and bare-metal entropy remain untested.
