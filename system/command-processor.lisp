@@ -209,13 +209,74 @@
                         (when (third definition) (parse-argument (third definition) (second definition) listener))) keywords)))
         (values command argument keywords)))))
 
+(defun herald-systems ()
+  (let ((package (find-package "ASDF")))
+    (when package
+      (flet ((call-asdf (name &rest arguments)
+               (apply (symbol-function (find-symbol name package)) arguments)))
+        (loop for name in (sort (copy-list (call-asdf "ALREADY-LOADED-SYSTEMS"))
+                               #'string-lessp)
+              for system = (call-asdf "REGISTERED-SYSTEM" name)
+              for version = (call-asdf "COMPONENT-VERSION" system)
+              collect (list :name (copy-seq name)
+                            :version (when version (copy-seq version))))))))
+
+(defun herald-information (detailed-p)
+  (let ((physical (nth-value 1 (mezzano.supervisor:physical-memory-statistics)))
+        (store (nth-value 1 (mezzano.supervisor:store-statistics))))
+    (list :title (concatenate 'string (lisp-implementation-type) " Lisp Machine")
+          :facts (list
+                  (list (list :kind :text :text
+                              (format nil "Running on ~A." (machine-type))))
+                  (list (list :kind :text :text
+                              (concatenate 'string "Image version: " (lisp-implementation-version))))
+                  (list (list :kind :text :text
+                              (format nil "Physical memory: ~D KiB.  Backing store: ~D KiB."
+                                      (* physical 4) (* store 4)))))
+          :detailed-p detailed-p
+          :systems (when detailed-p (herald-systems))
+          :help '(((:kind :text :text "You are using a ")
+                   (:kind :emphasis :text "Lisp Listener")
+                   (:kind :text :text ".  The Command: prompt accepts commands and Lisp forms."))
+                  ((:kind :text :text "Press ") (:kind :key :text "Return")
+                   (:kind :text :text " to submit input.  ") (:kind :key :text "Shift-Return")
+                   (:kind :text :text " inserts a newline."))
+                  ((:kind :key :text "SPACE") (:kind :text :text " completes a command word.  ")
+                   (:kind :key :text "Tab") (:kind :text :text " completes a name.  ")
+                   (:kind :key :text "HELP") (:kind :text :text " (F12) gives contextual help."))
+                  ((:kind :text :text "Type Help for commands.  ") (:kind :key :text "F9 D")
+                   (:kind :text :text " selects Document Examiner."))
+                  ((:kind :key :text "F9 F12") (:kind :text :text " lists activities.  ")
+                   (:kind :key :text "Mouse-Right") (:kind :text :text " opens the System Menu."))))))
+
+(defun write-herald (herald stream)
+  (labels ((line (text) (write-line text stream))
+           (lines (lines)
+             (dolist (line lines)
+               (dolist (part line) (write-string (getf part :text) stream))
+               (terpri stream))))
+    (line (getf herald :title))
+    (terpri stream)
+    (lines (getf herald :facts))
+    (when (getf herald :detailed-p)
+      (terpri stream)
+      (line "Loaded ASDF systems (name and declared version):")
+      (dolist (system (getf herald :systems))
+        (write-string (getf system :name) stream)
+        (write-string "  " stream)
+        (line (or (getf system :version) "-"))))
+    (terpri stream)
+    (lines (getf herald :help))))
+
 (defun listener-information (listener)
-  (mezzano.debug::with-service-lock
-    (list :package (package-name (listener-package listener))
-          :mode :command-preferred :prompt "Command: "
-          :default-pathname (namestring (listener-pathname listener))
-          :busy-p (and (listener-job listener)
-                       (eq (mezzano.debug::evaluation-job-state (listener-job listener)) :running)))))
+  (let ((herald (herald-information t)))
+    (mezzano.debug::with-service-lock
+      (list :package (package-name (listener-package listener))
+            :mode :command-preferred :prompt "Command: "
+            :default-pathname (namestring (listener-pathname listener))
+            :busy-p (and (listener-job listener)
+                         (eq (mezzano.debug::evaluation-job-state (listener-job listener)) :running))
+            :herald herald))))
 
 (defun start-listener (listener name source &key interactive)
   (mezzano.debug:start-evaluation-job name source :interactive interactive :listener listener))
@@ -258,6 +319,16 @@
             (getf metadata :presentations)))
     (terpri)))
 
+(defun present-herald (detailed-p job metadata)
+  (let* ((herald (herald-information detailed-p))
+         (text (with-output-to-string (stream) (write-herald herald stream)))
+         (start (length (mezzano.debug::evaluation-output-buffer
+                         (mezzano.debug::evaluation-job-output-stream job)))))
+    (write-string text)
+    (mezzano.debug::with-service-lock
+      (push (list :start start :end (+ start (length text)) :type :herald :herald herald)
+            (getf metadata :presentations)))))
+
 (defun execute-command (command argument keywords listener job metadata)
   (flet ((option (name) (cdr (assoc name keywords :test #'equal))))
     (case (getf command :id)
@@ -266,9 +337,7 @@
          (format t "~A~%" (getf entry :name))
          (when (eq (option "Format") :detailed) (format t "  ~A~%" (getf entry :help)))))
       (:set-package (setf *package* argument) (format t "Package: ~A~%" (package-name argument)))
-      (:show-herald
-       (format t "~A ~A~%" (lisp-implementation-type) (lisp-implementation-version))
-       (when (option "Detailed") (format t "Machine: ~A~%Software: ~A ~A~%" (machine-type) (software-type) (software-version))))
+      (:show-herald (present-herald (option "Detailed") job metadata))
       (:show-command-processor-status
        (format t "Mode: Command-Preferred~%Prompt: ~S~%Package: ~A~%Pathname default: ~A~%"
                "Command: " (package-name *package*) (namestring (listener-pathname listener))))

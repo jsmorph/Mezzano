@@ -18,7 +18,7 @@ Command: ,help
 |---|---|
 | Help | Lists supported commands.  :Format Brief is the default, including a mentioned :Format without a value.  Detailed adds descriptions. |
 | Set Package | Selects an existing package.  An omitted argument uses the current package. |
-| Show Herald | Displays the guest implementation and version.  :Detailed Yes adds machine and software information.  An omitted :Detailed means No.  Mentioning it without a value means Yes. |
+| Show Herald | Displays the Listener herald: image version, architecture, memory totals, and keyboard help.  :Detailed Yes adds loaded ASDF systems and declared versions.  An omitted :Detailed means No.  Mentioning it without a value means Yes. |
 | Show Command Processor Status | Displays mode, prompt, package, and pathname default. |
 | Show Processes | Displays thread names, scheduler states, priorities, wait reasons, recorded run time, and retained debugger stop IDs. |
 | Clear Output History | Clears the tab's prior displayed transcript while preserving input history and retained jobs. |
@@ -32,6 +32,14 @@ File arguments use Mezzano Common Lisp pathname syntax.  Relative names merge wi
 These commands implement the listed arguments and keywords.  Unsupported or duplicate keywords produce an input error.  Compile File supports Yes and No for :Load.  Genera's Ask choice, multiple-file arguments, output redirection, and other command keywords are unsupported.
 
 Show Processes uses `mezzano.debug:process-summary`, the same guest query as Peek's Processes view.  It reports live observations assembled from per-thread scheduler samples.  Run time counts recorded processor time in the displayed units.  An active scheduling interval enters that counter when the thread switches out.  Scheduler state and retained debugger stops are separate: a thread waiting at a retained stop usually has scheduler state Sleeping.  Idle threads are absent from the supervisor's live-thread list.
+
+### Listener herald
+
+A new Web Listener opens with a detailed herald.  The title, facts, and help come from the guest.  The image version identifies the running image.  Physical memory and backing store are totals in KiB.  The backing store holds persistent object memory and paging data.
+
+Show Herald appends the same display to the transcript.  :Detailed lists loaded ASDF systems in two columns.  A dash means the system declares no version.
+
+The opening herald remains above subsequent output until Clear Output History.  Reload obtains a fresh opening sample.  A retained Show Herald result preserves the data captured when the command ran, including after reload or request replay.  Text clients receive the same facts and help as plain text, with one system per line.
 
 ### Completion, help, and history
 
@@ -68,10 +76,12 @@ Listener state survives connection closure.  Session release or a new boot retir
 
 | HTTP operation | Arguments and result |
 |---|---|
-| listener-information | No arguments.  Returns package, mode, prompt, busy-p, and default-pathname. |
+| listener-information | No arguments.  Returns package, mode, prompt, busy-p, default-pathname, and a detailed herald sample. |
 | start-listener | name, source, and optional interactive.  Returns an ordinary retained job token. |
 | listener-assistance | source, cursor, action, optional context and presentation.  Returns input classification, replacement text and cursor, prompt, default, expected-type, help, candidates, complete-p, and error. |
 
 Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and display fields, and where applicable needs-frame, local-index, or select-frame.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
 
 Job information adds :listener-result.  It is NIL for ordinary evaluation jobs.  A Listener result records :kind (:command or :form), optional :command, :effects, :presentations, and any command input :error.  An input error is printed and recorded.  Runtime conditions, including file and compiler errors, enter the retained debugger.
+
+Herald presentations contain :type :herald, :start and :end character offsets, and :herald.  The offsets delimit the plain-text herald in job output.  The payload contains :title, :facts, :detailed-p, :systems, and :help.  Facts and help are lists of lines, each containing inline records with :kind (:text, :emphasis, or :key) and :text.  System records contain :name and :version, with NIL for an undeclared version.  Listener information returns the same payload in :herald.
