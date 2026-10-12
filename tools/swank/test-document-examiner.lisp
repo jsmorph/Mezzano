@@ -29,13 +29,13 @@
    (let* ((catalog (request :document-query :catalog))
           (books (ids catalog))
           (topics nil) (references nil) (blocks nil))
-     (assert (= (length books) 14))
+     (assert (= (length books) 15))
      (assert (eq (getf (getf catalog :search-options) :mode) :substring))
      (assert (equal (mapcar (lambda (mode) (getf mode :value))
                             (getf (getf catalog :search-options) :modes))
                     '(:exact :initial :substring)))
      (dolist (required '("doc/project-guide.md" "doc/installation.md" "doc/document-examiner.md"
-                         "doc/debugger.md" "doc/peek.md" "doc/command-processor.md" "tools/swank/README.md"
+                         "doc/json.md" "doc/debugger.md" "doc/peek.md" "doc/command-processor.md" "tools/swank/README.md"
                          "tools/swank/web/README.md" "slime/contrib/swank-mezzano-debugger.md"))
        (assert (member required books :test #'equal)))
      (dolist (internal '("tools/swank/minideb2/README.md" "tools/swank/devnotes.md"

@@ -28,6 +28,23 @@ These branch selections provide the retained debugger protocol and Web tools des
 
 Install [Quicklisp](https://www.quicklisp.org/beta/#installation) at `quicklisp/` beneath the build directory.  The commands below load its `setup.lisp` explicitly.
 
+## JSON libraries
+
+Jzon requires additional source checkouts beneath the guest home directory.  Run these commands from the build directory before the image's first boot:
+
+```sh
+git clone https://github.com/jsmorph/jzon.git home/jzon
+git -C home/jzon checkout --detach 8f8099ae762d54de9cbe2a084fc52ae3de96ee7d
+git clone https://github.com/Shinmera/float-features.git home/float-features
+git -C home/float-features checkout --detach cd5dab00d2f4a562d65f46b3fc1cecec308e2443
+git clone https://github.com/Shinmera/documentation-utils.git home/documentation-utils
+git -C home/documentation-utils checkout --detach fcbd927dee7f311915a27ee557e3db1d4510403c
+git clone https://github.com/Shinmera/trivial-indent.git home/trivial-indent
+git -C home/trivial-indent checkout --detach 87b35ff9202b107230e35790e93c471cc7880900
+```
+
+These pins select Jzon 1.1.4 with a [numeric-range correction](https://github.com/jsmorph/jzon/compare/99b19fb18ab3555c04564a51a990db06ed1d8a23...8f8099ae762d54de9cbe2a084fc52ae3de96ee7d) and its additional dependencies.  The correction rejects provable floating-point overflow and underflow before constructing large powers of ten.  MBuild supplies Closer-MOP, Flexi Streams, trivial-gray-streams, trivial-features, and ASDF/UIOP.  The guest's ASDF registry discovers sources beneath `home/`.  The [JSON reference](json.md) describes loading and using Jzon in an existing image.
+
 ## Image configuration
 
 The guest reads source and dependency files through the host file server.  Edit `Mezzano/config.lisp` so the two REMOTE directories contain the absolute paths to your checkout.  Preserve their trailing slashes.  For a build directory `/srv/mezzano-build`, the configuration is:

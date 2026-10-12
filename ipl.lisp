@@ -134,6 +134,7 @@ Make sure there is a virtio-net NIC attached.~%")
 
 ;; Split-sequence
 (require :split-sequence)
+(require :com.inuoe.jzon)
 
 ;; A bunch of GUI related systems.
 (require :zpb-ttf)

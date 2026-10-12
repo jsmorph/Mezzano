@@ -29,6 +29,7 @@ Return submits input.  SPACE and Tab complete command names and arguments.  F12 
 | Inspect stops, locals, restarts, and job state | [Debugger and evaluation reference](debugger.md). |
 | Implement a retained SWANK client | [Retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md). |
 | Use the native desktop | [Desktop reference](quickstart.md). |
+| Parse and generate JSON | [JSON](json.md). |
 | Configure guest networking | [Networking](manual.md). |
 | Use atomic operations and extended structures | [Atomic extensions](atomic-extensions.md) and [structure extensions](defstruct-extensions.md). |
 
