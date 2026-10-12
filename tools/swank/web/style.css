@@ -1,3 +1,20 @@
+@font-face { font-family: "CPTFONT"; src: url("/fonts/cptfont.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "CPTFONTCB"; src: url("/fonts/cptfontcb.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "CPTFONTI"; src: url("/fonts/cptfonti.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "HL12"; src: url("/fonts/hl12.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "HL12B"; src: url("/fonts/hl12b.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "HL12I"; src: url("/fonts/hl12i.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "HL12BI"; src: url("/fonts/hl12bi.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "TR12I"; src: url("/fonts/tr12i.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "JESS14"; src: url("/fonts/jess14.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "JESS13"; src: url("/fonts/jess13.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "SWISS12B-CCAPS"; src: url("/fonts/swiss12b-ccaps.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "EUREX24I"; src: url("/fonts/eurex24i.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "CPTFONT"; src: url("/fonts/cptfontcb.ttf") format("truetype"); font-weight: bold; font-display: block; }
+@font-face { font-family: "CPTFONT"; src: url("/fonts/cptfonti.ttf") format("truetype"); font-style: italic; font-display: block; }
+@font-face { font-family: "HL12"; src: url("/fonts/hl12b.ttf") format("truetype"); font-weight: bold; font-display: block; }
+@font-face { font-family: "HL12"; src: url("/fonts/hl12i.ttf") format("truetype"); font-style: italic; font-display: block; }
+@font-face { font-family: "HL12"; src: url("/fonts/hl12bi.ttf") format("truetype"); font-weight: bold; font-style: italic; font-display: block; }
 :root {
   color-scheme: light;
   font-family: "CPTFONT", monospace;
@@ -88,7 +105,7 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 #examiner-reading { display: grid; grid-template-columns: 57.4% 42.6%; min-height: 0; flex: 1; }
 .examiner-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 #examiner-viewer { border-right: 1px solid #000; }
-#examiner-viewer > h1 { font-family: "EUREX24I", serif; font-size: 24px; line-height: 24px; font-style: italic; text-align: center; margin: 4px 0 10px; }
+#examiner-viewer > h1 { font-family: "EUREX24I", serif; font-size: 24px; line-height: 24px; font-style: italic; text-align: center; margin: 6px 0 6px; text-indent: 0; }
 #examiner-right { display: grid; grid-template-rows: 50% 50%; min-height: 0; min-width: 0; }
 #examiner-candidates-pane { border-bottom: 1px solid #000; }
 .examiner-label { font-family: "HL12BI", sans-serif; font-style: italic; font-weight: bold; font-size: 14px; line-height: 14px; margin: 2px 0 0 19px; }
@@ -97,17 +114,18 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 .examiner-track > div { background: #fff; border-bottom: 1px solid #000; min-height: 3px; }
 .examiner-scroll-content { flex: 1; min-width: 0; overflow: auto; scrollbar-width: none; }
 .examiner-scroll-content::-webkit-scrollbar { display: none; }
-#examiner-pages { position: relative; padding: 24px 12% 16px 10%; font-family: "HL12", sans-serif; font-size: 14px; line-height: 16px; }
+#examiner-pages { position: relative; padding: 32px 80px 16px 64px; font-family: "HL12", sans-serif; font-size: 14px; line-height: 16px; }
 #examiner-pages h2, #examiner-pages h3 { font-family: "HL12B", sans-serif; font-size: 14px; line-height: 16px; font-weight: bold; font-style: normal; margin: 0 0 8px; }
-#examiner-pages p { margin: 0 0 14px; text-align: justify; }
+#examiner-pages p { margin: 0 0 14px; text-align: left; }
 #examiner-pages pre, #examiner-pages code { font-family: "CPTFONT", monospace; font-size: 12px; line-height: 12px; }
 #examiner-pages pre { margin: 8px 0 16px; white-space: pre; overflow: auto; }
-#examiner-pages table { border-collapse: collapse; margin: 12px 0; }
-#examiner-pages th, #examiner-pages td { text-align: left; border: 1px solid #000; padding: 4px; vertical-align: top; overflow-wrap: anywhere; }
+#examiner-pages table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: 100%; border: 1px solid #000; margin: 12px 0; }
+#examiner-pages th, #examiner-pages td { text-align: left; border: 0; border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; vertical-align: top; overflow-wrap: anywhere; }
 #examiner-pages ul, #examiner-pages ol { padding-left: 24px; margin: 8px 0 16px; }
 #examiner-pages li { margin: 4px 0; }
 #examiner-pages a { color: #000; text-decoration: underline; }
-.document-section + .document-section { border-top: 1px solid #000; margin-top: 20px; padding-top: 20px; }
+.document-section + .document-section { margin-top: 24px; }
+.document-section + .document-group-start { border-top: 1px solid #000; padding-top: 20px; }
 .document-topic { background: transparent; display: inline; font: inherit; padding: 0; border: 0; text-align: left; }
 .document-topic:hover, .document-topic:focus-visible { outline: 1px solid #000; }
 #examiner-candidates .document-topic, #examiner-bookmarks .document-topic { white-space: nowrap; }
@@ -118,16 +136,18 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 .document-bookmark.current::before { content: "→"; position: absolute; left: -16px; }
 #examiner-bookmarks { padding-left: 16px; }
 .deferred-bookmarks { background: repeating-conic-gradient(#fff 0% 75%, #000 0% 100%) 0 0 / 2px 2px; margin-top: 4px; }
-#examiner-viewer-label { margin-top: 2px; margin-bottom: 5px; }
+#examiner-viewer-label { margin-left: 18px; margin-top: 0; margin-bottom: 6px; }
 #examiner-horizontal-track { height: 8px; border: 1px solid #000; margin: 0 10px 6px 22px; background: repeating-conic-gradient(#fff 0% 25%, #000 0% 50%) 0 0 / 2px 2px; }
 #examiner-horizontal-track > div { height: 100%; background: #fff; border-right: 1px solid #000; }
 #examiner-commands { display: grid; grid-template-columns: 57.4% 42.6%; min-height: 74px; max-height: 40%; overflow: auto; border-top: 1px solid #000; }
-#examiner-command-area { min-width: 0; padding: 0 8px 4px 20px; overflow: auto; }
-#examiner-command-area > h2 { margin: 2px 0 10px; }
+#examiner-command-area { min-width: 0; padding: 0 8px 4px 9px; overflow: auto; }
+#examiner-command-left > h2 { margin: 2px 0 0 22px; }
+#examiner-command-left .examiner-track { margin-left: 8px; }
+#examiner-right .examiner-pane > h2 { margin-top: 4px; }
 #examiner-command-form { display: flex; gap: 8px; align-items: start; }
 #examiner-command { flex: 1; min-width: 0; border: 0; padding: 0; outline: none; }
 #examiner-command-output { white-space: pre-wrap; overflow-wrap: anywhere; }
-#examiner-command-menu { display: grid; grid-template-columns: 1fr 1fr; align-content: start; padding: 0 12px 0 22px; gap: 0 10px; }
+#examiner-command-menu { display: grid; grid-template-columns: 1fr 1fr; align-content: start; padding: 1px 12px 0 25px; gap: 0 10px; }
 #examiner-command-menu button { font-family: "JESS13", serif; font-size: 13px; line-height: 13px; padding: 0; }
 #examiner-menu-items { display: flex; flex-direction: column; }
 #examiner-menu-items button { text-align: center; }
@@ -156,3 +176,27 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
   body.print-document-topic #monitor { display: none; }
   body.print-document-topic #examiner-print-topic { display: block; }
 }
+
+#window-label { font-family: "HL12I", sans-serif; font-size: 14px; line-height: 14px; font-style: normal; }
+#monitor:has(#debugger:not([hidden])) #window-label { font-family: "TR12I", serif; }
+#debugger { line-height: 14px; }
+#herald h1 { font-family: "EUREX24I", serif; font-style: normal; }
+#herald p { font-family: "HL12", sans-serif; font-size: 14px; line-height: 14px; }
+#mouse-documentation { font-family: "SWISS12B-CCAPS", sans-serif; font-size: 14px; line-height: 14px; min-height: 28px; }
+#mouse-documentation div { min-height: 14px; }
+#system-menu h2 { font-family: "HL12BI", sans-serif; font-size: 14px; line-height: 14px; font-weight: normal; font-style: normal; }
+.menu-columns h3 { font-family: "HL12I", sans-serif; font-size: 14px; line-height: 14px; font-style: normal; }
+.menu-columns button, #examiner-menu-items button { font-family: "JESS14", serif; font-size: 14px; line-height: 14px; }
+#examiner-menu h2 { font-family: "TR12I", serif; font-size: 14px; line-height: 14px; font-weight: normal; font-style: normal; }
+#monitor.examiner-active { padding: 0 7px 0 0; }
+.examiner-active #mouse-documentation { margin-top: 0; min-height: 34px; padding: 3px 6px; }
+.examiner-active #who-line { min-height: 17px; }
+.document-source { overflow-wrap: anywhere; }
+
+.pixel-text { position: relative; }
+#herald p > span { display: block; }
+#examiner-pages tr:last-child > * { border-bottom: 0; }
+#examiner-pages tr > :last-child { border-right: 0; }
+
+.command-prompt { display: inline-block; width: 7px; height: 7px; font-size: 0; line-height: 0; }
+.command-prompt svg { display: block; }

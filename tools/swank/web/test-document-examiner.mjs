@@ -90,6 +90,7 @@ try {
   await browser.waitFor("!document.querySelector('#examiner-typeout').hidden");
   assert.equal(await browser.evaluate(`${current}.bookmarks.length`), 1);
   assert(await browser.evaluate("document.querySelectorAll('#examiner-typeout .document-topic').length > 0"));
+  assert.equal(await browser.evaluate("document.querySelector('#examiner-typeout .document-source a').href"),second.source);
   await shot('overview');
   await key(' ','Space',32);
   await browser.waitFor("document.querySelector('#examiner-typeout').hidden");
@@ -99,6 +100,7 @@ try {
   await topic('#examiner-bookmarks', second.id);
   await browser.waitFor(`${current}.bookmarks.some(item => item.topic.id === ${text(second.id)} && item.viewed)`);
   await shot('viewer');
+  assert(await browser.evaluate("[...document.querySelectorAll('#examiner-pages table')].every(table => table.getBoundingClientRect().width <= table.parentElement.clientWidth)"));
   await topic('#examiner-candidates', first.id, 'right');
   await browser.waitFor("document.querySelector('#examiner-menu').open");
   await shot('topic-menu');

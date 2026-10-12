@@ -1,0 +1,149 @@
+{
+  "screenshot": "reference-aligned.png",
+  "sha256": "5f6d679964cbe2878575d1823c046a12599aa32364e82dc11fbd30f0fdadbb1f",
+  "reference": "https://www.chai.uni-hamburg.de/~moeller/symbolics-info/docex/de2.gif",
+  "reference_sha256": "cb8cfecd08d3e6013ea9479edbb2e83492d3f5a5e89523c30d89d542c39ac849",
+  "whole_image_intermediate_gray_pixels": 0,
+  "samples": [
+    {
+      "role": "title",
+      "font": "EUREX24I",
+      "text": "Document Examiner",
+      "position": [
+        177,
+        8
+      ],
+      "reference_position": [
+        177,
+        8
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "gray_pixels": 0
+    },
+    {
+      "role": "title prefix",
+      "font": "EUREX24I",
+      "text": "Document",
+      "position": [
+        177,
+        8
+      ],
+      "reference_position": [
+        177,
+        8
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "gray_pixels": 0
+    },
+    {
+      "role": "candidates label",
+      "font": "HL12BI",
+      "text": "Current Candidates",
+      "position": [
+        682,
+        6
+      ],
+      "reference_position": [
+        682,
+        6
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "gray_pixels": 0
+    },
+    {
+      "role": "bookmarks label",
+      "font": "HL12BI",
+      "text": "Bookmarks",
+      "position": [
+        682,
+        368
+      ],
+      "reference_position": [
+        682,
+        368
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "gray_pixels": 0
+    },
+    {
+      "role": "viewer label",
+      "font": "HL12BI",
+      "text": "Viewer: Default Viewer",
+      "position": [
+        25,
+        692
+      ],
+      "reference_position": [
+        25,
+        692
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "gray_pixels": 0
+    },
+    {
+      "role": "commands label",
+      "font": "HL12BI",
+      "text": "Commands",
+      "position": [
+        24,
+        730
+      ],
+      "reference_position": [
+        24,
+        730
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "gray_pixels": 0
+    },
+    {
+      "role": "command menu",
+      "font": "JESS13",
+      "text": "Show Candidates",
+      "position": [
+        689,
+        729
+      ],
+      "reference_position": [
+        689,
+        729
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "gray_pixels": 0
+    }
+  ]
+}

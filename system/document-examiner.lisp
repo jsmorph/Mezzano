@@ -9,6 +9,7 @@
     ("tools/swank/web/README.md" "Mezzano Web Listener and Debugger" ("HTTP" "browser" "Chromium"))
     ("slime/contrib/swank-mezzano-debugger.md" "Retained Mezzano debugger protocol" ("RPC" "tokens" "sessions"))
     ("tools/swank/minideb2/README.md" "Mezzano on minideb2" ("build" "QEMU" "snapshot" "restore" "tests"))
+    ("tools/swank/web/fonts/README.md" "Recovered Symbolics display fonts" ("fonts" "conversion" "raster"))
     ("tools/swank/web/font-research/README.md" "Original Symbolics font research" ("fonts" "typography" "pixels"))
     ("tools/swank/devnotes.md" "Development journal" ("decisions" "evidence" "failures"))
     ("tools/swank/web/devnotes.md" "Web UI development journal" ("browser" "decisions" "evidence"))

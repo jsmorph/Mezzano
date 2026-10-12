@@ -18,7 +18,7 @@
    (let* ((catalog (request :document-query :catalog))
           (books (ids catalog))
           (topics nil) (references nil) (blocks nil))
-     (assert (= (length books) 25))
+     (assert (= (length books) 26))
      (assert (eq (getf (getf catalog :search-options) :mode) :substring))
      (assert (equal (mapcar (lambda (mode) (getf mode :value))
                             (getf (getf catalog :search-options) :modes))
@@ -26,7 +26,8 @@
      (dolist (required '("doc/project-guide.md" "doc/document-examiner.md" "doc/debugger.md"
                          "doc/command-processor.md" "tools/swank/README.md" "tools/swank/web/README.md"
                          "tools/swank/minideb2/README.md" "slime/contrib/swank-mezzano-debugger.md"
-                         "tools/swank/devnotes.md" "tools/swank/web/devnotes.md"))
+                         "tools/swank/devnotes.md" "tools/swank/web/devnotes.md"
+                         "tools/swank/web/fonts/README.md"))
        (assert (member required books :test #'equal)))
      (dolist (book books)
        (let* ((contents (request :document-query :contents :topic book))

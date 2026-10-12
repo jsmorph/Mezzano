@@ -486,6 +486,9 @@ class Handler(BaseHTTPRequestHandler):
                  "/app.js": ("app.js", "text/javascript; charset=utf-8"),
                  "/document-examiner.js": ("document-examiner.js", "text/javascript; charset=utf-8"),
                  "/style.css": ("style.css", "text/css; charset=utf-8")}
+        for name in ("cptfont", "cptfontcb", "cptfonti", "hl12", "hl12b", "hl12i", "hl12bi",
+                     "tr12i", "jess14", "jess13", "swiss12b-ccaps", "eurex24i"):
+            files[f"/fonts/{name}.ttf"] = (f"fonts/{name}.ttf", "font/ttf")
         path = urlsplit(self.path).path
         if path not in files:
             self.respond(404, {"error": "Unknown resource."})

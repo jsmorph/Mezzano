@@ -12,6 +12,17 @@ const examiner = (() => {
   let scrollTimer;
   let typeout = false;
   const editor = $("examiner-command");
+  function commandPrompt() {
+    const prompt = node("span", "▶", "command-prompt");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", "7"); svg.setAttribute("height", "7");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(svg.namespaceURI, "path");
+    path.setAttribute("d", "M0 0H1V1H3V2H5V3H7V4H5V5H3V6H1V7H0Z");
+    svg.append(path); prompt.append(svg);
+    return prompt;
+  }
+  $("examiner-command-form").querySelector("label").replaceChildren(commandPrompt());
 
   function viewer() {
     const result = saved.viewers.find(item => item.name === saved.current);
@@ -35,6 +46,7 @@ const examiner = (() => {
     }
     panel.append(button("Close", async () => { closeMenu(); editor.focus(); }));
     if (!$("examiner-menu").open) $("examiner-menu").showModal();
+    placeDialogOnPixels($("examiner-menu"));
   }
   function topicButton(topic, role = "topic", text = topic.title) {
     topicSummary(topic);
@@ -134,6 +146,7 @@ const examiner = (() => {
     const article = node("article", undefined, "document-section");
     article.dataset.topic = record.topic.id;
     article.dataset.level = record.level;
+    if (record.groupStart) article.classList.add("document-group-start");
     const heading = node(record.level ? "h3" : "h2");
     heading.append(topicButton(section.topic));
     article.append(heading);
@@ -142,7 +155,12 @@ const examiner = (() => {
   }
   function renderTopics() {
     const panel = $("examiner-topics");
-    const fragments = viewer().sections.map(sectionElement);
+    let previousQuery = null;
+    const fragments = viewer().sections.map(record => {
+      const element = sectionElement({...record, groupStart: record.groupStart ?? record.query !== previousQuery});
+      previousQuery = record.query;
+      return element;
+    });
     panel.replaceChildren(...fragments);
     if (!fragments.length) panel.append(node("p", "Select a candidate to read its documentation.", "document-empty"));
   }
@@ -218,9 +236,11 @@ const examiner = (() => {
     const result = await fetchTopic(id);
     const current = viewer();
     const known = new Set(current.sections.map(item => item.topic.id));
+    let groupStart = true;
     for (const section of result.sections || []) {
       if (!known.has(section.topic.id)) {
-        current.sections.push({topic: section.topic, level: section.level || 0, query: result.topic.id});
+        current.sections.push({topic: section.topic, level: section.level || 0, query: result.topic.id, groupStart});
+        groupStart = false;
         known.add(section.topic.id);
       }
     }
@@ -264,6 +284,12 @@ const examiner = (() => {
     relation(panel, "Including topics", result.ancestors || (result.parent ? [result.parent] : []));
     if (result.topic.book) panel.append(node("p", "Document: " + result.topic.book));
     if (result.topic.keywords?.length) panel.append(node("p", "Keywords: " + result.topic.keywords.join(", ")));
+    if (result.topic.source) {
+      const source = node("p", "Source: ");
+      inline(source, [{kind: ":link", text: result.topic.source, url: result.topic.source}]);
+      source.className = "document-source";
+      panel.append(source);
+    }
     relation(panel, "Related topics", result.related);
     const tree = node("div", undefined, "document-tree");
     if (result.parent) tree.append(topicButton(result.parent));
@@ -366,7 +392,7 @@ const examiner = (() => {
       }
       default: throw new Error("Unsupported Document Examiner operation: " + plan.operation);
     }
-    $("examiner-command-output").textContent = "▶ " + source;
+    $("examiner-command-output").replaceChildren(commandPrompt(), " " + source);
     if (editor.value === source) setEditor(editor, "", 0);
     updatePaneTracks();
   }
@@ -393,6 +419,28 @@ const examiner = (() => {
     updatePaneTracks();
   }
   function updatePaneTracks() {
+    const columns = Math.round($("examiner").clientWidth * 0.574) + "px minmax(0, 1fr)";
+    $("examiner-reading").style.gridTemplateColumns = columns;
+    $("examiner-commands").style.gridTemplateColumns = columns;
+    $("examiner-right").style.gridTemplateRows = Math.floor($("examiner-right").clientHeight / 2) + "px minmax(0, 1fr)";
+    placeTextOnPixels($("examiner-viewer").querySelector("h1"));
+    const menu = $("examiner-command-menu"), menuStyle = getComputedStyle(menu);
+    const menuWidth = menu.clientWidth - parseFloat(menuStyle.paddingLeft) - parseFloat(menuStyle.paddingRight) - parseFloat(menuStyle.columnGap);
+    menu.style.gridTemplateColumns = Math.floor(menuWidth / 2) + "px minmax(0, 1fr)";
+    for (const table of $("examiner-pages").querySelectorAll("table")) {
+      let columns = table.querySelector("colgroup");
+      if (!columns) {
+        columns = node("colgroup");
+        for (let index = 0; index < table.rows[0].cells.length; index++) columns.append(node("col"));
+        table.prepend(columns);
+      }
+      const tableStyle = getComputedStyle(table);
+      const width = table.parentElement.clientWidth - parseFloat(tableStyle.borderLeftWidth) - parseFloat(tableStyle.borderRightWidth);
+      const count = columns.children.length;
+      [...columns.children].forEach((column, index) => {
+        column.style.width = (index === count - 1 ? width - Math.floor(width / count) * index : Math.floor(width / count)) + "px";
+      });
+    }
     for (const panel of document.querySelectorAll(".examiner-scroll")) {
       const content = panel.querySelector(".examiner-scroll-content");
       const track = panel.querySelector(".examiner-track");

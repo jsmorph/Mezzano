@@ -74,8 +74,9 @@ Unavailable-local browser rendering has source review only.  Actual image restor
 
 - [x] Finish the broader browser run, including saved-request replay and release reconciliation.
 - [x] Run the added live released-reference and expired-session assertions.
-- [ ] Convert or otherwise obtain a browser-usable original font after approval, retaining provenance and notices.
-- [ ] Compare rendered glyphs, metrics, layout, and colors with the original captures.
+- [x] Convert recovered fonts after approval, retaining provenance and notices.
+- [x] Compare recovered glyph rasters, metrics, selected layout positions, and colors.
+- [ ] Complete the original-window layout comparison, including paragraph justification.
 - [x] Review, commit, and push the bounded implementation increment.
 
 The working HTTP client, browser test, guides, and service unit were reviewed and pushed as Mezzano 71f051fb.  The operations guide selects that revision for fresh checkouts.  Original-font conversion and exact visual matching remain open.
@@ -84,9 +85,9 @@ The working HTTP client, browser test, guides, and service unit were reviewed an
 
 The [font-identification report](font-research/README.md), comparison script, and recorded results preserve 21 tested strings from the original classic debugger capture and the Workbook's embedded one-bit Listener and menu images.  Every selected ink rectangle has a recovered-font candidate with zero missing and zero extra pixels.  The result records source hashes, image orientation, positions, candidates, and recovered metrics.  This evidence identifies compatible glyphs for those samples.  It does not establish browser rendering or every glyph in each font.
 
-The roles use several fonts: CPTFONT and CPTFONTCB for fixed text, JESS14 for menu items, HL12I and HL12BI for Workbook labels and headings, SWISS12B-CCAPS for mouse help, and EUREX24I and HL12 variants for the herald.  The classic interaction label matches TR12I and MATH12 equally on the tested Latin glyphs.  TR12I also matches its related menu-title prefix.  Classic text raster origins support fourteen-pixel line spacing.  The current browser uses fallback glyphs and twelve-pixel body line height.
+The roles use several fonts: CPTFONT and CPTFONTCB for fixed text, JESS14 for menu items, HL12I and HL12BI for Workbook labels and headings, SWISS12B-CCAPS for mouse help, and EUREX24I and HL12 variants for the herald.  The classic interaction label matches TR12I and MATH12 equally on the tested Latin glyphs.  TR12I also matches its related menu-title prefix.  Classic text raster origins support fourteen-pixel line spacing.  At that research checkpoint, the browser used fallback glyphs and twelve-pixel body line height.
 
-The recommendation is to convert the recovered fonts for their identified roles, then test Chromium at device-pixel ratio 1 for exact raster pixels, advances, baselines, line heights, and complete layout.  Font conversion remains subject to the pending fontTools dependency approval.  No conversion dependency or font asset was installed in this research.
+The recommendation is to convert the recovered fonts for their identified roles, then test Chromium at device-pixel ratio 1 for exact raster pixels, advances, baselines, line heights, and complete layout.  At that research checkpoint, font conversion required the pending fontTools approval.  No conversion dependency or font asset was installed in the research increment.
 
 ## Lisp Command Processor integration: 2026-10-12
 
@@ -111,3 +112,19 @@ The first Examiner browser run checked its connection variable before app.js loa
 The final Examiner run passed completion, topic reuse, mouse operations, temporary overview, deferred/viewed ordering, tables of contents, candidate recall, Initial plus Adjacent search, flat search results, Unicode named viewers, viewer switching, discard, reload with exact 100-pixel scroll restoration, Help, Examiner guide lookup, print dispatch/CSS, a 640-pixel viewport, and session cleanup.  It created no guest jobs and reported zero browser errors.  Evidence is web-browser-evidence/lispm-examiner-final and its adjacent log.  The existing Listener suite evidence is web-browser-evidence/lispm-listener-examiner.
 
 At this functional checkpoint, fallback typography, pane geometry, and extra separator lines between included subordinate sections still differ from the reference.  The approved font/layout increment will test and correct these.
+
+## Recovered fonts and integer layout: 2026-10-12
+
+The user approved fontTools as a build dependency.  The [font build and test record](fonts/README.md) pins fontTools 4.60.1, hashes the twelve recovered source records and Unicode mapping, and retains the recovery license and separate historical-font notice.  The server serves the generated assets without additional runtime dependencies.  Original-font research uses the [Genera 8.3 MacIvory Examiner capture](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/docex/de2.gif), in addition to the earlier Listener and debugger references.
+
+The converter retains bitmap pixels, left kerns, advances, baselines, and character heights.  Chromium 145.0.7632.109 at device-pixel ratio 1 passed all 1,555 mapped glyphs with zero missing, extra, or intermediate-gray pixels, exact advances, and exact baseline and line-height measurements.  An initial OS/2 version warning was corrected before the tested build.  The final rebuild corrected the font metadata's notice filename and repeated the glyph suite.
+
+Fractional widget positions produced antialiased pixels despite integer contours.  A focused HL12 experiment measured zero gray pixels at an integer origin and 314 at each quarter-pixel offset for all four tested gasp settings.  The recommendation was integer pane and table dimensions plus integer placement of centered widgets.  Body paragraphs use left alignment.  Original word justification remains unfinished.  A custom word-positioning implementation was deferred.  Shared helpers preserve integer placement after resize.
+
+Application tests found a table-width feedback error: repeated layout used the previous table width and grew it.  Layout now derives column widths from the parent, and the Examiner test asserts that every table fits.  A data-URL command marker caused two CSP errors after functional assertions passed.  An inline SVG marker resolved those errors.  A read-only diagnostic had released its session before Chromium cleanup failed on a late profile-file write.  Cleanup now retries removal of its own profile with a finite limit.  A later launch inside the restricted local sandbox failed before browser startup and created no guest session.  The authorized host Chromium run succeeded.
+
+The final Examiner run passed completion, mouse operations, bookmarks, candidate options/history, viewer switching, Unicode viewer names, reload with exact 100-pixel reading position, Help, print dispatch, 640-pixel layout, source-link identity, table bounds, and session release with zero browser errors.  The full Listener/Debugger suite then passed after shared typography changes, including command completion, physical Unicode files, input history, interactive input, lost-reply replay, debugger locals and restart continuation, clear-output replay, release reconciliation, and cleanup.  It reported the two expected HTTP 409 responses and no unexpected errors.  All owned files, jobs, stops, and sessions were released or removed.
+
+The final focused 1160 by 852 capture has zero intermediate-gray pixels.  Seven selected title, pane-label, and menu rectangles match the recovered glyph rasters and original positions.  The last viewer-label offset was one pixel.  Moving one pixel from its top margin to its bottom margin corrected that offset while preserving the pane's total height.  The complete historical title differs from the recovered raster by six pixels.  Source-specific Mezzano text, left-aligned paragraphs, remaining layout details, other zoom and device-pixel ratios, other browsers, and fallback Unicode require further comparison.  Complete original-window fidelity remains open.
+
+Evidence is retained under the host's web-browser-evidence directory as lispm-font-final, lispm-examiner-font-complete, and lispm-listener-font-complete with adjacent logs.  The checked-in comparison scripts and JSON reports identify exact source and screenshot hashes.

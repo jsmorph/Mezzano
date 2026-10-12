@@ -52,6 +52,27 @@ function node(tag, text, className) {
   if (className) element.className = className;
   return element;
 }
+function placeTextOnPixels(element) {
+  let text = element.querySelector(":scope > .pixel-text");
+  if (!text) {
+    text = node("span", undefined, "pixel-text");
+    text.append(...element.childNodes);
+    element.append(text);
+  }
+  text.style.left = text.style.top = "0px";
+  const position = text.getBoundingClientRect();
+  text.style.left = (Math.round(position.left) - position.left) + "px";
+  text.style.top = (Math.round(position.top) - position.top) + "px";
+}
+function placeDialogOnPixels(dialog) {
+  document.fonts.ready.then(() => {
+    if (!dialog.open) return;
+    dialog.style.margin = "0";
+    dialog.style.left = Math.max(8, Math.round((innerWidth - dialog.offsetWidth) / 2)) + "px";
+    dialog.style.top = Math.max(8, Math.round((innerHeight - dialog.offsetHeight) / 2)) + "px";
+    for (const item of dialog.querySelectorAll("h2, h3, button")) placeTextOnPixels(item);
+  }).catch(report);
+}
 function button(text, action, help) {
   const element = node("button", text);
   element.type = "button";
@@ -752,9 +773,11 @@ function updateStatus() {
   else if ([...views.values()].some(view => view.info?.state === ":running" && !view.info["input-waiting-p"])) {
     $("process-state").textContent = "Run";
   } else $("process-state").textContent = "User Input";
+  for (const element of $("who-line").children) placeTextOnPixels(element);
 }
 function openMenu() {
   if (!$("system-menu").open) $("system-menu").showModal();
+  placeDialogOnPixels($("system-menu"));
 }
 function updateTracks() {
   const page = $("page");
@@ -840,9 +863,21 @@ $("horizontal-track").onclick = event => {
   $("page").scrollLeft = ratio * ($("page").scrollWidth - $("page").clientWidth);
 };
 window.addEventListener("resize", updateTracks);
+function placeHeraldOnPixels() {
+  document.fonts.ready.then(() => {
+    for (const element of document.querySelectorAll("#herald h1, #herald p > span")) placeTextOnPixels(element);
+  }).catch(report);
+}
+placeHeraldOnPixels();
+window.addEventListener("resize", placeHeraldOnPixels);
+window.addEventListener("resize", () => {
+  for (const element of $("who-line").children) placeTextOnPixels(element);
+  for (const dialog of document.querySelectorAll("dialog[open]")) placeDialogOnPixels(dialog);
+});
 setInterval(() => {
   $("clock").textContent = new Date().toLocaleString("en-GB", {weekday: "short", day: "2-digit",
     month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false});
+  for (const element of $("who-line").children) placeTextOnPixels(element);
 }, 1000);
 setInterval(() => { if (connected && !busy) run(refresh); }, 1500);
 if (storageError) report(storageError);

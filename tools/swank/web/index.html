@@ -17,7 +17,7 @@
         <section id="listener" class="activity">
           <header id="herald">
             <h1>Mezzano Lisp Machine</h1>
-            <p>Remote Lisp Listener<br>Mezzano on minideb2</p>
+            <p><span>Remote Lisp Listener</span><span>Mezzano on minideb2</span></p>
           </header>
           <div id="transcript" aria-label="Evaluation history"></div>
           <div id="listener-assistance" class="assistance" aria-live="polite"></div>
@@ -59,15 +59,20 @@
             </div>
           </div>
           <section id="examiner-commands" aria-label="Document commands">
-            <div id="examiner-command-area">
+            <div id="examiner-command-left" class="examiner-pane">
               <h2 class="examiner-label">Commands</h2>
-              <div id="examiner-command-output" aria-live="polite"></div>
-              <div id="examiner-assistance" class="assistance" aria-live="polite"></div>
-              <form id="examiner-command-form">
-                <label for="examiner-command">▶</label>
-                <input id="examiner-command" aria-label="Document Examiner command" spellcheck="false" autocomplete="off"
-                  data-help="Return: Execute command. SPACE: Complete a word. Tab: Complete. F12: Help.">
-              </form>
+              <div class="examiner-scroll">
+                <div class="examiner-track" aria-hidden="true"><div></div></div>
+                <div id="examiner-command-area" class="examiner-scroll-content">
+                  <div id="examiner-command-output" aria-live="polite"></div>
+                  <div id="examiner-assistance" class="assistance" aria-live="polite"></div>
+                  <form id="examiner-command-form">
+                    <label for="examiner-command"><span class="command-prompt">▶</span></label>
+                    <input id="examiner-command" aria-label="Document Examiner command" spellcheck="false" autocomplete="off"
+                      data-help="Return: Execute command. SPACE: Complete a word. Tab: Complete. F12: Help.">
+                  </form>
+                </div>
+              </div>
             </div>
             <div id="examiner-command-menu">
               <button data-examiner-command="Show Candidates ">Show Candidates</button>
@@ -128,7 +133,7 @@
             uses its original name, range, or ID. An expired session requires a new session.</p>
           <p>The clock shows browser time. Printed values are text. Public binding writes,
             frame evaluation, object browsing, and stepping remain under development.</p>
-          <p id="font-status">Original font conversion and visual comparison are pending.</p>
+          <p id="font-status">Recovered Symbolics font rasters pass Chromium DPR1 tests. Whole-screen fidelity remains under review.</p>
         </section>
       </div>
     </div>

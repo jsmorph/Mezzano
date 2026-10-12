@@ -28,7 +28,7 @@ export async function openBrowser(url) {
       const ended = await Promise.race([exited.then(() => true), delay(5000).then(() => false)]);
       if (!ended) { process.kill('SIGKILL'); await exited; }
     }
-    await rm(profile, { recursive: true, force: true });
+    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 
   try {
