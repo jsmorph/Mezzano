@@ -35,7 +35,7 @@ Show Processes uses `mezzano.debug:process-summary`, the same guest query as Pee
 
 ### Listener herald
 
-A new Web Listener opens with a detailed herald.  The title, facts, and help come from the guest.  The image version identifies the running image.  Physical memory and backing store are totals in KiB.  The backing store holds persistent object memory and paging data.
+A new Web Listener opens with a detailed herald.  The title, facts, and help come from the guest.  The image version includes the revision recorded at build time.  Physical memory and backing store are totals in KiB.  The backing store holds persistent object memory and paging data.
 
 Show Herald appends the same display to the transcript.  :Detailed lists loaded ASDF systems in two columns.  A dash means the system declares no version.
 
