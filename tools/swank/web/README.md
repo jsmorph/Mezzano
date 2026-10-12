@@ -70,7 +70,7 @@ The Web debugger currently exposes condition, frame, local, and restart inspecti
 
 ## Document Examiner
 
-Document Examiner opens from the System Menu.  Its Viewer displays topics.  Current Candidates lists lookup results, Bookmarks retains viewed and deferred topics, and Commands accepts documentation commands.  Named viewers preserve separate topic lists, bookmarks, candidate histories, and reading positions across tab reloads.
+Document Examiner opens from the System Menu.  Its Viewer displays topics.  Current Candidates lists lookup results, Bookmarks retains viewed and deferred topics, and Commands accepts documentation commands.  Named viewers preserve separate topic lists, bookmarks, candidate histories, and reading positions across tab reloads.  If a saved topic or heading disappears, its section displays `Topic unavailable` with its identifier.  Bookmarks remain stored, and other available sections still render.  Reload or selecting the bookmark retries lookup.
 
 Show Documentation opens a topic.  Show Candidates searches titles and keywords.  Show Table of Contents lists a topic's descendants, and Show Overview displays its relationships and source.  Mouse-Left reads a topic, Mouse-Middle opens its overview, and Mouse-Right opens topic operations.  Shift-Middle inserts a deferred bookmark from a topic or discards one from the Bookmarks pane.
 

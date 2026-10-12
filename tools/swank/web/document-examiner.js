@@ -150,7 +150,10 @@ const examiner = (() => {
     const heading = node(record.level ? "h3" : "h2");
     heading.append(topicButton(section.topic));
     article.append(heading);
-    blocks(article, section.blocks);
+    if (section.unavailable) {
+      article.classList.add("document-unavailable");
+      article.append(node("p", "Topic unavailable: " + record.topic.id));
+    } else blocks(article, section.blocks);
     return article;
   }
   function renderTopics() {
@@ -434,8 +437,13 @@ const examiner = (() => {
     if (renderedViewer !== current) {
       loading = true;
       try {
-        for (const query of new Set(current.sections.filter(item => !sections.has(item.topic.id)).map(item => item.query))) {
-          await fetchTopic(query);
+        for (const record of current.sections) {
+          if (sections.has(record.topic.id)) continue;
+          try { await fetchTopic(record.topic.id); }
+          catch (error) {
+            if (error.reason !== ":missing-topic") throw error;
+            sections.set(record.topic.id, {topic: record.topic, unavailable: true});
+          }
         }
         typeout = false; $("examiner-typeout").hidden = true; $("examiner-topics").hidden = false;
         renderTopics(); renderBookmarks(); renderCandidates();

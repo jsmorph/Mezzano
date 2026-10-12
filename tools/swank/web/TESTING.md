@@ -56,3 +56,14 @@ node tools/swank/web/test-peek-fixtures.mjs \
 ```
 
 The fixture capture includes original process strings for selected font and position comparisons.  It labels its results as fixture-only and records zero guest requests.  The [Peek layout comparison](fonts/compare-peek-layout.py) measures those selected rectangles against the recorded source font rasters and original positions.
+
+## Missing documentation references
+
+The focused test retains an absent document, an absent child heading, and a valid document in one viewer.  It checks unavailable entries, the valid content, bookmark preservation, and reload.  Separate constructed responses verify that a transport failure remains a connection error and that a later successful lookup replaces an unavailable entry.
+
+```sh
+node tools/swank/web/test-missing-document.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-missing-document-test
+```
+
+The test creates no guest jobs or files and releases its session.  Its four live missing-topic requests must produce HTTP 409 responses.  Constructed error responses do not generate browser network errors.  The driver rejects unexpected browser errors and preserves its session record on failure.
