@@ -1242,3 +1242,38 @@ The development image restored from its snapshot.  Without reloading or redefini
 The product and test references received a final wording and code-format review.  The catalog will be reloaded and saved with those edits.  The separate collector failure following stack overflow and the example.org HTTPS close during certificate verification remain unresolved.
 
 The final catalog reload and snapshot completed, confirmed by clos-listener-final-snapshot.log and the serial End snapshot marker.  The development VM and Web service are running with the corrected method ordering, COMPLETE, CURL, and the updated documentation.
+
+## Browser COMPLETE failure and arithmetic profile: 2026-10-12
+
+The user reported COMPLETE remaining running with Debugger and Interrupt controls in the Web Listener.  The earlier Web service check tested page loading and HTTP-to-SWANK connectivity but did not submit COMPLETE through the browser.  A headless Chromium test now reproduces the reported behavior.  Its new evaluation stops on DRAKMA-SIMPLE-ERROR before returning text.  The user's retained stop reports the condition control string "No status line - probably network error." and contains 23 captured frames.  Evidence is the workstation's /tmp/web-complete-diagnostic/result.json, result.png, and /tmp/web-complete-diagnostic.log.
+
+Automatic approval review rejected a proposed frame inspection because prior inspection of an overflowed stack caused a guest panic.  Diagnosis continued by reading the condition type, control string, and retained frame count, then profiling a separate running verification of public certificates.  No frame inspection was performed.  The browser test uses the workstation's installed Node and Chromium against the remote Web service.  Those executables are absent from the remote shell's PATH.
+
+A diagnostic GET to OpenAI returned HTTP 401.  Its trace spent about 11.5 seconds in certificate-chain verification, including P-256 verification and two P-384 verifications.  Timers wrapped the existing functions and restored them on exit.  The trace retained only public certificate data for an offline test.  Evidence is web-https-timing-direct.log in the remote build directory.
+
+The offline profile verified that captured certificate chain using the existing trust roots and server-auth purpose.  Of 934 samples under certificate verification, 789 included %%BIGNUM-TRUNCATE.  Allocation, integer shifts, addition, and canonicalization accounted for most direct samples.  Evidence is home/web-https-profile.txt and web-https-profile-run.log in the build directory.  Source review confirms that %%BIGNUM-TRUNCATE implements bit-at-a-time division with fresh integer results for its shifts, subtraction, and quotient accumulation.
+
+The recommendation is to replace this division routine with normalized long division over groups of bits, using bounded integer arithmetic and temporary digit arrays in Lisp.  [GMP's basecase-division description](https://gmplib.org/manual/Basecase-Division) identifies the standard algorithm as Knuth section 4.3.1, Algorithm D.  The implementation must preserve Common Lisp quotient and remainder signs, division-by-zero behavior, and its input integers.  No dependencies are proposed.  This changes shared arithmetic and requires user approval under the latest design-decision rule.
+
+Tests must compare results against SBCL across signs, zero and unit divisors, powers-of-two boundaries, exact division, short and long quotients, quotient-estimate corrections, and randomized operands.  Then measure the same offline certificate verification, test valid and rejected TLS connections, and repeat COMPLETE through headless Chromium with returned text visible.  Boot and snapshot restoration must pass before saving the arithmetic change.  The runtime source remains unchanged, and the browser failure remains unresolved.
+
+## Standalone long division: 2026-10-12
+
+The user requested the core long-division algorithm and benchmarks under Mezzano and SBCL, with SBCL running on the VM host.  This authorizes a standalone arithmetic experiment.  TLS requests and runtime arithmetic replacement remain deferred.
+
+The implementation will use normalized long division with base 2^30 digits in Lisp arrays.  Two-digit estimates and digit products fit in the fixnums of both tested x86-64 implementations.  The public function will accept integers and return TRUNCATE's quotient and remainder.  Conversion to and from digit arrays will be included in the reported times.  The compiler policy will retain safety checks and specify the same speed and debug qualities in both implementations.  The algorithm follows [GMP's description of basecase division](https://gmplib.org/manual/Basecase-Division), which cites Knuth Algorithm D.
+
+The simplest comparison uses identical deterministic operands on both systems and measures both the new function and each implementation's existing TRUNCATE.  Sizes will include 512/256 and 768/384 bits for elliptic-curve modular arithmetic and larger operands.  Tests will cover signs, zero, unit divisors, digit boundaries, normalization, quotient-estimate correction, add-back correction, and randomized cases.  Both returned values must agree with the existing implementation, satisfy the division identity, and meet the remainder bounds.
+
+The standalone implementation passed 7,276 cases under SBCL and Mezzano.  The first benchmark used calibrated batches targeting 0.2 seconds.  Guest samples varied enough that calibration sometimes selected batches lasting only 0.1 seconds during measurement.  The benchmark now measures five samples of at least one second each, alternating the two functions.  This removes calibration and retains allocation, collection, and scheduling time in the wall-clock results.  The arithmetic code remains unchanged.
+
+The one-second benchmark completed on the VM host under SBCL 2.5.2.debian and in the x86-64 KVM guest.  For 768/384-bit operands, medians were 1.828 microseconds for the new routine and 0.215 for TRUNCATE under SBCL, and 98.270 and 202.922 under Mezzano.  At 4096/2048 bits, Mezzano's new routine was slower: 5312.500 versus 3039.773 microseconds.  Guest sample ranges were broad.  The [long-division report](../long-division.md) records all sizes, ranges, compiler policies, and reproduction commands.
+
+The user requested confirmation that the code was compiled and suggested a fresh Lisp process.  Both benchmark runs had loaded compiled files.  A fresh SBCL process then loaded only the three FASLs, checked COMPILED-FUNCTION-P for every source-defined function, the generator closure, and TRUNCATE, and passed 7,276 cases.  Mezzano reloaded the three LLFs, passed the same compilation checks, and passed the same cases.  The guest remained running with its retained debugger jobs.  Evidence is long-division-sbcl-compiled.log and long-division-mezzano-compiled.log.
+
+The results support keeping this as a standalone experiment.  Its certificate-sized division improves on Mezzano's current routine, but the same Lisp remains much slower in Mezzano than SBCL and its largest measured division is slower than Mezzano's existing routine.  Runtime integration and TLS tests remain deferred.
+
+- [x] Implement and test the standalone function under SBCL.
+- [x] Compile and run the same tests in Mezzano.
+- [x] Benchmark both functions on both systems and record the measurement limits.
+- [x] Review the implementation and document the measurement limits.
