@@ -9,8 +9,8 @@ The [debugger design](../../../doc/debugger.md) owns capability status and test 
 | Component | Recorded revision or version |
 |---|---|
 | MBuild | `a13448825506c716fb60427f78aafeb6265477b2` |
-| Mezzano, including Web UI and debugger tests | `49a4e93c72b7a2a0a26a819de63311822fe65093` |
-| Slime implementation | `2a15e2b93c81e17e53d0d8769be1ef9c70c2c634` |
+| Mezzano, including Web UI and debugger tests | `71c601cf4014454ef9b72f585696e03d45489ccd` |
+| Slime implementation | `e07dbedab97006025f349f86d200c76c31f82c19` |
 | Other guest dependencies | Submodule revisions recorded by the MBuild revision above. |
 | Host Quicklisp distribution | `2026-01-01`, recorded in `quicklisp/dists/quicklisp/distinfo.txt`. |
 
@@ -24,9 +24,9 @@ cd /home/somebody/src/mezzano-boot
 git checkout a13448825506c716fb60427f78aafeb6265477b2
 git submodule update --init
 git -C Mezzano fetch https://github.com/jsmorph/Mezzano.git debugging
-git -C Mezzano checkout --detach 49a4e93c72b7a2a0a26a819de63311822fe65093
+git -C Mezzano checkout --detach 71c601cf4014454ef9b72f585696e03d45489ccd
 git -C home/slime fetch https://github.com/jsmorph/slime.git debugging
-git -C home/slime checkout --detach 2a15e2b93c81e17e53d0d8769be1ef9c70c2c634
+git -C home/slime checkout --detach e07dbedab97006025f349f86d200c76c31f82c19
 ```
 
 Existing development checkouts use their `debugging` branches.  Another `git submodule update` selects MBuild's older Mezzano and Slime revisions, so explicit revision selection follows submodule initialization.
@@ -187,13 +187,22 @@ The [test catalog](../../../doc/debugger.md#test-scope-and-provenance) describes
 
 ### Full build and CI boot
 
-The file server must be running:
+The file server must be running.  Builds use the separate CI image:
 
 ```sh
 cd /home/somebody/src/mezzano-boot
 ./build-test.sh > build.log 2>&1
-./boot-test.sh > boot.log 2>&1
 ```
+
+The shared file server serves one VM connection at a time.  Web polling can keep the development VM's connection active.  During CI boot, the Web service is paused and other development SWANK traffic must be idle.  From the SSH client:
+
+```sh
+tailscale ssh root@minideb2 systemctl stop mezzano-web.service
+tailscale ssh minideb2 'cd /home/somebody/src/mezzano-boot && ./boot-test.sh > boot.log 2>&1'
+tailscale ssh root@minideb2 systemctl start mezzano-web.service
+```
+
+The Web service resumes after the boot test, including a failed test.  The live VMs remain running.
 
 The test uses its separate image, initializes the desktop, and expects QEMU status 3 and `CI build completed successfully!`.  Serial output is in `serial.log`.  The build removes the generated target cache.
 
@@ -206,6 +215,9 @@ python3 tools/swank/test-lispm-eval.py --port 4006
 sbcl --script tools/swank/test-debugger.lisp 4006
 sbcl --script tools/swank/test-debugger-reconnect.lisp 4006
 sbcl --script tools/swank/test-evaluation-reconnect.lisp 4006
+sbcl --script tools/swank/test-listener.lisp 4006
+sbcl --script tools/swank/test-document-examiner.lisp 4006
+sbcl --script tools/swank/test-private-documents.lisp 4006
 ```
 
 Run guest Lisp tests with the updated compiler and backend loaded:

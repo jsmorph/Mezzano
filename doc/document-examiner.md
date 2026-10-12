@@ -4,7 +4,7 @@ The Document Examiner presents the checked-in project documentation through gues
 
 ## Topics and reading
 
-The catalog includes the project guide, debugger design and capability status, remote evaluation guide, Lisp Command Processor, Web interface, SWANK protocol, build and VM operations, font research, development journals, and Mezzano's user and implementation documents.  [Project guide](project-guide.md) maps the work to its source documents.
+The catalog includes the project guide, debugger design and capability status, remote evaluation guide, Lisp Command Processor, Web interface, SWANK protocol, build and VM operations, font research and conversion, development journals, and Mezzano's user and implementation documents.  [Project guide](project-guide.md) maps the work to its source documents.
 
 Each source document is a book.  Its Markdown headings define subordinate topics.  A topic ID is the source path followed by its heading anchor, for example `doc/debugger.md#compiler-guarantees`.  The root topic uses the source path alone.  Repeated titles remain distinct and can be selected through their IDs.  The catalog preserves source order and heading hierarchy.
 
@@ -21,7 +21,7 @@ The Viewer occupies the left pane.  Current Candidates and Bookmarks occupy the 
 | Show Documentation topic | Displays a topic and its subordinate sections. |
 | Show Candidates terms | Searches topic titles and keywords and replaces Current Candidates. |
 | Show Table of Contents topic | Lists the topic and its descendants with hierarchy indentation. |
-| Show Overview topic | Displays its parent, ancestors, siblings, children, keywords, and references. |
+| Show Overview topic | Displays its parent, ancestors, siblings, children, keywords, source, and references. |
 | Reselect Candidates | Selects a prior candidate list for the current viewer. |
 | Select Viewer name | Selects an existing viewer or creates one. |
 | Remove Viewer name | Removes a viewer and its reading history. |
@@ -80,4 +80,4 @@ The journals retain the failed attempts and tested source state.
 
 The [Genera User's Guide](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Genera-Users-Guide.pdf), Document Examiner chapter, printed pages 2906–2924 in that edition, specifies topic records, the four panes, lookup, candidate searches, overviews, tables of contents, bookmarks, named viewers, and private documents.  The [Genera Workbook](https://bitsavers.trailing-edge.com/pdf/symbolics/software/genera_8/Genera_Workbook.pdf) supplies the introductory walkthrough.  [Genera 8.3 MacIvory captures](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/docex/docex.html) provide the screen reference.
 
-Original stemming, private-document browser actions, Listener-to-Background-viewer integration, Concordia authoring, automatic Lisp-object documentation records, and full Symbolics keyboard compatibility remain unfinished.  Current topics come from the checked-in documents.  Exact visual fidelity requires original-font conversion and measured browser comparison.
+Original stemming, private-document browser actions, Listener-to-Background-viewer integration, Concordia authoring, automatic Lisp-object documentation records, and full Symbolics keyboard compatibility remain unfinished.  Current topics come from the checked-in documents.  The [font conversion and comparison report](../tools/swank/web/fonts/README.md) records measured glyph and layout matches and remaining visual differences.
