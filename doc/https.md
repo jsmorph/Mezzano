@@ -27,9 +27,9 @@ The loader defines COMPLETE and CURL in CL-USER, the Listener's default package:
 
 COMPLETE accepts a prompt string and an optional model string, defaulting to gpt-4.1-nano.  It returns the response's output text as one string.  It sets store to false and signals an error if the response is incomplete or contains no output text.
 
-Each call reads the key from openai-api.key in USER-HOMEDIR-PATHNAME.  That private file contains the key on its first line and stays outside the repository.  A host file served through MBuild uses mode 0600.  The caller supplies only the prompt and optional model.  The function overwrites its key string on exit, subject to the persistence limits below.
+Each call reads the key from `openai-api.key` in USER-HOMEDIR-PATHNAME.  That private file contains the key on its first line and stays outside the repository.  A host file served through MBuild uses mode 0600.  The caller supplies only the prompt and optional model.  The function overwrites its key string on exit, subject to the persistence limits below.
 
-CURL performs GET and returns three values: the body, integer HTTP status, and header alist.  Drakma decodes text/* bodies as strings using the response's charset.  Other content types, including application/json, return octet vectors.  CURL decompresses encoded content and follows at most five redirects.  A 404 or another HTTP error status is returned with its body and headers.  Transport and TLS errors signal conditions.
+CURL performs GET and returns three values: the body, integer HTTP status, and header alist.  Drakma decodes `text/*` bodies as strings using the response's charset.  Other content types, including `application/json`, return octet vectors.  CURL decompresses encoded content and follows at most five redirects.  A 404 or another HTTP error status is returned with its body and headers.  Transport and TLS errors signal conditions.
 
 ```lisp
 (multiple-value-bind (body status headers)
