@@ -1,0 +1,136 @@
+{
+  "source_url": "https://ssw.jku.at/General/Staff/PF/peek.gif",
+  "source_sha256": "691c8722aa85aba15c31b0599483e4f99639753b0b3340894d479e1af81182a1",
+  "source_size": [
+    980,
+    717
+  ],
+  "orientation": "Unscaled original GIF, top-to-bottom rows",
+  "samples": [
+    {
+      "text": "Process Name",
+      "font": "TVFONT",
+      "font_sha256": "9079459b4e851592ca828cef142282be42a942ee7009e0e6d3ab20fc5c318a79",
+      "ink_rectangle": [
+        23,
+        30,
+        71,
+        7
+      ],
+      "reverse_video": false,
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 72,
+      "metadata_metrics": {
+        "baseline": 8,
+        "blinker_height": 10,
+        "blinker_width": 5,
+        "character_height": 10,
+        "default_character_width": 6,
+        "raster_height": 10,
+        "raster_width": 5,
+        "variable_width": false
+      }
+    },
+    {
+      "text": "Notifications 1",
+      "font": "TVFONT",
+      "font_sha256": "9079459b4e851592ca828cef142282be42a942ee7009e0e6d3ab20fc5c318a79",
+      "ink_rectangle": [
+        23,
+        54,
+        88,
+        7
+      ],
+      "reverse_video": false,
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 90,
+      "metadata_metrics": {
+        "baseline": 8,
+        "blinker_height": 10,
+        "blinker_width": 5,
+        "character_height": 10,
+        "default_character_width": 6,
+        "raster_height": 10,
+        "raster_width": 5,
+        "variable_width": false
+      }
+    },
+    {
+      "text": "Processes",
+      "font": "JESS14",
+      "font_sha256": "002e8bf152dad57488eb365e7886f3fb8fd95b7883023c181a8259728b03d445",
+      "ink_rectangle": [
+        14,
+        6,
+        70,
+        12
+      ],
+      "reverse_video": true,
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 72,
+      "metadata_metrics": {
+        "baseline": 12,
+        "blinker_height": 14,
+        "blinker_width": 9,
+        "character_height": 14,
+        "default_character_width": 7,
+        "raster_height": 14,
+        "raster_width": 11,
+        "variable_width": true
+      }
+    },
+    {
+      "text": "Describe",
+      "font": "JESS14",
+      "font_sha256": "002e8bf152dad57488eb365e7886f3fb8fd95b7883023c181a8259728b03d445",
+      "ink_rectangle": [
+        154,
+        329,
+        59,
+        12
+      ],
+      "reverse_video": false,
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 61,
+      "metadata_metrics": {
+        "baseline": 12,
+        "blinker_height": 14,
+        "blinker_width": 9,
+        "character_height": 14,
+        "default_character_width": 7,
+        "raster_height": 14,
+        "raster_width": 11,
+        "variable_width": true
+      }
+    },
+    {
+      "text": "Processes",
+      "font": "CPTFONT",
+      "font_sha256": "61192f67793272aef9fd08c666988358bef7a6f81cbc270b0f55202e33f724ee",
+      "ink_rectangle": [
+        24,
+        649,
+        70,
+        9
+      ],
+      "reverse_video": false,
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 72,
+      "metadata_metrics": {
+        "baseline": 10,
+        "blinker_height": 12,
+        "blinker_width": 8,
+        "character_height": 12,
+        "default_character_width": 8,
+        "raster_height": 12,
+        "raster_width": 7,
+        "variable_width": false
+      }
+    }
+  ]
+}

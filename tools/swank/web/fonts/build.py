@@ -16,6 +16,7 @@ from fontTools.ttLib import newTable
 REVISION = "809694a73ece7f840b6541b4781cd47152d1ea35"
 SCALE = 64
 SOURCES = {
+    "tvfont": "9079459b4e851592ca828cef142282be42a942ee7009e0e6d3ab20fc5c318a79",
     "cptfont": "61192f67793272aef9fd08c666988358bef7a6f81cbc270b0f55202e33f724ee",
     "cptfontcb": "69a76a4a0bd8bcbf4e0a29e2897ee8fce6955cf6367073b7c1d660ca9483a920",
     "cptfonti": "14e0c5b813e88054b15cf90bdea53ac03a6842b20663610519216c06116cfe7d",

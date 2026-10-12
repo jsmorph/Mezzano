@@ -44,7 +44,8 @@ Chromium 145.0.7632.109 passed all 1,555 mapped glyphs in twelve fonts with zero
 | Listener label and menu headings | HL12I | 14 / 11 pixels |
 | System Menu title and Examiner pane labels | HL12BI | 14 / 11 pixels |
 | Classic debugger label and topic-menu title | TR12I | 14 / 11 pixels |
-| System Menu items | JESS14 | 14 / 12 pixels |
+| System Menu and Peek menu items | JESS14 | 14 / 12 pixels |
+| Peek process rows | TVFONT | 10 / 8 pixels |
 | Examiner command menu | JESS13 | 13 / 11 pixels |
 | Reverse-video mouse help | SWISS12B-CCAPS | 14 / 11 pixels |
 | Herald and Examiner title | EUREX24I | 24 / 18 pixels |
@@ -76,3 +77,14 @@ node fonts/test-title.mjs /path/to/de2.gif /tmp/title-test
 ```
 
 The final application screenshot and comparison retain zero offsets for all seven selected samples and zero gray pixels across the complete image.  This closes the measured title mismatch.  Paragraph justification and complete-window comparison remain unfinished.
+
+
+## Peek typography
+
+The [original Peek capture](https://ssw.jku.at/General/Staff/PF/peek.gif) uses TVFONT for sampled process-table strings, JESS14 for menu items, and CPTFONT for the lower Processes label.  The [comparison results](peek-matches.json) preserve the image hash, unscaled orientation, five tested ink rectangles, input font hashes, and zero missing or extra pixels.  Advances, baselines, and character heights in the report come from recovered metadata.  The gallery does not identify the displayed Genera release.
+
+```sh
+python3 identify-peek.py /path/to/genera-fonts /path/to/peek.gif > peek-matches.json
+```
+
+TVFONT adds 142 mapped glyphs to the thirteen-font build.  The updated Chromium DPR1 test passed all 1,697 glyphs with zero missing, extra, or intermediate-gray pixels, exact advances, and exact CSS baselines and line heights.  TVFONT has a six-pixel default advance, ten-pixel character height, and eight-pixel baseline.  The process table uses twelve-pixel row spacing, matching the sampled original rows.  Different process fields and names require separate application-layout comparison.
