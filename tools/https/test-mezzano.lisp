@@ -4,7 +4,7 @@
 
 (defpackage #:lispm-https-guest-test
   (:use #:cl)
-  (:export #:run))
+  (:export #:run #:run-authenticated-from-file))
 (in-package #:lispm-https-guest-test)
 
 (defun run (&key (ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT"))
@@ -20,4 +20,16 @@
   (lispm-http-cleanup-test:run)
   (lispm-https-test:run-transport-tests :ca-file ca-file)
   (lispm-openai-test:run :ca-file ca-file)
+  t)
+
+(defun run-authenticated-from-file (pathname &key (ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT"))
+  (let ((failure nil))
+    (let ((key (with-open-file (stream pathname) (read-line stream))))
+      (unwind-protect
+           (handler-case
+               (lispm-https-test:run-openai-test key :ca-file ca-file)
+             (error (condition) (setf failure (type-of condition))))
+        (fill key #\Space)))
+    (when failure
+      (error "Guest OpenAI test failed with condition type ~S." failure)))
   t)

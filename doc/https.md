@@ -2,7 +2,7 @@
 
 Mezzano's HTTPS integration uses Drakma for HTTP, pure-tls for TLS 1.3, Ironclad for cryptography, and [Jzon](json.md) for JSON.  TLS and cryptographic operations execute in Lisp.  The guest obtains entropy from a VirtIO entropy device and trust anchors from a PEM CA bundle.
 
-The libraries compiled and loaded on x86-64 QEMU.  Guest tests passed full and resumed TLS handshakes, certificate rejection checks, blocked-I/O cancellation, HTTP cleanup, an unauthenticated GET, and an invalid-credential POST.  Authenticated guest inference remains untested.  The reusable Responses client passed authenticated inference under SBCL on Linux.
+The libraries compiled and loaded on x86-64 QEMU.  Guest tests passed full and resumed TLS handshakes, certificate rejection checks, blocked-I/O cancellation, HTTP cleanup, an unauthenticated GET, and an invalid-credential POST.  The reusable Responses client passed authenticated inference in the guest and under SBCL on Linux: HTTP 200, completed status, and "Lisp HTTPS works."
 
 ## Installation
 
@@ -53,7 +53,7 @@ The condition's printed report includes the status and request ID.  A caller can
 
 The caller owns the API key string.  CREATE-RESPONSE overwrites its Authorization string when the call exits.  Lisp allocation and library internals can retain additional copies.
 
-Mezzano snapshots save the Lisp heap.  A snapshot taken after supplying a credential can therefore contain that credential, including copies beyond the caller's string.  Retained evaluation source, input, and debugger locals can also retain credentials.  The SBCL test runner accepts a key through standard input and ends the process after the test.  The [test guide](../tools/https/README.md#openai-request) describes that runner.
+Mezzano snapshots save the Lisp heap.  A snapshot taken after supplying a credential can therefore contain that credential, including copies beyond the caller's string.  Paging can write copies to the image without a snapshot.  Retained evaluation source, input, and debugger locals can also retain credentials.  The SBCL test runner accepts a key through standard input and ends the process after the test.  The test guide describes the [SBCL runner](../tools/https/README.md#openai-request) and the [guest test procedure](../tools/https/README.md#authenticated-guest-test), which restores a complete pre-credential image after the request.
 
 ## Tests and limits
 
@@ -65,6 +65,6 @@ The combined guest test covers entropy, atomic operations, fractional deadlines,
  :ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT")
 ```
 
-The combined guest test passed, including full and resumed handshakes with one chain verification per connection, rejection of mismatched hostnames and empty trust stores, rejection of a ticket without peer certificates, HTTP 401 JSON parsing, and normal TLS close.  The corresponding SBCL tests passed, including an authenticated Responses request that returned HTTP 200, completed status, and "Lisp HTTPS works."
+The combined guest test passed, including full and resumed handshakes with one chain verification per connection, rejection of mismatched hostnames and empty trust stores, rejection of a ticket without peer certificates, HTTP 401 JSON parsing, and normal TLS close.  Authenticated Responses requests passed under both Mezzano and SBCL, returning HTTP 200, completed status, and "Lisp HTTPS works."  The guest request used gpt-4.1-nano-2025-04-14, with 15 input tokens and 6 output tokens.  TCP half-close tests, a fresh image boot, and snapshot restoration also passed.
 
 These tests cover the OpenAI endpoint and the stated error cases.  Streaming responses, certificate revocation, the upstream TLS test suite, ARM64 execution, and bare-metal entropy remain untested.

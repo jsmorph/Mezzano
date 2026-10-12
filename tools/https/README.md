@@ -72,15 +72,15 @@ HTTP-ERROR retains the status, request ID, and response octets through HTTP-ERRO
 
 The function overwrites its Authorization string on exit.  The caller owns the key string.  Lisp allocation and library internals can retain other copies.
 
-The [OpenAI API overview](https://developers.openai.com/api/reference/overview) documents authentication and request IDs.  To test HTTP error handling without a credential, load test-openai.lisp and call LISPM-OPENAI-TEST:RUN.  Its invalid-key request must return a typed HTTP 401 with a JSON error.  This test passed under SBCL on Linux and Mezzano.  Under SBCL, the reusable function also passed an authenticated request through RUN-OPENAI-TEST: HTTP 200, completed status, and the text "Lisp HTTPS works."
+The [OpenAI API overview](https://developers.openai.com/api/reference/overview) documents authentication and request IDs.  To test HTTP error handling without a credential, load test-openai.lisp and call LISPM-OPENAI-TEST:RUN.  Its invalid-key request must return a typed HTTP 401 with a JSON error.  This test passed under SBCL on Linux and Mezzano.  Under both SBCL and Mezzano, the reusable function also passed an authenticated request through RUN-OPENAI-TEST: HTTP 200, completed status, and the text "Lisp HTTPS works."
 
 ## Tested scope and Mezzano work
 
 On 2026-10-12, the Linux SBCL tests negotiated TLS 1.3 with TLS_CHACHA20_POLY1305_SHA256.  Both certificate-rejection tests passed.  The authenticated POST returned HTTP 200 and "Lisp HTTPS works.", with 15 input tokens and 6 output tokens.
 
-These tests cover one service and the two stated verification failures.  Streaming responses, certificate revocation, and the upstream TLS test suite remain untested.  The cancellation tests below check blocked input and handshake cleanup.  The corrected fractional deadline tests passed under SBCL.
+These tests cover one service and the stated verification failures.  Streaming responses, certificate revocation, and the upstream TLS test suite remain untested.  The cancellation tests below check blocked input and handshake cleanup.  The corrected fractional deadline tests passed under SBCL.
 
-The guest entropy, connection controls, and cancellation tests below passed.  Library portability edits are retained in ports/.  The guest TLS/HTTP stack compiled and loaded.  Full and resumed handshakes passed, each verifying the certificate chain once.  Both paths rejected a mismatched hostname and an empty trust store.  A cached ticket without peer certificates also failed verification.  The guest GET and invalid-credential POST returned HTTP 401 with parsed JSON and normal TLS close.  Authenticated guest inference remains untested.
+The guest entropy, connection controls, and cancellation tests below passed.  Library portability edits are retained in ports/.  The guest TLS/HTTP stack compiled and loaded.  Full and resumed handshakes passed, each verifying the certificate chain once.  Both paths rejected a mismatched hostname and an empty trust store.  A cached ticket without peer certificates also failed verification.  The guest GET and invalid-credential POST returned HTTP 401 with parsed JSON and normal TLS close.  The authenticated guest Responses request returned HTTP 200, completed status, and "Lisp HTTPS works.", using gpt-4.1-nano-2025-04-14 with 15 input tokens and 6 output tokens.
 
 ## Guest entropy
 
@@ -140,7 +140,7 @@ After restarting QEMU from that snapshot:
 
     (lispm-network-test::finish-restore-test)
 
-These tests passed on x86-64 QEMU.  They do not exercise a route disappearing while an abort reset is being sent.
+These tests passed on x86-64 QEMU before and after snapshot restoration.  A saved half-closed connection signaled CONNECTION-STALE after restoration.  The fresh CI image also passed its boot test.  The tests do not exercise a route disappearing while an abort reset is being sent.
 
 ## Guest library source edits
 
@@ -197,3 +197,15 @@ The combined guest test runs entropy, atomics, cancellation, HTTP cleanup, certi
      :ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT")
 
 The HTTP cleanup fixture uses in-memory response streams.  It requires an injected close failure to reach the caller and requires abort close after an incomplete response.  Load test-http-cleanup.lisp and call LISPM-HTTP-CLEANUP-TEST:RUN to run it separately.  This fixture passed under SBCL and Mezzano.
+
+## Authenticated guest test
+
+The authenticated runner reads a file whose first line contains the API key:
+
+    (lispm-https-guest-test:run-authenticated-from-file
+     "SYS:HOME;OPENAI-TEST.KEY"
+     :ca-file "SYS:HOME;HTTPS-CA-CERTIFICATES.CRT")
+
+It uses RUN-OPENAI-TEST, reports the response and token counts, and clears the key string on exit.  A failed call reports the condition type after cleanup.  The test's evaluation source contains only the pathname.  The file remains the caller's responsibility.
+
+The test procedure preserves a complete disk image before credential ingestion, with QEMU stopped during the copy.  It deletes the temporary credential file after the request and restores that image with QEMU stopped.  Restarting from a snapshot in the same modified file would leave possible credential copies written by paging.  The [credential-persistence reference](../../doc/https.md#credentials-and-persistence) describes the guest heap and retained evaluation state.
