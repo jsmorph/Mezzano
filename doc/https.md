@@ -14,6 +14,31 @@ The [HTTPS installation and test guide](../tools/https/README.md) specifies pinn
 
 The loader gives the separate HTTPS dependency directory precedence over MBuild's older libraries.  Compilation can take substantial time.  The CA bundle is a host-maintained file copied into the guest's accessible filesystem.  Refresh that copy when the host's trust anchors change.
 
+## Listener functions
+
+The loader defines COMPLETE and CURL in CL-USER, the Listener's default package:
+
+```lisp
+(complete "Explain dynamic binding in Common Lisp.")
+(complete "Explain dynamic binding in Common Lisp." "gpt-4.1-nano")
+
+(curl "http://example.org/")
+```
+
+COMPLETE accepts a prompt string and an optional model string, defaulting to gpt-4.1-nano.  It returns the response's output text as one string.  It sets store to false and signals an error if the response is incomplete or contains no output text.
+
+Each call reads the key from openai-api.key in USER-HOMEDIR-PATHNAME.  That private file contains the key on its first line and stays outside the repository.  A host file served through MBuild uses mode 0600.  The caller supplies only the prompt and optional model.  The function overwrites its key string on exit, subject to the persistence limits below.
+
+CURL performs GET and returns three values: the body, integer HTTP status, and header alist.  Drakma decodes text/* bodies as strings using the response's charset.  Other content types, including application/json, return octet vectors.  CURL decompresses encoded content and follows at most five redirects.  A 404 or another HTTP error status is returned with its body and headers.  Transport and TLS errors signal conditions.
+
+```lisp
+(multiple-value-bind (body status headers)
+    (curl "https://api.openai.com/v1/models")
+  (values (com.inuoe.jzon:parse body) status headers))
+```
+
+Both functions use the guest CA bundle and a 60-second cancellation context.  CURL limits connection establishment to 15 seconds.  Cancellation closes blocked TLS I/O.  Plain HTTP socket reads do not observe that context, so a plain HTTP request can continue until a socket operation returns.
+
 ## Responses API
 
 LISPM-OPENAI:CREATE-RESPONSE sends one non-streaming POST to the OpenAI Responses endpoint.  The caller supplies an API key string and a Jzon request hash table:
@@ -67,4 +92,8 @@ The combined guest test covers entropy, atomic operations, fractional deadlines,
 
 The combined guest test passed, including full and resumed handshakes with one chain verification per connection, rejection of mismatched hostnames and empty trust stores, rejection of a ticket without peer certificates, HTTP 401 JSON parsing, and normal TLS close.  Authenticated Responses requests passed under both Mezzano and SBCL, returning HTTP 200, completed status, and "Lisp HTTPS works."  The guest request used gpt-4.1-nano-2025-04-14, with 15 input tokens and 6 output tokens.  TCP half-close tests, a fresh image boot, and snapshot restoration also passed.
 
-These tests cover the OpenAI endpoint and the stated error cases.  Streaming responses, certificate revocation, the upstream TLS test suite, ARM64 execution, and bare-metal entropy remain untested.
+The Listener functions passed a chunked HTTP GET returning text, an HTTPS GET returning an HTTP 401 body as octets, and completions with the default and explicit models.  In-memory tests also cover chunk decoding with raw and already chunked streams.
+
+In guest testing, example.org closed its HTTPS connection during certificate verification, which took about 13 seconds.  That request failed before receiving an HTTP status line.  This failure remains unresolved.
+
+These tests cover the stated endpoints and error cases.  Streaming responses, certificate revocation, the upstream TLS test suite, ARM64 execution, and bare-metal entropy remain untested.

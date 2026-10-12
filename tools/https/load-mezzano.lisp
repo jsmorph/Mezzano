@@ -12,3 +12,4 @@
 (asdf:load-system :drakma)
 (asdf:load-system :com.inuoe.jzon)
 (load (merge-pathnames "openai.lisp" *load-truename*))
+(load (merge-pathnames "listener.lisp" *load-truename*))

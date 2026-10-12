@@ -209,3 +209,25 @@ The authenticated runner reads a file whose first line contains the API key:
 It uses RUN-OPENAI-TEST, reports the response and token counts, and clears the key string on exit.  A failed call reports the condition type after cleanup.  The test's evaluation source contains only the pathname.  The file remains the caller's responsibility.
 
 The test procedure preserves a complete disk image before credential ingestion, with QEMU stopped during the copy.  It deletes the temporary credential file after the request and restores that image with QEMU stopped.  Restarting from a snapshot in the same modified file would leave possible credential copies written by paging.  The [credential-persistence reference](../../doc/https.md#credentials-and-persistence) describes the guest heap and retained evaluation state.
+
+## Listener function tests
+
+The loader also defines [COMPLETE and CURL](../../doc/https.md#listener-functions) in CL-USER.  COMPLETE reads openai-api.key from the guest home directory.  The installed key file contains only the key on its first line, uses mode 0600, and stays outside the checkout.
+
+The GET tests exercise a chunked HTTP text response from example.org and an HTTPS HTTP 401 JSON response from OpenAI returned as octets.  The in-memory tests decode raw and already chunked streams and a complete chunked HTTP response.  The completion tests call the default model and an explicit model:
+
+    (load "SYS:SOURCE;TOOLS;HTTPS;TEST-LISTENER.LISP")
+    (lispm-https-listener-test:run-chunked-tests)
+    (lispm-https-listener-test:run-get-tests)
+    (lispm-https-listener-test:run-completion-tests)
+
+The completion test requires the private key file.  It reports a failed call's condition type after unwinding its credential-bearing frames.
+
+The guest passed the in-memory chunk tests and live chunked HTTP GET after correcting CLOS method ordering.  The portable method-order test checks both method-definition orders, explicit argument precedence, CALL-NEXT-METHOD, nonmatching EQL arguments, and repeated dispatch:
+
+    (load "SYS:SOURCE;TOOLS;TEST-CLOS-METHOD-ORDER.LISP")
+    (lispm-method-order-test:run)
+
+Under SBCL, load tools/test-clos-method-order.lisp and call the same function.  The test passed under both implementations.  CHECK-EXISTING checks already defined functions without replacing them, supporting cache-invalidation and snapshot-restoration tests.
+
+The guest HTTPS request to example.org failed before receiving an HTTP status line.  A trace recorded peer close during certificate verification, which took about 13 seconds.  The live chunked GET test uses HTTP to test the corrected decoding path.  The OpenAI request tests verified HTTPS.
