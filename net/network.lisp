@@ -5,6 +5,25 @@
 (define-condition network-error (error)
   ())
 
+(define-condition network-timeout (network-error)
+  ()
+  (:report (lambda (condition stream)
+             (declare (ignore condition))
+             (write-string "Network operation deadline expired." stream))))
+
+(defun deadline-after (seconds)
+  (when seconds
+    (check-type seconds (real 0))
+    (+ (get-internal-run-time)
+       (ceiling (* seconds internal-time-units-per-second)))))
+
+(defun deadline-remaining (deadline)
+  (when deadline
+    (let ((remaining (- deadline (get-internal-run-time))))
+      (unless (plusp remaining)
+        (error 'network-timeout))
+      (/ remaining internal-time-units-per-second))))
+
 (deftype octet ()
   '(unsigned-byte 8))
 
@@ -39,7 +58,8 @@
 
 (defvar *hosts* '())
 
-(defun resolve-address (address &optional (errorp t))
+(defun resolve-address (address &optional (errorp t) &key deadline)
+  (deadline-remaining deadline)
   (cond ((listp address)
          (mezzano.network.ip:make-ipv4-address address))
         ((stringp address)
@@ -52,8 +72,7 @@
             (when host-entry
               (mezzano.network.ip:make-ipv4-address host-entry)))
           ;; 3. Finally do a DNS lookup.
-          (ignore-errors
-            (mezzano.network.dns:resolve-address address))
+          (mezzano.network.dns:resolve-address address :deadline deadline)
           (when errorp
             (error "Unknown host ~S." address))))
         (t address)))

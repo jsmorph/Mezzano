@@ -87,3 +87,26 @@ Restart QEMU from the saved image, then evaluate:
     (lispm-entropy-test::finish-restore-test)
 
 The completion test requires the saved request to fail with ENTROPY-UNAVAILABLE and a new request to receive bytes from the current device.  These tests passed on x86-64 QEMU.  ARM64 and bare-metal entropy remain untested.
+
+## Guest connection control
+
+MEZZANO.NETWORK.TCP:TCP-STREAM-CONNECT accepts :CONNECT-TIMEOUT in seconds.  It applies one deadline to DNS resolution and TCP establishment.  The default remains ten seconds.  The existing :TIMEOUT parameter controls connection inactivity.  Expiration signals MEZZANO.NETWORK:NETWORK-TIMEOUT or its TCP subtype.
+
+CLOSE with :ABORT T closes local TCP state and wakes a blocked reader with a connection error.  The network queue sends a reset when the TCP state requires one and removes the connection's timers and dispatch sources.
+
+Inside the guest:
+
+    (load "SYS:SOURCE;TOOLS;HTTPS;TEST-NETWORK.LISP")
+    (lispm-network-test::run)
+
+The tests cover DNS and connection deadlines, an expired queued connection, interrupted establishment, refusal, octet transfer, EOF, blocked-read abort, and removal from the connection list.  To test snapshot invalidation:
+
+    (lispm-network-test::prepare-restore-test)
+    (mezzano.supervisor:snapshot)
+    (mezzano.supervisor:wait-for-snapshot-completion)
+
+After restarting QEMU from that snapshot:
+
+    (lispm-network-test::finish-restore-test)
+
+These tests passed on x86-64 QEMU.  They do not exercise a route disappearing while an abort reset is being sent.

@@ -296,7 +296,7 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
                           :port (tcp-connection-remote-port connection)))
     (mezzano.supervisor:condition-notify (tcp-connection-cvar connection) t)
     (case (tcp-connection-state connection)
-      (:syn-sent
+      ((:syn-sent :syn-received)
        (detach-tcp-connection connection))
       (:closed)
       (t
@@ -842,15 +842,30 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
               (return local-port))))
 
 (defun abort-connection (connection)
-  (mezzano.sync.dispatch:dispatch-async
-   (lambda ()
-     (tcp4-send-packet connection
-                       (tcp-connection-snd.nxt connection)
-                       (tcp-connection-rcv.nxt connection)
-                       nil
-                       :rst-p t)
-     (detach-tcp-connection connection))
-   net::*network-serial-queue*))
+  (unless (eq (tcp-connection-state connection) :closed)
+    (let ((resetp (member (tcp-connection-state connection)
+                          '(:syn-received :established :fin-wait-1 :fin-wait-2 :close-wait))))
+      (setf (tcp-connection-state connection) :closed
+            (tcp-connection-rx-data connection) nil
+            (tcp-connection-retransmit-queue connection) nil)
+      (unless (tcp-connection-pending-error connection)
+        (setf (tcp-connection-pending-error connection)
+              (make-condition 'connection-aborted
+                              :host (tcp-connection-remote-ip connection)
+                              :port (tcp-connection-remote-port connection))))
+      (mezzano.supervisor:condition-notify (tcp-connection-cvar connection) t)
+      (setf (mezzano.supervisor:event-state (tcp-connection-receive-event connection)) t)
+      (mezzano.sync.dispatch:dispatch-async
+       (lambda ()
+         (with-tcp-connection-locked connection
+           (unwind-protect
+                (when resetp
+                  (tcp4-send-packet connection
+                                    (tcp-connection-snd.nxt connection) 0 nil
+                                    :ack-p nil :rst-p t :errors-escape t))
+             (clrhash (tcp-connection-rx-data-unordered connection))
+             (detach-tcp-connection connection))))
+       net::*network-serial-queue*))))
 
 (define-condition connection-error (net:network-error)
   ((host :initarg :host :reader connection-error-host)
@@ -865,7 +880,7 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
 (define-condition connection-reset (connection-error)
   ())
 
-(define-condition connection-timed-out (connection-error)
+(define-condition connection-timed-out (connection-error net:network-timeout)
   ())
 
 (define-condition connection-stale (connection-error)
@@ -899,7 +914,9 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
     (when condition
       (error condition))))
 
-(defun tcp-connect (ip port &key persist timeout)
+(defun tcp-connect (ip port &key persist timeout deadline)
+  (setf deadline (or deadline (net::deadline-after *tcp-connect-timeout*)))
+  (net::deadline-remaining deadline)
   (let* ((interface (nth-value 1 (mezzano.network.ip:ipv4-route ip)))
          (source-address (mezzano.network.ip:ipv4-interface-address interface))
          (source-port (allocate-local-tcp-port source-address ip port))
@@ -917,23 +934,45 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
                                     :rcv.wnd *initial-window-size*
                                     :boot-id (if persist nil (mezzano.supervisor:current-boot-id))
                                     :timeout timeout)))
-    (mezzano.sync.dispatch:dispatch-async
-     (lambda ()
-       (mezzano.supervisor:with-mutex (*tcp-connection-lock*)
-         (push connection *tcp-connections*))
-       (setf (tcp-connection-last-ack-time connection)
-             (get-internal-run-time))
-       (when (not *netmangler-force-local-retransmit*)
-         (tcp4-send-packet connection iss 0 nil :ack-p nil :syn-p t))
-       (arm-retransmit-timer connection)
-       (arm-timeout-timer *tcp-connect-timeout* connection))
-     net::*network-serial-queue*)
-    (with-tcp-connection-locked connection
-      (mezzano.supervisor:condition-wait-for ((tcp-connection-cvar connection)
-                                              (tcp-connection-lock connection))
-        (not (eql (tcp-connection-state connection) :syn-sent)))
-      (check-connection-error connection))
-    connection))
+    (let ((connected nil))
+      (unwind-protect
+           (progn
+             (mezzano.sync.dispatch:dispatch-async
+              (lambda ()
+                (with-tcp-connection-locked connection
+                  (when (eq (tcp-connection-state connection) :syn-sent)
+                    (handler-case
+                        (let ((remaining (net::deadline-remaining deadline)))
+                          (mezzano.supervisor:with-mutex (*tcp-connection-lock*)
+                            (push connection *tcp-connections*))
+                          (setf (tcp-connection-last-ack-time connection)
+                                (get-internal-run-time))
+                          (when (not *netmangler-force-local-retransmit*)
+                            (tcp4-send-packet connection iss 0 nil
+                                              :ack-p nil :syn-p t :errors-escape t))
+                          (arm-retransmit-timer connection)
+                          (arm-timeout-timer remaining connection))
+                      (error (condition)
+                        (setf (tcp-connection-pending-error connection) condition)
+                        (detach-tcp-connection connection)
+                        (mezzano.supervisor:condition-notify (tcp-connection-cvar connection) t))))))
+              net::*network-serial-queue*)
+             (with-tcp-connection-locked connection
+               (unless (mezzano.supervisor:condition-wait-for
+                           ((tcp-connection-cvar connection)
+                            (tcp-connection-lock connection)
+                            (net::deadline-remaining deadline))
+                         (or (tcp-connection-pending-error connection)
+                             (not (member (tcp-connection-state connection)
+                                          '(:syn-sent :syn-received)))))
+                 (error 'connection-timed-out
+                        :host ip :port port))
+               (check-connection-error connection)
+               (setf connected t))
+             connection)
+        (unless connected
+          (with-tcp-connection-locked connection
+            (abort-connection connection)))))))
 
 (defun subseq-ub8 (sequence start &optional end)
   "Like SUBSEQ, but returns a simple UB8 vector."
@@ -1041,6 +1080,7 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
     ;; Wait for data or for the connection to close.
     (mezzano.supervisor:condition-wait-for ((tcp-connection-cvar connection)
                                             (tcp-connection-lock connection))
+      (check-connection-error connection)
       (when (tcp-stream-packet stream)
         ;; There was already data waiting or another thread refilled
         ;; while we were waiting.
@@ -1179,12 +1219,14 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
     ((:last-ack :fin-wait-1 :fin-wait-2 :closed))))
 
 (defmethod close ((stream tcp-octet-stream) &key abort)
-  ;; TODO: ABORT should abort the connection entirely.
-  ;; Don't even bother sending RST packets, just detatch the connection.
-  (declare (ignore abort))
   (let ((connection (tcp-stream-connection stream)))
     (with-tcp-connection-locked connection
-      (close-connection connection))))
+      (if abort
+          (progn
+            (setf (tcp-stream-packet stream) nil)
+            (abort-connection connection))
+          (close-connection connection))))
+  t)
 
 (defmethod open-stream-p ((stream tcp-octet-stream))
   (with-tcp-connection-locked (tcp-stream-connection stream)
@@ -1196,23 +1238,26 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
 (defmethod stream-element-type ((stream tcp-octet-stream))
   '(unsigned-byte 8))
 
-(defun tcp-stream-connect (address port &key element-type external-format persist timeout)
-  (cond ((or (not element-type)
-             (sys.int::type-equal element-type 'character))
-         (make-instance 'tcp-stream
-                        :connection (tcp-connect (net::resolve-address address) port
-                                                 :persist persist
-                                                 :timeout timeout)
-                        :external-format (sys.int::make-external-format
-                                          (or element-type 'character)
-                                          (or external-format :default)
-                                          :eol-style :crlf)))
-        ((sys.int::type-equal element-type '(unsigned-byte 8))
-         (assert (or (not external-format)
-                     (eql external-format :default)))
-         (make-instance 'tcp-octet-stream
-                        :connection (tcp-connect (net::resolve-address address) port
-                                                 :persist persist
-                                                 :timeout timeout)))
-        (t
-         (error "Unsupported element type ~S" element-type))))
+(defun tcp-stream-connect (address port &key element-type external-format persist timeout
+                                             connect-timeout)
+  (let* ((deadline (net::deadline-after (or connect-timeout *tcp-connect-timeout*)))
+         (ip (net:resolve-address address t :deadline deadline)))
+    (cond ((or (not element-type)
+               (sys.int::type-equal element-type 'character))
+           (make-instance 'tcp-stream
+                          :connection (tcp-connect ip port :persist persist
+                                                           :timeout timeout
+                                                           :deadline deadline)
+                          :external-format (sys.int::make-external-format
+                                            (or element-type 'character)
+                                            (or external-format :default)
+                                            :eol-style :crlf)))
+          ((sys.int::type-equal element-type '(unsigned-byte 8))
+           (assert (or (not external-format)
+                       (eql external-format :default)))
+           (make-instance 'tcp-octet-stream
+                          :connection (tcp-connect ip port :persist persist
+                                                           :timeout timeout
+                                                           :deadline deadline)))
+          (t
+           (error "Unsupported element type ~S" element-type)))))

@@ -9,7 +9,7 @@
            #:disconnect
            #:resolve-address
            #:octet
-           #:network-error))
+           #:network-error #:network-timeout))
 
 (defpackage :mezzano.network.ethernet
   (:use :cl)

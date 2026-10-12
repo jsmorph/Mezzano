@@ -204,16 +204,18 @@
               (reverse authority-records)
               (reverse additional-records)))))
 
-(defun resolve-address (domain)
+(defun resolve-address (domain &key deadline)
   (dotimes (i 3) ; UDP is unreliable.
     (loop
        for (server . tag) in *dns-servers*
        for id = (random (expt 2 16))
        do (mezzano.network.udp:with-udp-connection (conn server +dns-port+)
+            (net::deadline-remaining deadline)
             (net:send (build-dns-packet id +dns-standard-query+
                                             :questions `((,domain :a :in)))
                           conn)
-            (let ((response (net:receive conn :timeout 10)))
+            (let ((response (net:receive conn :timeout (min 10 (or (net::deadline-remaining deadline) 10)))))
+              (net::deadline-remaining deadline)
               (when response
                 (multiple-value-bind (rx-id flags questions answers authority-rrs additional-rrs)
                     (decode-dns-packet response)
