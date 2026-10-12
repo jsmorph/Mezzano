@@ -22,6 +22,15 @@ Mezzano runs Lisp threads under its supervisor.  Retained evaluations each use a
 
 The running compiler defaults to safety 3, debug 3, and speed 1.  Preserved lexical bindings have tested read and internal-write behavior, including captured bindings and full GC.  Bootstrap compilation uses debug 1.  The [compiler guarantees](debugger.md#compiler-guarantees) specify the supported binding cases and remaining scope/type requirements.
 
+Thread names are available through ordinary remote evaluation:
+
+```lisp
+(mapcar #'mezzano.supervisor:thread-name
+        (mezzano.supervisor:all-threads))
+```
+
+`ALL-THREADS` walks the supervisor's thread list.  The implementation acquires no global thread lock during that walk.  The result therefore describes a live observation rather than an atomic scheduler snapshot.
+
 The existing implementation documents describe the [compiler frontend](internals/compiler-frontend.md), [compiler backend](internals/compiler-backend.md), [calling convention](internals/abi.md), [memory layout](internals/memory-layout.md), [instance representation](internals/instances.md), [supervisor restrictions](internals/supervisor-restrictions.md), and [filesystem](internals/file-system.md).  Their source dates and scope differ from the current debugger test evidence.
 
 ## Debugging and evaluation

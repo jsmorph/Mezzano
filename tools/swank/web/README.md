@@ -65,6 +65,12 @@ Submit supports condition, restarts, frames, locals, and invoke-restart.  Locals
 
 Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns `{"error": ..., "uncertain": ...}`.  Input validation failures precede SWANK dispatch.  Transport or remote decoding failures report an uncertain outcome.  The default transport deadline is 15 seconds, and the HTTP body limit is one MiB.
 
+## Document Examiner
+
+Select Document Examiner from the System Menu.  Its [guide](../../../doc/document-examiner.md) covers topic lookup, candidate search, tables of contents, overviews, bookmarks, viewers, and command keys.  The [project guide](../../../doc/project-guide.md) maps the complete project documentation.  Guest Lisp reads the source documents and handles topic hierarchy, cross-references, search, and command completion.  The browser stores viewer references and histories in tab sessionStorage.
+
+The HTTP `document-query` operation takes `action` (`catalog`, `topic`, `search`, `contents`, or `overview`), with `topic`, `query`, `mode`, and `adjacent` as applicable.  Modes are `exact`, `initial`, and `substring`.  `document-assistance` takes `source`, a character `cursor`, and `action` (`inspect`, `space`, `complete`, `help`, or `parse`).  The [SWANK reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#document-examiner-operations) defines result records.
+
 ## Symbolics display references
 
 The Listener follows Symbolics' [Genera Workbook](https://bitsavers.trailing-edge.com/pdf/symbolics/software/genera_8/Genera_Workbook.pdf), printed pages 5–7 and 10–12, particularly figures 4 and 7.  Those Genera 8 figures show the full Listener text area, multiple borders, lower activity label, left and bottom scroll tracks, two reverse-video mouse-documentation lines, and who-line.  The initial Listener has a centered herald.  The palette uses solid black and white.

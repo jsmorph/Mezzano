@@ -698,8 +698,8 @@ The coverage catalog includes a project guide, the Examiner guide, debugger desi
 
 - [x] Build and test the Lisp topic catalog, reader, lookup, search, and command assistance.
 - [x] Expose the typed documentation operations through SWANK and HTTP.
-- [ ] Implement and test the four-pane browser activity against the original captures.
-- [ ] Document supported behavior, source coverage, test evidence, and remaining differences.
+- [x] Implement and test the four-pane browser activity against the original captures.  Typography and measured layout remain in the font increment.
+- [x] Document supported behavior, source coverage, test evidence, and remaining differences.
 
 The Listener increment 3d042859 passed a fresh full recompilation and CI boot.  QEMU exited with status 3 and the serial success marker.  Logs are listener-reviewed-build.log, listener-reviewed-boot.log, and listener-reviewed-serial.log.  Continuing browser polling required stopping the HTTP service during the single-client file-server boot test.  The service restarted after the test.  Both existing VMs remained running.  The development guest saved its tested Listener state in listener-reviewed-snapshot.log.
 
@@ -712,3 +712,5 @@ The first Examiner browser run reached reload after passing topic lookup, mouse 
 Bookmark review found that viewing a deferred bookmark retained its bookmark-insertion position, which could precede topics read earlier.  The corrected transition must append a newly viewed bookmark to the viewed order while preserving the position of a previously read bookmark.  A browser test will check deferred A, read B, then read A.  Internal links will also carry their canonical topic titles so bookmarks use topic names rather than link-label aliases.
 
 The revised transport suite passed with 25 documents, 295 topics, and 158 references in examiner-test-2.log, including the Lisp search-options metadata and canonical link titles.  A separate audit found no unresolved anchors targeting registered documents in examiner-link-audit.log.  The full image build is running in examiner-build.log.
+
+The final Examiner browser test passed all functional assertions, including search options, first-view bookmark order, candidate recall, Unicode viewer names, and exact 100-pixel reading-position restoration.  No browser errors occurred, and the owned session was released.  The full Listener suite also passed after extraction of the shared Chromium harness.  The Web journal records the browser failures and corrections.  The fresh full image build passed in examiner-build.log.  CI boot is running.

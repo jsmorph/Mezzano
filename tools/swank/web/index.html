@@ -6,6 +6,7 @@
 <title>Mezzano Lisp Listener</title>
 <link rel="stylesheet" href="/style.css">
 <script src="/app.js" defer></script>
+<script src="/document-examiner.js" defer></script>
 </head>
 <body>
 <main id="monitor">
@@ -25,6 +26,60 @@
             <textarea id="source" rows="1" spellcheck="false" autocomplete="off"
               aria-label="Listener input" data-help="Return: Execute input. SPACE: Complete a word. Tab: Complete. F12: Help. Shift-Return: Newline."></textarea>
           </form>
+        </section>
+        <section id="examiner" class="activity" hidden aria-label="Document Examiner">
+          <div id="examiner-reading">
+            <section id="examiner-viewer" class="examiner-pane" aria-label="Document viewer">
+              <h1>Document Examiner</h1>
+              <div class="examiner-scroll">
+                <div class="examiner-track" aria-hidden="true"><div></div></div>
+                <div id="examiner-pages" class="examiner-scroll-content" tabindex="0">
+                  <div id="examiner-topics"></div>
+                  <div id="examiner-typeout" hidden tabindex="-1"></div>
+                </div>
+              </div>
+              <button id="examiner-viewer-label" class="examiner-label">Viewer: Default Viewer</button>
+              <div id="examiner-horizontal-track" aria-hidden="true"><div></div></div>
+            </section>
+            <div id="examiner-right">
+              <section id="examiner-candidates-pane" class="examiner-pane" aria-label="Candidates">
+                <h2 class="examiner-label">Current Candidates</h2>
+                <div class="examiner-scroll">
+                  <div class="examiner-track" aria-hidden="true"><div></div></div>
+                  <div id="examiner-candidates" class="examiner-scroll-content" tabindex="0"></div>
+                </div>
+              </section>
+              <section id="examiner-bookmarks-pane" class="examiner-pane" aria-label="Bookmarks">
+                <h2 class="examiner-label">Bookmarks</h2>
+                <div class="examiner-scroll">
+                  <div class="examiner-track" aria-hidden="true"><div></div></div>
+                  <div id="examiner-bookmarks" class="examiner-scroll-content" tabindex="0"></div>
+                </div>
+              </section>
+            </div>
+          </div>
+          <section id="examiner-commands" aria-label="Document commands">
+            <div id="examiner-command-area">
+              <h2 class="examiner-label">Commands</h2>
+              <div id="examiner-command-output" aria-live="polite"></div>
+              <div id="examiner-assistance" class="assistance" aria-live="polite"></div>
+              <form id="examiner-command-form">
+                <label for="examiner-command">▶</label>
+                <input id="examiner-command" aria-label="Document Examiner command" spellcheck="false" autocomplete="off"
+                  data-help="Return: Execute command. SPACE: Complete a word. Tab: Complete. F12: Help.">
+              </form>
+            </div>
+            <div id="examiner-command-menu">
+              <button data-examiner-command="Show Candidates ">Show Candidates</button>
+              <button data-examiner-command="Help">Help</button>
+              <button data-examiner-command="Show Documentation ">Show Documentation</button>
+              <button data-examiner-command="Select Viewer">Select Viewer</button>
+              <button data-examiner-command="Show Overview ">Show Overview</button>
+              <button data-examiner-command="Reselect Candidates">Reselect Candidates</button>
+              <button data-examiner-command="Show Table of Contents ">Show Table of Contents</button>
+              <button data-examiner-command="Hardcopy Viewer">Hardcopy Viewer</button>
+            </div>
+          </section>
         </section>
         <section id="input-history" class="activity" hidden>
           <h2>Input History</h2>
@@ -94,6 +149,7 @@
     <div><h3>Activities</h3>
       <button data-activity="listener">Lisp Listener</button>
       <button data-activity="debugger">Debugger</button>
+      <button data-activity="examiner">Document Examiner</button>
       <button data-activity="evaluations">Evaluations</button>
       <button data-activity="requests">Requests</button>
       <button data-activity="help">Help</button>
@@ -116,5 +172,6 @@
     </div>
   </div>
 </dialog>
+<dialog id="examiner-menu"><h2 id="examiner-menu-title"></h2><div id="examiner-menu-items"></div></dialog>
 </body>
 </html>

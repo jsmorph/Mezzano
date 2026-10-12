@@ -1,6 +1,6 @@
 # Document Examiner
 
-The Document Examiner presents the checked-in project documentation through guest Lisp and the Web interface.  The implementation is under test.  The development journal records the tested revisions and outstanding failures.
+The Document Examiner presents the checked-in project documentation through guest Lisp and the Web interface.  The development journal records tested revisions and failures.
 
 ## Topics and reading
 
@@ -21,7 +21,7 @@ The Viewer occupies the left pane.  Current Candidates and Bookmarks occupy the 
 | Show Documentation topic | Displays a topic and its subordinate sections. |
 | Show Candidates terms | Searches topic titles and keywords and replaces Current Candidates. |
 | Show Table of Contents topic | Lists the topic and its descendants with hierarchy indentation. |
-| Show Overview topic | Displays its parent, ancestors, siblings, children, keywords, source, and references. |
+| Show Overview topic | Displays its parent, ancestors, siblings, children, keywords, and references. |
 | Reselect Candidates | Selects a prior candidate list for the current viewer. |
 | Select Viewer name | Selects an existing viewer or creates one. |
 | Remove Viewer name | Removes a viewer and its reading history. |
@@ -33,7 +33,7 @@ Topic names are mouse-sensitive.  Mouse-Left displays documentation.  Mouse-Midd
 
 ## Searching
 
-Search operates on topic titles and catalog keywords.  Exact matches complete indexed words.  Initial matches word prefixes.  Substring matches within indexed words.  Multiple terms require all terms.  Adjacent search also requires their order and adjacency within one title or keyword phrase.  The interface records the selected mode and adjacency with each candidate list.
+Search operates on topic titles and catalog keywords.  Exact matches complete indexed words.  Initial matches word prefixes.  Substring matches within indexed words.  Multiple terms require all terms.  Adjacent search also requires their order and adjacency within one title or keyword phrase.  The interface records the selected mode and adjacency with each candidate list.  Alt-F11 (Meta-COMPLETE) or Mouse-Right on Show Candidates opens the search-options menu.  The choices and initial defaults come from Lisp.
 
 The initial default is Substring.  Genera's default uses heuristic stemming.  The original manual gives examples but does not specify the complete stemming algorithm.  That behavior remains unimplemented.  Full-text body search also remains unimplemented.
 
@@ -43,7 +43,21 @@ The Lisp package exports `LOAD-CATALOG`, `QUERY`, and `ASSISTANCE`.  `QUERY` acc
 
 SWANK exposes `:document-query` and `:document-assistance`.  The HTTP operations use the same names without the colon and JSON strings for actions and modes.  Lisp returns structured topic, block, inline-reference, search, and command-plan records.  Python validates request types and transports them.  The browser renders the records.
 
-The implementation must pass guest tests for catalog coverage, hierarchy, lookup ambiguity, search, cross-references, formatting records, and command assistance, followed by HTTP and Chromium tests for reading, search, bookmarks, named viewers, candidate recall, and reload.  Test results belong in the journals after execution.
+The Lisp transport test passes catalog coverage, hierarchy, lookup ambiguity, search modes and adjacency, cross-references, formatting records, command assistance, and Unicode offsets.  Nine Python tests pass typed-request validation and the existing HTTP/transport cases.  Headless Chromium passes lookup, topic reuse, mouse operations, temporary overviews, viewed/deferred bookmark order, candidate history, search-option selection, named viewers, reload with exact reading-position restoration, Help, print dispatch and print CSS, a 640-pixel viewport, and session cleanup.  The browser test intercepts print dispatch.  Physical printer output remains untested.
+
+Run from the Mezzano repository root on minideb2:
+
+```sh
+sbcl --script tools/swank/test-document-examiner.lisp 4006
+```
+
+Run the browser test on a machine with Node 24 and Chromium:
+
+```sh
+node tools/swank/web/test-document-examiner.mjs http://minideb2:8765/ /tmp/examiner-test
+```
+
+The journals retain the failed attempts and tested source state.
 
 ## Symbolics references and remaining work
 

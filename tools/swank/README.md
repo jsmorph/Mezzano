@@ -8,7 +8,7 @@ The [debugger design](../../doc/debugger.md) defines current capabilities and li
 
 The [Web Listener and Debugger](web/README.md) serves a browser interface on [minideb2 port 8765](http://minideb2:8765/).  Its Python standard-library server translates HTTP requests to the existing SWANK retained-service API on port 4006.  The browser retains its session identity across reloads.  The guest owns evaluations, output, stops, and command results.
 
-The interface supports the [Lisp Command Processor](../../doc/command-processor.md), source evaluation, interactive input, interruption, condition and backtrace inspection, local values, and zero-argument restarts.  The component guide records launch commands, tests, original Symbolics references, and remaining visual work.  The guest compiler and debugger remain implemented in Lisp.
+The interface supports the [Lisp Command Processor](../../doc/command-processor.md), source evaluation, interactive input, interruption, condition and backtrace inspection, local values, and zero-argument restarts.  The component guide records launch commands, tests, original Symbolics references, and remaining visual work.  The guest compiler and debugger remain implemented in Lisp.  The [Document Examiner](../../doc/document-examiner.md) presents the project documentation through guest Lisp topic lookup and search.
 
 ## Evaluate source
 

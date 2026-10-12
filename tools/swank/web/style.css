@@ -79,3 +79,80 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 .presentation { display: inline; padding: 0; border: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .presentation:hover, .presentation:focus-visible { outline: 1px solid #000; }
 #listener-prompt { white-space: pre; }
+
+.examiner-active #window { border: 1px solid #000; outline: none; padding: 0; }
+.examiner-active #viewport { margin: 0; gap: 0; }
+.examiner-active #page { padding: 0; overflow: hidden; }
+.examiner-active #vertical-track, .examiner-active #horizontal-track, .examiner-active #window-label { display: none; }
+#examiner { height: 100%; display: flex; flex-direction: column; }
+#examiner-reading { display: grid; grid-template-columns: 57.4% 42.6%; min-height: 0; flex: 1; }
+.examiner-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+#examiner-viewer { border-right: 1px solid #000; }
+#examiner-viewer > h1 { font-family: "EUREX24I", serif; font-size: 24px; line-height: 24px; font-style: italic; text-align: center; margin: 4px 0 10px; }
+#examiner-right { display: grid; grid-template-rows: 50% 50%; min-height: 0; min-width: 0; }
+#examiner-candidates-pane { border-bottom: 1px solid #000; }
+.examiner-label { font-family: "HL12BI", sans-serif; font-style: italic; font-weight: bold; font-size: 14px; line-height: 14px; margin: 2px 0 0 19px; }
+.examiner-scroll { display: flex; gap: 5px; min-height: 0; flex: 1; }
+.examiner-track { flex: 0 0 8px; border: 1px solid #000; margin: 2px 0 2px 4px; background: repeating-conic-gradient(#fff 0% 25%, #000 0% 50%) 0 0 / 2px 2px; }
+.examiner-track > div { background: #fff; border-bottom: 1px solid #000; min-height: 3px; }
+.examiner-scroll-content { flex: 1; min-width: 0; overflow: auto; scrollbar-width: none; }
+.examiner-scroll-content::-webkit-scrollbar { display: none; }
+#examiner-pages { position: relative; padding: 24px 12% 16px 10%; font-family: "HL12", sans-serif; font-size: 14px; line-height: 16px; }
+#examiner-pages h2, #examiner-pages h3 { font-family: "HL12B", sans-serif; font-size: 14px; line-height: 16px; font-weight: bold; font-style: normal; margin: 0 0 8px; }
+#examiner-pages p { margin: 0 0 14px; text-align: justify; }
+#examiner-pages pre, #examiner-pages code { font-family: "CPTFONT", monospace; font-size: 12px; line-height: 12px; }
+#examiner-pages pre { margin: 8px 0 16px; white-space: pre; overflow: auto; }
+#examiner-pages table { border-collapse: collapse; margin: 12px 0; }
+#examiner-pages th, #examiner-pages td { text-align: left; border: 1px solid #000; padding: 4px; vertical-align: top; overflow-wrap: anywhere; }
+#examiner-pages ul, #examiner-pages ol { padding-left: 24px; margin: 8px 0 16px; }
+#examiner-pages li { margin: 4px 0; }
+#examiner-pages a { color: #000; text-decoration: underline; }
+.document-section + .document-section { border-top: 1px solid #000; margin-top: 20px; padding-top: 20px; }
+.document-topic { background: transparent; display: inline; font: inherit; padding: 0; border: 0; text-align: left; }
+.document-topic:hover, .document-topic:focus-visible { outline: 1px solid #000; }
+#examiner-candidates .document-topic, #examiner-bookmarks .document-topic { white-space: nowrap; }
+#examiner-candidates > .document-topic { display: block; max-width: none; }
+.candidate-description, .candidate-mode { white-space: pre-wrap; margin: 0 0 4px; }
+.candidate-mode { font-style: italic; }
+.document-bookmark { position: relative; white-space: nowrap; }
+.document-bookmark.current::before { content: "→"; position: absolute; left: -16px; }
+#examiner-bookmarks { padding-left: 16px; }
+.deferred-bookmarks { background: repeating-conic-gradient(#fff 0% 75%, #000 0% 100%) 0 0 / 2px 2px; margin-top: 4px; }
+#examiner-viewer-label { margin-top: 2px; margin-bottom: 5px; }
+#examiner-horizontal-track { height: 8px; border: 1px solid #000; margin: 0 10px 6px 22px; background: repeating-conic-gradient(#fff 0% 25%, #000 0% 50%) 0 0 / 2px 2px; }
+#examiner-horizontal-track > div { height: 100%; background: #fff; border-right: 1px solid #000; }
+#examiner-commands { display: grid; grid-template-columns: 57.4% 42.6%; min-height: 74px; max-height: 40%; overflow: auto; border-top: 1px solid #000; }
+#examiner-command-area { min-width: 0; padding: 0 8px 4px 20px; overflow: auto; }
+#examiner-command-area > h2 { margin: 2px 0 10px; }
+#examiner-command-form { display: flex; gap: 8px; align-items: start; }
+#examiner-command { flex: 1; min-width: 0; border: 0; padding: 0; outline: none; }
+#examiner-command-output { white-space: pre-wrap; overflow-wrap: anywhere; }
+#examiner-command-menu { display: grid; grid-template-columns: 1fr 1fr; align-content: start; padding: 0 12px 0 22px; gap: 0 10px; }
+#examiner-command-menu button { font-family: "JESS13", serif; font-size: 13px; line-height: 13px; padding: 0; }
+#examiner-menu-items { display: flex; flex-direction: column; }
+#examiner-menu-items button { text-align: center; }
+#examiner-assistance { margin-top: 2px; }
+.document-tree { margin: 24px 0; }
+.document-tree .document-topic { display: block; margin: 8px 0; }
+.document-tree-branch { margin-left: 20px; padding-left: 20px; border-left: 1px solid #000; }
+.document-tree-branch > .document-topic { position: relative; }
+.document-tree-branch > .document-topic::before { content: ""; position: absolute; width: 20px; border-top: 1px solid #000; left: -20px; top: 50%; }
+#examiner-print-topic { display: none; }
+@media (max-width: 640px) {
+  #examiner-pages { padding: 16px 8px; }
+  #examiner-command-menu { padding-left: 6px; gap: 2px 6px; }
+  #examiner-commands { min-height: 100px; }
+}
+@media print {
+  body:has(.examiner-active) #monitor, body:has(.examiner-active) #window,
+  body:has(.examiner-active) #viewport, body:has(.examiner-active) #page,
+  body:has(.examiner-active) #examiner, body:has(.examiner-active) #examiner-reading,
+  body:has(.examiner-active) #examiner-viewer, body:has(.examiner-active) .examiner-scroll,
+  body:has(.examiner-active) #examiner-pages { height: auto; display: block; overflow: visible; border: 0; padding: 0; }
+  body:has(.examiner-active) #examiner-right, body:has(.examiner-active) #examiner-commands,
+  body:has(.examiner-active) #mouse-documentation, body:has(.examiner-active) #who-line,
+  body:has(.examiner-active) .examiner-track, body:has(.examiner-active) #examiner-horizontal-track,
+  body:has(.examiner-active) #examiner-viewer-label, dialog { display: none; }
+  body.print-document-topic #monitor { display: none; }
+  body.print-document-topic #examiner-print-topic { display: block; }
+}

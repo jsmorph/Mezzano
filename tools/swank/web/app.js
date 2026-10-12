@@ -224,13 +224,16 @@ async function mutate(operation, arguments_, metadata = {}) {
 }
 function showActivity(name) {
   activity = name;
+  $("monitor").classList.toggle("examiner-active", name === "examiner");
   document.querySelectorAll(".activity").forEach(element => { element.hidden = element.id !== name; });
   const labels = {listener: "Dynamic Lisp Listener 1", debugger: "Debugger", evaluations: "Evaluations",
-                  requests: "Request History", help: "Listener Help", "input-history": "Input History"};
+                  requests: "Request History", help: "Listener Help", "input-history": "Input History",
+                  examiner: "Document Examiner"};
   $("window-label").textContent = labels[name];
   $("system-menu").close();
   if (name === "listener") $("source").focus();
   else if (name === "debugger" && selectedStop) $("debugger-command").focus();
+  else if (name === "examiner") { $("examiner-command").focus(); run(() => examiner.show()); }
   else $("page").focus();
   updateTracks();
 }
@@ -261,7 +264,7 @@ function setEditor(editor, text, cursor) {
   if (editor.id === "source") resizeSource();
 }
 function editorContext(editor) {
-  return editor.id === "source" ? "listener" : "debugger";
+  return editor.id === "source" ? "listener" : editor.id === "examiner-command" ? "examiner" : "debugger";
 }
 function clearAssistance(editor) {
   $(editorContext(editor) + "-assistance").replaceChildren();
@@ -298,8 +301,10 @@ function scheduleAssistance(editor, action, presentation) {
   const cursor = editorCursor(editor);
   const request = () => run(async () => {
     if (!connected || editor.value !== source || editorCursor(editor) !== cursor) return;
-    const result = await api("listener-assistance", {source, cursor, action,
-      context: editorContext(editor), ...(presentation === undefined ? {} : {presentation})});
+    const context = editorContext(editor);
+    const result = await api(context === "examiner" ? "document-assistance" : "listener-assistance", {
+      source, cursor, action, ...(context === "examiner" ? {} : {context}),
+      ...(presentation === undefined ? {} : {presentation})});
     if (editor.value !== source || editorCursor(editor) !== cursor) return;
     if (action !== "inspect" && !result.error) setEditor(editor, result.text, result.cursor);
     renderAssistance(editor, result, editor.value, editorCursor(editor), action);
@@ -354,6 +359,7 @@ function editorKey(editor, event) {
              || (event.key === "F11" && event.shiftKey)) {
     event.preventDefault();
     if (editor.id === "source") queueEvaluation();
+    else if (editor.id === "examiner-command") examiner.queueCommand();
     else queueDebuggerCommand();
   }
 }
