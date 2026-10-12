@@ -148,8 +148,8 @@ async function connect() {
 }
 function applyMutation(record, result) {
   const args = record.arguments;
-  if (["start-evaluation", "start-listener"].includes(record.operation)) {
-    state.jobs[args.name] = {...state.jobs[args.name], name: args.name, source: args.source,
+  if (["start-evaluation", "start-listener", "save-private-document"].includes(record.operation)) {
+    state.jobs[args.name] = {...state.jobs[args.name], name: args.name, source: args.source ?? record.source,
       token: result, listener: record.operation === "start-listener", clearBefore: record.clearBefore};
     if (record.operation === "start-listener"
         && !state.inputHistory.some(item => item.name === args.name)) {
@@ -733,7 +733,7 @@ function renderPending() {
   for (const record of state.pending) {
     const row = node("div", undefined, "command-row");
     row.append(node("pre", record.operation + ": " + record.status + (record.error ? "\n" + record.error : "")));
-    if (["start-evaluation", "start-listener", "job-input", "interrupt-job", "submit"].includes(record.operation)) {
+    if (["start-evaluation", "start-listener", "save-private-document", "job-input", "interrupt-job", "submit"].includes(record.operation)) {
       row.append(button("Repeat Original Request", async () => {
         await replay(record);
         await refresh();

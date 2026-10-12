@@ -53,6 +53,8 @@ An expired session remains visible and requires New Session.  New Session archiv
 | start-listener | name, source.  Optional interactive |
 | listener-assistance | source, cursor, action.  Optional context, presentation |
 | start-evaluation | name, source.  Optional package, input, interactive |
+| save-private-document | name, pathname, topics |
+| read-private-document | pathname |
 | job-information, release-job | job |
 | job-output | job, start.  Optional end |
 | job-input | job, offset, text.  Optional eof |
@@ -68,6 +70,8 @@ Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns `{"erro
 ## Document Examiner
 
 Select Document Examiner from the System Menu.  Its [guide](../../../doc/document-examiner.md) covers topic lookup, candidate search, tables of contents, overviews, bookmarks, viewers, and command keys.  The [project guide](../../../doc/project-guide.md) maps the complete project documentation.  Guest Lisp reads the source documents and handles topic hierarchy, cross-references, search, and command completion.  The browser stores viewer references and histories in tab sessionStorage.
+
+Read Private Document appends the file's referenced topics to the current viewer.  Mouse-Right on that menu item provides Save, Load, and Hardcopy Private Document.  Load inserts deferred bookmarks without displaying text.  Save writes bookmarks in displayed order through a retained guest job, whose result appears in Evaluations.  Its original name, pathname, topic IDs, and source command survive reload and lost replies.  Repeat Original Request reuses those values.  Hardcopy prints the referenced topics without changing the viewer.  Lisp supplies pathname parsing and defaults.
 
 The HTTP `document-query` operation takes `action` (`catalog`, `topic`, `search`, `contents`, or `overview`), with `topic`, `query`, `mode`, and `adjacent` as applicable.  Modes are `exact`, `initial`, and `substring`.  `document-assistance` takes `source`, a character `cursor`, and `action` (`inspect`, `space`, `complete`, `help`, or `parse`).  The [SWANK reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#document-examiner-operations) defines result records.
 
@@ -113,3 +117,11 @@ The first argument is the server URL.  The second is the screenshot and diagnost
 The expanded Chromium run passed all nine Listener commands, SPACE and COMPLETE, contextual HELP candidates, defaults, package changes, Lisp/command disambiguation, Unicode cursor offsets, two pathname presentations, input history, and clear-output replay that preserves later output.  A focused test checks that a running job cannot consume its terminal display effect.  It also passed Listener output and multiple values, reload, a 640-pixel viewport overflow check, interactive input, condition and stack inspection, available locals, restart continuation, and release.  Controlled response loss discarded a completed fetch response after server dispatch.  Creation replay recovered the original job.  Lost job-release and session-release replies were reconciled through queries, followed by explicit session replacement and final cleanup.  Two expected HTTP 409 responses represented a released job and an expired session.  No unexpected browser errors occurred.  The driver records font metrics and screenshots, which require visual review against the original references.
 
 Complete original-window comparison remains unfinished.  Unavailable-local encoding has an isolated test, while unavailable-local browser rendering has source review only.  Actual image restore, ARM64 guest behavior, and byte-for-byte original-screen fidelity have not been tested here.  The [development journal](devnotes.md) records failures, corrections, and test scope.
+
+The focused private-document browser test runs separately:
+
+```sh
+node tools/swank/web/test-private-document.mjs http://minideb2:8765/ /tmp/private-document-test
+```
+
+It passes the original main/right menus, guest pathname defaults, bookmark order, discarded Save response followed by reload and same-job replay, Load without text, Read, and Hardcopy without viewer mutation.  It removes its uniquely named guest file and releases its Save job, cleanup job, and session.  Chromium reports no browser errors.  The driver intercepts print dispatch.  Physical printer output remains untested.

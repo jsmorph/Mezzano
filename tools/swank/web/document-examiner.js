@@ -351,14 +351,43 @@ const examiner = (() => {
       else if (index === options.modes.length) item.id = "examiner-adjacent";
     });
   }
-  async function hardcopyTopic(id) {
-    const result = await fetchTopic(id);
+  async function hardcopyTopics(ids) {
     const print = node("div"); print.id = "examiner-print-topic";
-    for (const section of result.sections || []) print.append(sectionElement(section));
+    const included = new Set();
+    for (const id of ids) {
+      const result = await fetchTopic(id);
+      let groupStart = true;
+      for (const section of result.sections || []) {
+        if (included.has(section.topic.id)) continue;
+        print.append(sectionElement({...section, groupStart}));
+        included.add(section.topic.id); groupStart = false;
+      }
+    }
     document.body.append(print);
     document.body.classList.add("print-document-topic");
     try { window.print(); }
     finally { document.body.classList.remove("print-document-topic"); print.remove(); }
+  }
+  async function hardcopyTopic(id) { await hardcopyTopics([id]); }
+  async function privateDocument(operation, pathname, source) {
+    if (operation === "save-private-document") {
+      const topics = [true, false].flatMap(viewed => viewer().bookmarks
+        .filter(item => item.viewed === viewed).map(item => item.topic.id));
+      const name = freshName();
+      await mutate(operation, {name, pathname, topics}, {source});
+      await refresh();
+      message("Save job " + name.slice(0, 12) + " accepted. See Evaluations for its result.");
+      return;
+    }
+    const result = await api("read-private-document", {pathname});
+    const topics = result.topics.map(topicSummary);
+    if (operation === "read-private-document") {
+      for (const topic of topics) await readTopic(topic.id);
+    } else if (operation === "load-private-document") {
+      for (const topic of topics) deferTopic(topic);
+    } else if (operation === "hardcopy-private-document") {
+      await hardcopyTopics(topics.map(topic => topic.id));
+    }
   }
   async function execute(source) {
     if (!source.trim()) return;
@@ -390,6 +419,9 @@ const examiner = (() => {
       case "hardcopy-viewer": {
         hideTypeout(); message("Printing the current viewer with the browser's printer settings."); window.print(); break;
       }
+      case "save-private-document": case "read-private-document":
+      case "load-private-document": case "hardcopy-private-document":
+        await privateDocument(plan.operation, argument, source); break;
       default: throw new Error("Unsupported Document Examiner operation: " + plan.operation);
     }
     $("examiner-command-output").replaceChildren(commandPrompt(), " " + source);
@@ -500,13 +532,21 @@ const examiner = (() => {
       ["Hardcopy Viewer", () => execute("Hardcopy Viewer")]
     ]);
   };
+  function promptCommand(source) {
+    setEditor(editor, source, Array.from(source).length); editor.focus();
+    if (source.endsWith(" ")) scheduleAssistance(editor, "inspect");
+    else queueCommand();
+  }
   for (const item of document.querySelectorAll("[data-examiner-command]")) {
-    item.onclick = () => {
-      const source = item.dataset.examinerCommand;
-      setEditor(editor, source, Array.from(source).length); editor.focus();
-      if (source.endsWith(" ")) scheduleAssistance(editor, "inspect");
-      else queueCommand();
-    };
+    item.onclick = () => promptCommand(item.dataset.examinerCommand);
+    if (item.dataset.examinerCommand === "Read Private Document ") {
+      item.dataset.help = "Mouse-L: Read a private document. Mouse-R: Save, Load, or Hardcopy.";
+      item.oncontextmenu = event => {
+        event.preventDefault(); event.stopPropagation();
+        menu("Private documents", ["Save Private Document", "Load Private Document", "Hardcopy Private Document"]
+          .map(command => [command, async () => promptCommand(command + " ")]));
+      };
+    }
     if (item.dataset.examinerCommand === "Help") item.onauxclick = event => {
       if (event.button === 1) { event.preventDefault(); run(() => execute("Document Examiner Documentation")); }
     };
