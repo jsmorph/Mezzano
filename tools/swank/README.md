@@ -1,41 +1,48 @@
 # Remote evaluation and debugging
 
-The host tools run on SBCL with its bundled socket library.  `lispm-eval` evaluates source through ordinary SWANK requests.  `debugger-client.lisp` controls guest-owned debugger stops and evaluation jobs.
+The command-line client evaluates Common Lisp source over SWANK.  The retained debugger client controls evaluation jobs and debugger stops that remain in the guest across connection loss.  Both clients run on SBCL and use its bundled socket library.
 
-The [debugger design](../../doc/debugger.md) defines current capabilities and limitations.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) specifies RPCs and errors.  [Build and VM operations](minideb2/README.md) provides dependency revisions, startup, snapshots, and test commands.
+The [debugger guide](../../doc/debugger.md) describes supported operations and their limits.  The [API reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) specifies RPCs and errors.  [Installation and operation](../../doc/installation.md) covers the guest image, networking, startup, and snapshots.
 
-## Web Listener
+## Connection setup
 
-The [Web Listener and Debugger](web/README.md) serves a browser interface on [minideb2 port 8765](http://minideb2:8765/).  Its Python standard-library server translates HTTP requests to the existing SWANK retained-service API on port 4006.  The browser retains its session identity across reloads.  The guest owns evaluations, output, stops, and command results.
+The guest must be running SWANK.  Retained operations require the `swank-mezzano-debugger` contrib, which the retained client loads when it connects.  The clients use IPv4 TCP and expect a SWANK endpoint without a shared-secret handshake.  The retained client also requires the host's `/dev/urandom` to generate session and job names.
 
-The interface supports the [Lisp Command Processor](../../doc/command-processor.md), source evaluation, interactive input, interruption, condition and backtrace inspection, local values, and zero-argument restarts.  The component guide records launch commands, tests, original Symbolics references, and remaining visual work.  The guest compiler and debugger remain implemented in Lisp.  The [Document Examiner](../../doc/document-examiner.md) presents the project documentation through guest Lisp topic lookup and search.
+Examples run from the Mezzano checkout and use `127.0.0.1:4005`.  This can be the guest's forwarded port or a local SSH tunnel.  `--host` and `--port` select another endpoint for the command-line client.  The Lisp client takes corresponding `:host` and `:port` arguments.
+
+For a VM host exposing SWANK on its loopback port 4005, this SSH command opens a local forwarding port:
+
+```sh
+ssh -N -L 4005:127.0.0.1:4005 user@vm-host
+```
+
+`user@vm-host` identifies the account and machine running the VM.  SWANK evaluates arbitrary Lisp with the guest's authority.  Access to its endpoint grants that authority.
+
+## Browser interface
+
+The [Web Listener and Debugger](web/README.md) provides the [Lisp Command Processor](../../doc/command-processor.md), source evaluation, interactive input, interruption, backtraces, local values, and zero-argument restarts.  Its Python server serves the interface and forwards HTTP requests to the guest's SWANK API.  The guest owns evaluations, output, stops, and command results.  The browser retains its session identity across reloads.
+
+The [Document Examiner](../../doc/document-examiner.md) displays the documentation through guest Lisp topic lookup and search.
 
 ## Evaluate source
 
-From the Mezzano repository root on `minideb2`:
+From the Mezzano checkout:
 
 ```sh
-tools/swank/lispm-eval --port 4006 '(+ 20 22)'
+sbcl --script tools/swank/lispm-eval --port 4005 '(+ 20 22)'
 printf '%s\n' '(format t "hello~%")' '(values 42 :done)' |
-  tools/swank/lispm-eval --port 4006
+  sbcl --script tools/swank/lispm-eval --port 4005
 ```
 
 The client accepts one source argument or reads standard input when the argument is absent or `-`.  It prints program output followed by each value returned by the last form.  Definitions persist across connections.  Saving them across VM restarts requires a Mezzano snapshot.
 
-Defaults are host `127.0.0.1`, port `4005`, package `CL-USER`, and a 60-second timeout.  The development VM uses port `4006`.  Options are `--host`, `--port`, `--package`, and `--timeout`.  Exit status is 0 for success, 1 for a guest condition, 2 for a client/transport error, and 124 for timeout.
+Defaults are host `127.0.0.1`, port `4005`, package `CL-USER`, and a 60-second timeout.  Options are `--host`, `--port`, `--package`, and `--timeout`.  Exit status is 0 for success, 1 for a guest condition, 2 for a client/transport error, and 124 for timeout.
 
 A guest condition enters SLDB.  This client reports it and requests the evaluation's abort restart.  A client timeout closes the connection, and the remote computation may continue.  Standard input within this evaluation is an empty stream.
 
-The tested deployment forwards SWANK to host loopback.  From another machine:
-
-```sh
-printf '%s\n' '(+ 20 22)' |
-  tailscale ssh minideb2 /home/somebody/src/mezzano-boot/Mezzano/tools/swank/lispm-eval --port 4006
-```
-
 ## Retain an evaluation across connections
 
-The batch job API owns its worker, supplied input, output, and results in the guest.  Conditions enter the retained debugger.  Input receives EOF after the supplied string.
+A retained evaluation owns its worker, input, output, and results in the guest.  Source forms run in order, starting in the package selected by `:package` (default `"CL-USER"`) with a fresh standard readtable.  Package changes apply to later forms in the same job.  Conditions enter the retained debugger.  Batch input receives EOF after the supplied string.
 
 Run this in host SBCL from the Mezzano checkout.  It creates a job, closes the connection, reconnects, and prints `Computed.`, `42`, and `:DONE` before releasing the job and session:
 
@@ -53,7 +60,7 @@ Run this in host SBCL from the Mezzano checkout.  It creates a job, closes the c
             :start-evaluation name
             "(format t \"Computed.~%\") (values (+ 2 (read)) :done)"
             :input "40")))
-   :port 4006)
+   :port 4005)
   (lispm-debugger-client:call-with-session
    session
    (lambda ()
@@ -68,10 +75,10 @@ Run this in host SBCL from the Mezzano checkout.  It creates a job, closes the c
        (dolist (value (getf info :values)) (format t "~A~%" value))
        (lispm-debugger-client:request :release-job job)
        (lispm-debugger-client:request :release-session)))
-   :port 4006))
+   :port 4005))
 ```
 
-Keep the generated name if the creation reply can be lost.  Repeating the same name, source, package, and input in the same boot returns the existing job.  `:jobs` discovers unreleased jobs through any attached session.  `:job-information` returns active stop tokens in `:stops`, which use the inspection and restart operations below.  Job state remains `:running` while a condition is stopped.
+Keep the generated name if the creation reply can be lost.  Repeating the same name, source, package, input, and input mode in the same boot returns the existing job.  `:jobs` discovers unreleased jobs through any attached session.  `:job-information` returns active stop tokens in `:stops`, which use the inspection and restart operations below.  Job state remains `:running` while a condition is stopped.
 
 Output reads use character offsets and preserve storage.  `:job-output` returns `:text` and `:end`, so the next read can start at that end offset.  Any attached session can read jobs and release terminal jobs.  Releasing a session leaves its jobs intact.  Output and results consume guest memory until job release.
 
@@ -104,14 +111,14 @@ After an unread reply, query the retained ID or repeat that ID in the same boot.
 
 ## Debug a background computation
 
-This example starts a compiled function with two arguments, stops at a continuable error, inspects its locals, disconnects, reconnects, and invokes the continuation.  Its assertions check application values and cleanup.
+This example starts a compiled function with two arguments, stops at a continuable error, inspects its locals, reconnects, and invokes the continuation.  The function returns two values and runs its unwind cleanup once.
 
 ### Start the guest computation
 
-Run from the Mezzano checkout on `minideb2`:
+Run from the Mezzano checkout:
 
 ```sh
-tools/swank/lispm-eval --port 4006 <<'LISP'
+sbcl --script tools/swank/lispm-eval --port 4005 <<'LISP'
 (defpackage #:lispm-debug-demo (:use #:cl))
 (in-package #:lispm-debug-demo)
 (defparameter *cleanup-count* 0)
@@ -188,7 +195,7 @@ The helpers poll within `call-with-session`'s deadline.  The first connection fi
      (setf *frame* (getf entry :frame))
      (format t "~A~%" (inspect-command *stop* lease :condition))
      (format t "~S~%" (inspect-command *stop* lease :locals *frame*))))
- :port 4006 :seconds 30)
+ :port 4005 :seconds 30)
 ```
 
 The local list includes available values `"111"` and `"222"`.  Names and values are printed strings.  The function's debug declaration preserves the source bindings used by this example.
@@ -220,7 +227,7 @@ Returning from `call-with-session` closes the connection.  The guest retains the
      (request :release-stop lease)
      (request :release-session)
      (format t "Returned 333 and :DONE.  Cleanup ran once.~%")))
- :port 4006 :seconds 30)
+ :port 4005 :seconds 30)
 ```
 
 The second call resumes the session and acquires a new lease.  The restart transfers control out of the debugger, producing command state `:unwound`.  The separate thread join establishes application completion and checks `333`, `:DONE`, and one cleanup.  The client then releases the closed stop and session.
@@ -246,6 +253,4 @@ Within the callback, `request` sends one synchronous debugger RPC.  `send-reques
 
 Commands that print values execute application printers and can block or enter a child stop.  A client timeout closes its connection while an accepted command can continue in the guest.  Query the recorded outcome before deciding what to submit next.
 
-Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers.  Interruption of running debugger commands, public binding mutation, lexical frame evaluation, arbitrary frame return/reinvocation, breakpoints, and integrated stepping also remain pending.
-
-The [capability and test tables](../../doc/debugger.md#capability-and-evidence) state the evidence for each operation.  The [operations guide](minideb2/README.md#tests) gives the test commands and restore sequence.  The [development journal](devnotes.md) records diagnoses and historical runs.
+Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers.  The remote API does not support interruption of running debugger commands, local-variable mutation, lexical frame evaluation, arbitrary frame return or reinvocation, breakpoints, or integrated stepping.  Local-variable availability depends on compiler debug metadata and the selected frame.  The [debugger guide](../../doc/debugger.md) describes those limits and the supported stopping states.
