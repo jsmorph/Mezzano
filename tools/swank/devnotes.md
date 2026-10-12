@@ -1277,3 +1277,22 @@ The results support keeping this as a standalone experiment.  Its certificate-si
 - [x] Compile and run the same tests in Mezzano.
 - [x] Benchmark both functions on both systems and record the measurement limits.
 - [x] Review the implementation and document the measurement limits.
+
+## Long-division loop isolation: 2026-10-12
+
+The user approved isolating the division loop over preallocated arrays and inspecting the generated machine code.  Extract the existing loop into one function used by both the integer wrapper and the new benchmark.  Preserve its arithmetic and compiler policy.  Prepare normalized operands, work arrays, and quotient arrays before timing.  Each repeated division requires restoration of the mutated dividend array.  Measure restoration alone as well as restoration plus division, and label both costs.
+
+Use the existing deterministic operands and correctness tests on both implementations.  Verify the prepared-array results against TRUNCATE outside timing.  Load compiled files, run SBCL on the VM host and Mezzano in the guest sequentially, retain disassemblies, and measure allocation through the existing runtime counters.  The scope remains an arithmetic experiment.
+
+- [x] Extract and test the shared digit-array loop.
+- [x] Measure preallocated division, restoration, and allocation on both systems.
+- [x] Inspect generated code and identify measured causes of the cost.
+- [x] Document and review the results.
+
+The extracted loop passed the existing 7,276 integer cases in both implementations.  The preallocated-array results matched TRUNCATE before and after timing.  At 768/384 bits, restoration plus division measured 16.259 microseconds in Mezzano and 0.698 in SBCL.  At 4096/2048 bits, it measured 351.124 and 15.373 microseconds.  Restoration alone measured 1.161 and 0.016 microseconds for the smaller case, and 5.917 and 0.054 for the larger case.  Both counters reported zero allocation during every timed array sample.
+
+The integer wrapper allocated 56,940 bytes per 768/384-bit division and 5,533,784.5 per 4096/2048-bit division in Mezzano.  SBCL measured 3,070.4 and 45,041.2 bytes.  These counts cover 320 divisions per size.  Source review identifies repeated copying in input conversion: LDB calls ASH with increasing offsets, and %BIGNUM-RIGHT-SHIFT implements those offsets as successive 32-bit shifts, allocating a new integer each time.
+
+Mezzano emitted 5,016 instruction bytes for DIVIDE-DIGITS, versus SBCL's 1,059.  Its 4096/2048-bit sample profile places 790 of 1,013 samples within DIVIDE-DIGITS in array-access functions.  The compiler probes show that AREF with an index of (+ I J) calls AREF-1, while (THE FIXNUM (+ I J)) lets the existing transform emit a direct load with type and bounds checks.  Both probes use safety 3.  File-level and local optimization declarations both selected speed 3, safety 3, debug 1.  The [long-division report](../long-division.md#preallocated-division-loop) records ranges, source references, reproduction commands, and evidence paths.
+
+The recommendation is to address arbitrary-distance bignum shifts before runtime integration of division, then review the checked array-access transforms.  A shift can determine the whole-word offset and residual bit count once and construct its result in one pass.  The current 32-bit repetition creates unnecessary intermediate integers.  Such a runtime change requires separate approval and must preserve both shift directions, both integer signs, sign extension, zero and large counts, input immutability, and canonical integer results.  Compare against SBCL and remeasure this experiment before any TLS test.

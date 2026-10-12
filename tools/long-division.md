@@ -51,7 +51,7 @@ Compile and load inside Mezzano:
 
 ## Measurements
 
-Measurements taken on 2026-10-12 used an AMD Ryzen 3 PRO 7330U host.  SBCL 2.5.2.debian ran on Linux on that host.  Mezzano ran in its x86-64 KVM guest with two virtual CPUs and 2 GiB of memory.  The guest reported image version `devel 68a15834cba4fcf6f9f90da0713f31806006e92e`.  Both implementations have 62 positive fixnum bits.
+The whole-function measurements below record revision 80db48c1.  Measurements taken on 2026-10-12 used an AMD Ryzen 3 PRO 7330U host.  SBCL 2.5.2.debian ran on Linux on that host.  Mezzano ran in its x86-64 KVM guest with two virtual CPUs and 2 GiB of memory.  The guest reported image version `devel 68a15834cba4fcf6f9f90da0713f31806006e92e`.  Both implementations have 62 positive fixnum bits.
 
 [The benchmark](bench-long-division.lisp) uses 32 identical deterministic operand pairs per size on both systems.  Each row reports five samples lasting at least one second each.  The order of the two functions alternates between samples.  SBCL and Mezzano ran sequentially.  Timings include integer-to-array conversion, array-to-integer conversion, allocation, collection, function calls, and scheduling.  Operand generation occurs before measurement.
 
@@ -75,3 +75,76 @@ For 768/384-bit operands, the ratio of existing division's median to the new rou
 The guest's sample ranges show substantial variation.  These measurements establish the cost of the complete standalone function in the running systems.  Separating compiler output, integer conversion, allocation, collection, and scheduling costs requires further measurement.  Certificate verification and HTTPS behavior remain untested with this algorithm.
 
 The build-directory logs are `long-division-sbcl-bench.log`, `long-division-mezzano-bench.log`, `long-division-sbcl-compiled.log`, and `long-division-mezzano-compiled.log`.
+
+## Preallocated division loop
+
+The integer wrapper and [array benchmark](bench-long-division-kernel.lisp) now share `divide-digits`.  It mutates a normalized dividend array U and writes quotient digits into Q.  V holds the normalized divisor.  Each array element is below 2^30.  V's highest digit is at least 2^29.  U includes one leading work digit, and Q has `(- (length u) (length v))` elements.  The remainder occupies the low `(length v)` digits of U.
+
+The array benchmark prepares all operands and result arrays before timing.  Each division restores U from a saved array.  Restoration alone is measured separately.  Both operations use the same 32 cases, five one-second samples, and alternating order.  Tests compared the prepared-array quotient and remainder with TRUNCATE before and after timing.  The refactored integer wrapper passed all 7,276 cases under both implementations.
+
+Times are microseconds per operation, with median followed by minimum and maximum.
+
+| System | Operand bits | Restore plus divide | Restore only |
+| --- | ---: | ---: | ---: |
+| SBCL | 768/384 | 0.698 (0.690–0.698) | 0.016 (0.016–0.016) |
+| Mezzano | 768/384 | 16.259 (16.200–17.898) | 1.161 (1.159–1.186) |
+| SBCL | 4096/2048 | 15.373 (15.343–15.388) | 0.054 (0.054–0.054) |
+| Mezzano | 4096/2048 | 351.124 (339.674–351.124) | 5.917 (5.805–5.947) |
+
+Both counters reported zero allocation during every timed array sample.  Mezzano uses its current thread's allocation counter.  SBCL uses its process allocation counter.  Restoration plus division takes 23.3 times as long in Mezzano at 768/384 bits and 22.8 times as long at 4096/2048 bits.
+
+The integer wrapper's allocation was measured separately over 320 divisions per size.  These measurements use the extracted loop, with the conversion code unchanged.
+
+| Operand bits | SBCL bytes/division | Mezzano bytes/division |
+| ---: | ---: | ---: |
+| 768/384 | 3,070.4 | 56,940.0 |
+| 4096/2048 | 45,041.2 | 5,533,784.5 |
+
+Input conversion calls LDB at successive 30-bit offsets.  [LDB](../system/numbers/logical.lisp) performs a right shift followed by a mask.  Mezzano's [large-integer shift wrapper](../system/numbers/bignum.lisp) implements a large right shift as repeated 32-bit shifts.  Each [x86-64 shift step](../system/numbers/bignum-x86-64.lisp) allocates a new integer.  This creates repeated copying during input conversion.  The allocation table measures the complete integer wrapper.
+
+### Generated code and profile
+
+SBCL emitted 1,059 instruction bytes for `divide-digits`.  Mezzano emitted 5,016.  Mezzano's loop contains calls to general array accessors and arithmetic routines.  SBCL uses direct indexed loads and stores in the division loop.
+
+A Mezzano profile of 32,000 prepared divisions at 4096/2048 bits recorded 1,047 samples.  Of the 1,013 samples within `divide-digits`, 790 descended into array-access functions.  Those paths include AREF-1, its setter, ARRAY-RANK, ARRAY-DIMENSION, and row-major accessors.  The profiler sampled the benchmark thread and excluded collection.
+
+[The compiler probes](long-division-probes.lisp) isolate one reason for the general array calls.  With V declared as a simple unsigned-32-bit array and I and J declared as fixnums, these expressions compile differently:
+
+```lisp
+(aref v (+ i j))
+(aref v (the fixnum (+ i j)))
+```
+
+The first calls AREF-1.  The second emits a direct indexed load with type and bounds checks.  Both use SPEED 3, SAFETY 3, and DEBUG 1.  The [array transforms](../compiler/transforms.lisp) require a known fixnum index.  The compiler does not infer that result type for the first sum.  The declarations and bounds available in the division loop therefore leave general array calls in its generated code.
+
+A separate probe confirmed that file-level OPTIMIZE proclamations and local OPTIMIZE declarations both select the requested policy.  The observed gap persists in compiled code with the requested policy.
+
+The measured costs justify separate work on large-integer shifting and checked array-access optimization.  Both runtime and compiler changes require review and tests before integration.
+
+### Reproduction
+
+After loading the compiled implementation and test files, compile and load `bench-long-division-kernel.lisp` and `long-division-probes.lisp` through the same procedure used above.  Then evaluate:
+
+```lisp
+(mezzano-long-division-kernel-bench:run)
+
+(mezzano-long-division-kernel-bench::integer-allocation 768 384)
+(mezzano-long-division-kernel-bench::integer-allocation 4096 2048)
+
+(disassemble #'mezzano-long-division::divide-digits)
+(disassemble #'mezzano-long-division-probes::read-sum)
+(disassemble #'mezzano-long-division-probes::read-checked-sum)
+```
+
+The Mezzano sampling profile used:
+
+```lisp
+(let ((cases (mezzano-long-division-kernel-bench:prepare
+              (mezzano-long-division-test:operands 4096 2048 32))))
+  (mezzano.profiler:with-profiling
+      (:thread t :path "SYS:HOME;LONG-DIVISION-KERNEL-PROFILE.TXT")
+    (dotimes (i 1000)
+      (mezzano-long-division-kernel-bench:exercise cases t))))
+```
+
+Build-directory evidence includes `long-division-kernel-{sbcl,mezzano}-bench.log`, `long-division-allocation-{sbcl,mezzano}.log`, and `long-division-compiler-probe.log`.  Disassemblies are `long-division-kernel-sbcl.asm`, `long-division-probes-sbcl.asm`, `home/long-division-kernel-mezzano.asm`, and `home/long-division-probes-mezzano.asm`.  The sample profile is `home/long-division-kernel-profile.txt`.
