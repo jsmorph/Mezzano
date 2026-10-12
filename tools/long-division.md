@@ -153,7 +153,7 @@ Build-directory evidence includes `long-division-kernel-{sbcl,mezzano}-bench.log
 
 ## Type declarations
 
-The first step added FIXNUM declarations to the two inner-loop counters and THE FIXNUM assertions to computed array indices.  The arithmetic, array representation, and compiler policy remain unchanged.  All 7,276 cases passed in both implementations, and prepared-array results matched TRUNCATE before and after timing.
+Revision bc591b1b added FIXNUM declarations to the two inner-loop counters and THE FIXNUM assertions to computed array indices.  The arithmetic, array representation, and compiler policy remain unchanged.  All 7,276 cases passed in both implementations, and prepared-array results matched TRUNCATE before and after timing.
 
 Times below are microseconds per restoration plus division, with median followed by minimum and maximum.  SBCL and Mezzano ran sequentially on the same host as the preceding measurements.
 
@@ -169,3 +169,45 @@ The ratios of the original and updated Mezzano medians are 1.72 and 1.81.  The u
 The computed-index assertions follow from the array bounds.  During each access, J lies between zero and SIZE-N, and I lies between zero and N-1.  Consequently J+I, J+N, J+N-1, and the guarded J+N-2 fit in FIXNUM and identify elements of U.  N-1 and the guarded N-2 identify elements of V.  The loop-counter declarations also admit their termination values.
 
 Evidence is in the build-directory logs `long-division-indices-{sbcl,mezzano}-{build,bench}.log` and disassemblies `long-division-indices-sbcl.asm` and `home/long-division-indices-mezzano.asm`.
+
+### Bounded arithmetic
+
+The second step declared 30-bit digits and quotient estimates, 60-bit products and numerators, signed 31-bit differences, and one-bit carries.  Digit reads carry THE assertions because the arrays store unsigned 32-bit elements.  The algorithm stores values below 2^30 in those elements.
+
+Let B=2^30.  The bounds supporting the declarations are:
+
+| Value | Range |
+| --- | --- |
+| Digit, TOP, ESTIMATE | 0 through B-1 |
+| NUMERATOR, PRODUCT, REMAINDER | 0 through B^2-1 |
+| BORROW | 0 through B |
+| DIFFERENCE | -B through B-1 |
+| CARRY | 0 or 1 |
+| SUM | 0 through 2B-1 |
+
+The product bound follows from (B-1)^2+B = B^2-B+1.  Its high digit plus a subtraction borrow is at most B, preserving the borrow bound for the next iteration.  The initial remainder is between zero and the numerator.  Correction increments occur only while the remainder is below B and leave it below 2B.
+
+All 7,276 cases passed under both implementations.  A separate Mezzano compilation enabled `mezzano.compiler::*the-checks-types*` and passed those cases with explicit THE checks.  The timed Mezzano compilation used NIL, the compiler's default setting for that switch.  Both timed implementations retained speed 3, safety 3, debug 1 and passed prepared-array checks before and after measurement.
+
+Times are microseconds per restoration plus division, with median followed by minimum and maximum.
+
+| System | Operand bits | Index declarations | Index and arithmetic declarations |
+| --- | ---: | ---: | ---: |
+| SBCL | 768/384 | 0.697 (0.691–0.701) | 0.452 (0.452–0.454) |
+| Mezzano | 768/384 | 9.467 (9.438–9.513) | 9.438 (9.376–9.522) |
+| SBCL | 4096/2048 | 15.297 (15.245–15.373) | 9.192 (9.192–9.246) |
+| Mezzano | 4096/2048 | 194.099 (194.099–195.313) | 194.099 (194.099–195.313) |
+
+The arithmetic declarations improved SBCL's medians by factors of 1.54 and 1.66.  Mezzano's sample ranges overlap, with identical larger-case medians.  The final Mezzano/SBCL ratios are 20.9 and 21.1.  Restoration-only medians were 1.180 and 5.891 microseconds in Mezzano, and 0.016 and 0.053 in SBCL.  Both implementations reported median allocation of zero in each row.
+
+### Remaining compiler costs
+
+After the index declarations, Mezzano emitted direct element accesses and expanded the function from 5,016 to 9,591 instruction bytes.  Each of the 16 element-access sites calls ARRAY-DIMENSION, checks the dimension bound, and checks the storage bound.  The arithmetic declarations left the instruction count, byte count, and call-site counts unchanged.  SBCL's arithmetic declarations reduced its function from 1,059 to 1,007 instruction bytes.
+
+A profile of 64,000 prepared 4096/2048-bit divisions recorded 1,216 samples.  Within DIVIDE-DIGITS, 262 of 1,163 samples descended into ARRAY-DIMENSION, and 901 remained in DIVIDE-DIGITS.  The profile sampled the benchmark thread and excluded collection.  It measures function-level costs and does not divide the remaining time among inline checks, arithmetic, branches, and memory operations.
+
+The [array transforms](../compiler/transforms.lisp) route a typed one-dimensional AREF through ARRAY-ROW-MAJOR-INDEX and ROW-MAJOR-AREF, producing two bounds checks.  [ARRAY-DIMENSION simplification](../compiler/simplify.lisp) and the fast bounded-arithmetic transforms are restricted to safety 0.  The numeric declarations therefore leave specific optimization opportunities at safety 3.
+
+The next compiler recommendation is a checked specialization of one-dimensional simple-array access: validate the array, index, and stored value as required, perform one bounds check, and access the element.  Tests must preserve argument evaluation order, returned values, and errors for invalid arrays, indices, and values.  Subsequent work should address arithmetic specialization using checked or derived bounds.  These compiler changes require separate approval.
+
+Evidence is in `long-division-types-{sbcl,mezzano}-{build,bench}.log`, `long-division-types-mezzano-checked.log`, `long-division-types-sbcl.asm`, `home/long-division-types-mezzano.asm`, and `home/long-division-types-profile.txt`.  The profile used the preceding reproduction form with 2,000 iterations and a separate output path.

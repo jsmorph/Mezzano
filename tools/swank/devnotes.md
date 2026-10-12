@@ -1306,7 +1306,13 @@ For each array access, J is between zero and SIZE-N, and I is between zero and N
 Let B=2^30.  Digits and quotient estimates lie in [0,B-1].  NUMERATOR lies in [0,B^2-1].  A conservative BORROW bound of [0,B] gives PRODUCT at most B^2-B+1, preserving the unsigned-60-bit bound.  The next borrow is at most B, completing that induction.  DIFFERENCE lies in [-B,B-1].  CARRY is zero or one, and SUM is at most 2B-1.  REMAINDER is nonnegative and bounded by NUMERATOR initially.  Its correction increments occur only below B and leave it below 2B, so unsigned 60 bits suffice.  These bounds support declarations without changing arithmetic.
 
 - [x] Test and measure declarations on array indices.
-- [ ] Test and measure bounded arithmetic declarations.
-- [ ] Inspect remaining calls and document the measured effects.
+- [x] Test and measure bounded arithmetic declarations.
+- [x] Inspect remaining calls and document the measured effects.
 
 The index declarations passed 7,276 cases under both implementations.  Mezzano's restoration-plus-division medians improved from 16.259 to 9.467 microseconds at 768/384 bits and from 351.124 to 194.099 at 4096/2048 bits.  SBCL measured 0.697 and 15.297 microseconds.  Prepared results passed before and after timing.  The [report](../long-division.md#type-declarations) records ranges and evidence paths.
+
+The bounded arithmetic declarations passed 7,276 cases under both implementations and a separate Mezzano build with *THE-CHECKS-TYPES* enabled.  The measured build used the default NIL setting.  Its LLF was reloaded after the checked test.  Mezzano's final medians were 9.438 and 194.099 microseconds, with overlapping ranges against the index-only version.  SBCL improved to 0.452 and 9.192 microseconds.  The final ratio is about 21 on both sizes.  Median allocation remained zero for the timed array operations.
+
+The index declarations expanded Mezzano's division function from 5,016 to 9,591 instruction bytes while replacing general AREF calls with direct accesses.  Arithmetic declarations left its byte, instruction, and call-site counts unchanged.  SBCL's function shrank from 1,059 to 1,007 bytes.  A profile of 64,000 divisions places 262 of 1,163 samples within DIVIDE-DIGITS in ARRAY-DIMENSION and the other 901 in DIVIDE-DIGITS.  The [report](../long-division.md#remaining-compiler-costs) records the source explanation and measurement limits.
+
+The next compiler recommendation is to specialize checked one-dimensional simple-array access with one bounds check.  Current transforms emit ARRAY-DIMENSION calls and two bounds checks at each of 16 element-access sites.  Preserve evaluation order, type and bounds errors, and SETF values, then test generated code and the same division benchmark.  Later arithmetic work should specialize operations from checked or derived bounds at safety 3.  Both compiler changes require separate approval.  The guest has the normal compiled experiment loaded.  Shared runtime arithmetic and compiler source remain unchanged.
