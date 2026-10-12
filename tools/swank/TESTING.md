@@ -41,7 +41,7 @@ These files compile and execute inside the guest.  Run them after the correspond
 ```sh
 for test_name in TEST-FOOTHOLD-GC TEST-INTERRUPT-RETURN-GC TEST-GC-RESTART \
   TEST-CONS-ALLOCATION-GC TEST-STRUCTURE-LAYOUTS TEST-FRAME-LOCALS TEST-LIVE-RANGES \
-  TEST-DEBUG-METADATA TEST-DEBUG-BINDINGS TEST-DEBUG-BINDING-WRITES TEST-DEBUG-WRITE-FLOW \
+  TEST-DEBUG-METADATA TEST-SPILL-INTERFERENCE TEST-DEBUG-BINDINGS TEST-DEBUG-BINDING-WRITES TEST-DEBUG-WRITE-FLOW \
   TEST-DEBUG-CLOSURE-WRITES TEST-DEBUG-POLICY TEST-KEYWORD-LOWERING \
   TEST-JUMP-TABLE-BINDINGS TEST-DEBUGGER-SERVICE TEST-EVALUATION-SERVICE \
   TEST-EVALUATION-INTERRUPT
@@ -53,6 +53,8 @@ done
 ```
 
 The debug-metadata fixture checks binding order, locations, representations, aliases, scope changes, inserted instructions, and shared records.  It checks both target emitters and their encoded metadata while running on the host architecture.  ARM64 metadata checks do not execute ARM64 machine code.  Its RUN function can also receive the previous rebuild and emitter functions for comparison during compiler replacement.
+
+The spill-interference fixture checks overlapping, adjacent, disjoint, repeated, and unused ranges, edges from every range of a spilled register, and scalar and SIMD slot assignment.  It compares with supplied previous implementations when requested and checks that dense bit-vector rows retain their identity across insertions.
 
 ## Pager reservation tests
 
@@ -196,6 +198,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-cons-allocation-gc.lisp` | The observed instruction addresses on the x86-64 DO-CONS success path in both saved states, with restart-address checks and relocated CAR/CDR values after resumption. |
 | `test-frame-locals.lisp` | Distinct SWANK local IDs and lookup. |
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |
+| `test-spill-interference.lisp` | Spill graph edges, ascending register order, scalar and SIMD slot assignments, and bit-vector reuse. |
 | `test-live-ranges.lisp` | Live/debug/dead transitions, aliased debug values, empty inputs, and 800 preserved variables in register allocation. |
 | `test-debug-bindings.lisp` | Preserved binding visibility and lower-debug propagation. |
 | `test-debug-binding-writes.lisp` | Internal writes, independent copies, constants, loops, multiple-value bindings, and GC. |

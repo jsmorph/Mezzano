@@ -1021,62 +1021,14 @@
          do (vector-push-extend range result)))
     result))
 
-(defun make-vreg-set ()
-  (make-array 0))
-
-(defun insert-into-vreg-set (set vreg)
-  ;; Search for the position to insert into.
-  (cond ((or (null set)
-             (eql set vreg))
-         vreg)
-        ((typep set 'vreg-id)
-         (let ((vec (make-array 2)))
-           (if (< set vreg)
-               (setf (svref vec 0) set
-                     (svref vec 1) vreg)
-               (setf (svref vec 0) vreg
-                     (svref vec 1) set))
-           vec))
-        (t
-         ;; IMIN/IMAX are inclusive indicies.
-         (do* ((imin 0)
-               (imax (1- (length set))))
-              ((< imax imin)
-               ;; Inserting at IMIN.
-               (let ((new (make-array (1+ (length set)))))
-                 (replace new set :end2 imin)
-                 (replace new set :start1 (1+ imin) :start2 imin)
-                 (setf (svref new imin) vreg)
-                 new))
-           (declare (type simple-vector set))
-           (let* ((imid (ash (+ imin imax) -1))
-                  (entry (svref set imid)))
-             (cond ((eql entry vreg)
-                    ;; Already in the array, return.
-                    (return set))
-                   ((< entry vreg)
-                    (setf imin (1+ imid)))
-                   (t
-                    (setf imax (1- imid)))))))))
+(defun add-vreg-interference (graph vreg other)
+  (let ((set (or (svref graph vreg)
+                (setf (svref graph vreg)
+                      (make-array (length graph) :element-type 'bit :initial-element 0)))))
+    (setf (sbit set other) 1)))
 
 (defun vreg-set-contains (set vreg)
-  (when (null set)
-    (return-from vreg-set-contains nil))
-  (when (typep set 'vreg-id)
-    (return-from vreg-set-contains (eql set vreg)))
-  (do* ((imin 0)
-        (imax (1- (length set))))
-       ((< imax imin)
-        nil)
-    (declare (type (vector t) set))
-    (let* ((imid (ash (+ imin imax) -1))
-           (entry (svref set imid)))
-      (cond ((eql entry vreg)
-             (return t))
-            ((< entry vreg)
-             (setf imin (1+ imid)))
-            (t
-             (setf imax (1- imid)))))))
+  (and set (eql (sbit set vreg) 1)))
 
 (defun build-interference-graph (allocator)
   "Construct the interference graph for spilled virtual registers.
@@ -1087,7 +1039,8 @@ Returns the interference graph and the set of spilled virtual registers."
        for inst in (allocator-instruction-ordering allocator)
        do (format t "~D: " i) (ir::print-instruction inst)))
   (let ((result (make-array (length (allocator-id-to-vreg-table allocator)) :initial-element nil))
-        (spilled-vregs (make-vreg-set))
+        (spilled-vregs (make-array (length (allocator-id-to-vreg-table allocator))
+                                  :element-type 'bit :initial-element 0))
         (spilled-ranges (sort (all-spilled-ranges allocator)
                               #'<
                               :key #'live-range-start))
@@ -1100,31 +1053,32 @@ Returns the interference graph and the set of spilled virtual registers."
                (format t "   ~S~%" r))))
          (let ((current-range-start (live-range-start range))
                (current-vreg (live-range-vreg-id range)))
-           (setf spilled-vregs (insert-into-vreg-set spilled-vregs current-vreg))
+           (setf (sbit spilled-vregs current-vreg) 1)
            ;; Expire old ranges.
            (setf live (remove-if (lambda (x)
                                    (< (live-range-end x) current-range-start))
                                  live))
            ;; Add new interference edges.
            (dolist (range live)
-             (flet ((insert (vreg other)
-                      (setf (svref result vreg) (insert-into-vreg-set (svref result vreg) other))))
-               (let ((other-vreg (live-range-vreg-id range)))
-                 (when (and (not (eql other-vreg current-vreg))
-                            (not (vreg-set-contains (svref result other-vreg) current-vreg)))
-                   (insert current-vreg other-vreg)
-                   (insert other-vreg current-vreg)))))
+             (let ((other-vreg (live-range-vreg-id range)))
+               (when (and (not (eql other-vreg current-vreg))
+                          (not (vreg-set-contains (svref result other-vreg) current-vreg)))
+                 (add-vreg-interference result current-vreg other-vreg)
+                 (add-vreg-interference result other-vreg current-vreg))))
            (push range live)))
-    (let ((size (length result)))
-      (loop for val across result do
-           (when (arrayp val)
-             (incf size (length val))))
-      (when *log*
-        (format *log* ",~D,~D"
-                size (length spilled-ranges)))
-      #+(or)
-      (format t "Interference graph has ~:D entries for ~:D spilled ranges~%" size (length spilled-ranges)))
-    (values result spilled-vregs)))
+    (when *log*
+      (let ((size (length result)))
+        (loop for set across result
+              when set
+                do (let ((degree (count 1 set)))
+                     (when (> degree 1)
+                       (incf size degree))))
+        (format *log* ",~D,~D" size (length spilled-ranges))))
+    (values result
+            (coerce (loop for id below (length spilled-vregs)
+                          when (eql (sbit spilled-vregs id) 1)
+                            collect id)
+                    'vector))))
 
 (defun assign-stack-slots (allocator interference-graph spilled-vregs)
   (let ((slots (make-array 8 :adjustable t :fill-pointer 0 :initial-element '()))
