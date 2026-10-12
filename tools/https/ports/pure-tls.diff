@@ -1,5 +1,5 @@
 diff --git a/src/streams.lisp b/src/streams.lisp
-index 8fa115c..d2a077b 100644
+index 8fa115c..4c64997 100644
 --- a/src/streams.lisp
 +++ b/src/streams.lisp
 @@ -46,6 +46,9 @@
@@ -80,7 +80,36 @@ index 8fa115c..d2a077b 100644
      (setf (tls-stream-record-layer stream) record-layer)
      ;; Perform handshake (CertificateVerify is verified during handshake)
      ;; Skip hostname verification if only sni-hostname is provided (no hostname)
-@@ -667,9 +671,12 @@ flat no matter how many records arrive."
+@@ -640,7 +644,7 @@ flat no matter how many records arrive."
+                                      (tls-context-cipher-suites context))
+                   :hostname-policy (tls-context-hostname-policy context))))
+         (setf (tls-stream-handshake stream) hs)
+-        ;; Verify certificate chain and hostname if verification enabled
++        ;; Check the requested hostname, which can differ from the SNI hostname.
+         (when (and (member verify (list +verify-peer+ +verify-required+))
+                    (client-handshake-peer-certificate hs))
+           (let ((cert (client-handshake-peer-certificate hs))
+@@ -648,28 +652,20 @@ flat no matter how many records arrive."
+             ;; Verify hostname - only if hostname (not just sni-hostname) was provided
+             (when hostname
+               (verify-hostname cert hostname :policy (tls-context-hostname-policy context)))
+-            ;; Verify certificate chain for both +verify-peer+ and +verify-required+
+-            ;; (+verify-peer+ means "verify if presented" - servers always present certs)
+-            (when chain
+-              ;; On Windows/macOS with native verification enabled, verify even without trust-store
+-              ;; (they use their own trusted root stores)
+-              (let ((trusted-roots (when trust-store
+-                                     (trust-store-certificates trust-store))))
+-                (verify-certificate-chain chain trusted-roots
+-                                          :now (get-universal-time)
+-                                          :hostname hostname
+-                                          :purpose :server-auth)))
+             ;; Record the verified identity when this full handshake proved it
+             ;; under +verify-required+ (hostname supplied, hostname + chain
+-            ;; verified without error above).  A NewSessionTicket read later on
++            ;; verified during the handshake).  A NewSessionTicket read later on
+             ;; this stream carries this forward so a resumption can rely on the
+             ;; original handshake's authentication (RFC 8446 Section 4.2.11).
              (when (and (= verify +verify-required+) hostname chain)
                (setf (client-handshake-verified-hostname hs) hostname))))))
      ;; Wrap with flexi-stream if external-format specified
@@ -96,7 +125,7 @@ index 8fa115c..d2a077b 100644
 
  (defun make-tls-server-stream (socket &key
                                          context
-@@ -719,8 +726,7 @@ flat no matter how many records arrive."
+@@ -719,8 +715,7 @@ flat no matter how many records arrive."
                                            :max-send-fragment (or max-send-fragment
                                                                   +max-record-size+)
                                            :request-context request-context))
@@ -106,7 +135,7 @@ index 8fa115c..d2a077b 100644
           ;; Get certificate chain (from parameter, context, or file)
           (cert-chain (cond
                         ((listp certificate) certificate)
-@@ -745,6 +751,10 @@ flat no matter how many records arrive."
+@@ -745,6 +740,10 @@ flat no matter how many records arrive."
           (client-trust-store trust-store)
           ;; Get ALPN protocols
           (alpn (or alpn-protocols (tls-context-alpn-protocols context))))
@@ -117,7 +146,7 @@ index 8fa115c..d2a077b 100644
      ;; Validate we have certificate and key
      (unless cert-chain
        (error 'tls-error :message "Server requires a certificate chain"))
-@@ -771,9 +781,12 @@ flat no matter how many records arrive."
+@@ -771,9 +770,12 @@ flat no matter how many records arrive."
                                    (tls-context-cipher-suites context)))))
        (setf (tls-stream-handshake stream) hs))
      ;; Wrap with flexi-stream if external-format specified

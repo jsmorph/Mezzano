@@ -26,6 +26,25 @@
           (close tls :abort t)
           (usocket:socket-close socket)))))
 
+(defun call-with-chain-verification-count (function)
+  (let* ((pure-tls::*session-ticket-cache* (make-hash-table :test 'equal))
+         (name 'pure-tls::verify-certificate-chain)
+         (original (fdefinition name))
+         (thread (bt:current-thread))
+         (count 0)
+         (wrapper (lambda (&rest arguments)
+                    (when (eq thread (bt:current-thread))
+                      (incf count))
+                    (apply original arguments))))
+    (unwind-protect
+         (progn
+           (setf (fdefinition name) wrapper)
+           (funcall function)
+           (assert (= count 1) () "Full handshake verified the chain ~D times." count)
+           (format t "Full handshake verified the certificate chain once.~%"))
+      (when (eq (fdefinition name) wrapper)
+        (setf (fdefinition name) original)))))
+
 (defun expect-verification-error (function label)
   (handler-case
       (progn (funcall function)
@@ -34,12 +53,14 @@
       (format t "~A rejected: ~A~%" label condition))))
 
 (defun run-transport-tests (&key ca-file)
-  (call-with-openai-tls
-   (lambda (stream)
-     (format t "Verified handshake: version ~S, cipher ~S.~%"
-             (pure-tls:tls-version stream)
-             (pure-tls:tls-cipher-suite stream)))
-   :ca-file ca-file)
+  (call-with-chain-verification-count
+   (lambda ()
+     (call-with-openai-tls
+      (lambda (stream)
+        (format t "Verified handshake: version ~S, cipher ~S.~%"
+                (pure-tls:tls-version stream)
+                (pure-tls:tls-cipher-suite stream)))
+      :ca-file ca-file)))
   (expect-verification-error
    (lambda ()
      (call-with-openai-tls
