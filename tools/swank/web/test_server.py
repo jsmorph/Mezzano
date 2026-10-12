@@ -53,6 +53,17 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.operation_arguments("job-information",
                 {"job": [":job", "b" * 64, 1]}, session)
+        for arguments in [
+            {"source": "🚀", "cursor": 2, "action": "inspect"},
+            {"source": "Show File ", "cursor": 10, "action": "insert"},
+            {"source": "Help", "cursor": 4, "action": "execute"},
+        ]:
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(ValueError):
+                    server.operation_arguments("listener-assistance", arguments, session)
+        self.assertEqual(server.operation_arguments("listener-assistance",
+            {"source": "🚀", "cursor": 1, "action": "help"}, session)[:3],
+            ["🚀", 1, server.Symbol(":help")])
         with self.assertRaises(ValueError):
             server.integer(True)
 

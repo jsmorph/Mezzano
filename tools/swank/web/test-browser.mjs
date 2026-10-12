@@ -139,10 +139,10 @@ const text = JSON.stringify;
 const screenshot = name => browser.screenshot(join(output, name + '.png'));
 
 async function clickText(container, value) {
-  await browser.waitFor(`[...document.querySelectorAll(${text(container + ' button')})].filter(button => button.textContent.includes(${text(value)})).length === 1`);
+  await browser.waitFor(`[...document.querySelectorAll(${text(container + ' button')})].filter(button => button.textContent.includes(${text(value)}) && button.getBoundingClientRect().width > 0 && button.getBoundingClientRect().height > 0 && !button.disabled).length === 1`);
   const selector = await browser.evaluate(`(() => {
     const buttons = [...document.querySelectorAll(${text(container + ' button')})];
-    const matches = buttons.filter(button => button.textContent.includes(${text(value)}));
+    const matches = buttons.filter(button => button.textContent.includes(${text(value)}) && button.getBoundingClientRect().width > 0 && button.getBoundingClientRect().height > 0 && !button.disabled);
     if (matches.length !== 1) throw new Error('Expected one button: ' + ${text(value)} + ', found ' + matches.length);
     matches[0].setAttribute('data-browser-test', 'target');
     return '[data-browser-test="target"]';
@@ -152,10 +152,39 @@ async function clickText(container, value) {
 }
 
 async function enter(selector, input) {
+  await browser.waitFor('connected && !busy');
   await browser.click(selector);
+  await browser.waitFor(`document.activeElement === document.querySelector(${text(selector)})`);
   await browser.send('Input.insertText', { text: input });
   await browser.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
   await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+}
+
+async function key(key, code, windowsVirtualKeyCode, modifiers = 0) {
+  await browser.send('Input.dispatchKeyEvent', {type: 'keyDown', key, code, windowsVirtualKeyCode, modifiers});
+  await browser.send('Input.dispatchKeyEvent', {type: 'keyUp', key, code, windowsVirtualKeyCode, modifiers});
+}
+async function fill(selector, input) {
+  await browser.waitFor('connected && !busy');
+  await browser.click(selector);
+  await browser.waitFor(`document.activeElement === document.querySelector(${text(selector)})`);
+  await key('a', 'KeyA', 65, 2);
+  await browser.send('Input.insertText', {text: input});
+}
+async function accept(command) {
+  const previous = await browser.evaluate("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).inputHistory.map(item => item.name)");
+  await fill('#source', command);
+  await key('Enter', 'Enter', 13);
+  const expression = `JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).inputHistory.find(item => item.source === ${text(command)} && !${text(previous)}.includes(item.name))`;
+  await browser.waitFor(expression);
+  const {name} = await browser.evaluate(expression);
+  const selector = '[data-job="' + name + '"]';
+  await waitText(selector, 'returned');
+  return {name, selector};
+}
+async function releaseAccepted(job) {
+  await clickText(job.selector, 'Release');
+  await browser.waitFor(`!document.querySelector(${text(job.selector)})`);
 }
 
 async function waitText(selector, value) {
@@ -221,10 +250,164 @@ async function releaseJob(tag) {
 try {
   console.log('Fixture marker', marker);
   await browser.waitFor("document.querySelector('#message').textContent.startsWith('Session ') && document.querySelector('#process-state').textContent !== 'Disconnected'");
+  await browser.waitFor('connected && !busy');
+  const effectStates = await browser.evaluate(`(() => {
+    const before = freshName();
+    const after = freshName();
+    const job = {listener: true, clearBefore: [before]};
+    state.jobs[before] = {hidden: false};
+    state.jobs[after] = {hidden: false};
+    try {
+      applyListenerEffects(job, {state: ':running', 'listener-result': {kind: ':command', effects: null}});
+      const running = {applied: Boolean(job.effectsApplied), hidden: state.jobs[before].hidden};
+      const returned = {state: ':returned', 'listener-result': {kind: ':command', effects: [{operation: ':clear-output-history'}]}};
+      applyListenerEffects(job, returned);
+      const terminal = {applied: job.effectsApplied, before: state.jobs[before].hidden, after: state.jobs[after].hidden};
+      state.jobs[before].hidden = false;
+      applyListenerEffects(job, returned);
+      return {running, terminal, replayHidden: state.jobs[before].hidden};
+    } finally {
+      delete state.jobs[before];
+      delete state.jobs[after];
+    }
+  })()`);
+  assert.deepEqual(effectStates, {running: {applied: false, hidden: false}, terminal: {applied: true, before: true, after: false}, replayHidden: false});
+  console.log('PASS browser running-to-terminal clear-effect fixture and replay guard');
   await screenshot('listener-ready');
   await browser.click('#window-label');
   await screenshot('system-menu');
   await browser.click('#close-menu');
+  await fill('#source', 'Se');
+  await browser.send('Input.insertText', {text: ' '});
+  await browser.waitFor("document.querySelector('#source').value === 'Set '");
+  await browser.send('Input.insertText', {text: 'P'});
+  await key('Tab', 'Tab', 9);
+  await browser.waitFor("document.querySelector('#source').value === 'Set Package '");
+  await waitText('#listener-assistance', 'default COMMON-LISP-USER');
+  await key('F12', 'F12', 123);
+  await waitText('#listener-assistance', "Select this Listener's Lisp package");
+  await browser.waitFor("[...document.querySelectorAll('#listener-assistance button')].some(button => button.textContent === 'COMMON-LISP-USER')");
+  await screenshot('listener-context-help');
+  await browser.send('Input.insertText', {text: ' '});
+  await browser.waitFor("document.querySelector('#source').value.includes('COMMON-LISP-USER')");
+  const defaultCommand = await browser.evaluate("document.querySelector('#source').value");
+  let commandJob = await accept(defaultCommand);
+  await releaseAccepted(commandJob);
+  console.log('PASS browser SPACE/COMPLETE, argument prompt, HELP, and explicit default');
+
+  await browser.evaluate(`(() => {
+    const original = window.fetch;
+    window.assistanceRequests = [];
+    window.fetch = (...args) => {
+      const request = args[1]?.body && JSON.parse(args[1].body);
+      if (request?.operation === 'listener-assistance') window.assistanceRequests.push(request.arguments);
+      return original(...args);
+    };
+  })()`);
+  const unicodeInput = '(list "🚀") suffix';
+  const unicodePrefix = '(list "🚀")';
+  await fill('#source', unicodeInput);
+  await browser.evaluate(`document.querySelector('#source').setSelectionRange(${unicodePrefix.length}, ${unicodePrefix.length})`);
+  await key('F12', 'F12', 123);
+  await browser.waitFor(`window.assistanceRequests.some(request => request.source === ${text(unicodeInput)} && request.action === 'help')`);
+  const unicodeRequest = await browser.evaluate(`window.assistanceRequests.findLast(request => request.source === ${text(unicodeInput)} && request.action === 'help')`);
+  assert.equal(unicodeRequest.cursor, Array.from(unicodePrefix).length);
+  await browser.waitFor('!busy');
+  assert.equal(await browser.evaluate("document.querySelector('#source').value"), unicodeInput);
+  assert.equal(await browser.evaluate("document.querySelector('#source').selectionStart"), unicodePrefix.length);
+  const presentationRendering = await browser.evaluate(`(() => {
+    const prefix = '🚀 ';
+    const pathname = '/guest/🚀.lisp';
+    const output = document.createElement('pre');
+    const view = {output, text: prefix + pathname + ' suffix'};
+    renderOutput(view, [{start: Array.from(prefix).length, end: Array.from(prefix + pathname).length,
+      type: ':pathname', value: pathname}]);
+    return {text: output.textContent, pathname: output.querySelector('button').textContent};
+  })()`);
+  assert.deepEqual(presentationRendering, {text: '🚀 /guest/🚀.lisp suffix', pathname: '/guest/🚀.lisp'});
+  console.log('PASS browser Unicode assistance cursor/suffix and renderer presentation-offset fixture');
+
+  commandJob = await accept('Help :Format Detailed');
+  await waitText(commandJob.selector, 'Compile File');
+  await waitText(commandJob.selector, 'guest Lisp file');
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Show Herald :Detailed');
+  await waitText(commandJob.selector, 'Mezzano');
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Show Command Processor Status');
+  await waitText(commandJob.selector, 'Command-Preferred');
+  await releaseAccepted(commandJob);
+
+  const packageName = marker + '-PACKAGE';
+  commandJob = await accept(`(defpackage ${JSON.stringify(packageName)} (:use :cl))`);
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Set Package ' + packageName);
+  await waitText('#package-label', packageName);
+  await releaseAccepted(commandJob);
+  commandJob = await accept('(defparameter help 17) (defparameter browser-variable 29)');
+  await releaseAccepted(commandJob);
+  commandJob = await accept('browser-variable');
+  await waitText(commandJob.selector, '29');
+  await releaseAccepted(commandJob);
+  commandJob = await accept(',help');
+  await waitText(commandJob.selector, '17');
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Help');
+  await waitText(commandJob.selector, 'Set Package');
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Set Package CL-USER');
+  await releaseAccepted(commandJob);
+  commandJob = await accept(`(delete-package ${JSON.stringify(packageName)})`);
+  await releaseAccepted(commandJob);
+  console.log('PASS browser command dispatch, package state, known variable, and forced Lisp');
+
+  const leaf = 'browser-listener-' + marker.toLowerCase() + '-🚀';
+  commandJob = await accept(`(let ((base (translate-logical-pathname "SYS:HOME;"))) (values (namestring (merge-pathnames ${JSON.stringify(leaf + '.lisp')} base)) (namestring (merge-pathnames ${JSON.stringify(leaf + '-second.lisp')} base)) (namestring (merge-pathnames ${JSON.stringify(leaf + '*.lisp')} base))))`);
+  const [pathname, secondPathname, wildcard] = (await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .returned-values')}).textContent`)).split('\n').map(value => JSON.parse(value));
+  assert(pathname.includes('🚀'));
+  await releaseAccepted(commandJob);
+  const variableName = '*' + marker + '-FILE*';
+  const fileBody = `(in-package :cl-user) (defparameter ${variableName} "🚀 browser file")`;
+  commandJob = await accept(`(dolist (path '(${JSON.stringify(pathname)} ${JSON.stringify(secondPathname)})) (with-open-file (stream path :direction :output :if-exists :error) (write-string ${JSON.stringify(fileBody)} stream)))`);
+  await releaseAccepted(commandJob);
+  const directoryJob = await accept('Show Directory ' + wildcard);
+  await browser.waitFor(`document.querySelectorAll(${text(directoryJob.selector + ' .presentation')}).length === 2`);
+  const presented = await browser.evaluate(`[...document.querySelectorAll(${text(directoryJob.selector + ' .presentation')})].map(element => element.textContent)`);
+  assert.deepEqual(presented.sort(), [pathname, secondPathname].sort());
+  await fill('#source', 'Show File ');
+  await clickText(directoryJob.selector, pathname);
+  await browser.waitFor(`document.querySelector('#source').value.includes(${text(pathname)})`);
+  const showFile = await browser.evaluate("document.querySelector('#source').value");
+  commandJob = await accept(showFile);
+  await waitText(commandJob.selector, fileBody);
+  await screenshot('listener-pathname');
+  await releaseAccepted(commandJob);
+  await releaseAccepted(directoryJob);
+  commandJob = await accept('Show File');
+  await waitText(commandJob.selector, fileBody);
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Load File ' + pathname);
+  await releaseAccepted(commandJob);
+  commandJob = await accept(variableName);
+  await waitText(commandJob.selector, '🚀 browser file');
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Compile File ' + pathname + ' :Load Yes');
+  await releaseAccepted(commandJob);
+  commandJob = await accept(`(delete-file ${JSON.stringify(pathname)}) (delete-file (compile-file-pathname ${JSON.stringify(pathname)})) (delete-file ${JSON.stringify(secondPathname)}) (makunbound '${variableName}) (values)`);
+  await releaseAccepted(commandJob);
+  console.log('PASS browser Unicode physical pathname presentation/insertion/default, contents, Show/Load/Compile File, and file cleanup');
+
+  const historySource = `(progn "${marker}-HISTORY" (values :history))`;
+  const firstHistory = await accept(historySource);
+  await key('y', 'KeyY', 89, 3);
+  await browser.waitFor(`document.querySelector('#source').value === ${text(historySource)}`);
+  assert.equal(await browser.evaluate(`JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).inputHistory.filter(item => item.source === ${text(historySource)}).length`), 1);
+  const secondHistory = await accept(historySource);
+  assert.notEqual(firstHistory.name, secondHistory.name);
+  await releaseAccepted(firstHistory);
+  await releaseAccepted(secondHistory);
+  console.log('PASS browser input recall and fresh request identity on execution');
+
   await enter('#source', `(format t "${marker}-VALUES~%") (values (+ 20 22) :done)`);
   let job = await selectJob('VALUES');
   await waitText(job, '42\n:DONE');
@@ -235,6 +418,7 @@ try {
   await browser.send('Page.reload');
   job = await selectJob('VALUES');
   await waitText(job, '42\n:DONE');
+  await browser.waitFor('connected && !busy');
   console.log('PASS browser reload and retained result');
   await writeFile(join(output, 'font-metrics.json'), JSON.stringify(await browser.evaluate(`(() => {
     const canvas = document.createElement('canvas');
@@ -266,13 +450,13 @@ try {
   await browser.click('#close-menu');
   console.log('PASS browser interactive input and returned values');
 
-  await discardNextReply('start-evaluation');
+  await discardNextReply('start-listener');
   await enter('#source', `(format t "${marker}-REPLAY~%") (values :replayed)`);
   await browser.waitFor("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending.some(record => record.status === 'outcome unknown')");
   const originalRequest = await browser.evaluate("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending[0]");
-  assert.equal(originalRequest.operation, 'start-evaluation');
+  assert.equal(originalRequest.operation, 'start-listener');
   await browser.send('Page.reload');
-  await browser.waitFor("document.querySelector('#message').textContent.startsWith('Session ')");
+  await browser.waitFor("document.querySelector('#message').textContent.startsWith('Session ') && connected && !busy");
   await browser.click('#window-label');
   await browser.click('[data-activity="requests"]');
   await waitText('#pending', 'Repeat Original Request');
@@ -291,14 +475,19 @@ try {
   job = await selectJob('DEBUG');
   await waitText(job, 'Debugger');
   await clickText(job, 'Debugger');
-  await debuggerAction('Show Condition');
+  await debuggerAction('Inspect Condition');
   await waitText('#stop-detail .condition', marker + ' debugger');
-  await debuggerAction('Show Stack');
+  await debuggerAction(':Show Backtrace');
   await waitText('#stop-detail', functionName);
   await clickText('#stop-detail', functionName);
   await waitText('.locals', '111');
   await waitText('.locals', '222');
-  await debuggerAction('Show Restarts');
+  assert(await browser.evaluate("document.querySelector('#stop-detail').textContent.includes('Original caller arguments are unavailable')"));
+  await enter('#debugger-command', ':Show Local 0');
+  await browser.waitFor("document.querySelectorAll('.locals tr').length === 1 && document.querySelector('.locals').textContent.includes('111')");
+  await enter('#debugger-command', ':Show Local All');
+  await browser.waitFor("document.querySelectorAll('.locals tr').length === 2");
+  await debuggerAction(':Show Proceed Options');
   await waitText('.restarts', 'Continue browser test.');
   await screenshot('debugger');
   console.log('PASS browser condition, stack, locals, and restart list');
@@ -311,6 +500,33 @@ try {
   console.log('PASS browser restart and returned evaluation');
 
   await releaseJob('DEBUG');
+  await discardNextReply('start-listener');
+  await enter('#source', 'Clear Output History');
+  await browser.waitFor("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending.some(record => record.status === 'outcome unknown')");
+  const clearRecord = await browser.evaluate("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending[0]");
+  await browser.send('Page.reload');
+  await browser.waitFor("document.querySelector('#message').textContent.startsWith('Session ') && connected && !busy");
+  const laterJob = await accept(`(progn "${marker}-AFTER-CLEAR" (values :later))`);
+  await openMenu();
+  await browser.click('[data-activity="requests"]');
+  await clickText('#pending', 'Repeat Original Request');
+  await browser.waitFor("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending.length === 0");
+  await browser.waitFor(`JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).jobs[${text(clearRecord.arguments.name)}]?.effectsApplied`);
+  const oldJob = await selectJob('VALUES');
+  assert(await browser.evaluate(`document.querySelector(${text(oldJob)}).hidden`));
+  assert.equal(await browser.evaluate(`document.querySelector(${text(laterJob.selector)}).hidden`), false);
+  assert.equal(await browser.evaluate(`JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).inputHistory.filter(item => item.name === ${text(clearRecord.arguments.name)}).length`), 1);
+  const inputOrder = await browser.evaluate("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).inputHistory.map(item => item.name)");
+  assert(inputOrder.indexOf(clearRecord.arguments.name) < inputOrder.indexOf(laterJob.name));
+  await listener();
+  await releaseAccepted(laterJob);
+  await releaseAccepted({selector: '[data-job="' + clearRecord.arguments.name + '"]'});
+  await openMenu();
+  await browser.click('[data-activity="evaluations"]');
+  const oldName = await browser.evaluate(`document.querySelector(${text(oldJob)}).dataset.job`);
+  await clickText('#jobs', oldName.slice(0, 12));
+  console.log('PASS browser Clear Output History replay preserves later output, retained jobs, and input history');
+
   job = await selectJob('VALUES');
   await discardNextReply('release-job');
   await clickText(job, 'Release');
@@ -348,6 +564,7 @@ try {
   await screenshot('failure');
   await writeFile(join(output, 'failure-session.json'), await browser.evaluate('JSON.stringify(sessionStorage)'));
   await writeFile(join(output, 'failure.txt'), await browser.evaluate('document.body.innerText'));
+  await writeFile(join(output, 'failure-editor.json'), JSON.stringify(await browser.evaluate('({active: document.activeElement?.outerHTML, source: document.querySelector("#source").value, busy, activity})'), null, 2));
   console.error('Retained fixture identities:', join(output, 'failure-session.json'));
   console.error(JSON.stringify(browser.errors));
   throw error;

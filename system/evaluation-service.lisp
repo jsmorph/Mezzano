@@ -327,10 +327,13 @@
 
 (defun evaluation-job-information (handle)
   (with-service-lock
-    (let ((job (check-evaluation-handle handle)))
+    (let* ((job (check-evaluation-handle handle))
+           (metadata (copy-service-result (evaluation-job-listener-result job))))
+      (when metadata
+        (setf (getf metadata :presentations) (nreverse (getf metadata :presentations))))
       (list :name (copy-seq (evaluation-job-name job))
             :state (evaluation-job-state job)
-            :listener-result (copy-service-result (evaluation-job-listener-result job))
+            :listener-result metadata
             :thread (mezzano.supervisor:thread-name (evaluation-job-thread job))
             :current-boot-p (eq (evaluation-job-boot job)
                                (mezzano.supervisor:current-boot-id))

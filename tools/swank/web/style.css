@@ -70,3 +70,12 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
   #who-line { justify-content: start; gap: 8px; }
   .menu-columns { gap: 12px; padding: 2px; }
 }
+
+.assistance { margin-top: 12px; }
+.assistance:empty { display: none; }
+.assistance button, #inputs button { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.argument-prompt { font-style: italic; }
+.assistance-error { font-weight: bold; }
+.presentation { display: inline; padding: 0; border: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.presentation:hover, .presentation:focus-visible { outline: 1px solid #000; }
+#listener-prompt { white-space: pre; }

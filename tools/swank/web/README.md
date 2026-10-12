@@ -21,11 +21,11 @@ The [systemd unit](mezzano-web.service) records the minideb2 launch configuratio
 
 ## Using the interface
 
-Return evaluates Listener input.  Shift-Return inserts a newline.  Mouse-Right or the lower activity label opens the System Menu.  The menu selects the package, interactive input mode, activity, and connection operations.  Output and returned values appear in the Listener transcript.  Zero values appear as `(No values)`, distinct from a returned `NIL`.
+Return submits a command or Lisp form to the [guest Lisp Command Processor](../../../doc/command-processor.md).  Its guide lists the supported commands, completion and help keys, defaults, and pathname insertion.  Shift-Return inserts a newline.  Mouse-Right or the lower activity label opens the System Menu.  The menu selects the package, interactive input mode, activity, and connection operations.  Output and returned values appear in the Listener transcript.  Lisp forms returning zero values appear as `(No values)`, distinct from a returned `NIL`.
 
 An interactive evaluation accepts text and EOF through its input controls.  Interrupt requests a retained debugger stop.  Release removes a terminal evaluation's stored output and results.  Guest jobs remain retained after session release and can be discovered from a fresh session.
 
-Select an evaluation's Debugger action or a retained stop.  The System Menu's This Debugger column provides Show Condition, Show Restarts, and Show Stack.  These commands also work at the debugger's arrow prompt.  `Frame N` selects a frame from the displayed stack and requests its local values.  Parent Stop and Child Stop select related retained stops.  A printer can itself enter a child stop.  The parent command remains visible as running while the child is inspected.
+Select an evaluation's Debugger action or a retained stop.  The System Menu's This Debugger column provides condition inspection, :Show Proceed Options, :Show Backtrace, :Show Frame, and :Show Local All.  Lisp parses typed debugger commands at the arrow prompt.  :Set Current Frame N selects a frame from the backtrace and requests its local values.  :Show Local N displays one local.  Original argument values remain unavailable.  Parent Stop and Child Stop select related retained stops.  A printer can itself enter a child stop.  The parent command remains visible as running while the child is inspected.
 
 Restart lines invoke zero-argument restarts.  Available local values use the debugger's printed representation.  Unavailable values display `<unavailable>`.  A selected frame's function and index identify the displayed locals.  Closed stops retain their previously queried results until Release Stop.  The Request History activity records command IDs, states, prior-boot markers, and submissions whose replies remain uncertain.
 
@@ -49,6 +49,9 @@ An expired session remains visible and requires New Session.  New Session archiv
 |---|---|
 | open-session, resume-session, jobs, release-session | None |
 | stops | Optional include_closed |
+| listener-information | None |
+| start-listener | name, source.  Optional interactive |
+| listener-assistance | source, cursor, action.  Optional context, presentation |
 | start-evaluation | name, source.  Optional package, input, interactive |
 | job-information, release-job | job |
 | job-output | job, start.  Optional end |
@@ -70,7 +73,7 @@ The selected debugger follows the [classic Listener debugger capture](https://ww
 
 The [Display Debugger capture](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/development-environment/debugger.gif) shows another original debugger layout with separate stack, disassembly, condition, and variable panes.  The present interface follows the classic Listener variant.
 
-Mezzano identity, package, guest process state, and supported commands replace Symbolics-specific content.  The who-line clock uses browser time.  Local values are labeled Local because the API does not supply the original display's argument classification.  Inspection requires explicit commands.  The browser does not reproduce Genera object presentations, source selection, disassembly, local writes, frame evaluation, or stepping.
+Mezzano identity, package, guest process state, and supported commands replace Symbolics-specific content.  The who-line clock uses browser time.  Local values are labeled Local because the API does not supply the original display's argument classification.  Inspection requires explicit commands.  Pathname presentations support command argument insertion.  General object presentations, source selection, disassembly, local writes, frame evaluation, and stepping remain unimplemented.
 
 ### Font status and visual limits
 
@@ -99,6 +102,6 @@ node tools/swank/web/test-browser.mjs http://minideb2:8765/ /tmp/mezzano-browser
 
 The first argument is the server URL.  The second is the screenshot and diagnostic directory.  CHROMIUM can select another Chromium executable.  The driver starts an isolated headless profile, sends keyboard and mouse events through CDP, and removes its profile on exit.  A failed interaction saves the browser's session state and leaves its recorded guest fixtures available for inspection.
 
-The Chromium run passed Listener output and multiple values, reload, a 640-pixel viewport overflow check, interactive input, condition and stack inspection, available locals, restart continuation, and release.  Controlled response loss discarded a completed fetch response after server dispatch.  Creation replay recovered the original job.  Lost job-release and session-release replies were reconciled through queries, followed by explicit session replacement and final cleanup.  Two expected HTTP 409 responses represented a released job and an expired session.  No unexpected browser errors occurred.  The driver records font metrics and screenshots, which require visual review against the original references.
+The expanded Chromium run passed all nine Listener commands, SPACE and COMPLETE, contextual HELP candidates, defaults, package changes, Lisp/command disambiguation, Unicode cursor offsets, two pathname presentations, input history, and clear-output replay that preserves later output.  A focused test checks that a running job cannot consume its terminal display effect.  It also passed Listener output and multiple values, reload, a 640-pixel viewport overflow check, interactive input, condition and stack inspection, available locals, restart continuation, and release.  Controlled response loss discarded a completed fetch response after server dispatch.  Creation replay recovered the original job.  Lost job-release and session-release replies were reconciled through queries, followed by explicit session replacement and final cleanup.  Two expected HTTP 409 responses represented a released job and an expired session.  No unexpected browser errors occurred.  The driver records font metrics and screenshots, which require visual review against the original references.
 
 Original-font comparison remains unfinished.  Unavailable-local encoding has an isolated test, while unavailable-local browser rendering has source review only.  Actual image restore, ARM64 guest behavior, and byte-for-byte original-screen fidelity have not been tested here.  The [development journal](devnotes.md) records failures, corrections, and test scope.

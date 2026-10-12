@@ -33,11 +33,11 @@ These commands implement the listed arguments and keywords.  Unsupported or dupl
 
 SPACE completes the current command or keyword word.  Tab requests COMPLETE for the whole name.  At an empty argument, another SPACE accepts the displayed default.  HELP lists the current commands, choices, or remaining keywords.  The browser provides F12 and Control-? for HELP.  RETURN parses and submits the input.  Shift-RETURN inserts a newline.
 
-Lisp returns replacement text and cursor positions.  The browser applies a response only while its input and cursor match the request.  Offsets count Unicode characters.  The browser converts those offsets to its editor's UTF-16 indices.  A pathname presentation carries character offsets in retained output and its guest namestring.  Clicking it while a pathname argument is expected asks Lisp to insert and quote that value.
+Lisp returns replacement text and cursor positions.  The browser applies a response only while its input and cursor match the request.  Offsets count Unicode characters.  The browser converts those offsets to its editor's UTF-16 indices.  A pathname presentation carries character offsets in retained output and its guest namestring.  Job information returns presentations in output order.  Clicking it while a pathname argument is expected asks Lisp to insert and quote that value.
 
-Accepted input history records original submitted text by job name.  Recalling input fills the editor.  Submitting it creates a new job name.  Replaying an uncertain request retains its original name.  Clear Output History records its prior displayed job names before submission, then applies the returned effect once for that owned job.  Reload and replay preserve that boundary, including output accepted after the clearing command.
+Accepted input history records original submitted text by job name.  Recalling input fills the editor.  Submitting it creates a new job name.  Replaying an uncertain request retains its original name.  Clear Output History records its prior displayed job names before submission, then applies the returned effect once for that owned job.  Reload and replay preserve that boundary, including output accepted after the clearing command.  Effects are applied after the command reaches a terminal state.
 
-The current editor displays the argument prompt beside the command line and contextual help above it.  Genera interleaves argument prompts with editable fields.  Full field editing, grouped command menus, pathname filename completion, general object presentations, and the remaining Command Processor modes require further work.
+The current editor displays the argument prompt and contextual help above the command line.  Genera interleaves argument prompts with editable fields.  Full field editing, grouped command menus, pathname filename completion, general object presentations, and the remaining Command Processor modes require further work.
 
 ### Debugger commands
 

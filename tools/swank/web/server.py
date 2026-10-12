@@ -277,12 +277,32 @@ def token(value, kind, session):
 
 
 def operation_arguments(operation, args, session):
-    if operation in ("jobs", "release-session"):
+    if operation in ("jobs", "release-session", "listener-information"):
         fields(args, ())
         return []
     if operation == "stops":
         fields(args, (), ("include_closed",))
         return [boolean(args.get("include_closed", False))]
+    if operation == "listener-assistance":
+        fields(args, ("source", "cursor", "action"), ("context", "presentation"))
+        action = string(args["action"])
+        context = string(args.get("context", "listener"))
+        if action not in ("inspect", "space", "complete", "help", "parse", "insert"):
+            raise ValueError("Unsupported assistance action.")
+        if context not in ("listener", "debugger"):
+            raise ValueError("Unsupported command context.")
+        source, cursor = string(args["source"]), integer(args["cursor"])
+        if cursor > len(source):
+            raise ValueError("Input cursor exceeds the source length.")
+        if action == "insert" and "presentation" not in args:
+            raise ValueError("Pathname insertion requires a presentation.")
+        return [source, cursor, Symbol(":" + action),
+                Symbol(":context"), Symbol(":" + context), Symbol(":presentation"),
+                string(args["presentation"]) if "presentation" in args else None]
+    if operation == "start-listener":
+        fields(args, ("name", "source"), ("interactive",))
+        return [require_name(args["name"]), string(args["source"]),
+                Symbol(":interactive"), boolean(args.get("interactive", False))]
     if operation == "start-evaluation":
         fields(args, ("name", "source"), ("package", "input", "interactive"))
         return [require_name(args["name"]), string(args["source"]),

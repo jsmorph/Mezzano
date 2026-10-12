@@ -224,7 +224,8 @@
          (formp (form-input-p source listener :listener))
          (metadata (list :kind (if formp :form :command) :command nil :error nil
                          :effects nil :presentations nil)))
-    (setf (mezzano.debug::evaluation-job-listener-result job) metadata)
+    (mezzano.debug::with-service-lock
+      (setf (mezzano.debug::evaluation-job-listener-result job) metadata))
     (unwind-protect
          (if formp
              (let ((source (trim-input source)))
@@ -232,11 +233,13 @@
                 (if (char= (char source 0) #\,) (subseq source 1) source)))
              (handler-case
                  (multiple-value-bind (command argument keywords) (parse-command source listener :listener)
-                   (setf (getf metadata :command) (getf command :id))
+                   (mezzano.debug::with-service-lock
+                     (setf (getf metadata :command) (getf command :id)))
                    (execute-command command argument keywords listener job metadata)
                    nil)
                (input-error (condition)
-                 (setf (getf metadata :error) (input-error-text condition))
+                 (mezzano.debug::with-service-lock
+                   (setf (getf metadata :error) (input-error-text condition)))
                  (format t "~A~%" condition)
                  nil)))
       (mezzano.debug::with-service-lock
@@ -248,8 +251,9 @@
          (start (length (mezzano.debug::evaluation-output-buffer
                          (mezzano.debug::evaluation-job-output-stream job)))))
     (write-string text)
-    (push (list :start start :end (+ start (length text)) :type :pathname :value text)
-          (getf metadata :presentations))
+    (mezzano.debug::with-service-lock
+      (push (list :start start :end (+ start (length text)) :type :pathname :value text)
+            (getf metadata :presentations)))
     (terpri)))
 
 (defun execute-command (command argument keywords listener job metadata)
@@ -266,7 +270,9 @@
       (:show-command-processor-status
        (format t "Mode: Command-Preferred~%Prompt: ~S~%Package: ~A~%Pathname default: ~A~%"
                "Command: " (package-name *package*) (namestring (listener-pathname listener))))
-      (:clear-output-history (setf (getf metadata :effects) (list (list :operation :clear-output-history))))
+      (:clear-output-history
+       (mezzano.debug::with-service-lock
+         (setf (getf metadata :effects) (list (list :operation :clear-output-history)))))
       (:show-directory
        (let ((path (if (and (null (pathname-name argument)) (null (pathname-type argument)))
                        (make-pathname :name :wild :type :wild :version :wild :defaults argument) argument)))

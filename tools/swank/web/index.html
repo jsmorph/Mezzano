@@ -19,11 +19,16 @@
             <p>Remote Lisp Listener<br>Mezzano on minideb2</p>
           </header>
           <div id="transcript" aria-label="Evaluation history"></div>
+          <div id="listener-assistance" class="assistance" aria-live="polite"></div>
           <form id="evaluate">
-            <label for="source">Command:</label>
+            <label id="listener-prompt" for="source">Command: </label>
             <textarea id="source" rows="1" spellcheck="false" autocomplete="off"
-              aria-label="Lisp source" data-help="Return: Evaluate Lisp. Shift-Return: Insert a newline."></textarea>
+              aria-label="Listener input" data-help="Return: Execute input. SPACE: Complete a word. Tab: Complete. F12: Help. Shift-Return: Newline."></textarea>
           </form>
+        </section>
+        <section id="input-history" class="activity" hidden>
+          <h2>Input History</h2>
+          <div id="inputs"></div>
         </section>
         <section id="evaluations" class="activity" hidden>
           <h2>Evaluations</h2>
@@ -33,10 +38,11 @@
           <h2 id="debugger-heading">Debugger</h2>
           <div id="stops"></div>
           <div id="stop-detail"></div>
+          <div id="debugger-assistance" class="assistance" aria-live="polite"></div>
           <form id="debug-command" hidden>
             <label for="debugger-command">→</label>
             <input id="debugger-command" aria-label="Debugger command" autocomplete="off"
-              spellcheck="false" data-help="Commands: Show Condition, Show Restarts, Show Stack, Frame N, Parent Stop, Child Stop.">
+              spellcheck="false" data-help="Debugger commands start with a colon. Tab: Complete. F12: Help.">
           </form>
         </section>
         <section id="requests" class="activity" hidden>
@@ -45,13 +51,24 @@
         </section>
         <section id="help" class="activity" hidden>
           <h2>Mezzano Listener and Debugger</h2>
-          <p>Return evaluates the input as a retained Lisp job. Shift-Return inserts a newline.
-            The package and input mode are in the System Menu.</p>
+          <p>Return executes input through the guest Command Processor. Alphabetic input names
+            a command or known variable. Other input is Lisp. A leading comma forces Lisp.
+            Shift-Return inserts a newline. One Listener job runs at a time in this session.</p>
+          <p>SPACE completes a command word. Tab or COMPLETE completes a token. F12 or Ctrl-?
+            requests contextual help. The guest supplies argument prompts and defaults.
+            This editor displays prompts above the input rather than interleaved within it.</p>
+          <p>Ctrl-Meta-Y recalls the latest accepted input. Meta-Y recalls earlier input.
+            Escape or Input History displays accepted input. Recall fills the editor.
+            Return executes recalled input as a new request. F10 clears input.</p>
+          <p>Pathnames in command output are mouse-sensitive. Mouse-Left inserts a pathname
+            into the expected pathname argument. Return executes the completed command.</p>
           <p>Mouse-Right opens the System Menu. The bottom activity label also opens it.</p>
           <p>Evaluations retains output and values in the machine. An interactive evaluation
             waits for supplied input or EOF. Release removes a completed evaluation's storage.</p>
           <p>Debugger lists retained stops. Select a stop, inspect its condition, frames, and
-            locals, or invoke an available zero-argument restart. A printer can enter a child stop.</p>
+            locals, or invoke an available zero-argument restart. A printer can enter a child stop.
+            Typed commands include :Show Backtrace, :Show Proceed Options, :Set Current Frame N,
+            :Show Frame, and :Show Local All. Original caller arguments remain unavailable.</p>
           <p>Requests keeps submissions whose replies were lost. Repeating a recorded request
             uses its original name, range, or ID. An expired session requires a new session.</p>
           <p>The clock shows browser time. Printed values are text. Public binding writes,
@@ -64,7 +81,7 @@
     <button id="window-label" data-help="Mouse-Left: Open the System Menu.">Dynamic Lisp Listener 1</button>
   </section>
   <div id="mouse-documentation" aria-live="polite">
-    <div id="mouse-help">Mouse-Right: System Menu. Return: Evaluate Lisp.</div>
+    <div id="mouse-help">Mouse-Right: System Menu. Return: Execute input. Tab: Complete. F12: Help.</div>
     <div id="message">Disconnected.</div>
   </div>
   <footer id="who-line"><span id="clock" title="Browser time"></span><span>Remote</span>
@@ -82,10 +99,12 @@
       <button data-activity="help">Help</button>
     </div>
     <div><h3>This Listener</h3>
-      <button id="evaluate-button">Evaluate</button>
+      <button id="evaluate-button">Execute Input</button>
+      <button data-activity="input-history">Input History</button>
       <button id="clear-input">Clear Input</button>
       <button id="refresh">Refresh</button>
-      <label>Package <input id="package" value="CL-USER" aria-label="Evaluation package"></label>
+      <button id="set-package">Set Package</button>
+      <span>Package: <span id="package">CL-USER</span></span>
       <label><input id="interactive" type="checkbox"> Interactive Input</label>
     </div>
     <div id="debugger-menu"><h3>This Debugger</h3></div>

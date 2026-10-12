@@ -3,7 +3,7 @@
 const $ = id => document.getElementById(id);
 const storageKey = "mezzano-monitor-v1";
 const defaultState = {session: null, attempted: false, jobs: {}, pending: [], commands: [],
-                      package: "CL-USER", interactive: false, history: []};
+                      package: "CL-USER", interactive: false, history: [], inputHistory: [], nextInputSequence: 0};
 let state = defaultState;
 let storageError = null;
 try {
@@ -12,6 +12,10 @@ try {
 } catch (error) {
   storageError = error;
 }
+for (const [index, item] of state.inputHistory.entries()) {
+  if (!Number.isSafeInteger(item.sequence)) item.sequence = index;
+  state.nextInputSequence = Math.max(state.nextInputSequence, item.sequence + 1);
+}
 let connected = false;
 let busy = false;
 let actions = Promise.resolve();
@@ -19,6 +23,8 @@ let activity = "listener";
 let selectedStop = null;
 let selectedFrame = null;
 let stops = [];
+let historyIndex = null;
+const assistanceTimers = new Map();
 const views = new Map();
 const commandResults = new Map();
 
@@ -121,10 +127,18 @@ async function connect() {
 }
 function applyMutation(record, result) {
   const args = record.arguments;
-  if (record.operation === "start-evaluation") {
-    state.jobs[args.name] = {name: args.name, source: args.source, token: result};
+  if (["start-evaluation", "start-listener"].includes(record.operation)) {
+    state.jobs[args.name] = {...state.jobs[args.name], name: args.name, source: args.source,
+      token: result, listener: record.operation === "start-listener", clearBefore: record.clearBefore};
+    if (record.operation === "start-listener"
+        && !state.inputHistory.some(item => item.name === args.name)) {
+      state.inputHistory.push({name: args.name, source: args.source,
+        sequence: record.inputSequence ?? state.nextInputSequence++});
+      state.inputHistory.sort((left, right) => left.sequence - right.sequence);
+    }
   } else if (record.operation === "submit") {
-    const command = {stop: args.stop, id: args.id, command: args.command, argument: args.argument};
+    const command = {stop: args.stop, id: args.id, command: args.command, argument: args.argument,
+      display: record.display, localIndex: record.localIndex};
     if (!state.commands.some(item => same(item.stop, command.stop) && item.id === command.id)) {
       state.commands.push(command);
     }
@@ -200,9 +214,10 @@ async function reconcileRelease(record) {
   save();
   renderPending();
 }
-async function mutate(operation, arguments_) {
+async function mutate(operation, arguments_, metadata = {}) {
   if (!connected) throw new Error("Connect or resume the session first.");
-  const record = {id: freshName(), session: state.session, operation, arguments: arguments_, status: "awaiting reply"};
+  const record = {...metadata, id: freshName(), session: state.session, operation, arguments: arguments_, status: "awaiting reply"};
+  if (operation === "start-listener") record.inputSequence = state.nextInputSequence++;
   state.pending.push(record);
   save();
   return replay(record);
@@ -211,7 +226,7 @@ function showActivity(name) {
   activity = name;
   document.querySelectorAll(".activity").forEach(element => { element.hidden = element.id !== name; });
   const labels = {listener: "Dynamic Lisp Listener 1", debugger: "Debugger", evaluations: "Evaluations",
-                  requests: "Request History", help: "Listener Help"};
+                  requests: "Request History", help: "Listener Help", "input-history": "Input History"};
   $("window-label").textContent = labels[name];
   $("system-menu").close();
   if (name === "listener") $("source").focus();
@@ -221,22 +236,172 @@ function showActivity(name) {
 }
 function queueEvaluation() {
   const source = $("source").value;
-  const packageName = $("package").value.trim();
   const interactive = $("interactive").checked;
-  return run(() => evaluate(source, packageName, interactive));
+  return run(() => evaluate(source, interactive));
 }
-async function evaluate(source, packageName, interactive) {
+async function evaluate(source, interactive) {
   if (!source.trim()) return;
-  state.package = packageName;
   state.interactive = interactive;
-  save();
-  await mutate("start-evaluation", {name: freshName(), source, package: state.package,
-                                    interactive: state.interactive});
-  if ($("source").value === source) $("source").value = "";
-  resizeSource();
+  const clearBefore = Object.values(state.jobs).filter(job => !job.hidden).map(job => job.name);
+  await mutate("start-listener", {name: freshName(), source, interactive}, {clearBefore});
+  if ($("source").value === source) setEditor($("source"), "", 0);
+  historyIndex = null;
   showActivity("listener");
   await refresh();
   $("page").scrollTop = $("page").scrollHeight;
+}
+function editorCursor(editor) {
+  return Array.from(editor.value.slice(0, editor.selectionStart)).length;
+}
+function setEditor(editor, text, cursor) {
+  clearAssistance(editor);
+  editor.value = text;
+  const offset = Array.from(text).slice(0, cursor).join("").length;
+  editor.setSelectionRange(offset, offset);
+  if (editor.id === "source") resizeSource();
+}
+function editorContext(editor) {
+  return editor.id === "source" ? "listener" : "debugger";
+}
+function clearAssistance(editor) {
+  $(editorContext(editor) + "-assistance").replaceChildren();
+}
+function renderAssistance(editor, result, source, cursor, action) {
+  const panel = $(editorContext(editor) + "-assistance");
+  panel.replaceChildren();
+  if (result.prompt) {
+    const prompt = node("pre", result.prompt, "argument-prompt");
+    if (result.default != null) prompt.dataset.default = result.default;
+    if (result["expected-type"]) prompt.dataset.expectedType = result["expected-type"];
+    panel.append(prompt);
+  }
+  if (result.error) panel.append(node("pre", result.error, "assistance-error"));
+  if (result.help) panel.append(node("pre", result.help));
+  for (const candidate of ["help", "complete"].includes(action) ? result.candidates || [] : []) {
+    const choice = button(candidate.label, async () => {
+      if (editor.value !== source || editorCursor(editor) !== cursor) {
+        throw new Error("Input changed; request completion again.");
+      }
+      setEditor(editor, candidate.text, candidate.cursor);
+      editor.focus();
+      clearAssistance(editor);
+      scheduleAssistance(editor, "inspect");
+    }, candidate.help);
+    panel.append(choice);
+  }
+  updateTracks();
+  if (activity === editorContext(editor)) editor.scrollIntoView({block: "nearest"});
+}
+function scheduleAssistance(editor, action, presentation) {
+  clearTimeout(assistanceTimers.get(editor));
+  const source = editor.value;
+  const cursor = editorCursor(editor);
+  const request = () => run(async () => {
+    if (!connected || editor.value !== source || editorCursor(editor) !== cursor) return;
+    const result = await api("listener-assistance", {source, cursor, action,
+      context: editorContext(editor), ...(presentation === undefined ? {} : {presentation})});
+    if (editor.value !== source || editorCursor(editor) !== cursor) return;
+    if (action !== "inspect" && !result.error) setEditor(editor, result.text, result.cursor);
+    renderAssistance(editor, result, editor.value, editorCursor(editor), action);
+    if (action !== "inspect" && action !== "help" && !result.error
+        && (editor.value !== source || editorCursor(editor) !== cursor)) {
+      scheduleAssistance(editor, "inspect");
+    }
+  });
+  if (action === "inspect") assistanceTimers.set(editor, setTimeout(request, 150));
+  else request();
+}
+function recallInput(index) {
+  const item = state.inputHistory[index];
+  if (!item) throw new Error("No earlier Listener input.");
+  historyIndex = index;
+  setEditor($("source"), item.source, Array.from(item.source).length);
+  showActivity("listener");
+  scheduleAssistance($("source"), "inspect");
+}
+function renderInputHistory() {
+  const panel = $("inputs");
+  panel.replaceChildren();
+  for (let index = state.inputHistory.length - 1; index >= 0; index--) {
+    const item = state.inputHistory[index];
+    const choice = button(item.source, async () => recallInput(index),
+      "Mouse-Left: Insert this input. Return executes it as a new request.");
+    choice.title = item.name;
+    panel.append(choice);
+  }
+  if (!state.inputHistory.length) panel.textContent = "No accepted Listener input in this tab.";
+}
+function editorKey(editor, event) {
+  if (event.key === "Tab" || (event.key === "F11" && !event.shiftKey)) {
+    event.preventDefault();
+    scheduleAssistance(editor, "complete");
+  } else if (event.key === "F12" || (event.ctrlKey && event.key === "?")) {
+    event.preventDefault();
+    scheduleAssistance(editor, "help");
+  } else if (event.key === "F10") {
+    event.preventDefault();
+    setEditor(editor, "", 0);
+    clearAssistance(editor);
+  } else if (editor.id === "source" && event.altKey && event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    run(async () => recallInput(event.ctrlKey || historyIndex === null
+      ? state.inputHistory.length - 1 : historyIndex - 1));
+  } else if (editor.id === "source" && event.key === "Escape") {
+    event.preventDefault();
+    renderInputHistory();
+    showActivity("input-history");
+  } else if ((event.key === "Enter" && !event.shiftKey)
+             || (event.key === "F11" && event.shiftKey)) {
+    event.preventDefault();
+    if (editor.id === "source") queueEvaluation();
+    else queueDebuggerCommand();
+  }
+}
+function editorChanged(editor, event) {
+  clearAssistance(editor);
+  if (editor.id === "source") { historyIndex = null; resizeSource(); }
+  scheduleAssistance(editor, event.inputType === "insertText" && event.data === " " ? "space" : "inspect");
+}
+function renderOutput(view, presentations) {
+  const signature = JSON.stringify([view.text, presentations]);
+  if (signature === view.outputSignature) return;
+  const chars = Array.from(view.text);
+  const pieces = [];
+  let offset = 0;
+  for (const presentation of presentations || []) {
+    if (presentation.type !== ":pathname" || !Number.isInteger(presentation.start)
+        || !Number.isInteger(presentation.end) || presentation.start < offset
+        || presentation.end < presentation.start || presentation.end > chars.length
+        || typeof presentation.value !== "string") {
+      throw new Error("Invalid pathname presentation in Listener output.");
+    }
+    pieces.push(document.createTextNode(chars.slice(offset, presentation.start).join("")));
+    const pathname = button(chars.slice(presentation.start, presentation.end).join(""), async () => {
+      showActivity("listener");
+      scheduleAssistance($("source"), "insert", presentation.value);
+    }, "Mouse-Left: Insert this pathname into the current command argument.");
+    pathname.className = "presentation";
+    pathname.title = presentation.value;
+    pieces.push(pathname);
+    offset = presentation.end;
+  }
+  pieces.push(document.createTextNode(chars.slice(offset).join("")));
+  view.output.replaceChildren(...pieces);
+  view.outputSignature = signature;
+}
+function applyListenerEffects(job, info) {
+  const result = info["listener-result"];
+  if (![":returned", ":aborted", ":unwound"].includes(info.state)
+      || !job.listener || job.effectsApplied || !result) return;
+  for (const effect of result.effects || []) {
+    if (effect.operation === ":clear-output-history") {
+      for (const name of job.clearBefore || []) {
+        if (state.jobs[name]) state.jobs[name].hidden = true;
+        if (views.has(name)) views.get(name).element.hidden = true;
+      }
+    } else throw new Error("Unknown Listener display effect: " + effect.operation);
+  }
+  job.effectsApplied = true;
 }
 function resizeSource() {
   $("source").style.height = "12px";
@@ -250,10 +415,11 @@ async function sendInput(job, view, eof) {
 }
 function createView(job) {
   const element = node("article", undefined, "evaluation");
+  element.dataset.job = job.name;
   const source = node("pre", job.source ? "Command: " + job.source : "Retained evaluation " + job.name.slice(0, 12));
   source.title = job.name;
   const output = node("pre");
-  const values = node("pre");
+  const values = node("pre", undefined, "returned-values");
   const status = node("span", "", "job-state");
   const operations = node("div", undefined, "command-row");
   const inputForm = node("div", undefined, "input-form");
@@ -290,8 +456,10 @@ async function updateJob(job, info) {
     view.text += output.text;
     view.end = output.end;
   }
-  view.output.textContent = view.text;
-  view.values.textContent = info.state === ":returned"
+  applyListenerEffects(job, info);
+  view.element.hidden = Boolean(job.hidden);
+  renderOutput(view, info["listener-result"]?.presentations);
+  view.values.textContent = info.state === ":returned" && info["listener-result"]?.kind !== ":command"
     ? ((info.values || []).length ? info.values.join("\n") : "(No values)") : "";
   view.status.textContent = label(info.state) + (info["input-waiting-p"] ? " — awaiting input" : "")
     + (info["current-boot-p"] ? "" : " — accepted before this boot");
@@ -319,6 +487,10 @@ async function updateJob(job, info) {
 }
 async function refresh() {
   if (!connected) return;
+  const listenerInfo = await api("listener-information");
+  state.package = listenerInfo.package;
+  $("listener-prompt").textContent = listenerInfo.prompt;
+  $("package").textContent = listenerInfo.package;
   const tokens = await api("jobs") || [];
   const names = new Set();
   for (const token of tokens) {
@@ -356,6 +528,7 @@ async function refresh() {
   save();
   $("herald").hidden = Object.keys(state.jobs).length > 0;
   renderJobs();
+  renderInputHistory();
   renderStops();
   renderPending();
   updateStatus();
@@ -367,6 +540,9 @@ function renderJobs() {
     const view = views.get(job.name);
     const row = node("div", undefined, "job-row");
     row.append(button(job.name.slice(0, 12) + "  " + label(view?.info?.state), () => {
+      job.hidden = false;
+      if (view) view.element.hidden = false;
+      save();
       showActivity("listener");
       view?.element.scrollIntoView({block: "nearest"});
     }));
@@ -378,10 +554,10 @@ function renderJobs() {
 function commandKey(command) {
   return JSON.stringify([command.stop, command.id]);
 }
-async function submit(stop, command, argument = null) {
+async function submit(stop, command, argument = null, metadata = {}) {
   const info = await api("information", {stop});
   const id = info["next-command-id"];
-  await mutate("submit", {stop, id, command, argument});
+  await mutate("submit", {stop, id, command, argument}, metadata);
   await refresh();
 }
 async function selectStop(stop) {
@@ -406,20 +582,32 @@ function debuggerAction(action) {
   };
 }
 async function debuggerCommand(text) {
-  const command = text.trim().toLowerCase();
   const selected = stops.find(stop => same(stop.token, selectedStop));
   if (!selected) throw new Error("Select a debugger stop first.");
-  const operations = {"show condition": "condition", "show restarts": "restarts", "show stack": "frames"};
-  if (operations[command]) await submit(selectedStop, operations[command]);
-  else if (command === "parent stop" && selected.info.parent) await selectStop(selected.info.parent);
-  else if (command === "child stop" && selected.info.child) await selectStop(selected.info.child);
-  else if (/^frame [0-9]+$/.test(command)) {
-    const index = Number(command.slice(6));
+  const plan = await api("listener-assistance", {source: text, cursor: Array.from(text).length,
+    action: "parse", context: "debugger"});
+  if (plan.error) throw new Error(plan.error);
+  if (!plan["complete-p"]) throw new Error(plan.prompt || "Complete the debugger command.");
+  if (plan["select-frame"] != null) {
+    const index = plan["select-frame"];
     const frame = returnedResult("frames")?.[index];
-    if (!frame) throw new Error("Show Stack, then select an existing frame number.");
+    if (!frame) throw new Error(":Show Backtrace, then select an existing frame number.");
     selectedFrame = {token: frame.frame, index, function: frame.function};
-    await submit(selectedStop, "locals", frame.frame);
-  } else throw new Error("Commands: Show Condition, Show Restarts, Show Stack, Frame N, Parent Stop, Child Stop.");
+  }
+  if (typeof plan.operation !== "string") throw new Error("No executable debugger operation was returned.");
+  if (plan["needs-frame"] && !selectedFrame) {
+    throw new Error(":Show Backtrace, then select a frame.");
+  }
+  await submit(selectedStop, plan.operation, plan["needs-frame"] ? selectedFrame.token : null,
+    {display: plan.display, localIndex: plan["local-index"]});
+}
+function queueDebuggerCommand() {
+  const text = $("debugger-command").value;
+  run(async () => {
+    await debuggerCommand(text);
+    if ($("debugger-command").value === text) setEditor($("debugger-command"), "", 0);
+    clearAssistance($("debugger-command"));
+  });
 }
 function renderStops() {
   const selected = stops.find(stop => same(stop.token, selectedStop));
@@ -455,7 +643,8 @@ function renderStops() {
       await refresh();
     })));
   } else {
-    for (const name of ["Show Condition", "Show Restarts", "Show Stack"]) {
+    menu.append(button("Inspect Condition", debuggerAction(() => submit(selectedStop, "condition"))));
+    for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All"]) {
       menu.append(button(name, debuggerAction(() => debuggerCommand(name))));
     }
   }
@@ -464,10 +653,16 @@ function renderStops() {
   if (selectedFrame) detail.append(node("pre", selectedFrame.function, "current-function"));
   const locals = returnedResult("locals");
   if (locals && selectedFrame && same(latestCommand("locals")?.argument, selectedFrame.token)) {
+    const request = latestCommand("locals");
+    if (request.display === ":frame") {
+      detail.append(node("pre", "Original caller arguments are unavailable. Available lexical locals follow."));
+    }
+    const visibleLocals = request.localIndex == null ? locals : locals.filter(local => local.index === request.localIndex);
+    if (!visibleLocals.length) detail.append(node("pre", "No local value with the requested index."));
     const table = node("table", undefined, "locals");
     table.setAttribute("aria-label", "Frame locals");
     table.title = "Frame " + selectedFrame.index + ": " + selectedFrame.function;
-    for (const local of locals) {
+    for (const local of visibleLocals) {
       const row = node("tr");
       row.append(node("td", "Local " + local.index + " (" + local.name + "):"),
                  node("td", local["available-p"] ? local.value : "<unavailable>"));
@@ -489,9 +684,9 @@ function renderStops() {
   }
   const frames = returnedResult("frames");
   if (frames) {
-    detail.append(node("pre", "→ Show Stack", "debugger-transcript"));
+    detail.append(node("pre", "→ :Show Backtrace", "debugger-transcript"));
     for (const [index, frame] of frames.entries()) {
-      const item = button(index + "  " + frame.function, () => debuggerCommand("Frame " + index),
+      const item = button(index + "  " + frame.function, () => debuggerCommand(":Set Current Frame " + index),
         "Mouse-Left: Select this frame and show its locals.");
       item.className = "frame" + (same(frame.frame, selectedFrame?.token) ? " selected" : "");
       item.disabled = info.state !== ":stopped";
@@ -511,7 +706,7 @@ function renderPending() {
   for (const record of state.pending) {
     const row = node("div", undefined, "command-row");
     row.append(node("pre", record.operation + ": " + record.status + (record.error ? "\n" + record.error : "")));
-    if (["start-evaluation", "job-input", "interrupt-job", "submit"].includes(record.operation)) {
+    if (["start-evaluation", "start-listener", "job-input", "interrupt-job", "submit"].includes(record.operation)) {
       row.append(button("Repeat Original Request", async () => {
         await replay(record);
         await refresh();
@@ -571,7 +766,7 @@ document.addEventListener("contextmenu", event => {
 });
 document.addEventListener("pointerover", event => {
   const help = event.target.closest("[data-help]");
-  $("mouse-help").textContent = help?.dataset.help || "Mouse-Right: System Menu. Return: Evaluate Lisp.";
+  $("mouse-help").textContent = help?.dataset.help || "Mouse-Right: System Menu. Return: Execute input. Tab: Complete. F12: Help.";
 });
 document.addEventListener("focusin", event => {
   const help = event.target.closest("[data-help]");
@@ -584,23 +779,20 @@ document.querySelectorAll("[data-activity]").forEach(element => {
   element.onclick = () => showActivity(element.dataset.activity);
 });
 $("evaluate").onsubmit = event => { event.preventDefault(); queueEvaluation(); };
-$("source").onkeydown = event => {
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    queueEvaluation();
-  }
-};
-$("debug-command").onsubmit = event => {
-  event.preventDefault();
-  const text = $("debugger-command").value;
-  run(async () => {
-    await debuggerCommand(text);
-    $("debugger-command").value = "";
-  });
-};
-$("source").oninput = resizeSource;
+for (const id of ["source", "debugger-command"]) {
+  const editor = $(id);
+  editor.onkeydown = event => editorKey(editor, event);
+  editor.oninput = event => editorChanged(editor, event);
+  editor.onclick = () => scheduleAssistance(editor, "inspect");
+}
+$("debug-command").onsubmit = event => { event.preventDefault(); queueDebuggerCommand(); };
 $("evaluate-button").onclick = () => { $("system-menu").close(); queueEvaluation(); };
-$("clear-input").onclick = () => { $("source").value = ""; resizeSource(); showActivity("listener"); };
+$("clear-input").onclick = () => { setEditor($("source"), "", 0); clearAssistance($("source")); showActivity("listener"); };
+$("set-package").onclick = () => {
+  setEditor($("source"), "Set Package ", 12);
+  showActivity("listener");
+  scheduleAssistance($("source"), "inspect");
+};
 $("refresh").onclick = () => { $("system-menu").close(); run(refresh); };
 $("resume-session").onclick = () => { $("system-menu").close(); run(connect); };
 $("new-session").onclick = () => run(async () => {
@@ -627,9 +819,8 @@ $("release-session").onclick = () => run(async () => {
   $("system-menu").close();
   message("Session released. Guest evaluations remain retained.");
 });
-$("package").value = state.package;
+$("package").textContent = state.package;
 $("interactive").checked = state.interactive;
-$("package").onchange = () => run(async () => { state.package = $("package").value.trim(); save(); updateStatus(); });
 $("interactive").onchange = () => run(async () => { state.interactive = $("interactive").checked; save(); });
 $("page").onscroll = updateTracks;
 $("vertical-track").onclick = event => {
