@@ -2412,7 +2412,7 @@ always match."
                (return t))
               ((and (typep spec1 'eql-specializer)
                     (typep spec2 'eql-specializer))
-               (return nil))
+               nil)
               ((not (eq spec1 spec2))
                (return (sub-specializer-p spec1 spec2 (class-of arg)))))
      finally (return nil)))
