@@ -1252,3 +1252,7 @@
   (:export #:eval-in-lexenv
            #:*lazy-lambda-evaluation*)
   (:use :cl))
+
+(defpackage :mezzano.command-processor
+  (:use :cl)
+  (:export #:make-listener #:listener-information #:start-listener #:assistance))

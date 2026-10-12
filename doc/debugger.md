@@ -10,6 +10,7 @@ The stop-service and compiler baseline reviewed here is Mezzano `37dbb34912616d8
 | [Remote evaluation and debugging](../tools/swank/README.md) | User workflow and executable examples. |
 | [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) | RPC signatures, representations, and rejection reasons. |
 | [Build and VM operations](../tools/swank/minideb2/README.md) | Dependency revisions, build, startup, snapshots, restore, and test commands. |
+| [Lisp Command Processor](command-processor.md) | Listener commands, parsing, completion, pathname presentations, and debugger command names. |
 | [Web Listener and Debugger](../tools/swank/web/README.md) | HTTP client behavior, browser tests, and Symbolics display references. |
 | [Development journal](../tools/swank/devnotes.md) | Decisions, diagnoses, failed attempts, commits, and historical evidence. |
 
@@ -100,11 +101,13 @@ Restore tests cover a parked stop with a completed inspection command, a queued 
 
 The [evaluation service](../system/evaluation-service.lisp) creates a guest worker for each named source submission.  It establishes retained debugging, reads and evaluates forms in order, and preserves the final form's multiple values.  The initial package is explicit, and package changes affect later forms within that job.  Each job starts with a fresh standard readtable.  Batch input is a supplied string followed by EOF.  `:interactive T` selects input that waits for supplied text or explicit EOF.
 
+The optional listener argument selects the guest Command Processor.  Its [guide](command-processor.md) describes per-Listener package and pathname state, serialized submissions, and replay after package changes.
+
 The worker binds its own standard streams.  Standard, error, and trace output share synchronized character storage.  Query, debug, and terminal I/O combine the job's input and retained output.  Output reads use character offsets and copy storage without consuming it.  Both job streams close when the job completes.  Input, output, and result objects remain until release, with no storage quota.
 
 | Guest API | Meaning |
 |---|---|
-| `start-evaluation-job name source &key package input interactive` | Creates a batch job by default, or an interactive job when requested.  Package defaults to `"CL-USER"`, and input defaults to an empty string. |
+| `start-evaluation-job name source &key package input interactive listener` | Creates a batch job by default, or an interactive job when requested.  Package defaults to `"CL-USER"`, and input defaults to an empty string. |
 | `evaluation-jobs` | Returns current-boot handles for unreleased jobs. |
 | `evaluation-job-information handle` | Returns name, state, thread name, acceptance-boot comparison, active stop handles, printed values, and output length. |
 | `evaluation-job-output handle start &optional end` | Returns copied output and the ending character offset.  The default end is the current length. |
@@ -191,7 +194,7 @@ The operation inventory uses the debugger chapters of Symbolics' [Program Develo
 | Object inspection, description, and instance context | Partial: printed values.  Identity-preserving object operations are pending. | Printer failure tested.  Object browsing and mutation are untested. |
 | Raw stack and debugger settings | Pending: privileged inspection, supported stack changes, and per-session settings. | No retained-service test. |
 | Condition tracing and abort controls | Pending: entry policy and interaction with handlers and nested stops. | No retained-service test. |
-| Help, reports, and display integration | Pending: client interface and capture of diagnostic state. | The current interface is a Lisp client library. |
+| Help, reports, and display integration | Partial: Lisp client and Web Listener with command help, backtrace, local displays, and restart choices.  General reports and diagnostic capture remain pending. | Lisp Command Processor, HTTP, and headless Chromium tests. |
 | Reconnection and lost replies | Implemented within one boot and retained command history. | Reconnect test leaves accepted-command replies unread and checks one execution. |
 | Image restore | Partial: parked stop, completed-command history, queued-command expiration, and a running command blocked on a Lisp event. | Guest and remote restore tests.  Other running-command positions and external I/O remain untested. |
 | Retained evaluation and I/O | Partial: batch and interactive jobs, retained results/output, condition stops, and numbered asynchronous interruption.  Running debugger-command interruption is pending. | Guest, network, and saved-image evaluation tests.  Restore at other execution positions remains untested. |
@@ -225,6 +228,7 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-evaluation-interrupt.lisp` | Computing/input-waiting interruption, locals, GC, continuation, abort, cleanup conditions/transfers, duplicate requests, existing stops, startup, inhibited delivery, and self-interruption rejection. |
 | `test-evaluation-reconnect.lisp` | Unread creation reply, duplicate submission, session release during execution, fresh-session condition recovery, output/results, foreign tokens, GC, cleanup, release, completed/stopped batch jobs across restore, interactive disconnect, input/EOF replay, interactive restore, unread interrupt replies, and queued/running interrupt restore. |
 | `test-debugger-reconnect.lisp` | TCP disconnect, exclusive control, token rejection, unread replies, and duplicate restart submission. |
+| `test-listener.lisp` | Authentic Listener commands, completion, defaults, file operations, presentations, independent Listeners, interactive input, and replay after unread replies and package changes. |
 | `test-debugger-remote-restore.lisp` | Saved/absent sessions, old tokens/frames, storage retirement, and restored-stop recovery. |
 
 Mezzano `6edf42a5` and the Slime implementation listed above passed a fresh full recompilation and CI boot on 2026-10-12.  The CI image reached desktop initialization and exited QEMU with status 3.  Logs are `debugger-current-build.log`, `debugger-current-boot.log`, and `debugger-current-serial.log` in the MBuild directory.  The journal records live tests, restore tests, and failed attempts.  ARM64, bare metal, supervisor traps, and arbitrary suspension points remain outside this evidence.

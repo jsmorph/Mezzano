@@ -101,6 +101,7 @@
 
 (defstruct (evaluation-job (:constructor %make-evaluation-job))
   name boot source package input interactive-p input-stream thread output-stream values representations
+  listener listener-result
   interrupt-ready-p interrupt
   (next-interrupt-id 0)
   (interrupts (make-hash-table))
@@ -247,7 +248,10 @@
                 (unwind-protect
                      (progn
                        (arm-evaluation-interrupts job)
-                       (setf values (evaluate-job-source (evaluation-job-source job))
+                       (setf values (if (evaluation-job-listener job)
+                                        (mezzano.command-processor::execute-input
+                                         (evaluation-job-listener job) job (evaluation-job-source job))
+                                        (evaluate-job-source (evaluation-job-source job)))
                              representations (mapcar #'service-print values)
                              state :returned))
                   (with-service-lock
@@ -269,7 +273,7 @@
                  (evaluation-job-representations job) representations
                  (evaluation-job-state job) state)))))))
 
-(defun start-evaluation-job (name source &key (package "CL-USER") (input "") interactive)
+(defun start-evaluation-job (name source &key (package "CL-USER") (input "") interactive listener)
   (unless (and (stringp name) (= (length name) 64)
                (every (lambda (character) (find character "0123456789abcdef")) name))
     (service-error :invalid-job-name))
@@ -285,22 +289,29 @@
           (unless (and (eq (evaluation-job-boot existing)
                            (mezzano.supervisor:current-boot-id))
                        (string= (evaluation-job-source existing) source)
-                       (eq (evaluation-job-package existing) package)
+                       (or listener (eq (evaluation-job-package existing) package))
+                       (eq (evaluation-job-listener existing) listener)
                        (string= (evaluation-job-input existing) input)
                        (eq (evaluation-job-interactive-p existing) interactive))
             (service-error :request-conflict))
           (return-from start-evaluation-job (evaluation-handle existing))))
+      (when listener
+        (let ((active (mezzano.command-processor::listener-job listener)))
+          (when (and active (eq (evaluation-job-state active) :running))
+            (service-error :listener-busy)))
+        (setf package (mezzano.command-processor::listener-package listener)))
       (let ((job (%make-evaluation-job
                   :name (copy-seq name)
                   :boot (mezzano.supervisor:current-boot-id)
                   :source (copy-seq source) :package package :input (copy-seq input)
-                  :interactive-p interactive
+                  :interactive-p interactive :listener listener
                   :input-stream (if interactive
                                     (let ((stream (make-instance 'evaluation-input-stream)))
                                       (extend-evaluation-input stream input)
                                       stream)
                                     (make-string-input-stream (copy-seq input)))
                   :output-stream (make-instance 'evaluation-output-stream))))
+        (when listener (setf (mezzano.command-processor::listener-job listener) job))
         (setf (evaluation-job-thread job)
               (mezzano.supervisor:make-thread
                (lambda () (run-evaluation-job job))
@@ -319,6 +330,7 @@
     (let ((job (check-evaluation-handle handle)))
       (list :name (copy-seq (evaluation-job-name job))
             :state (evaluation-job-state job)
+            :listener-result (copy-service-result (evaluation-job-listener-result job))
             :thread (mezzano.supervisor:thread-name (evaluation-job-thread job))
             :current-boot-p (eq (evaluation-job-boot job)
                                (mezzano.supervisor:current-boot-id))
@@ -398,6 +410,8 @@
         (setf (slot-value (evaluation-job-input-stream job) 'buffer) nil))
       (setf (slot-value (evaluation-job-output-stream job) 'buffer) nil
             (evaluation-job-source job) nil
+            (evaluation-job-listener job) nil
+            (evaluation-job-listener-result job) nil
             (evaluation-job-package job) nil
             (evaluation-job-input job) nil
             (evaluation-job-input-stream job) nil
