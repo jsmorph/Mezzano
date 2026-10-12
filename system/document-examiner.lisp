@@ -12,6 +12,7 @@
     ("slime/contrib/swank-mezzano-debugger.md" "Mezzano remote API" ("RPC" "tokens" "sessions"))
     ("doc/quickstart.md" "Desktop reference" ("keyboard" "editor" "status"))
     ("doc/json.md" "JSON" ("Jzon" "parse" "serialization" "UTF-8"))
+    ("doc/https.md" "HTTPS and OpenAI requests" ("TLS" "Drakma" "Responses" "certificates"))
     ("doc/manual.md" "Networking" ("DHCP" "addresses" "ports"))
     ("doc/atomic-extensions.md" "Atomic extensions" ("atomic" "threads"))
     ("doc/defstruct-extensions.md" "Structure extensions" ("defstruct" "layouts"))

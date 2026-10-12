@@ -87,4 +87,4 @@ The x86-64 QEMU guest passed the API tests, a fresh image boot, and the API and 
 
 ## HTTP clients
 
-Jzon supplies JSON encoding and decoding.  An HTTP client supplies transport, headers, status handling, and response framing.  Mezzano's existing HTTP filesystem client supports plaintext GET requests.  HTTPS/TLS and authenticated POST requests require separate implementation work.
+Jzon supplies JSON encoding and decoding.  An HTTP client supplies transport, headers, status handling, and response framing.  Mezzano's existing HTTP filesystem client supports plaintext GET requests.  The [HTTPS and OpenAI reference](https.md) describes the Drakma/pure-tls integration, reusable Responses API, and current guest test status.

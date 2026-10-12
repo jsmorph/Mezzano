@@ -1,5 +1,7 @@
 # Lisp HTTPS tests
 
+The [HTTPS and OpenAI reference](../../doc/https.md) documents the guest API, credential persistence, and current execution limits.
+
 These tests run Drakma over pure-tls under SBCL on Linux.  Jzon encodes and decodes JSON.  The TLS implementation and cryptographic algorithms run in Lisp.  SBCL supplies sockets and the operating system supplies entropy, clocks, and trusted CA certificates.  CFFI supports precise-time's Linux clock calls.
 
 ## Installation
@@ -64,7 +66,7 @@ Loading load-sbcl.lisp also loads openai.lisp.  After loading the same dependenc
 
 CREATE-RESPONSE takes an API key string and a Jzon request hash table.  It returns the parsed response and the x-request-id header as two values.  The optional CA-FILE argument names a PEM trust bundle.  Certificate verification is required.  Redirects and header logging are disabled.  The function sends the caller's request fields unchanged, including the model and storage policy.  STREAM must be absent or NIL.  No retry is performed.
 
-TIMEOUT is a positive duration in seconds, defaulting to 60.  It starts after request JSON encoding.  Connection establishment receives the smaller of 15 seconds and the remaining request time.  CL-CANCEL supplies the subsequent TLS cancellation context.  Fractional durations require the cl-cancel edit in ports/.  Deadline cancellation does not establish whether the remote service processed a request.
+TIMEOUT is a positive duration in seconds, defaulting to 60.  It starts after request JSON encoding.  Connection establishment receives the smaller of 15 seconds and the remaining request time.  CL-CANCEL supplies the subsequent TLS cancellation context.  Fractional durations require the cl-cancel edit in ports/.  CPU-bound certificate verification can continue after cancellation closes the socket.  TIMEOUT does not guarantee that the Lisp call returns within that duration.  Deadline cancellation does not establish whether the remote service processed a request.
 
 HTTP-ERROR retains the status, request ID, and response octets through HTTP-ERROR-STATUS, HTTP-ERROR-REQUEST-ID, and HTTP-ERROR-BODY.  Its printed report includes only the status and request ID.  Transport, certificate, cancellation, and JSON errors propagate.  A successful HTTP response can have an application status other than completed.  The caller examines the returned JSON.
 
