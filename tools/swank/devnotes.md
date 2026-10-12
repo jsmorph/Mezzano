@@ -714,3 +714,33 @@ Bookmark review found that viewing a deferred bookmark retained its bookmark-ins
 The revised transport suite passed with 25 documents, 295 topics, and 158 references in examiner-test-2.log, including the Lisp search-options metadata and canonical link titles.  A separate audit found no unresolved anchors targeting registered documents in examiner-link-audit.log.  The full image build is running in examiner-build.log.
 
 The final Examiner browser test passed all functional assertions, including search options, first-view bookmark order, candidate recall, Unicode viewer names, and exact 100-pixel reading-position restoration.  No browser errors occurred, and the owned session was released.  The full Listener suite also passed after extraction of the shared Chromium harness.  The Web journal records the browser failures and corrections.  The fresh full image build passed in examiner-build.log.  CI boot is running.
+
+## Private-document proposal: 2026-10-12
+
+The original User's Guide, printed pages 2923–2924, defines a private document as a saved bookmark list.  Read displays the referenced topics.  Load inserts bookmarks without displaying the text.  The recommendation submitted for approval stores an ordered list of topic IDs in a guest Lisp data file, with a documented Mezzano format and reader evaluation disabled.  Save will use the existing retained evaluation job identity and replay rules.  Read and Load will use guest Lisp file access and return validated topic records.  Approval is pending.  No private-document implementation has started.
+
+The user approved the private-document design.  Save will accept a client name, pathname, and ordered topic IDs through a typed SWANK operation.  Lisp constructs a quoted call to the private-document writer and submits it to the existing evaluation service.  This preserves the service's acceptance, errors, results, and replay semantics without another worker mechanism.  The file contains a versioned Lisp data record and is read with reader evaluation disabled.  Tests must check order, Unicode physical pathnames, malformed/reader-evaluation input, unread save replies, identical job replay, conflicting content, Read versus Load behavior, and owned-file cleanup.
+
+## Concurrent debugger and Examiner work: 2026-10-12
+
+The Web UI agent owns frontend behavior, font conversion, visual comparison, and Chromium tests.  A second agent owns the approved private-document reader/writer, retained Save operations, HTTP integration, and their tests.  The primary agent resumes compiler/debugger work.  Shared VM builds, restart, and snapshot tests require coordination because the host file server serves one connection at a time.
+
+The private-document reader must reject circular data before traversing it.  The recommendation uses Common Lisp LIST-LENGTH to check the record and topic list, with reader evaluation disabled.  A circular list returns NIL, and a dotted list signals a type error.  Both failures remain visible to the caller.  This refines the approved data validation without introducing another parser.  Tests will cover circular records and topic lists, malformed records, trailing input, and reader evaluation.
+
+The Examiner image passed CI boot with QEMU exit status 3 and the serial success marker.  Logs are examiner-build.log, examiner-boot.log, and examiner-serial.log.  The development VM saved that state in examiner-snapshot.log.  These results precede the private-document changes.
+
+The private-document default-path test failed before file writes.  Merging an empty logical namestring with SYS:HOME;PRIVATE.PSB produces SYS:PRIVATE.PSB because the empty namestring supplies an absolute directory.  The correction uses the declared default pathname for an empty command argument and applies MERGE-PATHNAMES to nonempty arguments.  The tests compare canonical pathnames, including the logical version.  Nine Python tests and the catalog test with 26 books and 14 commands passed.  Private-file tests remain in progress.
+
+## Compiler binding identity proposal: 2026-10-12
+
+The recommendation is one shared general-vector descriptor per compiled lexical binding.  Local-location and closure-layout metadata would reference that descriptor, so equal names remain distinguishable and a defining frame can identify the same static binding as its closure.  A stop and frame still identify a particular activation.  Independently compiled functions and distinct shadowed bindings require distinct descriptors.
+
+The existing constant-pool and file serializers can preserve general-vector identity.  The existing debug bytecode can reference either a legacy name or the descriptor through its constant-pool index, avoiding another bytecode field.  Runtime decoding must preserve legacy metadata and preserve name-based display APIs.  Type constraints, lexical scope, activation-safe mutation, and lexical evaluation remain subsequent increments.
+
+Approval is pending under the current instruction to ask before design decisions.  Review is checking AST copy/lowering order and every metadata consumer.  Tests must cover shadowing, shared captured bindings, independent compilation, compile-file/load, GC, and existing local inspection.  No descriptor implementation has been made.
+
+## Interrupt-return instruction coverage: 2026-10-12
+
+The existing GC test covers return-thunk entry and IRET.  The next test increment uses the existing single-step controls to survey every instruction address visited from entry through IRET, then repeats full GC and normal resumption at each address in full-save state and beneath an additional foothold.  Repeated REP iterations contribute one instruction address.  This extends the already approved interrupt-scanner tests and preserves the production return code.  The fixture checks relocation of its vector and the resumed function result.  The development guest will be saved and other guest testing paused before this run.
+
+All 23 observed interrupt-return instruction addresses passed in both saved states, totaling 46 full-GC and resumption cases.  The saved-data-register suite also passed for R8, R9, R10, R11, R12, R13, R15, and RBX.  Logs are interrupt-positions-snapshot.log and interrupt-positions-test-1.log.  The HTTP service resumed after testing, and the VM required no restart.  This test-only increment changes no runtime or compiler source, so it requires no image rebuild.  Repeated REP iterations at the same address and individual allocation-routine positions remain further tests.
