@@ -237,6 +237,7 @@
     "system/profiler.lisp"
     "drivers/network-card.lisp"
     "drivers/virtio-net.lisp"
+    "drivers/virtio-entropy.lisp"
     ("drivers/rtl8168.lisp" :x86-64)
     "net/package.lisp"
     "net/network.lisp"

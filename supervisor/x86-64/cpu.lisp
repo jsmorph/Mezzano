@@ -1104,3 +1104,6 @@ This is a one-shot timer and must be reset after firing."
 
 (defun dma-write-barrier ()
   (%mfence))
+
+(defun sys.int::dma-read-barrier ()
+  (%mfence))

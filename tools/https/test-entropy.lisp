@@ -1,0 +1,95 @@
+(defpackage :lispm-entropy-test
+  (:use :cl)
+  (:local-nicknames (:rng :mezzano.driver.virtio-entropy)
+                    (:sup :mezzano.supervisor)
+                    (:virtio :mezzano.supervisor.virtio)))
+
+(in-package :lispm-entropy-test)
+
+(defun completion-tests ()
+  (let* ((memory (sup:make-dma-buffer 4096 :name "Entropy completion fixture"))
+         (queue (virtio:make-virtqueue :virtual (sup:dma-buffer-virtual-address memory)
+                                      :size 8 :used-offset 128 :last-seen-used 0))
+         (driver (rng::make-entropy-device :descriptor 3)))
+    (unwind-protect
+         (flet ((completion (seen delta id length)
+                  (setf (virtio:virtqueue-last-seen-used queue) seen
+                        (virtio:virtio-ring-used-idx queue) (ldb (byte 16 0) (+ seen delta))
+                        (virtio:virtio-ring-used-elem-id queue (mod seen 8)) id
+                        (virtio:virtio-ring-used-elem-len queue (mod seen 8)) length)))
+           (completion 0 0 3 32)
+           (assert (null (rng::completion-length driver queue 32)))
+           (completion 0 1 3 7)
+           (assert (= (rng::completion-length driver queue 32) 7))
+           (assert (= (virtio:virtqueue-last-seen-used queue) 1))
+           (completion 65535 1 3 32)
+           (assert (= (rng::completion-length driver queue 32) 32))
+           (assert (= (virtio:virtqueue-last-seen-used queue) 0))
+           (dolist (row '((0 1 3 0) (0 1 3 33) (0 1 4 32) (0 2 3 32)))
+             (apply #'completion row)
+             (assert (handler-case (progn (rng::completion-length driver queue 32) nil)
+                       (rng:entropy-unavailable () t)))
+             (assert (= (virtio:virtqueue-last-seen-used queue) 0))))
+      (sup:release-dma-buffer memory)))
+  (let ((rng::*device* nil))
+    (assert (handler-case (progn (rng:random-data 1) nil)
+              (rng:entropy-unavailable () t))))
+  (assert (equalp (rng:random-data 0) #()))
+  (format t "PASS entropy completion lengths, IDs, wraparound, and missing device.~%")
+  t)
+
+(defun device-tests ()
+  (let ((results (make-array 4))
+        (threads nil))
+    (dotimes (i 4)
+      (let ((index i))
+        (push (sup:make-thread (lambda () (setf (aref results index) (rng:random-data 8193)))
+                               :name "Entropy test reader")
+              threads)))
+    (dolist (thread threads) (sup:thread-join thread))
+    (loop for data across results
+          do (assert (typep data '(simple-array (unsigned-byte 8) (8193))))
+             (assert (some (lambda (byte) (not (zerop byte))) data)))
+    (dotimes (i 4)
+      (dotimes (j i)
+        (assert (not (equalp (aref results i) (aref results j)))))))
+  (format t "PASS concurrent entropy reads spanning DMA buffers.~%")
+  t)
+
+(defvar *restore-driver*)
+(defvar *restore-before*)
+(defvar *restore-thread*)
+(defvar *restore-result*)
+(defvar *restore-done*)
+
+(defun prepare-restore-test ()
+  (setf *restore-before* (rng:random-data 64)
+        *restore-driver* rng::*device*
+        *restore-result* :pending
+        *restore-done* (sup:make-event :name "Entropy restore test"))
+  (setf *restore-thread*
+        (sup:make-thread
+         (lambda ()
+           (unwind-protect
+                (setf *restore-result*
+                      (handler-case (progn (rng:random-data 1048576) :returned)
+                        (rng:entropy-unavailable () :expired)))
+             (setf (sup:event-state *restore-done*) t)))
+         :name "Entropy restore reader"))
+  (sleep 0.1)
+  (assert (eq *restore-result* :pending))
+  (format t "Entropy restore request is pending.~%")
+  t)
+
+(defun finish-restore-test ()
+  (assert (member *restore-done* (mezzano.sync:wait-for-objects-with-timeout 10 *restore-done*)))
+  (assert (eq *restore-result* :expired))
+  (sup:thread-join *restore-thread*)
+  (assert (not (eql (rng::boot-id *restore-driver*) (sup:current-boot-id))))
+  (let ((after (rng:random-data 64)))
+    (assert (not (equalp *restore-before* after))))
+  (format t "PASS expired entropy request and fresh bytes after snapshot restoration.~%")
+  t)
+
+(completion-tests)
+(in-package :cl-user)

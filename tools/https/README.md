@@ -59,3 +59,31 @@ On 2026-10-12, the Linux SBCL tests negotiated TLS 1.3 with TLS_CHACHA20_POLY130
 These tests cover one service and the two stated verification failures.  Streaming responses, cancellation during blocked I/O, certificate revocation, and the upstream TLS test suite remain untested.
 
 Mezzano integration requires an Ironclad entropy backend, a trust-store installation, and testing of the existing portability backends.  USOCKET's Mezzano backend rejects explicit connection timeouts.  Guest compilation and execution of this TLS/HTTP stack remain pending.
+
+## Guest entropy
+
+The Lisp VirtIO entropy driver supplies fresh octet vectors through MEZZANO.DRIVER.VIRTIO-ENTROPY:RANDOM-DATA.  It signals ENTROPY-UNAVAILABLE if the device is missing, belongs to an earlier boot, or returns an invalid completion.  One worker serializes requests through a nonpersistent DMA buffer.  A caller receives its private result after the device has supplied every byte.
+
+Add these arguments to the x86-64 QEMU command:
+
+    -object rng-random,id=rng0,filename=/dev/urandom \
+    -device virtio-rng-pci,rng=rng0
+
+Compile and load the driver before testing an existing image.  New image builds include it.  Inside the guest:
+
+    (load (compile-file "SYS:SOURCE;TOOLS;HTTPS;TEST-ENTROPY.LISP"))
+    (lispm-entropy-test::device-tests)
+
+Loading the test checks completion lengths, descriptor IDs, queue index wraparound, and missing-device errors.  DEVICE-TESTS runs four concurrent 8,193-byte reads.  To exercise partial completions, run QEMU with max-bytes=17,period=5 on the virtio-rng-pci device.
+
+With that test rate limit, save an incomplete request:
+
+    (lispm-entropy-test::prepare-restore-test)
+    (mezzano.supervisor:snapshot)
+    (mezzano.supervisor:wait-for-snapshot-completion)
+
+Restart QEMU from the saved image, then evaluate:
+
+    (lispm-entropy-test::finish-restore-test)
+
+The completion test requires the saved request to fail with ENTROPY-UNAVAILABLE and a new request to receive bytes from the current device.  These tests passed on x86-64 QEMU.  ARM64 and bare-metal entropy remain untested.

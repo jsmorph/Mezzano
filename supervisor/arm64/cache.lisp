@@ -101,3 +101,6 @@
           do (%dc.civac addr))
     ;; Wait for completion
     (%dsb.ish)))
+
+(defun sys.int::dma-read-barrier ()
+  (%dmb.osh))
