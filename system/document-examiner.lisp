@@ -4,6 +4,7 @@
   '(("doc/project-guide.md" "Mezzano user guide" ("getting started" "manuals"))
     ("doc/installation.md" "Installation and operation" ("build" "QEMU" "snapshot" "restore"))
     ("tools/swank/web/README.md" "Mezzano Web Listener and Debugger" ("HTTP" "browser"))
+    ("doc/peek.md" "Peek process viewer" ("processes" "threads" "scheduler" "SELECT"))
     ("doc/command-processor.md" "Lisp Command Processor" ("Listener" "commands" "completion"))
     ("doc/document-examiner.md" "Document Examiner" ("documentation" "bookmarks" "viewers"))
     ("doc/debugger.md" "Debugger and evaluation reference" ("compiler" "GC" "stops" "locals"))
@@ -18,6 +19,12 @@
 (defstruct topic id title book parent (depth 0) keywords blocks children)
 (defstruct catalog topics books by-id)
 (defvar *catalog* nil)
+
+(define-condition missing-topic (mezzano.debug:debugger-service-error)
+  ((name :initarg :name :reader missing-topic-name))
+  (:default-initargs :reason :missing-topic)
+  (:report (lambda (condition stream)
+             (format stream "Unknown documentation topic ~S." (missing-topic-name condition)))))
 
 (defun trim (text)
   (string-trim '(#\Space #\Tab #\Return #\Newline) text))
@@ -209,14 +216,14 @@
 (defun documentation-catalog () (or *catalog* (load-catalog)))
 
 (defun lookup (id &optional (catalog (documentation-catalog)))
-  (or (gethash id (catalog-by-id catalog)) (error "Unknown documentation topic ~S." id)))
+  (or (gethash id (catalog-by-id catalog)) (error 'missing-topic :name id)))
 
 (defun resolve-topic (name)
   (or (gethash name (catalog-by-id (documentation-catalog)))
       (find name (catalog-topics (documentation-catalog)) :key #'topic-id :test #'string-equal)
       (let ((matches (remove name (catalog-topics (documentation-catalog))
                              :key #'topic-title :test-not #'string-equal)))
-        (cond ((null matches) (error "Unknown documentation topic ~S." name))
+        (cond ((null matches) (error 'missing-topic :name name))
               ((null (rest matches)) (first matches))
               (t (error "Ambiguous topic ~S. Choose ~{~A~^, ~}." name (mapcar #'topic-id matches)))))))
 

@@ -18,13 +18,13 @@
    (let* ((catalog (request :document-query :catalog))
           (books (ids catalog))
           (topics nil) (references nil) (blocks nil))
-     (assert (= (length books) 13))
+     (assert (= (length books) 14))
      (assert (eq (getf (getf catalog :search-options) :mode) :substring))
      (assert (equal (mapcar (lambda (mode) (getf mode :value))
                             (getf (getf catalog :search-options) :modes))
                     '(:exact :initial :substring)))
      (dolist (required '("doc/project-guide.md" "doc/installation.md" "doc/document-examiner.md"
-                         "doc/debugger.md" "doc/command-processor.md" "tools/swank/README.md"
+                         "doc/debugger.md" "doc/peek.md" "doc/command-processor.md" "tools/swank/README.md"
                          "tools/swank/web/README.md" "slime/contrib/swank-mezzano-debugger.md"))
        (assert (member required books :test #'equal)))
      (dolist (internal '("tools/swank/minideb2/README.md" "tools/swank/devnotes.md"
@@ -64,6 +64,17 @@
        (dolist (results (list unordered initial substring))
          (assert (member "doc/debugger.md#retained-evaluation" results :test #'equal))))
      (assert (null (ids (request :document-query :search :query "no-such-documentation-term-728613" :mode :exact))))
+     (let ((stops (request :stops t))
+           (jobs (request :jobs)))
+       (dolist (action '(:topic :contents :overview))
+         (handler-case
+             (progn (request :document-query action :topic "missing-topic-728613")
+                    (error "Missing topic returned a successful result."))
+           (request-error (condition)
+             (assert (eq (request-error-reason condition) :missing-topic)))))
+       (assert (equal books (ids (request :document-query :catalog))))
+       (assert (null (set-exclusive-or stops (request :stops t) :test #'equal)))
+       (assert (null (set-exclusive-or jobs (request :jobs) :test #'equal))))
      (assert (equal (getf (assist "Show D" :complete) :text) "Show Documentation "))
      (assert (equal (getf (assist "Select V " :space) :text) "Select Viewer "))
      (assert (= (length (getf (assist "" :help) :candidates)) 14))
@@ -75,7 +86,8 @@
             (ambiguous (find-if (lambda (name) (> (count name names :test #'equalp) 1)) names)))
        (assert ambiguous)
        (assert (getf (assist (concatenate 'string "Show Documentation " ambiguous) :parse) :error)))
-     (assert (getf (assist "Show Documentation missing-topic-728613" :parse) :error))
+     (assert (equal (getf (assist "Show Documentation missing-topic-728613" :parse) :error)
+                    "Unknown documentation topic \"missing-topic-728613\"."))
      (assert (getf (assist "Help unexpected" :parse) :error))
      (assert (getf (assist "Show Candidates" :parse) :error))
      (assert (equal (getf (assist "Select Viewer Debugger work" :parse) :argument) "Debugger work"))
@@ -83,6 +95,6 @@
        (assert (equal (getf reply :text) "Show Documentation 🚀"))
        (assert (= (getf reply :cursor) 19)))
      (request :release-session)
-     (format t "PASS ~D documents, ~D topics, ~D references, structure, searches, commands, Unicode cursor, and session cleanup.~%"
+     (format t "PASS ~D documents, ~D topics, ~D references, structure, searches, missing-topic replies, commands, Unicode cursor, and session cleanup.~%"
              (length books) (length topics) (length references))))
  :port (parse-integer (or (second sb-ext:*posix-argv*) "4006")) :seconds 120)
