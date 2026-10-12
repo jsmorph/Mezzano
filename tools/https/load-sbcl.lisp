@@ -6,3 +6,4 @@
 (ql:quickload :pure-tls/cl+ssl-compat)
 (asdf:register-immutable-system "cl+ssl")
 (ql:quickload '(:drakma :com.inuoe.jzon))
+(load (merge-pathnames "openai.lisp" *load-truename*))

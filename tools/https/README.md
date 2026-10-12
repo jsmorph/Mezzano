@@ -52,13 +52,33 @@ A Lisp caller can use:
 
 The function returns the parsed response object.  Drakma's :VERIFY :REQUIRED is essential: its default VERIFY argument is NIL.
 
+## Reusable Responses function
+
+Loading load-sbcl.lisp also loads openai.lisp.  After loading the same dependencies in another Lisp, load openai.lisp directly.
+
+    (let ((request (make-hash-table :test 'equal)))
+      (setf (gethash "model" request) "gpt-4.1-nano"
+            (gethash "input" request) "Explain dynamic binding in Common Lisp."
+            (gethash "store" request) nil)
+      (lispm-openai:create-response key request :timeout 60))
+
+CREATE-RESPONSE takes an API key string and a Jzon request hash table.  It returns the parsed response and the x-request-id header as two values.  The optional CA-FILE argument names a PEM trust bundle.  Certificate verification is required.  Redirects and header logging are disabled.  The function sends the caller's request fields unchanged, including the model and storage policy.  STREAM must be absent or NIL.  No retry is performed.
+
+TIMEOUT is a positive duration in seconds, defaulting to 60.  It starts after request JSON encoding.  Connection establishment receives the smaller of 15 seconds and the remaining request time.  CL-CANCEL supplies the subsequent TLS cancellation context.  Fractional durations require the pending clock correction.  Deadline cancellation does not establish whether the remote service processed a request.
+
+HTTP-ERROR retains the status, request ID, and response octets through HTTP-ERROR-STATUS, HTTP-ERROR-REQUEST-ID, and HTTP-ERROR-BODY.  Its printed report includes only the status and request ID.  Transport, certificate, cancellation, and JSON errors propagate.  A successful HTTP response can have an application status other than completed.  The caller examines the returned JSON.
+
+The function overwrites its Authorization string on exit.  The caller owns the key string.  Lisp allocation and library internals can retain other copies.
+
+The [OpenAI API overview](https://developers.openai.com/api/reference/overview) documents authentication and request IDs.  To test HTTP error handling without a credential, load test-openai.lisp and call LISPM-OPENAI-TEST:RUN.  Its invalid-key request must return a typed HTTP 401 with a JSON error.  This test passed under SBCL on Linux.  The reusable function also passed an authenticated request through RUN-OPENAI-TEST: HTTP 200, completed status, and the text "Lisp HTTPS works."
+
 ## Tested scope and Mezzano work
 
 On 2026-10-12, the Linux SBCL tests negotiated TLS 1.3 with TLS_CHACHA20_POLY1305_SHA256.  Both certificate-rejection tests passed.  The authenticated POST returned HTTP 200 and "Lisp HTTPS works.", with 15 input tokens and 6 output tokens.
 
-These tests cover one service and the two stated verification failures.  Streaming responses, cancellation during blocked I/O, certificate revocation, and the upstream TLS test suite remain untested.
+These tests cover one service and the two stated verification failures.  Streaming responses, certificate revocation, and the upstream TLS test suite remain untested.  The cancellation tests below check blocked input and handshake cleanup.  Fractional deadline accuracy requires the corrections described there.
 
-Mezzano integration requires an Ironclad entropy backend, a trust-store installation, and testing of the existing portability backends.  USOCKET's Mezzano backend rejects explicit connection timeouts.  Guest compilation and execution of this TLS/HTTP stack remain pending.
+The guest entropy and connection controls below have passed their tests.  Library portability edits are retained in ports/.  Guest compilation of the TLS/HTTP stack is in progress.  Guest TLS verification and the authenticated OpenAI request remain untested.
 
 ## Guest entropy
 
@@ -127,4 +147,4 @@ The cancellation test requires the edited cl-cancel and pure-tls sources.  After
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-CANCELLATION.LISP")
     (lispm-cancellation-test:run)
 
-For SBCL, load tools/https/test-cancellation.lisp and call the same function.  The tests passed under SBCL on Linux.  They check that early cleanup preserves the parent context and stream, close failures reach the caller, deadlines interrupt a blocked read and handshake, and monitor threads terminate.
+For SBCL, load tools/https/test-cancellation.lisp and call the same function.  The original tests passed under SBCL on Linux for early cleanup, close failures, blocked input, blocked handshake, and monitor cleanup.  Their timing assertion allowed an immediately expired deadline to pass.  The expanded tests check both elapsed-time bounds, rational and floating-point durations, and clock continuity.  They currently fail on single-float timeout arithmetic.  The clock corrections and guest cancellation tests remain pending.

@@ -63,50 +63,28 @@
         (format t "Unauthenticated HTTPS GET: HTTP ~D, JSON error parsed.~%" status))))
   t)
 
-(defun run-openai-test (api-key &key (model "gpt-4.1-nano"))
-  (check-type api-key string)
-  (when (or (zerop (length api-key))
-            (find #\Return api-key)
-            (find #\Newline api-key))
-    (error "Expected a nonempty API key without line breaks."))
-  (let ((request (make-hash-table :test 'equal))
-        (authorization (concatenate 'string "Bearer " api-key))
-        (drakma:*header-stream* nil))
+(defun run-openai-test (api-key &key (model "gpt-4.1-nano") ca-file)
+  (let ((request (make-hash-table :test 'equal)))
     (setf (gethash "model" request) model
           (gethash "input" request) "Reply with exactly: Lisp HTTPS works."
           (gethash "store" request) nil)
-    (unwind-protect
-         (cl-cancel:with-timeout-context (deadline 60)
-           (declare (ignore deadline))
-           (multiple-value-bind (body status headers)
-               (drakma:http-request
-                "https://api.openai.com/v1/responses"
-                :method :post :verify :required :redirect nil
-                :connection-timeout 15 :force-binary t
-                :content-type "application/json"
-                :content (babel:string-to-octets
-                          (com.inuoe.jzon:stringify request) :encoding :utf-8)
-                :additional-headers (list (cons "Authorization" authorization)))
-             (unless (= status 200)
-               (error "OpenAI returned HTTP ~D; request ID ~A."
-                      status (cdr (assoc :x-request-id headers))))
-             (let* ((response (com.inuoe.jzon:parse body))
-                    (output
-                      (with-output-to-string (stream)
-                        (loop for item across (gethash "output" response)
-                              when (equal (gethash "type" item) "message")
-                                do (loop for part across (gethash "content" item)
-                                         when (equal (gethash "type" part) "output_text")
-                                           do (write-string (gethash "text" part) stream))))))
-               (unless (equal (gethash "status" response) "completed")
-                 (error "OpenAI response status: ~S." (gethash "status" response)))
-               (unless (plusp (length output))
-                 (error "OpenAI returned no output text."))
-               (format t "HTTPS POST: HTTP ~D; model ~A; status ~A.~%"
-                       status (gethash "model" response) (gethash "status" response))
-               (format t "Response: ~A~%Tokens: input ~D, output ~D.~%"
-                       output
-                       (gethash "input_tokens" (gethash "usage" response))
-                       (gethash "output_tokens" (gethash "usage" response)))
-               response)))
-      (fill authorization #\Space))))
+    (multiple-value-bind (response request-id)
+        (lispm-openai:create-response api-key request :ca-file ca-file)
+      (let ((output
+              (with-output-to-string (stream)
+                (loop for item across (gethash "output" response)
+                      when (equal (gethash "type" item) "message")
+                        do (loop for part across (gethash "content" item)
+                                 when (equal (gethash "type" part) "output_text")
+                                   do (write-string (gethash "text" part) stream))))))
+        (unless (equal (gethash "status" response) "completed")
+          (error "OpenAI response status: ~S." (gethash "status" response)))
+        (unless (plusp (length output))
+          (error "OpenAI returned no output text."))
+        (format t "HTTPS POST: HTTP 200; model ~A; status ~A; request ID ~A.~%"
+                (gethash "model" response) (gethash "status" response) request-id)
+        (format t "Response: ~A~%Tokens: input ~D, output ~D.~%"
+                output
+                (gethash "input_tokens" (gethash "usage" response))
+                (gethash "output_tokens" (gethash "usage" response)))
+        response))))
