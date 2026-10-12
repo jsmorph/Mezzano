@@ -15,6 +15,17 @@
 (call-with-session
  (make-session)
  (lambda ()
+   (assert
+    (equal
+     (call-rpc
+      "(cl:let* ((cl:*print-circle* cl:t)
+                  (line (cl:copy-seq \"line\"))
+                  (separator (cl:string #\\Newline)))
+         (cl:list (mezzano.document-examiner::join cl:nil separator)
+                  (mezzano.document-examiner::join (cl:list line) separator)
+                  (mezzano.document-examiner::join (cl:list line line line) separator)
+                  (mezzano.document-examiner::join (cl:list line line) \"\")))")
+     (list "" "line" (format nil "line~%line~%line") "lineline")))
    (let* ((catalog (request :document-query :catalog))
           (books (ids catalog))
           (topics nil) (references nil) (blocks nil))
@@ -42,6 +53,11 @@
            (dolist (block (getf section :blocks)) (push (getf block :kind) blocks)))
          (setf references (append references (links document)))))
      (dolist (kind '(:paragraph :code :list :table)) (assert (member kind blocks)))
+     (let* ((document (request :document-query :topic :topic "doc/project-guide.md#getting-started"))
+            (code (find :code (getf (first (getf document :sections)) :blocks)
+                        :key (lambda (block) (getf block :kind)))))
+       (assert (equal (getf code :text)
+                      (format nil "Command: (+ 20 22)~%Command: Set Package CL-USER~%Command: Help :Format Detailed"))))
      (dolist (link references)
        (when (getf link :topic)
          (assert (find (getf link :topic) topics :key (lambda (topic) (getf topic :id)) :test #'equal))))

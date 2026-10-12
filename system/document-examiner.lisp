@@ -37,8 +37,10 @@
         collect (subseq text start end) while end do (setf start (1+ end))))
 
 (defun join (strings &optional (separator " "))
-  (format nil "~{~A~}" (loop for string in strings for first = t then nil
-                             unless first collect separator collect string)))
+  (with-output-to-string (stream)
+    (loop for string in strings for first = t then nil
+          unless first do (write-string separator stream)
+          do (write-string string stream))))
 
 (defun slug (text)
   (with-output-to-string (stream)
