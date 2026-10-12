@@ -196,11 +196,7 @@
   (check-type code (integer 0 #x0010FFFF)
               "a unicode code-point")
   (check-type bits (or null (integer 0 15)))
-  (if (or (<= #xD800 code #xDFFF) ; UTF-16 surrogates.
-          ;; Noncharacters.
-          (<= #xFDD0 code #xFDEF)
-          ;; The final two code points in each plane are noncharacters.
-          (eql (logand code #xFFFE) #xFFFE))
+  (if (<= #xD800 code #xDFFF)
       nil
       (sys.int::%%make-character code bits)))
 

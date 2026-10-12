@@ -256,11 +256,7 @@
 
 (defun unicode-scalar-value-p (code)
   (and (typep code 'unicode-code-point)
-       (not (<= #xD800 code #xDFFF)) ; UTF-16 surrogates.
-       ;; Noncharacters.
-       (not (<= #xFDD0 code #xFDEF))
-       ;; The final two code points in each plane are noncharacters.
-       (not (eql (logand code #xFFFE) #xFFFE))))
+       (not (<= #xD800 code #xDFFF))))
 
 (defun external-format-read-internal-code-point (external-format source read-fn)
   ;; Drive the receive state machine through to read an entire character or
