@@ -17,6 +17,12 @@ Run guest tests sequentially on a dedicated test VM.  Tests define guest functio
 
 The instruction-position and saved-register tests target x86-64.  Compiler tests select the policies they exercise.  The default running compiler policy is `(safety 3 debug 3 speed 1)` and the image bootstrap policy is `(safety 3 debug 1 speed 1)`.  These tests do not establish ARM64, bare-metal, supervisor-trap, or arbitrary-suspension support.
 
+## Kernel compilation
+
+The image builder compiles supervisor code with `(safety 3 debug 1 speed 1)`.  The running Lisp compiler defaults to debug level 3 for application inspection.  Live supervisor replacements require the kernel policy and `LOAD` with `:wired T`, which keeps their code and constants resident.
+
+The debug-level-3 compilation of PAGER-ALLOCATE-PAGE retains calls to BYTE-POSITION and BYTE-SIZE.  Those functions occupy pageable memory.  Paging can therefore fault inside the pager after a live replacement built with the application policy.  Loading the caller into wired memory alone leaves those callees pageable.  Kernel replacement review must check generated calls as well as the replacement's allocation area.  A fresh image build and a boot under memory pressure test the compiled kernel and its callees together.
+
 ## Transport and guest tests
 
 The transport scripts run in host SBCL:
