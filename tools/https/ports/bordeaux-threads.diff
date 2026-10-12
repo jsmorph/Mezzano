@@ -1,3 +1,148 @@
+diff --git a/apiv2/atomics.lisp b/apiv2/atomics.lisp
+index 3969229..fbb7e01 100644
+--- a/apiv2/atomics.lisp
++++ b/apiv2/atomics.lisp
+@@ -22,10 +22,13 @@
+              (eql ,tmp (mp:compare-and-swap ,place ,tmp ,new))))
+   #+genera `(sys:store-conditional (scl:locf ,place) ,old ,new)
+   #+lispworks `(system:compare-and-swap ,place ,old ,new)
++  #+mezzano (with-gensyms (tmp)
++              `(let ((,tmp ,old))
++                 (eq ,tmp (mezzano.extensions:compare-and-swap ,place ,tmp ,new))))
+   #+sbcl (with-gensyms (tmp)
+            `(let ((,tmp ,old))
+               (eql ,tmp (sb-ext:compare-and-swap ,place ,old ,new))))
+-  #-(or allegro ccl clasp cmu ecl genera lispworks sbcl)
++  #-(or allegro ccl clasp cmu ecl genera lispworks mezzano sbcl)
+   (signal-not-implemented 'atomic-cas))
+
+ (defmacro atomic-decf (place &optional (delta 1))
+@@ -37,8 +40,11 @@
+   #+ecl `(- (mp:atomic-decf ,place ,delta) ,delta)
+   #+genera `(process:atomic-decf ,place ,delta)
+   #+lispworks `(system:atomic-decf ,place ,delta)
++  #+mezzano (with-gensyms (amount)
++              `(let ((,amount ,delta))
++                 (- (mezzano.extensions:atomic-decf ,place ,amount) ,amount)))
+   #+sbcl `(- (sb-ext:atomic-decf ,place ,delta) ,delta)
+-  #-(or allegro ccl clasp cmu ecl genera lispworks sbcl)
++  #-(or allegro ccl clasp cmu ecl genera lispworks mezzano sbcl)
+   (signal-not-implemented 'atomic-decf))
+
+ (defmacro atomic-incf (place &optional (delta 1))
+@@ -50,8 +56,11 @@
+   #+ecl `(+ (mp:atomic-incf ,place ,delta) ,delta)
+   #+genera `(process:atomic-incf ,place ,delta)
+   #+lispworks `(system:atomic-incf ,place ,delta)
++  #+mezzano (with-gensyms (amount)
++              `(let ((,amount ,delta))
++                 (+ (mezzano.extensions:atomic-incf ,place ,amount) ,amount)))
+   #+sbcl `(+ (sb-ext:atomic-incf ,place ,delta) ,delta)
+-  #-(or allegro ccl clasp cmu ecl genera lispworks sbcl)
++  #-(or allegro ccl clasp cmu ecl genera lispworks mezzano sbcl)
+   (signal-not-implemented 'atomic-incf))
+
+ (deftype %atomic-integer-value ()
+@@ -67,25 +76,25 @@ The counter is a machine word: 32/64 bits depending on CPU."
+
+   #+(or allegro ccl clasp ecl genera lispworks)
+   (cell (make-array 1 :element-type t))
+-  #+(or clisp cmu sbcl)
++  #+(or clisp cmu mezzano sbcl)
+   (cell 0 :type %atomic-integer-value)
+-  #+clisp
++  #+(or clisp mezzano)
+   (%lock (%make-lock nil) :type native-lock))
+
+ (defmethod print-object ((aint atomic-integer) stream)
+   (print-unreadable-object (aint stream :type t :identity t)
+     (format stream "~S" (atomic-integer-value aint))))
+
+-#-(or allegro ccl clasp cmu clisp ecl genera lispworks sbcl)
++#-(or allegro ccl clasp cmu clisp ecl genera lispworks mezzano sbcl)
+ (mark-not-implemented 'make-atomic-integer)
+ (defun make-atomic-integer (&key (value 0))
+   "Create an `ATOMIC-INTEGER` with initial value `VALUE`"
+   (check-type value %atomic-integer-value)
+-  #+(or allegro ccl clasp clisp cmu ecl genera lispworks sbcl)
++  #+(or allegro ccl clasp clisp cmu ecl genera lispworks mezzano sbcl)
+   (let ((aint (%make-atomic-integer)))
+     (setf (atomic-integer-value aint) value)
+     aint)
+-  #-(or allegro ccl clasp clisp cmu ecl genera lispworks sbcl)
++  #-(or allegro ccl clasp clisp cmu ecl genera lispworks mezzano sbcl)
+   (signal-not-implemented 'make-atomic-integer))
+
+ (defun atomic-integer-compare-and-swap (atomic-integer old new)
+@@ -96,11 +105,11 @@ Returns T if the replacement was successful, otherwise NIL."
+   (declare (type atomic-integer atomic-integer)
+            (type %atomic-integer-value old new)
+            (optimize (safety 0) (speed 3)))
+-  #-clisp
++  #-(or clisp mezzano)
+   (atomic-cas #-(or cmu sbcl) (svref (atomic-integer-cell atomic-integer) 0)
+               #+(or cmu sbcl) (atomic-integer-cell atomic-integer)
+               old new)
+-  #+clisp
++  #+(or clisp mezzano)
+   (%with-lock ((atomic-integer-%lock atomic-integer) nil)
+     (cond
+       ((= old (slot-value atomic-integer 'cell))
+@@ -115,11 +124,11 @@ Returns the new value of `ATOMIC-INTEGER`."
+   (declare (type atomic-integer atomic-integer)
+            (type %atomic-integer-value delta)
+            (optimize (safety 0) (speed 3)))
+-  #-clisp
++  #-(or clisp mezzano)
+   (atomic-decf #-(or cmu sbcl) (svref (atomic-integer-cell atomic-integer) 0)
+                #+(or cmu sbcl) (atomic-integer-cell atomic-integer)
+                delta)
+-  #+clisp
++  #+(or clisp mezzano)
+   (%with-lock ((atomic-integer-%lock atomic-integer) nil)
+     (decf (atomic-integer-cell atomic-integer) delta)))
+
+@@ -130,11 +139,11 @@ Returns the new value of `ATOMIC-INTEGER`."
+   (declare (type atomic-integer atomic-integer)
+            (type %atomic-integer-value delta)
+            (optimize (safety 0) (speed 3)))
+-  #-clisp
++  #-(or clisp mezzano)
+   (atomic-incf #-(or cmu sbcl) (svref (atomic-integer-cell atomic-integer) 0)
+                #+(or cmu sbcl) (atomic-integer-cell atomic-integer)
+                delta)
+-  #+clisp
++  #+(or clisp mezzano)
+   (%with-lock ((atomic-integer-%lock atomic-integer) nil)
+     (incf (atomic-integer-cell atomic-integer) delta)))
+
+@@ -142,11 +151,11 @@ Returns the new value of `ATOMIC-INTEGER`."
+   "Returns the current value of `ATOMIC-INTEGER`."
+   (declare (type atomic-integer atomic-integer)
+            (optimize (safety 0) (speed 3)))
+-  #-clisp
++  #-(or clisp mezzano)
+   (progn
+     #-(or cmu sbcl) (svref (atomic-integer-cell atomic-integer) 0)
+     #+(or cmu sbcl) (atomic-integer-cell atomic-integer))
+-  #+clisp
++  #+(or clisp mezzano)
+   (%with-lock ((atomic-integer-%lock atomic-integer) nil)
+     (atomic-integer-cell atomic-integer)))
+
+@@ -154,10 +163,10 @@ Returns the new value of `ATOMIC-INTEGER`."
+   (declare (type atomic-integer atomic-integer)
+            (type %atomic-integer-value newval)
+            (optimize (safety 0) (speed 3)))
+-  #-clisp
++  #-(or clisp mezzano)
+   (setf #-(or cmu sbcl) (svref (atomic-integer-cell atomic-integer) 0)
+         #+(or cmu sbcl) (atomic-integer-cell atomic-integer)
+         newval)
+-  #+clisp
++  #+(or clisp mezzano)
+   (%with-lock ((atomic-integer-%lock atomic-integer) nil)
+     (setf (atomic-integer-cell atomic-integer) newval)))
 diff --git a/apiv2/impl-mezzano.lisp b/apiv2/impl-mezzano.lisp
 index 18865f9..4b32875 100644
 --- a/apiv2/impl-mezzano.lisp
@@ -5,7 +150,7 @@ index 18865f9..4b32875 100644
 @@ -88,7 +88,7 @@
    (declare (ignore lock waitp timeout))
    (signal-not-implemented 'acquire-recursive-lock))
- 
+
 -(release-not-implemented 'release-recursive-lock)
 +(mark-not-implemented 'release-recursive-lock)
  (defun %release-recursive-lock (lock)

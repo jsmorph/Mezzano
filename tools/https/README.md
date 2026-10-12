@@ -117,7 +117,10 @@ The files in ports/ contain source edits against the revisions and releases list
 
     git -C "$TLS_SOURCES/pure-tls" apply /path/to/Mezzano/tools/https/ports/pure-tls.diff
 
-The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, a Bordeaux-Threads declaration error, cl-cancel clock units and monitor cleanup, and TLS stream cleanup.  The current Bordeaux-Threads edits still lack the atomic operations required for guest loading.  Guest HTTPS execution remains incomplete.
+The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, a Bordeaux-Threads declaration error, cl-cancel clock units and monitor cleanup, and TLS stream cleanup.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.  Guest HTTPS execution remains incomplete.
+
+    (load "SYS:SOURCE;TOOLS;HTTPS;TEST-ATOMICS.LISP")
+    (lispm-atomics-test:run)
 
 The cancellation test requires the edited cl-cancel and pure-tls sources.  After loading the HTTPS libraries:
 
