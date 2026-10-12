@@ -18,8 +18,8 @@
                               (:entry t)
                               (:iret (not (mezzano.internals::gc-info-for-function-offset
                                            function offset))))))
-               (format t "Stopped at ~A, offset ~D.~%" phase offset)
-               (return-from seek-return)))
+               (return-from seek-return
+                 (values offset mezzano.internals::*gc-epoch*))))
            (mezzano.internals::safe-single-step-thread thread))
   (error "Did not reach interrupt return phase ~S." phase))
 
@@ -62,6 +62,7 @@
   (let* ((function (register-function :r8))
          (gate (mezzano.supervisor:make-event))
          (done (mezzano.supervisor:make-event))
+         (frame-pointer nil)
          (thread (mezzano.supervisor:make-thread
                   (lambda ()
                     (setf *result* (funcall function *root*))
@@ -71,19 +72,31 @@
          (progn
            (await (lambda () *entered*))
            (mezzano.supervisor::stop-thread thread)
-           (seek-return thread phase)
-           (when nested
-             (mezzano.supervisor:establish-thread-foothold
-              thread
-              (lambda ()
-                (setf *interrupted* t)
-                (mezzano.supervisor:event-wait gate)))
-             (mezzano.supervisor::resume-thread thread)
-             (await (lambda () *interrupted*)))
-           (format t "Collecting at ~A, nested ~S.~%" phase nested)
-           (let ((before (mezzano.internals::lisp-object-address *root*)))
-             (mezzano.extensions:gc :full t)
-             (assert (/= before (mezzano.internals::lisp-object-address *root*))))
+           (multiple-value-bind (offset epoch) (seek-return thread phase)
+             (when nested
+               (mezzano.supervisor:establish-thread-foothold
+                thread
+                (lambda ()
+                  (setf *interrupted* t)
+                  (mezzano.supervisor:event-wait gate)))
+               (setf frame-pointer (mezzano.supervisor:thread-state-rbp thread))
+               (mezzano.supervisor::resume-thread thread)
+               (await (lambda () *interrupted*)))
+             (format t "Collecting at ~A, nested ~S.~%" phase nested)
+             (let ((before (mezzano.internals::lisp-object-address *root*))
+                   (saved-address (if nested
+                                      (mezzano.internals::memref-unsigned-byte-64 frame-pointer 1)
+                                      (mezzano.supervisor:thread-state-rip thread)))
+                   (function-address
+                     (logand (mezzano.internals::lisp-object-address
+                              #'mezzano.supervisor::%%partial-save-return-thunk)
+                             -16)))
+               (assert (= saved-address (+ function-address offset)))
+               (assert (= epoch mezzano.internals::*gc-epoch*) ()
+                       "GC occurred during interrupt-return test preparation.")
+               (mezzano.extensions:gc :full t)
+               (assert (= (1+ epoch) mezzano.internals::*gc-epoch*))
+               (assert (/= before (mezzano.internals::lisp-object-address *root*)))))
            (setf *release* t
                  (mezzano.supervisor:event-state gate) t)
            (unless nested (mezzano.supervisor::resume-thread thread))
