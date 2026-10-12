@@ -162,6 +162,7 @@
     "system/standard-streams.lisp"
     "system/stream.lisp"
     "system/evaluation-service.lisp"
+    "system/process-monitor.lisp"
     "system/command-processor.lisp"
     "system/document-examiner.lisp"
     "system/ansi-loop.lisp"

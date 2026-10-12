@@ -24,7 +24,7 @@ The transport scripts run in host SBCL:
 ```sh
 python3 tools/swank/test-lispm-eval.py --port "$SWANK_PORT"
 for test_name in test-debugger test-debugger-reconnect test-evaluation-reconnect \
-  test-listener test-document-examiner test-private-documents
+  test-listener test-document-examiner test-private-documents test-processes
 do
   sbcl --script "tools/swank/$test_name.lisp" "$SWANK_PORT" || exit "$?"
 done
@@ -193,5 +193,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-debugger-reconnect.lisp` | TCP disconnect, exclusive control, token rejection, unread replies, and duplicate restart submission. |
 | `test-document-examiner.lisp` | Documentation coverage, topic hierarchy, links, search modes, command assistance, and Unicode offsets through SWANK. |
 | `test-private-documents.lisp` | Ordered/duplicate/empty reference files, pathname defaults and Unicode, malformed/circular/reader-eval rejection, unchanged files after invalid input, lost replies, replay without another write or catalog lookup, conflicts, and owned-fixture cleanup. |
+| `test-processes.lisp` | Processes serialization, shared and repeated stop tokens, bounded handle storage, cyclic job labels, and Show Processes completion/help/output.  Loads the guest fixture. |
+| `test-processes-guest.lisp` | Duplicate names, exact and nested stop associations, event/mutex waits, stale wait items, hostile printers, circular/bounded labels, recorded runtime, concurrent thread creation/exit, and release behavior.  Runs through the transport script. |
 | `test-listener.lisp` | Listener commands, completion, defaults, file operations, presentations, independent Listeners, interactive input, and replay after unread replies and package changes. |
 | `test-debugger-remote-restore.lisp` | Saved/absent sessions, old tokens/frames, storage retirement, and restored-stop recovery. |

@@ -20,6 +20,7 @@ Command: ,help
 | Set Package | Selects an existing package.  An omitted argument uses the current package. |
 | Show Herald | Displays the guest implementation and version.  :Detailed Yes adds machine and software information.  An omitted :Detailed means No.  Mentioning it without a value means Yes. |
 | Show Command Processor Status | Displays mode, prompt, package, and pathname default. |
+| Show Processes | Displays thread names, scheduler states, priorities, wait reasons, recorded run time, and retained debugger stop IDs. |
 | Clear Output History | Clears the tab's prior displayed transcript while preserving input history and retained jobs. |
 | Show Directory | Lists guest files matching a pathname.  An omitted argument uses a wildcard in the default directory.  A directory pathname acquires wildcard name and type components. |
 | Show File | Displays a guest text file and records its pathname as the default. |
@@ -29,6 +30,8 @@ Command: ,help
 File arguments use Mezzano Common Lisp pathname syntax.  Relative names merge with the Listener's pathname default.  Double quotes delimit an argument containing spaces, commas, quotes, or a leading colon.  Logical pathnames obey Common Lisp logical namestring character restrictions.  Physical REMOTE pathnames accept Unicode filenames.
 
 These commands implement the listed arguments and keywords.  Unsupported or duplicate keywords produce an input error.  Compile File supports Yes and No for :Load.  Genera's Ask choice, multiple-file arguments, output redirection, and other command keywords are unsupported.
+
+Show Processes uses `mezzano.debug:process-summary`, the same guest query as Peek's Processes view.  It reports live observations assembled from per-thread scheduler samples.  Run time counts recorded processor time in the displayed units.  An active scheduling interval enters that counter when the thread switches out.  Scheduler state and retained debugger stops are separate: a thread waiting at a retained stop usually has scheduler state Sleeping.  Idle threads are absent from the supervisor's live-thread list.
 
 ### Completion, help, and history
 

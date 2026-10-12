@@ -20,7 +20,7 @@ Entry is explicit:
 
 The wrapper binds the condition debugger hooks for the function's dynamic extent.  A background thread needs its own wrapper.  The retained evaluation API establishes the wrapper in each worker.  Ordinary SWANK evaluation uses SLDB.
 
-A service mutex protects the registry, ownership, command acceptance, and results.  Operations that inspect frames, print objects, or invoke restarts execute outside that mutex on the stopped thread.  Registry operations inhibit footholds while holding the mutex and re-signal errors after releasing it.
+A service mutex protects the registry, ownership, command acceptance, and results.  Commands that inspect frames, print objects, or invoke restarts execute outside that mutex on the stopped thread.  Registry operations inhibit footholds while holding the mutex and re-signal errors after releasing it.
 
 A stopped thread retains any application locks it holds.  Another thread can change shared objects reachable through its locals.  A stop therefore preserves an activation without freezing the heap.  An inspection that depends on another held lock can block.  The service does not resolve application deadlocks.
 
@@ -48,13 +48,15 @@ The public functions are exported from `MEZZANO.DEBUG`:
 |---|---|
 | `call-with-debugger-service function` | Establishes condition-stop entry for a dynamic extent. |
 | `debugger-stops &key include-closed` | Returns current-boot handles for registered stops. |
-| `debugger-stop-information handle` | Returns identity, state, thread name, parent/child, generation, and next command ID. |
+| `debugger-stop-information handle` | Returns identity, state, thread display label, parent/child, generation, and next command ID. |
 | `make-debugger-controller` | Creates a controller. |
 | `close-debugger-controller controller` | Closes a controller and releases its leases. |
 | `attach-debugger-stop handle controller` | Acquires exclusive control, including for a closed record. |
 | `submit-debugger-command lease id operation &optional argument` | Accepts a new command or recognizes an identical accepted submission. |
 | `debugger-command-result handle id` | Queries a recorded command without requiring control. |
 | `release-debugger-stop lease` | Removes a closed stop and its command records. |
+
+The `:thread` field in stop and evaluation-job information is a display string of at most 160 characters.  Its formatter accepts bounded primitive names without invoking user printers.  ASCII control characters become spaces, unsupported objects appear as `[object]`, and truncated names end with `[truncated]`.  [Peek](peek.md) uses the same label rules.
 
 ### Acceptance and execution
 
@@ -101,7 +103,7 @@ These functions are exported from `MEZZANO.DEBUG`:
 |---|---|
 | `start-evaluation-job name source &key package input interactive listener` | Creates a batch job by default, or an interactive job when requested.  Package defaults to `"CL-USER"`, and input defaults to an empty string. |
 | `evaluation-jobs` | Returns current-boot handles for unreleased jobs. |
-| `evaluation-job-information handle` | Returns name, state, thread name, acceptance-boot comparison, active stop handles, printed values, and output length. |
+| `evaluation-job-information handle` | Returns name, state, thread display label, acceptance-boot comparison, active stop handles, printed values, and output length. |
 | `evaluation-job-output handle start &optional end` | Returns copied output and the ending character offset.  The default end is the current length. |
 | `supply-evaluation-input handle offset text &key eof` | Supplies or recognizes retained input and returns the ending character offset. |
 | `interrupt-evaluation-job handle id` | Accepts or recognizes a numbered interruption request. |

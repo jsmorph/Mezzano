@@ -948,6 +948,16 @@ footholds will be reenabled, otherwise footholds will stay inhibited."
     (with-symbol-spinlock (*global-thread-lock*)
       (thread-state thread))))
 
+(defun sample-thread-information (thread)
+  (check-type thread thread)
+  (safe-without-interrupts (thread)
+    (with-symbol-spinlock (*global-thread-lock*)
+      (values (thread-%name thread)
+              (thread-state thread)
+              (thread-priority thread)
+              (thread-wait-item thread)
+              (thread-%run-time thread)))))
+
 (defun stop-thread (thread)
   "Stop a thread, waiting for it to enter the stopped state."
   (check-type thread thread)

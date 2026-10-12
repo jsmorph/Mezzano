@@ -112,12 +112,57 @@
           when (or include-closed (eq (service-stop-state stop) :stopped))
             collect (service-handle stop))))
 
+(defun bounded-display-label (object)
+  (let* ((remaining 32)
+         (characters 0)
+         (truncated nil)
+         (text
+           (with-output-to-string (stream)
+             (block render
+               (labels ((emit (text)
+                          (loop for character across text
+                                do (when (= characters 160)
+                                     (setf truncated t)
+                                     (return-from render))
+                                   (write-char (if (or (< (char-code character) 32)
+                                                       (= (char-code character) 127))
+                                                   #\Space character)
+                                               stream)
+                                   (incf characters)))
+                        (visit (value depth)
+                          (when (or (zerop remaining) (= depth 4))
+                            (setf truncated t)
+                            (return-from render))
+                          (decf remaining)
+                          (typecase value
+                            (string (emit value))
+                            (symbol
+                             (when (keywordp value) (emit ":"))
+                             (emit (symbol-name value)))
+                            (character (emit (string value)))
+                            (fixnum (emit (format nil "~D" value)))
+                            (cons
+                             (emit "(")
+                             (loop for tail = value then (cdr tail)
+                                   do (visit (car tail) (1+ depth))
+                                      (cond ((null (cdr tail)) (emit ")") (return))
+                                            ((consp (cdr tail)) (emit " "))
+                                            (t (emit " . ")
+                                               (visit (cdr tail) (1+ depth))
+                                               (emit ")")
+                                               (return)))))
+                            (t (emit "[object]")))))
+                 (visit object 0))))))
+    (if truncated
+        (concatenate 'string (subseq text 0 (min (length text) 149)) "[truncated]")
+        text)))
+
 (defun debugger-stop-information (handle)
   (with-service-lock
     (let ((stop (check-service-handle handle)))
       (list :id (service-stop-id stop)
             :state (service-stop-state stop)
-            :thread (copy-service-result
+            :thread (bounded-display-label
                      (mezzano.supervisor:thread-name (service-stop-thread stop)))
             :parent-id (when (service-stop-parent stop)
                          (service-stop-id (service-stop-parent stop)))

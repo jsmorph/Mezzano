@@ -334,7 +334,8 @@
       (list :name (copy-seq (evaluation-job-name job))
             :state (evaluation-job-state job)
             :listener-result metadata
-            :thread (mezzano.supervisor:thread-name (evaluation-job-thread job))
+            :thread (bounded-display-label
+                     (mezzano.supervisor:thread-name (evaluation-job-thread job)))
             :current-boot-p (eq (evaluation-job-boot job)
                                (mezzano.supervisor:current-boot-id))
             :stops (loop for stop being the hash-values of *service-stops*

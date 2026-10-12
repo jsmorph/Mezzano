@@ -240,6 +240,7 @@
    #:close-debugger-controller
    #:debugger-stops
    #:debugger-stop-information
+   #:process-summary
    #:attach-debugger-stop
    #:release-debugger-stop
    #:submit-debugger-command

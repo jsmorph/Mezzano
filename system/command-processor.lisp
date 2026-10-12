@@ -16,6 +16,8 @@
      :keywords (("Detailed" :boolean "No" "Yes")))
     (:name "Show Command Processor Status" :id :show-command-processor-status
      :help "Display the Listener mode, prompt, package, and pathname default.")
+    (:name "Show Processes" :id :show-processes
+     :help "Display Mezzano thread states, priorities, wait reasons, recorded run time, and retained debugger stops.")
     (:name "Clear Output History" :id :clear-output-history
      :help "Clear the displayed transcript. Retain input history and guest jobs.")
     (:name "Show Directory" :id :show-directory :type :directory
@@ -270,6 +272,8 @@
       (:show-command-processor-status
        (format t "Mode: Command-Preferred~%Prompt: ~S~%Package: ~A~%Pathname default: ~A~%"
                "Command: " (package-name *package*) (namestring (listener-pathname listener))))
+      (:show-processes
+       (mezzano.debug::print-process-summary (mezzano.debug:process-summary)))
       (:clear-output-history
        (mezzano.debug::with-service-lock
          (setf (getf metadata :effects) (list (list :operation :clear-output-history)))))
