@@ -1,6 +1,6 @@
 # Mezzano user guide
 
-Mezzano runs Common Lisp as an operating system.  The Web interface provides a Listener for commands and Lisp forms, a debugger for retained stops, and a Document Examiner for these manuals.  SWANK clients can use the same evaluation and debugger services.
+Mezzano runs Common Lisp as an operating system.  The Web interface provides a Listener for commands and Lisp forms, a debugger for retained stops, a process viewer, and a Document Examiner for these manuals.  SWANK clients can use the same evaluation and debugger services.
 
 ## Getting started
 
@@ -14,7 +14,7 @@ Command: Set Package CL-USER
 Command: Help :Format Detailed
 ```
 
-Return submits input.  SPACE and Tab complete command names and arguments.  F12 requests help.  The System Menu selects Listener, Debugger, Evaluations, or Document Examiner.
+Return submits input.  SPACE and Tab complete command names and arguments.  F12 requests help.  The System Menu selects Listener, Debugger, Evaluations, Peek, or Document Examiner.  F9 followed by L, D, or P selects Listener, Document Examiner, or Peek.
 
 ## Documentation
 
@@ -23,6 +23,7 @@ Return submits input.  SPACE and Tab complete command names and arguments.  F12 
 | Build, boot, connect, and save the system | [Installation and operation](installation.md). |
 | Use the browser interface | [Web Listener and Debugger](../tools/swank/web/README.md). |
 | Enter commands and complete arguments | [Lisp Command Processor](command-processor.md). |
+| View threads and their debugger stops | [Peek process viewer](peek.md). |
 | Browse manuals and save reading lists | [Document Examiner](document-examiner.md). |
 | Evaluate from a Lisp client | [Remote evaluation and debugging](../tools/swank/README.md). |
 | Inspect stops, locals, restarts, and job state | [Debugger and evaluation reference](debugger.md). |

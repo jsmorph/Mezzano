@@ -8,7 +8,7 @@ Mezzano is an operating system written in Common Lisp.  It includes a native com
 
 The [installation and operation guide](doc/installation.md) describes building and running the x86-64 image with QEMU and connecting through SWANK or the Web interface.  The current startup initializes the guest desktop even when QEMU's display is hidden.  ARM64 support exists in the source, but this guide covers x86-64 QEMU.
 
-The [user guide](doc/project-guide.md) links the product documentation.  The [Web Listener and Debugger](tools/swank/web/README.md) provides remote evaluation, debugger access, and the [Document Examiner](doc/document-examiner.md).  The [desktop reference](doc/quickstart.md) covers native keyboard commands and status displays.
+The [user guide](doc/project-guide.md) links the product documentation.  The [Web Listener and Debugger](tools/swank/web/README.md) provides remote evaluation, debugger access, [Peek](doc/peek.md), and the [Document Examiner](doc/document-examiner.md).  The [desktop reference](doc/quickstart.md) covers native keyboard commands and status displays.
 
 The [debugger and evaluation reference](doc/debugger.md) specifies supported operations, compiler requirements, and recovery behavior.  The [remote evaluation guide](tools/swank/README.md) covers the Lisp clients.  The [Command Processor reference](doc/command-processor.md) lists Listener and debugger commands.
 
