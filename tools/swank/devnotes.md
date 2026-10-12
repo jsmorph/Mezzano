@@ -792,3 +792,9 @@ Frontend 64788cd6 passed the focused Chromium test for Save, Read, Load, and Har
 The guide and SWANK reference now describe the tested browser commands.  The operations guide selects Mezzano 64788cd6 and Slime e352c295.  The earlier guide cited printed pages 2906–2924 for the Document Examiner chapter.  The supplied User's Guide text places the private-command descriptions on Page 688 and private-document creation around Pages 699–700.  The guide now cites the named Document Examiner and Creating a Private Document sections.
 
 The final catalog refresh and transport test passed with 26 documents, 314 topics, and 172 references after the private UI documentation changes.  No retained stops remained.  Evidence is examiner-private-ui-catalog.log and examiner-test-5.log.  The development guest saved the refreshed catalog in examiner-private-ui-snapshot.log after browser fixture cleanup.
+
+## Final Examiner source selection: 2026-10-12
+
+The operations guide selects Mezzano f52e4b0b and Slime e352c295.  The Mezzano revision includes the private-document browser commands, their documentation, and the tested title-clipping correction.  The title's 320 by 24 rectangle matches both original reference captures pixel for pixel.  Paragraph justification and complete-window fidelity remain unfinished.  The font report records the measured result and distinguishes it from the inferred historical clipping behavior.
+
+The final catalog refresh and development snapshot will include these published documents after browser test sessions have closed.  This source-selection and CSS increment changes no guest implementation and requires no image rebuild.

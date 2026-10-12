@@ -9,7 +9,7 @@ The [debugger design](../../../doc/debugger.md) owns capability status and test 
 | Component | Recorded revision or version |
 |---|---|
 | MBuild | `a13448825506c716fb60427f78aafeb6265477b2` |
-| Mezzano, including Web UI and debugger tests | `708352b32ce244f69ebe7cec2fb32a069f83dc83` |
+| Mezzano, including Web UI and debugger tests | `f52e4b0b8097f726911d93b58f8199d23fe86ec8` |
 | Slime implementation | `e352c29544772882a640f68c1415e0dd4b1c77c0` |
 | Other guest dependencies | Submodule revisions recorded by the MBuild revision above. |
 | Host Quicklisp distribution | `2026-01-01`, recorded in `quicklisp/dists/quicklisp/distinfo.txt`. |
@@ -24,7 +24,7 @@ cd /home/somebody/src/mezzano-boot
 git checkout a13448825506c716fb60427f78aafeb6265477b2
 git submodule update --init
 git -C Mezzano fetch https://github.com/jsmorph/Mezzano.git debugging
-git -C Mezzano checkout --detach 708352b32ce244f69ebe7cec2fb32a069f83dc83
+git -C Mezzano checkout --detach f52e4b0b8097f726911d93b58f8199d23fe86ec8
 git -C home/slime fetch https://github.com/jsmorph/slime.git debugging
 git -C home/slime checkout --detach e352c29544772882a640f68c1415e0dd4b1c77c0
 ```
