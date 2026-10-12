@@ -1,6 +1,6 @@
 # Mezzano Web Listener and Debugger
 
-The Web interface provides a Lisp Listener, debugger, retained evaluations, and Document Examiner.  A Python server connects the browser to Mezzano's SWANK service.  Evaluations, output, debugger stops, and command results remain in the guest across browser disconnections.
+The Web interface provides a Lisp Listener, debugger, retained evaluations, Peek process viewer, and Document Examiner.  A Python server connects the browser to Mezzano's SWANK service.  Evaluations, output, debugger stops, and command results remain in the guest across browser disconnections.
 
 ## Installation and access
 
@@ -76,6 +76,12 @@ Show Documentation opens a topic.  Show Candidates searches titles and keywords.
 
 Read Private Document appends saved topic references to the selected viewer.  Mouse-Right on its command-menu item offers Save, Load, and Hardcopy Private Document.  Load inserts deferred bookmarks without displaying text.  Save writes bookmarks in displayed order through a retained guest job.  Its result appears in Evaluations.  Hardcopy uses the browser's print dialog without changing the viewer.  The [Document Examiner guide](../../../doc/document-examiner.md) defines search options, viewer commands, private-file format, and pathname defaults.
 
+## Peek and activity selection
+
+Peek lists guest threads, sampled scheduler fields, and existing retained debugger stops.  It opens from the System Menu or with F9 followed by P.  Processes mode uses a 20-second refresh interval while visible.  SPACE requests a sample, a number followed by Z changes the interval, F12 selects Help, and Q returns to the previous activity.  Describe shows sampled fields.  Debugger selects an associated retained stop.  The [Peek guide](../../../doc/peek.md) explains runtime, sampling, and state interpretation.
+
+F9 starts SELECT.  L selects the Listener, D selects Document Examiner, and P selects Peek.  F9 followed by F12 lists supported activities.  Backspace cancels selection.  Existing editor input remains unchanged when switching activities.  F9 is the Web interface's SELECT mapping.
+
 ## Connections and recovery
 
 A tab retains its session identity, input history, request records, and viewer state in sessionStorage.  Reload resumes the same session.  Independent tabs create separate sessions.  Duplicated tabs can inherit one identity.  Closing a browser or releasing a session leaves guest jobs retained until explicit release.  Stored output and results consume guest memory.
@@ -96,7 +102,7 @@ An expired session requires New Session.  This archives unresolved records under
 |---|---|
 | open-session, resume-session, jobs, release-session | None. |
 | stops | Optional include_closed. |
-| listener-information | None. |
+| listener-information, processes | None. |
 | start-listener | name, source.  Optional interactive. |
 | listener-assistance | source, cursor, action.  Optional context, presentation. |
 | start-evaluation | name, source.  Optional package, input, interactive. |

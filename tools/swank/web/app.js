@@ -24,6 +24,8 @@ let selectedStop = null;
 let selectedFrame = null;
 let stops = [];
 let historyIndex = null;
+let selectingActivity = false;
+let selectHelpFocus = null;
 const assistanceTimers = new Map();
 const views = new Map();
 const commandResults = new Map();
@@ -244,12 +246,13 @@ async function mutate(operation, arguments_, metadata = {}) {
   return replay(record);
 }
 function showActivity(name) {
+  const previous = activity;
   activity = name;
   $("monitor").classList.toggle("examiner-active", name === "examiner");
   document.querySelectorAll(".activity").forEach(element => { element.hidden = element.id !== name; });
   const labels = {listener: "Dynamic Lisp Listener 1", debugger: "Debugger", evaluations: "Evaluations",
                   requests: "Request History", help: "Listener Help", "input-history": "Input History",
-                  examiner: "Document Examiner"};
+                  examiner: "Document Examiner", peek: "Peek"};
   $("window-label").textContent = labels[name];
   $("system-menu").close();
   if (name === "listener") $("source").focus();
@@ -257,6 +260,7 @@ function showActivity(name) {
   else if (name === "examiner") { $("examiner-command").focus(); run(() => examiner.show()); }
   else $("page").focus();
   updateTracks();
+  document.dispatchEvent(new CustomEvent("activitychange", {detail: {name, previous}}));
 }
 function queueEvaluation() {
   const source = $("source").value;
@@ -767,7 +771,8 @@ function renderPending() {
 }
 function updateStatus() {
   $("package-label").textContent = "CL " + state.package + ":";
-  if (!connected) $("process-state").textContent = "Disconnected";
+  if (selectingActivity) $("process-state").textContent = "Select:";
+  else if (!connected) $("process-state").textContent = "Disconnected";
   else if (busy) $("process-state").textContent = "Run";
   else if (stops.some(stop => stop.info.state === ":stopped")) $("process-state").textContent = "Debugger";
   else if ([...views.values()].some(view => view.info?.state === ":running" && !view.info["input-waiting-p"])) {
@@ -789,17 +794,58 @@ function updateTracks() {
   vertical.style.height = (fraction * 100) + "%";
   vertical.style.marginTop = ((page.scrollTop / Math.max(1, page.scrollHeight)) * $("vertical-track").clientHeight) + "px";
 }
+function cancelActivitySelection() {
+  selectingActivity = false;
+  updateStatus();
+}
+document.addEventListener("keydown", event => {
+  if (event.key === "F9" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    selectingActivity = true;
+    updateStatus();
+    return;
+  }
+  if (!selectingActivity) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+  cancelActivitySelection();
+  if (["Backspace", "Delete", "Escape"].includes(event.key)) return;
+  if (event.key === "F12") {
+    selectHelpFocus = document.activeElement;
+    $("select-help").showModal();
+    placeDialogOnPixels($("select-help"));
+    return;
+  }
+  const name = {l: "listener", d: "examiner", p: "peek"}[event.key.toLowerCase()];
+  if (name && $(name)) {
+    for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
+    showActivity(name);
+  } else message("No activity is assigned to SELECT " + event.key + ". F9 then F12 lists activities.");
+}, true);
+document.addEventListener("pointerdown", () => { if (selectingActivity) cancelActivitySelection(); });
+window.addEventListener("blur", () => { if (selectingActivity) cancelActivitySelection(); });
+$("select-help").addEventListener("close", () => selectHelpFocus?.focus());
+$("select-help").addEventListener("keydown", event => {
+  if (event.key === "F11" && event.shiftKey) { event.preventDefault(); $("select-help").close(); }
+});
+$("close-select-help").onclick = () => $("select-help").close();
 document.addEventListener("contextmenu", event => {
   event.preventDefault();
   openMenu();
 });
+function defaultMouseHelp() {
+  return activity === "peek" ? $("peek").dataset.help
+    : "Mouse-Right: System Menu. Return: Execute input. Tab: Complete. F12: Help.";
+}
 document.addEventListener("pointerover", event => {
   const help = event.target.closest("[data-help]");
-  $("mouse-help").textContent = help?.dataset.help || "Mouse-Right: System Menu. Return: Execute input. Tab: Complete. F12: Help.";
+  $("mouse-help").textContent = help?.dataset.help || defaultMouseHelp();
 });
 document.addEventListener("focusin", event => {
   const help = event.target.closest("[data-help]");
-  if (help) $("mouse-help").textContent = help.dataset.help;
+  $("mouse-help").textContent = help?.dataset.help || defaultMouseHelp();
 });
 $("window-label").onclick = openMenu;
 $("package-label").onclick = openMenu;

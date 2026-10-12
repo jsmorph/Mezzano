@@ -1,0 +1,83 @@
+{
+  "reference_sha256": "691c8722aa85aba15c31b0599483e4f99639753b0b3340894d479e1af81182a1",
+  "application_sha256": "38598d401e5fb05e1804a13544823d289fc53f3e376b4a9734bb898b9cd72d2c",
+  "size": [
+    980,
+    717
+  ],
+  "intermediate_gray_pixels": 0,
+  "samples": [
+    {
+      "text": "Process Name",
+      "font": "TVFONT",
+      "reference": [
+        23,
+        30
+      ],
+      "application": [
+        23,
+        30
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0
+    },
+    {
+      "text": "Notifications 1",
+      "font": "TVFONT",
+      "reference": [
+        23,
+        54
+      ],
+      "application": [
+        23,
+        54
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0
+    },
+    {
+      "text": "Processes",
+      "font": "JESS14",
+      "reference": [
+        14,
+        6
+      ],
+      "application": [
+        14,
+        6
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0
+    },
+    {
+      "text": "Processes",
+      "font": "CPTFONT",
+      "reference": [
+        24,
+        649
+      ],
+      "application": [
+        24,
+        649
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0
+    }
+  ]
+}
