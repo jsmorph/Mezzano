@@ -17,7 +17,7 @@
         <section id="listener" class="activity">
           <header id="herald">
             <h1>Mezzano Lisp Machine</h1>
-            <p><span>Remote Lisp Listener</span><span>Mezzano on minideb2</span></p>
+            <p><span>Remote Lisp Listener</span><span>Common Lisp</span></p>
           </header>
           <div id="transcript" aria-label="Evaluation history"></div>
           <div id="listener-assistance" class="assistance" aria-live="polite"></div>
@@ -111,12 +111,13 @@
         </section>
         <section id="help" class="activity" hidden>
           <h2>Mezzano Listener and Debugger</h2>
-          <p>Return executes input through the guest Command Processor. Alphabetic input names
-            a command or known variable. Other input is Lisp. A leading comma forces Lisp.
+          <p>Return executes input through the guest Command Processor. Alphabetic input or an
+            initial colon introduces a command. A bound variable name is accepted when it does
+            not name a command. Other input is Lisp. A leading comma forces Lisp.
             Shift-Return inserts a newline. One Listener job runs at a time in this session.</p>
           <p>SPACE completes a command word. Tab or COMPLETE completes a token. F12 or Ctrl-?
             requests contextual help. The guest supplies argument prompts and defaults.
-            This editor displays prompts above the input rather than interleaved within it.</p>
+            Argument prompts and contextual help appear above the input.</p>
           <p>Ctrl-Meta-Y recalls the latest accepted input. Meta-Y recalls earlier input.
             Escape or Input History displays accepted input. Recall fills the editor.
             Return executes recalled input as a new request. F10 clears input.</p>
@@ -131,9 +132,10 @@
             :Show Frame, and :Show Local All. Original caller arguments remain unavailable.</p>
           <p>Requests keeps submissions whose replies were lost. Repeating a recorded request
             uses its original name, range, or ID. An expired session requires a new session.</p>
-          <p>The clock shows browser time. Printed values are text. Public binding writes,
-            frame evaluation, object browsing, and stepping remain under development.</p>
-          <p id="font-status">Recovered Symbolics font rasters pass Chromium DPR1 tests. Whole-screen fidelity remains under review.</p>
+          <p>The clock shows browser time. Printed values are text. Binding writes,
+            frame evaluation, object browsing, and stepping are unavailable in this interface.</p>
+          <p>Document Examiner contains the installation, Command Processor, debugger,
+            and documentation guides.</p>
         </section>
       </div>
     </div>

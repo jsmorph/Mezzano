@@ -1,127 +1,117 @@
 # Mezzano Web Listener and Debugger
 
-The server exposes the retained SWANK evaluation and debugger services through HTTP.  The browser provides a Lisp Listener, retained evaluations, condition and interruption stops, stack frames, local values, zero-argument restarts, and request history.  Python uses its standard library.  The browser uses native HTML, CSS, and JavaScript.
+The Web interface provides a Lisp Listener, debugger, retained evaluations, and Document Examiner.  A Python server connects the browser to Mezzano's SWANK service.  Evaluations, output, debugger stops, and command results remain in the guest across browser disconnections.
 
-## Running
+## Installation and access
 
-Run from this directory on the VM host:
+The server requires Python 3.13 or later and has no third-party Python dependencies.  Running it with the command below also requires uv.  The browser requires JavaScript and sessionStorage.  The Mezzano guest must provide the retained SWANK service and its Command Processor and Document Examiner modules.  The Web server does not implement SWANK's shared-secret handshake.  The [installation guide](../../../doc/installation.md) covers guest setup.
+
+From the Mezzano checkout, this example uses an installed Python interpreter, serves HTTP on loopback, and connects to SWANK on port 4005:
 
 ```sh
-uv run --no-python-downloads --python /usr/bin/python3 server.py \
-  --listen 0.0.0.0 --port 8765 --swank-host 127.0.0.1 --swank-port 4006 \
-  --allow-host minideb2 --allow-host minideb2.tail3bfd26.ts.net \
-  --allow-host 100.122.26.31 --allow-host 172.16.0.64
+uv run --no-python-downloads --python python3 tools/swank/web/server.py \
+  --listen 127.0.0.1 --port 8765 \
+  --swank-host 127.0.0.1 --swank-port 4005
 ```
 
-The default HTTP address is 0.0.0.0:8765, as requested by the user.  The default SWANK target is 127.0.0.1:4006.  Port 4005 belongs to the original VM.  The installed Python interpreter is used without downloading another interpreter or adding application dependencies.
+The browser address for that configuration is `http://127.0.0.1:8765/`.  The SWANK host and port identify the endpoint reachable from the Python server, which may be a forwarded guest port.
 
-Each accessible DNS name or IP address must appear in the Host allowlist.  Localhost, 127.0.0.1, the host name, and its fully qualified name are included by default.  An HTTP client that can reach the service has authority to evaluate Lisp in the machine.  The application provides no account authentication or TLS.  Host and Origin checks reject requests from unrelated browser origins.  POST requests require JSON and the `X-Mezzano-Request: 1` header.  The server grants no CORS permission.
+| Option | Default | Meaning |
+|---|---|---|
+| `--listen` | `0.0.0.0` | HTTP listening address. |
+| `--port` | `8765` | HTTP listening port. |
+| `--swank-host` | `127.0.0.1` | SWANK server address. |
+| `--swank-port` | `4006` | SWANK server port. |
+| `--timeout` | `15` | Request timeout in seconds. |
+| `--allow-host` | None added | Additional HTTP hostname or IP address.  May be repeated. |
 
-The [systemd unit](mezzano-web.service) records the minideb2 launch configuration.  The [operations guide](../minideb2/README.md) describes the machine and endpoint setup.
+Network access uses a listening address such as `0.0.0.0` and an allowed browser hostname, for example `--allow-host lispm.example.net`.  The corresponding browser address is `http://lispm.example.net:8765/`.  The allowlist includes `localhost`, `127.0.0.1`, the server's hostname, and its fully qualified hostname.  Additional addresses require an explicit `--allow-host`.  Every request's Host header must include the HTTP listening port.
 
-## Using the interface
+### Access restrictions
 
-Return submits a command or Lisp form to the [guest Lisp Command Processor](../../../doc/command-processor.md).  Its guide lists the supported commands, completion and help keys, defaults, and pathname insertion.  Shift-Return inserts a newline.  Mouse-Right or the lower activity label opens the System Menu.  The menu selects the package, interactive input mode, activity, and connection operations.  Output and returned values appear in the Listener transcript.  Lisp forms returning zero values appear as `(No values)`, distinct from a returned `NIL`.
+Access to the HTTP service grants Lisp evaluation and debugger control in the guest.  The server provides no account authentication or TLS.  Host and Origin checks restrict browser request origins.  Network access controls determine which clients can use the service.
 
-An interactive evaluation accepts text and EOF through its input controls.  Interrupt requests a retained debugger stop.  Release removes a terminal evaluation's stored output and results.  Guest jobs remain retained after session release and can be discovered from a fresh session.
+POST requests require JSON and the `X-Mezzano-Request: 1` header.  An Origin header, when present, must equal `http://` followed by the request's Host header.  The server grants no CORS permission.  Its current checks expect direct HTTP access.  It does not interpret forwarded host or scheme headers from a reverse proxy.
 
-Select an evaluation's Debugger action or a retained stop.  The System Menu's This Debugger column provides condition inspection, :Show Proceed Options, :Show Backtrace, :Show Frame, and :Show Local All.  Lisp parses typed debugger commands at the arrow prompt.  :Set Current Frame N selects a frame from the backtrace and requests its local values.  :Show Local N displays one local.  Original argument values remain unavailable.  Parent Stop and Child Stop select related retained stops.  A printer can itself enter a child stop.  The parent command remains visible as running while the child is inspected.
+## Lisp Listener
 
-Restart lines invoke zero-argument restarts.  Available local values use the debugger's printed representation.  Unavailable values display `<unavailable>`.  A selected frame's function and index identify the displayed locals.  Closed stops retain their previously queried results until Release Stop.  The Request History activity records command IDs, states, prior-boot markers, and submissions whose replies remain uncertain.
+Return submits a command or Lisp form.  Shift-Return inserts a newline.  Alphabetic input and an initial colon introduce commands.  A bound variable name is accepted when it does not identify a command.  Other input is Lisp source, and a leading comma forces Lisp reading.  For example:
 
-### Session and request lifetime
+```text
+Command: Set Package CL-USER
+Command: (+ 20 22)
+Command: Help :Format Detailed
+```
 
-A tab saves its guest session name, creation-attempt state, evaluation sources and names, input ranges, interrupt IDs, and command IDs in `sessionStorage`.  Reload resumes that identity.  Independent tabs create different sessions.  Duplicated tabs can inherit one identity.  Requests for a shared identity serialize in the HTTP server, while guest conflicts remain visible.
+SPACE completes a command word, Tab completes a name, and F12 requests contextual help.  Another SPACE accepts a displayed argument default.  Pathnames in command output are mouse-sensitive: clicking one inserts it into the expected pathname argument.  The [Command Processor guide](../../../doc/command-processor.md) describes commands, arguments, pathname rules, and input history.
 
-Each HTTP operation opens a SWANK connection, resumes the saved session, performs its operation, and closes the connection.  Debugger submission and release acquire their lease on that same connection.  Closing the connection relinquishes the controller.  Separate result polls permit child-stop inspection while a printer command runs.
+Mouse-Right or the lower activity label opens the System Menu.  The menu selects an activity, package, interactive-input mode, or connection operation.  The Listener displays program output and each returned value.  A form returning zero values displays `(No values)`.  One Listener job runs at a time in a session.
 
-The browser records each mutation before dispatch.  A lost reply preserves the original identity.  Repeat Original Request reuses an evaluation name, input range, interrupt ID, or command ID.  It never assigns a new identity to an uncertain submission.  A definitive rejection has a separate state and can be retained in history.
+Interactive evaluations accept text and EOF through their input controls.  Interrupt requests a debugger stop.  Evaluations lists retained jobs and their states.  Release removes a completed job's stored output and results.  Clear Output History clears the displayed transcript while preserving input history and retained jobs.
 
-Release operations have no replay identity.  Check Release Outcome queries the original reference.  A released-object reply establishes the object's present state.  An expired reference establishes unavailability while leaving the original release outcome unknown.  A successful query records that the object remained retained at that check.  Keep in History preserves that observation and permits a later, separate explicit release action.
+## Debugger
 
-An expired session remains visible and requires New Session.  New Session archives unresolved records under their original session and discovers retained jobs and stops through fresh tokens.  Archived requests cannot replay under the new identity.  Session release requires the current pending records to be resolved or archived.
+An evaluation's Debugger action opens its retained stop.  The Debugger activity also lists stops.  Condition inspection is available from the System Menu.  The debugger prompt accepts these commands:
 
-### HTTP API
-
-`POST /api` accepts an object with `session`, `operation`, and optional `arguments` fields.  Session and evaluation names contain 64 lowercase hexadecimal digits.  Tokens retain their three-element protocol representation and are checked against the request's session.
-
-| Operations | Arguments |
+| Command | Behavior |
 |---|---|
-| open-session, resume-session, jobs, release-session | None |
-| stops | Optional include_closed |
-| listener-information | None |
-| start-listener | name, source.  Optional interactive |
-| listener-assistance | source, cursor, action.  Optional context, presentation |
-| start-evaluation | name, source.  Optional package, input, interactive |
-| save-private-document | name, pathname, topics |
-| read-private-document | pathname |
-| job-information, release-job | job |
-| job-output | job, start.  Optional end |
-| job-input | job, offset, text.  Optional eof |
-| interrupt-job, job-interrupt-result | job, id |
-| information, release-stop | stop |
-| result | stop, id |
-| submit | stop, id, command.  Optional argument |
+| `:Show Backtrace` | Lists frames. |
+| `:Set Current Frame N` | Selects a frame by its zero-based index and displays its locals. |
+| `:Show Frame` | Displays the selected function and available locals. |
+| `:Show Local All` | Displays the selected frame's local records. |
+| `:Show Local N` | Displays one local by its zero-based index. |
+| `:Show Proceed Options` | Lists restart choices. |
 
-Submit supports condition, restarts, frames, locals, and invoke-restart.  Locals takes a frame token.  Invoke-restart takes a restart index.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines guest operations, token lifetimes, states, and error reasons.
+Restart lines invoke zero-argument restarts.  Unavailable local values display `<unavailable>`.  Original caller argument values are unavailable.  The selected frame's function and index identify the displayed locals.  The [debugger guide](../../../doc/debugger.md) describes stopping states and the compiler information required for local inspection.
 
-Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns `{"error": ..., "uncertain": ...}`.  Input validation failures precede SWANK dispatch.  Transport or remote decoding failures report an uncertain outcome.  The default transport deadline is 15 seconds, and the HTTP body limit is one MiB.
+Printing a condition or value can enter a child stop.  Parent Stop and Child Stop navigate the relationship while the parent command remains running.  Closed stops retain previously queried results until Release Stop.
+
+The Web debugger currently exposes condition, frame, local, and restart inspection, interruption, and zero-argument restart invocation.  It does not provide object browsing, source or disassembly views, binding writes, frame evaluation, or stepping.
 
 ## Document Examiner
 
-Select Document Examiner from the System Menu.  Its [guide](../../../doc/document-examiner.md) covers topic lookup, candidate search, tables of contents, overviews, bookmarks, viewers, and command keys.  The [project guide](../../../doc/project-guide.md) maps the complete project documentation.  Guest Lisp reads the source documents and handles topic hierarchy, cross-references, search, and command completion.  The browser stores viewer references and histories in tab sessionStorage.
+Document Examiner opens from the System Menu.  Its Viewer displays topics.  Current Candidates lists lookup results, Bookmarks retains viewed and deferred topics, and Commands accepts documentation commands.  Named viewers preserve separate topic lists, bookmarks, candidate histories, and reading positions across tab reloads.
 
-Read Private Document appends the file's referenced topics to the current viewer.  Mouse-Right on that menu item provides Save, Load, and Hardcopy Private Document.  Load inserts deferred bookmarks without displaying text.  Save writes bookmarks in displayed order through a retained guest job, whose result appears in Evaluations.  Its original name, pathname, topic IDs, and source command survive reload and lost replies.  Repeat Original Request reuses those values.  Hardcopy prints the referenced topics without changing the viewer.  Lisp supplies pathname parsing and defaults.
+Show Documentation opens a topic.  Show Candidates searches titles and keywords.  Show Table of Contents lists a topic's descendants, and Show Overview displays its relationships and source.  Mouse-Left reads a topic, Mouse-Middle opens its overview, and Mouse-Right opens topic operations.  Shift-Middle inserts a deferred bookmark from a topic or discards one from the Bookmarks pane.
 
-The HTTP `document-query` operation takes `action` (`catalog`, `topic`, `search`, `contents`, or `overview`), with `topic`, `query`, `mode`, and `adjacent` as applicable.  Modes are `exact`, `initial`, and `substring`.  `document-assistance` takes `source`, a character `cursor`, and `action` (`inspect`, `space`, `complete`, `help`, or `parse`).  The [SWANK reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#document-examiner-operations) defines result records.
+Read Private Document appends saved topic references to the selected viewer.  Mouse-Right on its command-menu item offers Save, Load, and Hardcopy Private Document.  Load inserts deferred bookmarks without displaying text.  Save writes bookmarks in displayed order through a retained guest job.  Its result appears in Evaluations.  Hardcopy uses the browser's print dialog without changing the viewer.  The [Document Examiner guide](../../../doc/document-examiner.md) defines search options, viewer commands, private-file format, and pathname defaults.
 
-## Symbolics display references
+## Connections and recovery
 
-The Listener follows Symbolics' [Genera Workbook](https://bitsavers.trailing-edge.com/pdf/symbolics/software/genera_8/Genera_Workbook.pdf), printed pages 5–7 and 10–12, particularly figures 4 and 7.  Those Genera 8 figures show the full Listener text area, multiple borders, lower activity label, left and bottom scroll tracks, two reverse-video mouse-documentation lines, and who-line.  The initial Listener has a centered herald.  The palette uses solid black and white.
+A tab retains its session identity, input history, request records, and viewer state in sessionStorage.  Reload resumes the same session.  Independent tabs create separate sessions.  Duplicated tabs can inherit one identity.  Closing a browser or releasing a session leaves guest jobs retained until explicit release.  Stored output and results consume guest memory.
 
-The selected debugger follows the [classic Listener debugger capture](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/symbolics-images/source-code-debugging.gif) on the [source-oriented debugging page](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/source-oriented-debugging.html): inline bold condition, function and argument lines, inline restart choices, and an arrow prompt.  The page does not identify a precise Genera release.  The [Program Development Utilities manual](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf), printed pages 189–191, describes this debugger entry display.  Its printed page 206 illustrates the restart popup.
+Each HTTP operation opens a SWANK connection and closes it after the operation.  Debugger control lasts for that connection.  The guest preserves accepted jobs and debugger commands independently of the connection.
 
-The [Display Debugger capture](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/development-environment/debugger.gif) shows another original debugger layout with separate stack, disassembly, condition, and variable panes.  The present interface follows the classic Listener variant.
+Request History distinguishes rejected requests from requests whose replies were lost.  Repeat Original Request uses the recorded evaluation name, input range, interrupt ID, debugger command ID, or private-document Save arguments.  It preserves the identity of the uncertain request.  Recalling input in the Listener and pressing Return creates a new evaluation instead.
 
-Mezzano identity, package, guest process state, and supported commands replace Symbolics-specific content.  The who-line clock uses browser time.  Local values are labeled Local because the API does not supply the original display's argument classification.  Inspection requires explicit commands.  Pathname presentations support command argument insertion.  General object presentations, source selection, disassembly, local writes, frame evaluation, and stepping remain unimplemented.
+For an uncertain release, Check Release Outcome queries the original object.  A released-object response establishes its current state.  An expired reference leaves the original release outcome unknown.  A successful query records that the object was still retained.  Keep in History preserves that observation and permits a separate release request.
 
-### Font status and visual limits
+An expired session requires New Session.  This archives unresolved records under their original session and discovers retained jobs and stops through new tokens.  Archived requests cannot replay under the replacement session.  Release Session requires unresolved requests to be resolved or archived.
 
-The interface loads twelve recovered Symbolics fonts.  The [font build and raster tests](fonts/README.md) preserve source hashes, conversion settings, provenance, licenses, and measurements.  Chromium at device-pixel ratio 1 reproduced all 1,555 mapped glyphs with zero missing, extra, or intermediate-gray pixels and exact advances, baselines, and line heights.  Application panes and measured text widgets use integer placement.  The [original-font identification report](font-research/README.md) records the Listener and debugger source comparisons.
+## HTTP API
 
-The final 1160 by 852 Examiner capture has zero intermediate-gray pixels.  Seven selected title, pane-label, and menu samples match the recovered glyphs and original positions.  The title clips its final glyph overhang at the string advance, reproducing both original title captures pixel for pixel.  Document paragraphs use left alignment while the original uses justification.  Complete-window fidelity, other zoom levels and device-pixel ratios, other browsers, and fallback Unicode glyphs remain unverified.  The tested font shapes and selected positions do not establish complete visual equivalence.
+`POST /api` takes `session`, `operation`, and optional `arguments` fields.  Session and job names are 64 lowercase hexadecimal digits.  Job, stop, and frame tokens belong to the request's session.
 
-Symbolics' [Programming the User Interface, Volume B](https://ftpmirror.your.org/pub/misc/bitsavers/pdf/symbolics/software/genera_7/999029_Programming_the_User_Interface_Volume_B_Aug86.pdf), printed page 123, maps the default fixed roman normal style to FONTS:CPTFONT.  The [recovered Genera font repository](https://github.com/htayj/genera-fonts/tree/809694a73ece7f840b6541b4781cd47152d1ea35) publishes Genera 8.5 bitmap sources.  CPTFONT has an eight-pixel advance, twelve-pixel character height, and baseline ten.  Chromium rejected the released bitmap-only OTB file.  The user approved build-only fontTools conversion.  The server serves the generated TrueType files without a conversion or font runtime dependency.
+| Operations | Arguments |
+|---|---|
+| open-session, resume-session, jobs, release-session | None. |
+| stops | Optional include_closed. |
+| listener-information | None. |
+| start-listener | name, source.  Optional interactive. |
+| listener-assistance | source, cursor, action.  Optional context, presentation. |
+| start-evaluation | name, source.  Optional package, input, interactive. |
+| job-information, release-job | job. |
+| job-output | job, start.  Optional end. |
+| job-input | job, offset, text.  Optional eof. |
+| interrupt-job, job-interrupt-result | job, id. |
+| information, release-stop | stop. |
+| result | stop, id. |
+| submit | stop, id, command.  Optional argument. |
+| document-query | action.  Optional topic, query, mode, adjacent. |
+| document-assistance | source, cursor, action. |
+| save-private-document | name, pathname, topics. |
+| read-private-document | pathname. |
 
-The recovery repository's BSD license covers its tooling and documentation.  Its NOTICE treats the historical glyph designs separately.  Both accompany the generated assets.  Recovered Genera 8.5 font data, the Genera 8 manual, and the Genera 8.3 Examiner capture come from different versions.  Their tested glyph comparisons are recorded separately.
+Submit accepts condition, restarts, frames, locals, and invoke-restart.  Locals requires a frame token.  Invoke-restart requires a restart index.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
 
-## Tests
-
-```sh
-uv run --no-python-downloads --python /usr/bin/python3 test_server.py
-uv run --no-python-downloads --python /usr/bin/python3 test_server.py --live-port 4006
-```
-
-Nine isolated tests passed: Lisp string and value encoding, fragmented UTF-8 framing, typed arguments, malformed remote encoding, ordinary SWANK debugger abort and reply draining, session-lock cleanup, browser-origin restrictions, malformed JSON field types, and uncertain failure after dispatch.
-
-The live suite passed through HTTP, SWANK, and the running x86-64 development guest.  It covered Unicode output and character offsets, multiple and zero values, identical creation replay, session resume, interactive input replay, CERROR, stack frames and available locals at debug 3/safety 3, restart continuation, interruption, abort cleanup, and a printer child stop.  It released its jobs, closed stops, and session, and removed its function and condition-class fixtures.  Queries after release returned the expected released-job, released-stop, and expired-session errors.
-
-The browser test runs on a host with Chromium and Node.  The tested versions are Chromium 145.0.7632.109 and Node 24.13.0.  It uses Node's built-in WebSocket API and requires no npm packages.  From the Mezzano checkout on that host:
-
-```sh
-node tools/swank/web/test-browser.mjs http://minideb2:8765/ /tmp/mezzano-browser-test
-```
-
-The first argument is the server URL.  The second is the screenshot and diagnostic directory.  CHROMIUM can select another Chromium executable.  The driver starts an isolated headless profile, sends keyboard and mouse events through CDP, and removes its profile on exit.  A failed interaction saves the browser's session state and leaves its recorded guest fixtures available for inspection.
-
-The expanded Chromium run passed all nine Listener commands, SPACE and COMPLETE, contextual HELP candidates, defaults, package changes, Lisp/command disambiguation, Unicode cursor offsets, two pathname presentations, input history, and clear-output replay that preserves later output.  A focused test checks that a running job cannot consume its terminal display effect.  It also passed Listener output and multiple values, reload, a 640-pixel viewport overflow check, interactive input, condition and stack inspection, available locals, restart continuation, and release.  Controlled response loss discarded a completed fetch response after server dispatch.  Creation replay recovered the original job.  Lost job-release and session-release replies were reconciled through queries, followed by explicit session replacement and final cleanup.  Two expected HTTP 409 responses represented a released job and an expired session.  No unexpected browser errors occurred.  The driver records font metrics and screenshots, which require visual review against the original references.
-
-Complete original-window comparison remains unfinished.  Unavailable-local encoding has an isolated test, while unavailable-local browser rendering has source review only.  Actual image restore, ARM64 guest behavior, and byte-for-byte original-screen fidelity have not been tested here.  The [development journal](devnotes.md) records failures, corrections, and test scope.
-
-The focused private-document browser test runs separately:
-
-```sh
-node tools/swank/web/test-private-document.mjs http://minideb2:8765/ /tmp/private-document-test
-```
-
-It passes the original main/right menus, guest pathname defaults, bookmark order, discarded Save response followed by reload and same-job replay, Load without text, Read, and Hardcopy without viewer mutation.  It removes its uniquely named guest file and releases its Save job, cleanup job, and session.  Chromium reports no browser errors.  The driver intercepts print dispatch.  Physical printer output remains untested.
+Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns an `error` and, for operation failures, an `uncertain` flag.  Input validation precedes SWANK dispatch.  Transport or remote decoding failures after dispatch report an uncertain outcome.  Requests require a Content-Length header, and bodies are limited to one MiB.  Chunked transfer encoding is unsupported.

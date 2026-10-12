@@ -573,7 +573,7 @@ function renderJobs() {
       showActivity("listener");
       view?.element.scrollIntoView({block: "nearest"});
     }));
-    row.append(node("pre", job.source || "Source belongs to another client."));
+    row.append(node("pre", job.source || "Source is unavailable in this tab."));
     $("jobs").append(row);
   }
   if (!Object.keys(state.jobs).length) $("jobs").textContent = "No retained evaluations.";
