@@ -1256,3 +1256,7 @@
 (defpackage :mezzano.command-processor
   (:use :cl)
   (:export #:make-listener #:listener-information #:start-listener #:assistance))
+
+(defpackage :mezzano.document-examiner
+  (:use :cl)
+  (:export #:load-catalog #:query #:assistance))

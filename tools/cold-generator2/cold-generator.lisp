@@ -163,6 +163,7 @@
     "system/stream.lisp"
     "system/evaluation-service.lisp"
     "system/command-processor.lisp"
+    "system/document-examiner.lisp"
     "system/ansi-loop.lisp"
     "system/environment.lisp"
     "compiler/compiler.lisp"

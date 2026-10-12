@@ -18,6 +18,8 @@ requires the user to dig into the code.
 
 See the MBuild repo: (https://github.com/froggey/MBuild)
 
+For the project documentation, see the [project guide](doc/project-guide.md) and [Document Examiner](doc/document-examiner.md).
+
 For remote development, see the [debugger design and implementation status](doc/debugger.md) and [remote evaluation and debugging guide](tools/swank/README.md).
 
 For help & support or to follow development, join the #mezzano IRC channel on Libera Chat (irc.libera.chat)

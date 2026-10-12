@@ -10,6 +10,8 @@ The stop-service and compiler baseline reviewed here is Mezzano `37dbb34912616d8
 | [Remote evaluation and debugging](../tools/swank/README.md) | User workflow and executable examples. |
 | [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) | RPC signatures, representations, and rejection reasons. |
 | [Build and VM operations](../tools/swank/minideb2/README.md) | Dependency revisions, build, startup, snapshots, restore, and test commands. |
+| [Project guide](project-guide.md) | Coverage index for the runtime, compiler, debugger, protocols, operations, and remaining agenda. |
+| [Document Examiner](document-examiner.md) | Topic catalog, lookup, search, browser viewers, and Symbolics references. |
 | [Lisp Command Processor](command-processor.md) | Listener commands, parsing, completion, pathname presentations, and debugger command names. |
 | [Web Listener and Debugger](../tools/swank/web/README.md) | HTTP client behavior, browser tests, and Symbolics display references. |
 | [Development journal](../tools/swank/devnotes.md) | Decisions, diagnoses, failed attempts, commits, and historical evidence. |
@@ -228,6 +230,7 @@ Test sources are in [the SWANK tools directory](../tools/swank/).  The [operatio
 | `test-evaluation-interrupt.lisp` | Computing/input-waiting interruption, locals, GC, continuation, abort, cleanup conditions/transfers, duplicate requests, existing stops, startup, inhibited delivery, and self-interruption rejection. |
 | `test-evaluation-reconnect.lisp` | Unread creation reply, duplicate submission, session release during execution, fresh-session condition recovery, output/results, foreign tokens, GC, cleanup, release, completed/stopped batch jobs across restore, interactive disconnect, input/EOF replay, interactive restore, unread interrupt replies, and queued/running interrupt restore. |
 | `test-debugger-reconnect.lisp` | TCP disconnect, exclusive control, token rejection, unread replies, and duplicate restart submission. |
+| `test-document-examiner.lisp` | Documentation coverage, topic hierarchy, links, search modes, command assistance, and Unicode offsets through SWANK. |
 | `test-listener.lisp` | Authentic Listener commands, completion, defaults, file operations, presentations, independent Listeners, interactive input, and replay after unread replies and package changes. |
 | `test-debugger-remote-restore.lisp` | Saved/absent sessions, old tokens/frames, storage retirement, and restored-stop recovery. |
 

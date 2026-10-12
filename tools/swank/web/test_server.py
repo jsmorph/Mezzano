@@ -64,6 +64,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(server.operation_arguments("listener-assistance",
             {"source": "🚀", "cursor": 1, "action": "help"}, session)[:3],
             ["🚀", 1, server.Symbol(":help")])
+        for operation, arguments in [
+            ("document-query", {"action": "topic"}),
+            ("document-query", {"action": "search"}),
+            ("document-query", {"action": "search", "query": "x", "mode": "unknown"}),
+            ("document-query", {"action": "catalog", "adjacent": "yes"}),
+            ("document-assistance", {"source": "🚀", "cursor": 2, "action": "help"}),
+        ]:
+            with self.subTest(operation=operation, arguments=arguments):
+                with self.assertRaises(ValueError):
+                    server.operation_arguments(operation, arguments, session)
+        self.assertEqual(server.operation_arguments("document-assistance",
+            {"source": "🚀", "cursor": 1, "action": "help"}, session),
+            ["🚀", 1, server.Symbol(":help")])
         with self.assertRaises(ValueError):
             server.integer(True)
 

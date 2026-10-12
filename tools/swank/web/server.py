@@ -283,6 +283,31 @@ def operation_arguments(operation, args, session):
     if operation == "stops":
         fields(args, (), ("include_closed",))
         return [boolean(args.get("include_closed", False))]
+    if operation == "document-query":
+        fields(args, ("action",), ("topic", "query", "mode", "adjacent"))
+        action = string(args["action"])
+        mode = string(args.get("mode", "substring"))
+        if action not in ("catalog", "topic", "search", "contents", "overview"):
+            raise ValueError("Unsupported documentation action.")
+        if mode not in ("exact", "initial", "substring"):
+            raise ValueError("Unsupported documentation search mode.")
+        if action in ("topic", "contents", "overview") and "topic" not in args:
+            raise ValueError("A documentation topic is required.")
+        if action == "search" and "query" not in args:
+            raise ValueError("Documentation search terms are required.")
+        return [Symbol(":" + action), Symbol(":topic"),
+                string(args["topic"]) if "topic" in args else None,
+                Symbol(":query"), string(args.get("query", "")), Symbol(":mode"), Symbol(":" + mode),
+                Symbol(":adjacent"), boolean(args.get("adjacent", False))]
+    if operation == "document-assistance":
+        fields(args, ("source", "cursor", "action"))
+        source, cursor = string(args["source"]), integer(args["cursor"])
+        action = string(args["action"])
+        if action not in ("inspect", "space", "complete", "help", "parse"):
+            raise ValueError("Unsupported documentation assistance action.")
+        if cursor > len(source):
+            raise ValueError("Input cursor exceeds the source length.")
+        return [source, cursor, Symbol(":" + action)]
     if operation == "listener-assistance":
         fields(args, ("source", "cursor", "action"), ("context", "presentation"))
         action = string(args["action"])
@@ -450,6 +475,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         files = {"/": ("index.html", "text/html; charset=utf-8"),
                  "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                 "/document-examiner.js": ("document-examiner.js", "text/javascript; charset=utf-8"),
                  "/style.css": ("style.css", "text/css; charset=utf-8")}
         path = urlsplit(self.path).path
         if path not in files:
