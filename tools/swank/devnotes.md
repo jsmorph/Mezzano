@@ -924,3 +924,13 @@ The proposed compiler correction replaces BUILD-LIVE-RANGES' repeated list membe
 The corrected pager survived snapshot restoration.  Both replacement functions still lack pageable BYTE-POSITION and BYTE-SIZE calls, and three further full collections passed.  Evidence is json-pager-restored.log.  This establishes the corrected saved compilation policy.  Jzon guest compilation and its memory-pressure test remain incomplete.
 
 The updated Document Examiner catalog passed 15 documents, 117 topics, 89 references, searches, missing-topic replies, command assistance, Unicode cursors, and cleanup in json-examiner-test-2.log.  The first run caught an incorrect edit to the test's command count: adding a book changes the book count to 15, while the command count remains 14.  The test now preserves that distinction.
+
+## Register-allocation set comparisons: 2026-10-12
+
+The user approved replacing repeated register-list searches with a reusable EQ hash table.  The table records an integer generation for each right-hand operand.  Each comparison increments the generation, so earlier entries require no clearing.  This avoids Mezzano CLRHASH allocating a new storage vector for every comparison.  The local helper preserves Mezzano SET-DIFFERENCE's result order and duplicate handling.  Only the five virtual-register set differences in BUILD-LIVE-RANGES change.  The physical-register constraints keep their existing computation.
+
+Validation will compare the previous and corrected builders on live/debug/dead transitions, aliases, empty sets, and large preserved-variable sets.  Existing binding-inspection and write tests will check generated behavior.  Jzon must then compile and pass its API and corpus tests with the existing debug-3 policy before a fresh image boot and snapshot restoration.
+
+The running x86-64 guest compiled the corrected allocator.  The old and new BUILD-LIVE-RANGES functions produced matching interval endpoints, debug-only intervals, register IDs, and physical-register conflicts on the checked fixtures, including 800 preserved variables across 64 instructions.  The comparison also covered duplicate aliases and empty inputs.  Evidence is json-live-range-compare.log.
+
+Nine guest tests passed with the corrected allocator: live ranges, frame-local identity, binding visibility, binding writes, type-changing writes, captured bindings, local debug policy, keyword processing, and jump-table cleanup.  The fixtures exercise debug levels 1 and 3, mutation, and collection.  Evidence is json-allocator-debug-tests.log.  A fresh image build and Jzon compilation are running.  This commit establishes the allocator change and these tests; JSON guest validation remains pending.

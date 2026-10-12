@@ -40,7 +40,7 @@ These files compile and execute inside the guest.  Run them after the correspond
 
 ```sh
 for test_name in TEST-FOOTHOLD-GC TEST-INTERRUPT-RETURN-GC TEST-GC-RESTART \
-  TEST-CONS-ALLOCATION-GC TEST-STRUCTURE-LAYOUTS TEST-FRAME-LOCALS \
+  TEST-CONS-ALLOCATION-GC TEST-STRUCTURE-LAYOUTS TEST-FRAME-LOCALS TEST-LIVE-RANGES \
   TEST-DEBUG-BINDINGS TEST-DEBUG-BINDING-WRITES TEST-DEBUG-WRITE-FLOW \
   TEST-DEBUG-CLOSURE-WRITES TEST-DEBUG-POLICY TEST-KEYWORD-LOWERING \
   TEST-JUMP-TABLE-BINDINGS TEST-DEBUGGER-SERVICE TEST-EVALUATION-SERVICE \
@@ -194,6 +194,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-cons-allocation-gc.lisp` | The observed instruction addresses on the x86-64 DO-CONS success path in both saved states, with restart-address checks and relocated CAR/CDR values after resumption. |
 | `test-frame-locals.lisp` | Distinct SWANK local IDs and lookup. |
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |
+| `test-live-ranges.lisp` | Live/debug/dead transitions, aliased debug values, empty inputs, and 800 preserved variables in register allocation. |
 | `test-debug-bindings.lisp` | Preserved binding visibility and lower-debug propagation. |
 | `test-debug-binding-writes.lisp` | Internal writes, independent copies, constants, loops, multiple-value bindings, and GC. |
 | `test-debug-write-flow.lisp` | Type-changing internal writes after arithmetic, type, identity, and vector tests at debug 3 and safety 3. |
