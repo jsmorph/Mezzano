@@ -1,6 +1,6 @@
-# Defstruct extensions
+# Structure extensions
 
-Mezzano supports a number of extentions to the `defstruct` facility, primarily to allow more precise control over the in-memory layout of instances.
+Mezzano supports extensions to `defstruct` for controlling the memory layout of instances.
 
 ## Struct option `:area`
 
@@ -15,7 +15,7 @@ By default structs are allocated in the general allocation area, which is both p
 
 `:sealed`
 
-Prevents the structure from being included in other defstruct definitions as part of an `:include` option, or more generally being used as a superclass. It also prevents redefinition of the defstruct.
+Prevents the structure from being included in other defstruct definitions as part of an `:include` option, or more generally being used as a superclass.  It also prevents redefinition of the defstruct.
 
 Specifying this option allows for faster type checking and other optimizations.
 
@@ -25,9 +25,9 @@ Specifying this option allows for faster type checking and other optimizations.
 
 Generates constants of the form `+SLOT-ACCESSOR-NAME+` (in other words, the accessor function name for the given slot with `+` prepended and appended) for each slot that contain the _offset_ of the slot.
 
-The _offset_ of a slot is the index of the slot in word units counting from the first non-header word of the slot. It can be used directly in the slot argument of the `:object` addressing mode in the assembler. As it is represented in word units, it cannot index sub-word slots, such as those using a ub8 representation.
+The _offset_ of a slot is the index of the slot in word units counting from the first non-header word of the slot.  It can be used directly in the slot argument of the `:object` addressing mode in the assembler.  As it is represented in word units, it cannot index sub-word slots, such as those using a ub8 representation.
 
-This option is incompatible with `:slot-locations`. The `:slot-locations` option should be used for new structs, as it is more flexible.
+This option is incompatible with `:slot-locations`.  The `:slot-locations` option should be used for new structs, as it is more flexible.
 
 ## Struct option :slot-locations
 
@@ -35,7 +35,7 @@ This option is incompatible with `:slot-locations`. The `:slot-locations` option
 
 Generates constants of the form `+SLOT-ACCESSOR-NAME+` (in other words, the accessor function name for the given slot with `+` prepended and appended) for each slot that contain the _location_ of the slot.
 
-A _location_ is a value that carries both the byte offset and type of the slot. It can be used with the `instance-access` function, the `:object-location` addressing mode in the assembler, and other location-related functions. It can fully represent the location of any kind of slot in a struct.
+A _location_ is a value that carries both the byte offset and type of the slot.  It can be used with the `instance-access` function, the `:object-location` addressing mode in the assembler, and other location-related functions.  It can fully represent the location of any kind of slot in a struct.
 
 This option is incompatible with `:slot-offsets`.
 
@@ -43,17 +43,17 @@ This option is incompatible with `:slot-offsets`.
 
 `(:documentation string)`
 
-Provides a _documentation string_ for the slot. Slot documentation is accessible via the `documentation` slot of that slot's slot-definition object, accessible via the MOP.
+Provides a _documentation string_ for the slot.  Slot documentation is accessible via the `documentation` slot of that slot's slot-definition object, accessible via the MOP.
 
 ## Slot option :dcas-sibling
 
 `(:dcas-sibling slot-name)`
 
-Enables use of the `double-compare-and-swap` macro on this slot and its sibling slot. `double-compare-and-swap` (DCAS) allows two slots within the same structure to be atomically compared and swapped together, similar to the single-slot `compare-and-swap` function. It corresponds to the x86-64 instruction `cmpxchg16b` or the A64 instruction `casp`.
+Enables use of the `double-compare-and-swap` macro on this slot and its sibling slot. `double-compare-and-swap` (DCAS) allows two slots within the same structure to be compared and swapped together atomically, similar to the single-slot `compare-and-swap` function.
 
-_slot-name_ names another slot within the defstruct definition that this slot is paired with, for the purposes of `double-compare-and-swap`. That slot must have a matching `:dcas-sibling` option referring to this slot.
+_slot-name_ names another slot within the defstruct definition that this slot is paired with, for the purposes of `double-compare-and-swap`.  That slot must have a matching `:dcas-sibling` option referring to this slot.
 
-Due to machine implementation constraints, the slots must not use the `:align` option, must not specify a non-word-size type using the `:type` option, and the two slots must be defined together with no unrelated slots inbetween.
+Due to machine implementation constraints, the slots must not use the `:align` option, must not specify a non-word-size type using the `:type` option, and the two slots must be defined together with no unrelated slots between them.
 
 ### Example
 
@@ -74,7 +74,7 @@ Override the default alignment for this slot.
 
 _slot-alignment_ must be one of `nil`, 1, 2, 4, 8, or 16.
 
-By default slots are naturally aligned (that is, they are aligned based on their data size), but this option allows the alignment to be increased or decreased. Certain architectures may require that slots of specific data types have a certain alignment, violating these constraints is an error.
+By default slots are naturally aligned (that is, they are aligned based on their data size), but this option allows the alignment to be increased or decreased.  Certain architectures may require that slots of specific data types have a certain alignment, violating these constraints is an error.
 
 `NIL` specifies the default alignment for that slot.
 
@@ -82,7 +82,7 @@ By default slots are naturally aligned (that is, they are aligned based on their
 
 `(:fixed-vector length)`
 
-This changes the slot so that it contains a fixed-length vector, with the specified _length_, of values embedded directly in the structure object. Since the vector is embedded in the instance it is not accessible as a normal Lisp vector and cannot be treated as a sequence.
+This changes the slot so that it contains a fixed-length vector, with the specified _length_, of values embedded directly in the structure object.  Since the vector is embedded in the instance it is not accessible as a normal Lisp vector and cannot be treated as a sequence.
 
 The slot-initform is used to fill each element of the fixed-vector (like the `:initial-element` option to `make-array`).
 
@@ -102,7 +102,7 @@ Printing and reading the struct will also treat the slot as a normal vector: `#S
 
 Extends the standard Common Lisp `:type` option.
 
-For certain types, a more compact or efficient can be used.
+Certain slot types use compact representations.
 
 The types Fixnum, Unsigned- and Signed-Byte types of widths 8, 16, 32, and 64, Short-, Single- and Double-Float will be stored unboxed and will be packed together when possible to minimise storage space.
 

@@ -1,52 +1,49 @@
-# Project guide
+# Mezzano user guide
 
-This project develops a Lisp machine on Mezzano, with remote evaluation, retained debugging, and a Symbolics-style browser interface.  Development and tests run on minideb2 using x86-64 QEMU/KVM.  The original VM uses SWANK port 4005.  The development VM uses 4006, and its Web interface uses port 8765.
+Mezzano runs Common Lisp as an operating system.  The Web interface provides a Listener for commands and Lisp forms, a debugger for retained stops, and a Document Examiner for these manuals.  SWANK clients can use the same evaluation and debugger services.
 
-## Documentation map
+## Getting started
 
-| Subject | Documentation |
+The [installation and operation guide](installation.md) covers source checkout, image building, QEMU startup, remote access, and snapshots.  The [Web guide](../tools/swank/web/README.md) covers server configuration and browser controls.  The [remote evaluation guide](../tools/swank/README.md) provides command-line examples.
+
+At the Listener prompt, enter a Lisp form or a [Command Processor command](command-processor.md):
+
+```text
+Command: (+ 20 22)
+Command: Set Package CL-USER
+Command: Help :Format Detailed
+```
+
+Return submits input.  SPACE and Tab complete command names and arguments.  F12 requests help.  The System Menu selects Listener, Debugger, Evaluations, or Document Examiner.
+
+## Documentation
+
+| Task | Reference |
 |---|---|
-| Architecture, ownership, supported behavior, and remaining work | [Debugger design and implementation status](debugger.md) |
-| Remote evaluation, interactive input, interruption, and debugger use | [Remote evaluation and debugging](../tools/swank/README.md) |
-| Listener commands, completion, help, defaults, and pathname insertion | [Lisp Command Processor](command-processor.md) |
-| Browser use, HTTP operations, reconnection, and release recovery | [Web Listener and Debugger](../tools/swank/web/README.md) |
-| Sessions, tokens, RPCs, results, rejection reasons, and documentation operations | [Retained Mezzano debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) |
-| Dependencies, source revisions, builds, services, snapshots, restore, and tests | [Mezzano on minideb2](../tools/swank/minideb2/README.md) |
-| Documentation lookup, search, viewers, and bookmarks | [Document Examiner](document-examiner.md) |
-| Original glyph identification and visual evidence | [Original Symbolics font research](../tools/swank/web/font-research/README.md) |
-| Decisions, diagnoses, failed tests, and implementation history | [Development journal](../tools/swank/devnotes.md) and [Web UI development journal](../tools/swank/web/devnotes.md) |
+| Build, boot, connect, and save the system | [Installation and operation](installation.md). |
+| Use the browser interface | [Web Listener and Debugger](../tools/swank/web/README.md). |
+| Enter commands and complete arguments | [Lisp Command Processor](command-processor.md). |
+| Browse manuals and save reading lists | [Document Examiner](document-examiner.md). |
+| Evaluate from a Lisp client | [Remote evaluation and debugging](../tools/swank/README.md). |
+| Inspect stops, locals, restarts, and job state | [Debugger and evaluation reference](debugger.md). |
+| Implement a retained SWANK client | [Retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md). |
+| Use the native desktop | [Desktop reference](quickstart.md). |
+| Configure guest networking | [Networking](manual.md). |
+| Use atomic operations and extended structures | [Atomic extensions](atomic-extensions.md) and [structure extensions](defstruct-extensions.md). |
 
-## Runtime and compiler
+## Evaluation and debugging
 
-Mezzano runs Lisp threads under its supervisor.  Retained evaluations each use a worker thread with private standard streams.  A stopped thread preserves its dynamic environment while other threads continue.  The heap remains shared.  Application locks held by a stopped thread can block other work.
+A retained evaluation runs in a guest worker thread.  Its output, values, and debugger stops remain available after a client disconnects.  Interactive evaluations accept input and EOF.  An interrupt requests a debugger stop in that worker.  A stop preserves the running computation while a client inspects frames, local values, and restart choices or invokes a zero-argument restart.
 
-The running compiler defaults to safety 3, debug 3, and speed 1.  Preserved lexical bindings have tested read and internal-write behavior, including captured bindings and full GC.  Bootstrap compilation uses debug 1.  The [compiler guarantees](debugger.md#compiler-guarantees) specify the supported binding cases and remaining scope/type requirements.
+Local inspection depends on the compiler's debug policy and available location metadata.  The [compiler guarantees](debugger.md#compiler-guarantees) describe those requirements.  The [retained evaluation reference](debugger.md#retained-evaluation) defines job identity, input, output, interruption, and release.  Restoring an image begins a new boot and expires prior client references.  A client can discover surviving jobs and stops through a new session.
 
-Thread names are available through ordinary remote evaluation:
+## Threads
+
+Mezzano schedules threads in a shared Lisp heap.  The following expression returns their names:
 
 ```lisp
 (mapcar #'mezzano.supervisor:thread-name
         (mezzano.supervisor:all-threads))
 ```
 
-`ALL-THREADS` walks the supervisor's thread list.  The implementation acquires no global thread lock during that walk.  The result therefore describes a live observation rather than an atomic scheduler snapshot.
-
-The existing implementation documents describe the [compiler frontend](internals/compiler-frontend.md), [compiler backend](internals/compiler-backend.md), [calling convention](internals/abi.md), [memory layout](internals/memory-layout.md), [instance representation](internals/instances.md), [supervisor restrictions](internals/supervisor-restrictions.md), and [filesystem](internals/file-system.md).  Their source dates and scope differ from the current debugger test evidence.
-
-## Debugging and evaluation
-
-The retained service supports explicit condition entry, nested printer stops, frame and local inspection, zero-argument restarts, batch and interactive evaluation, numbered interruption, and reconnection after lost replies.  Its APIs retain accepted work independently of a connection.  Saved-image tests cover specific stopped, queued, and running states.  [Stop and command lifetimes](debugger.md#stop-and-command-lifetimes) and the protocol reference specify identity, ownership, replay, and expiration.
-
-Symbolics-level debugging remains the objective.  The [capability table](debugger.md#capability-and-evidence) records unfinished lexical evaluation, public binding mutation, original argument recovery, argument-taking restarts, arbitrary frame return and reinvocation, breakpoints, stepping, object browsing, and selected-frame dynamic context.  Existing low-level primitives establish only the cases described in that table.
-
-## Operations and evidence
-
-The host tools build images, start QEMU, retain serial output, and expose SWANK.  The Web server uses Python's standard library and native browser code.  Lisp owns debugger semantics, Listener parsing, and documentation lookup.  The operations guide lists the required dependencies and test commands.
-
-A claim about tested behavior must identify its architecture and execution state.  Current evidence covers x86-64 QEMU/KVM.  ARM64 and bare-metal behavior require separate tests.  The journals preserve failed attempts and their corrections.  The [test catalog](debugger.md#test-scope-and-provenance) maps each test source to its purpose.
-
-## Remaining system work
-
-GUI-free startup, early startup failure handling, and QEMU host control remain unfinished.  The present VMs hide the host display while the guest initializes its desktop.  QMP/GDB control independent of guest networking remains part of the agenda.  Bare-metal FEP work is deferred.
-
-Original-font conversion, glyph measurements in Chromium, and full-screen comparison determine the browser's visual fidelity.  The font report distinguishes recovered glyph evidence from rendered-browser evidence.  Functional browser tests alone establish neither font identity nor exact layout.
+ALL-THREADS walks the live thread list without the scheduler's global lock.  Threads can start or finish during that walk.  Retained evaluation jobs and debugger stops identify their associated threads through the debugger service.

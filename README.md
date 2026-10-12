@@ -1,83 +1,24 @@
-# Mezzano, an operating system written in Common Lisp.
+# Mezzano
 
-![Screenshot](doc/screenshot1.png)
+Mezzano is an operating system written in Common Lisp.  It includes a native compiler, garbage collector, scheduler, networking, filesystem support, and a desktop.  Lisp programs share the system's object memory.  A snapshot saves the running system to its disk image.
 
-## Pre-built images
+![Mezzano desktop](doc/screenshot1.png)
 
-Demo releases are available through [GitHub](https://github.com/froggey/Mezzano/releases).
+## Installation and use
 
-These releases are designed to be run in VirtualBox, though QEMU is also supported.
-2GB of RAM, a virtio-net NIC and an Intel HDA audio controller are recommended.
+The [installation and operation guide](doc/installation.md) describes building and running the x86-64 image with QEMU and connecting through SWANK or the Web interface.  The current startup initializes the guest desktop even when QEMU's display is hidden.  ARM64 support exists in the source, but this guide covers x86-64 QEMU.
 
-x86-64 images are published.  AArch64 has been made to work on some
-hardware.  But to set expectations: making Mezzano run on any given
-piece of hardware or emulator is still typically a project that
-requires the user to dig into the code.
+The [user guide](doc/project-guide.md) links the product documentation.  The [Web Listener and Debugger](tools/swank/web/README.md) provides remote evaluation, debugger access, and the [Document Examiner](doc/document-examiner.md).  The [desktop reference](doc/quickstart.md) covers native keyboard commands and status displays.
 
-## Building from source
+The [debugger and evaluation reference](doc/debugger.md) specifies supported operations, compiler requirements, and recovery behavior.  The [remote evaluation guide](tools/swank/README.md) covers the Lisp clients.  The [Command Processor reference](doc/command-processor.md) lists Listener and debugger commands.
 
-See the MBuild repo: (https://github.com/froggey/MBuild)
+## Source and releases
 
-For the project documentation, see the [project guide](doc/project-guide.md) and [Document Examiner](doc/document-examiner.md).
+This branch adds retained evaluation, remote debugging, and Web tools to Mezzano.  The installation guide selects the corresponding Mezzano and Slime branches.  Upstream [demo images](https://github.com/froggey/Mezzano/releases) and [release history](doc/release-history.md) describe separate releases and their features.
 
-For remote development, see the [debugger design and implementation status](doc/debugger.md) and [remote evaluation and debugging guide](tools/swank/README.md).
+The upstream build environment is [MBuild](https://github.com/froggey/MBuild).  Development discussion takes place in #mezzano on Libera Chat.
 
-For help & support or to follow development, join the #mezzano IRC channel on Libera Chat (irc.libera.chat)
-
-## Major changes since Demo 4
-
-* USB stack by fittestbits
-* Improved overall file system support by fittestbits
-* EXT2/3/4 support has been implemented by Bruno Cichon (ebrasca)
-* GMA950 modesetting display driver
-* Hardware accelerated 3D support via qemu's Virgl device
-* Multicore/SMP support
-* Improved atomic operations
-* Async APIs: wait-for-objects, dispatch, and thread pools
-* Networking improvements: Server support, DHCP, TCP retransmit
-* Source locations are tracked for many kinds of definitions
-* Weak hash tables and other weak objects
-* Cleanup of object representation and unifcation of standard-object/structure-object
-* Unboxed structure slots
-* Short floats implemented using IEEE half floats
-* Unboxed (unsigned-byte 64) arithmetic
-* Stack overflows and memory faults are trapped and can be recovered from
-* Support for building on Windows
-* Major improvements to CLOS and MOP conformance
-* Keymap picker
-* More bug fixes, performance improvements and features
-
-## Major changes since Demo 3
-
-* FAT32 support has been implemented by Bruno Cichon (ebrasca).
-* McCLIM has been ported by fittestbits.
-* Quicklisp has been ported by Peter S. Housel.
-* Improved introspection tools: DISASSEMBLE and ED have been implemented.
-* Generational collection has been added to the garbage collector.
-* New SSA-based compiler backend, supporting unboxed value representations.
-* Gray streams support has been overhauled.
-
-## Major changes since Demo 2
-
-* Trentino, a media player, has been implemented by Eugene Zaikonnikov.
-* Further improvements to conformance, stability and performance.
-* The CLOS implementation follows the MOP much more closely.
-* More traditional window management.
-* Booting from CD/USB on real hardware is now possible.
-* Driver support for Intel HDA audio devices.
-* VirtualBox guest (mouse & display) integration.
-
-## Major changes since Demo 1
-
-* Many improvements to conformance, stability and performance.
-* The editor has been greatly improved, thanks to Burton Samograd.
-* The system now functions correctly on computers with more than 1GB of RAM.
-* The allocator and garbage collector now make much better use of available memory, with far fewer GC cycles occuring.
-* (ROOM T) prints more detailed information about allocated objects.
-* Transparency and premultiplied alpha support in the GUI.
-* And more!
-
-## Additional information
+## Credits
 
 "Hypothymis azurea - Kaeng Krachan" by JJ Harrison (jjharrison89@facebook.com)
 [CC BY-SA 3.0 (http://creativecommons.org/licenses/by-sa/3.0)], via Wikimedia Commons
