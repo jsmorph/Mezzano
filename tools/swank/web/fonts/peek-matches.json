@@ -33,6 +33,31 @@
       }
     },
     {
+      "text": "State",
+      "font": "TVFONT",
+      "font_sha256": "9079459b4e851592ca828cef142282be42a942ee7009e0e6d3ab20fc5c318a79",
+      "ink_rectangle": [
+        371,
+        30,
+        29,
+        7
+      ],
+      "reverse_video": false,
+      "missing": 0,
+      "extra": 0,
+      "metadata_advance": 30,
+      "metadata_metrics": {
+        "baseline": 8,
+        "blinker_height": 10,
+        "blinker_width": 5,
+        "character_height": 10,
+        "default_character_width": 6,
+        "raster_height": 10,
+        "raster_width": 5,
+        "variable_width": false
+      }
+    },
+    {
       "text": "Notifications 1",
       "font": "TVFONT",
       "font_sha256": "9079459b4e851592ca828cef142282be42a942ee7009e0e6d3ab20fc5c318a79",

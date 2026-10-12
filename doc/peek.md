@@ -4,7 +4,7 @@ Peek displays Mezzano threads and their retained debugger stops.  The System Men
 
 ## Display and commands
 
-Peek starts in Help mode.  Processes displays one row for each enumerated thread.  Process names may repeat.  Clicking a name opens operations for that sampled row.
+Peek starts in Help mode.  Processes displays one row for each enumerated thread.  Process names may repeat.  Clicking a name opens operations for that sampled row.  The Name and Wait columns clip long strings.  Describe displays the complete sampled strings.  Narrow windows provide horizontal scrolling.
 
 | Gesture | Operation |
 |---|---|

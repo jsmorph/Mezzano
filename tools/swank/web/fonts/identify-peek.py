@@ -8,6 +8,7 @@ SOURCE_URL = "https://ssw.jku.at/General/Staff/PF/peek.gif"
 SOURCE_SHA256 = "691c8722aa85aba15c31b0599483e4f99639753b0b3340894d479e1af81182a1"
 SAMPLES = [
     ("Process Name", "tvfont", 23, 30, False),
+    ("State", "tvfont", 371, 30, False),
     ("Notifications 1", "tvfont", 23, 54, False),
     ("Processes", "jess14", 14, 6, True),
     ("Describe", "jess14", 154, 329, False),

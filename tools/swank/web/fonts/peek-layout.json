@@ -1,6 +1,6 @@
 {
   "reference_sha256": "691c8722aa85aba15c31b0599483e4f99639753b0b3340894d479e1af81182a1",
-  "application_sha256": "38598d401e5fb05e1804a13544823d289fc53f3e376b4a9734bb898b9cd72d2c",
+  "application_sha256": "fdf2315395d014e2eec62f88bdc13769bf093a4f4551da800fe0ccf8fb63773c",
   "size": [
     980,
     717
@@ -16,6 +16,24 @@
       ],
       "application": [
         23,
+        30
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "missing": 0,
+      "extra": 0
+    },
+    {
+      "text": "State",
+      "font": "TVFONT",
+      "reference": [
+        371,
+        30
+      ],
+      "application": [
+        371,
         30
       ],
       "offset": [

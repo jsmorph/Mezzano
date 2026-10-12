@@ -64,7 +64,7 @@ try {
   console.log('PASS SELECT prompt, cancellation, help, L/D/P, Peek Quit, preserved input, and product-guide navigation');
 
   if (!navigationOnly) {
-    const fixtureName = 'PEEK-BROWSER-' + randomBytes(6).toString('hex').toUpperCase();
+    const fixtureName = ('PEEK-BROWSER-' + randomBytes(6).toString('hex').toUpperCase()).padEnd(160,'X');
     const jobName = randomBytes(32).toString('hex');
     let commandName = null;
     const source = `(progn (setf (mezzano.supervisor:thread-name (mezzano.supervisor:current-thread)) "${fixtureName}") (cerror "Continue." "Peek browser test.") 42)`;
@@ -82,6 +82,18 @@ try {
     const stop = own[0].stops[0];
     await writeFile(join(output,'live-process.json'),JSON.stringify(own[0],null,2));
     await browser.send('Emulation.setDeviceMetricsOverride',{width:980,height:717,deviceScaleFactor:1,mobile:false});
+    const bounds = await browser.evaluate(`(() => {
+      const page = document.querySelector('#page').getBoundingClientRect();
+      return [...document.querySelectorAll('#process-table th, #process-table td:last-child')].map(element => {
+        const range = document.createRange(); range.selectNodeContents(element);
+        const ink = range.getBoundingClientRect();
+        return {text:element.textContent,left:ink.left,right:ink.right,viewportLeft:page.left,viewportRight:page.right};
+      });
+    })()`);
+    assert(bounds.length >= 6);
+    assert(bounds.every(item => item.left >= item.viewportLeft && item.right <= item.viewportRight), JSON.stringify(bounds));
+    assert.equal(await browser.evaluate("document.querySelectorAll('#process-table th')[1].getBoundingClientRect().left"),371);
+    await writeFile(join(output,'column-bounds.json'),JSON.stringify(bounds,null,2));
     await browser.screenshot(join(output,'processes.png'));
     const rowMatch = `[...document.querySelectorAll('.process-name')].find(item => item.textContent === ${text(fixtureName)})`;
     async function processMenu() {

@@ -78,10 +78,9 @@ node fonts/test-title.mjs /path/to/de2.gif /tmp/title-test
 
 The final application screenshot and comparison retain zero offsets for all seven selected samples and zero gray pixels across the complete image.  This closes the measured title mismatch.  Paragraph justification and complete-window comparison remain unfinished.
 
-
 ## Peek typography
 
-The [original Peek capture](https://ssw.jku.at/General/Staff/PF/peek.gif) uses TVFONT for sampled process-table strings, JESS14 for menu items, and CPTFONT for the lower Processes label.  The [comparison results](peek-matches.json) preserve the image hash, unscaled orientation, five tested ink rectangles, input font hashes, and zero missing or extra pixels.  Advances, baselines, and character heights in the report come from recovered metadata.  The gallery does not identify the displayed Genera release.
+The [original Peek capture](https://ssw.jku.at/General/Staff/PF/peek.gif) uses TVFONT for sampled process-table strings, JESS14 for menu items, and CPTFONT for the lower Processes label.  The [comparison results](peek-matches.json) preserve the image hash, unscaled orientation, six tested ink rectangles, input font hashes, and zero missing or extra pixels.  Advances, baselines, and character heights in the report come from recovered metadata.  The gallery does not identify the displayed Genera release.
 
 ```sh
 python3 identify-peek.py /path/to/genera-fonts /path/to/peek.gif > peek-matches.json
@@ -89,11 +88,10 @@ python3 identify-peek.py /path/to/genera-fonts /path/to/peek.gif > peek-matches.
 
 TVFONT adds 142 mapped glyphs to the thirteen-font build.  The updated Chromium DPR1 test passed all 1,697 glyphs with zero missing, extra, or intermediate-gray pixels, exact advances, and exact CSS baselines and line heights.  TVFONT has a six-pixel default advance, ten-pixel character height, and eight-pixel baseline.  The process table uses twelve-pixel row spacing, matching the sampled original rows.  Different process fields and names require separate application-layout comparison.
 
-
-The [Peek application comparison](peek-layout.json) measures the fixture capture at the original 980 by 717 resolution.  The Process Name header, Notifications 1 row, selected Processes menu item, and lower Processes label have zero ink differences and zero positional offsets.  The complete capture has zero intermediate-gray pixels.  Initial measurements found the menu and lower label one pixel right, and the label five pixels below the reference.  Integer menu padding, label margin, and the measured help/status strip heights corrected those offsets.
+The [Peek application comparison](peek-layout.json) measures the fixture capture at the original 980 by 717 resolution.  The Process Name and State headers, Notifications 1 row, selected Processes menu item, and lower Processes label have zero ink differences and zero positional offsets.  The complete capture has zero intermediate-gray pixels.  Initial measurements found the menu and lower label one pixel right, and the label five pixels below the reference.  Integer menu padding, label margin, and the measured help/status strip heights corrected those offsets.
 
 ```sh
 python3 compare-peek-layout.py /path/to/peek-fixture-processes.png
 ```
 
-These four strings use fixture data for comparison.  The live Mezzano field set, current thread names, supported menus, and other layout details differ from the source.  The measurements do not establish complete original-window equivalence.
+These five strings are measured in a fixture capture.  The live Mezzano field set, current thread names, supported menus, and other layout details differ from the source.  The measurements do not establish complete original-window equivalence.

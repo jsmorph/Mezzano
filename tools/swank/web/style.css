@@ -215,11 +215,17 @@ dialog h2 { font-style: italic; margin: 0; border-bottom: 1px solid #000; paddin
 #peek-modes button[aria-pressed="true"] { color: #fff; background: #000; }
 #peek-modes button:hover, #peek-modes button:focus-visible { outline: 1px solid #000; }
 #peek-help { margin: 12px 8px; max-width: 760px; }
-#process-table { font-family: "TVFONT", monospace; font-size: 10px; line-height: 12px; border-collapse: collapse; white-space: nowrap; }
+#process-table { font-family: "TVFONT", monospace; font-size: 10px; line-height: 12px; border-collapse: collapse; white-space: nowrap; width: 100%; min-width: 882px; table-layout: fixed; }
 #process-table th { font-weight: normal; text-align: left; padding: 0 24px 12px 0; }
 #process-table td { padding: 0 24px 0 0; vertical-align: top; }
+#process-table th:first-child { width: 348px; }
+#process-table th:nth-child(2) { width: 144px; }
+#process-table th:nth-child(3) { width: 84px; }
+#process-table th:last-child { width: 126px; }
+#process-table th:nth-child(2), #process-table td:nth-child(2) { padding-right: 12px; }
 #process-table th:last-child, #process-table td:last-child { padding-right: 0; }
-.process-name { font: inherit; border: 0; padding: 0; margin: 0; white-space: pre; max-width: none; }
+#process-table td:first-child, #process-table td:nth-child(4) { overflow: hidden; }
+.process-name { font: inherit; border: 0; padding: 0; margin: 0; white-space: pre; max-width: 100%; overflow: hidden; display: block; }
 .process-name:hover, .process-name:focus-visible { outline: 1px solid #000; }
 #peek-sample-status { margin: 12px 0 0; }
 #peek-sample-status.stale { font-weight: bold; }

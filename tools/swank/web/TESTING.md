@@ -46,7 +46,7 @@ Lost-reply tests discard a completed HTTP response after server dispatch.  They 
 
 ## Peek and activity navigation
 
-The Peek driver tests SELECT navigation, input preservation, product-guide links, live process fields, Describe, retained-stop selection, Show Processes, and continuation/cleanup of its own condition fixture.  It creates one named worker and two retained evaluations, then releases their objects and its session.  The `--navigation-only` option exercises activity selection and product documentation without creating guest jobs.
+The Peek driver tests SELECT navigation, input preservation, product-guide links, live process fields, 980-pixel column bounds with a 160-character name, Describe, retained-stop selection, Show Processes, and continuation/cleanup of its own condition fixture.  It creates one named worker and two retained evaluations, then releases their objects and its session.  The `--navigation-only` option exercises activity selection and product documentation without creating guest jobs.
 
 The separate fixture driver replaces every API response before the application loads, so it requires the static Web files but no guest.  It exercises duplicate names, text rendering, expired-session stop links, delayed nonoverlapping requests, failed-sample retention, automatic retry after a released-stop error, and reconnection after a transport error.  It also verifies polling suppression in Help mode, another activity, and a simulated hidden-tab event.  The latter does not establish scheduling behavior for every browser's background-tab throttling.
 

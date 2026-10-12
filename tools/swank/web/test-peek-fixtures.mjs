@@ -15,7 +15,7 @@ try {
     window.peekFixture={count:0,active:0,maximum:0,delay:0,errors:[],sample:{title:'Processes',
       'run-time-units-per-second':1000000,threads:[
         {name:'Notifications 1',state:':sleeping',priority:':normal','wait-kind':':condition-variable',wait:'User Input','run-time':1234567,stops:[]},
-        {name:'same <img src=x>',state:':runnable',priority:':normal','wait-kind':null,wait:null,'run-time':0,stops:[]},
+        {name:'same <img src=x>',state:':waiting-for-page-write',priority:':normal','wait-kind':null,wait:null,'run-time':0,stops:[]},
         {name:'same <img src=x>',state:':sleeping',priority:':normal','wait-kind':':mutex',wait:'<script>plain text</script>','run-time':10,stops:[[':stop','0'.repeat(64),17]]}
       ]}};
     window.fetch=async (url,options)=>{
@@ -50,6 +50,11 @@ try {
   assert.equal(await browser.evaluate('document.querySelectorAll("#process-table img, #process-table script").length'),0);
   assert.equal(await browser.evaluate('document.querySelectorAll(".process-name")[1].textContent'),'same <img src=x>');
   assert.equal(await browser.evaluate('document.querySelectorAll(".process-name")[2].textContent'),'same <img src=x>');
+  assert(await browser.evaluate(`(() => {
+    const element=document.querySelector('#process-rows tr:nth-child(2) td:nth-child(2)');
+    const range=document.createRange();range.selectNodeContents(element);
+    return range.getBoundingClientRect().right <= element.getBoundingClientRect().right;
+  })()`));
   await browser.screenshot(join(output,'processes.png'));
   await browser.click('.process-name');
   await browser.waitFor('document.querySelector("#peek-process-menu").open');
