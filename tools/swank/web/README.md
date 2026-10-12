@@ -74,7 +74,7 @@ Mezzano identity, package, guest process state, and supported commands replace S
 
 ### Font status and visual limits
 
-The interface currently uses a fallback monospace font.  Exact glyph shape and spacing have not been established, and visual fidelity remains unfinished.
+The interface currently uses a fallback monospace font.  Its glyphs and spacing differ from the original captures, and visual fidelity remains unfinished.  The [original-font identification report](font-research/README.md) records exact ink-mask matches for 21 reference samples, the fonts required for each role, source hashes, and browser validation requirements.
 
 Symbolics' [Programming the User Interface, Volume B](https://ftpmirror.your.org/pub/misc/bitsavers/pdf/symbolics/software/genera_7/999029_Programming_the_User_Interface_Volume_B_Aug86.pdf), printed page 123, maps the default fixed roman normal style to FONTS:CPTFONT.  The [recovered Genera font repository](https://github.com/htayj/genera-fonts/tree/809694a73ece7f840b6541b4781cd47152d1ea35) publishes Genera 8.5 bitmap sources.  CPTFONT has an eight-pixel advance, twelve-pixel character height, and baseline ten.  Its [v0.1.3 release](https://github.com/htayj/genera-fonts/releases/tag/v0.1.3) contains BDF and bitmap-only OTB files, without outline webfonts.
 

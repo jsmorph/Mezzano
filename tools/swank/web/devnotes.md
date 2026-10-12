@@ -79,3 +79,11 @@ Unavailable-local browser rendering has source review only.  Actual image restor
 - [x] Review, commit, and push the bounded implementation increment.
 
 The working HTTP client, browser test, guides, and service unit were reviewed and pushed as Mezzano 71f051fb.  The operations guide selects that revision for fresh checkouts.  Original-font conversion and exact visual matching remain open.
+
+## Original font identification: 2026-10-12
+
+The [font-identification report](font-research/README.md), comparison script, and recorded results preserve 21 tested strings from the original classic debugger capture and the Workbook's embedded one-bit Listener and menu images.  Every selected ink rectangle has a recovered-font candidate with zero missing and zero extra pixels.  The result records source hashes, image orientation, positions, candidates, and recovered metrics.  This evidence identifies compatible glyphs for those samples.  It does not establish browser rendering or every glyph in each font.
+
+The roles use several fonts: CPTFONT and CPTFONTCB for fixed text, JESS14 for menu items, HL12I and HL12BI for Workbook labels and headings, SWISS12B-CCAPS for mouse help, and EUREX24I and HL12 variants for the herald.  The classic interaction label matches TR12I and MATH12 equally on the tested Latin glyphs.  TR12I also matches its related menu-title prefix.  Classic text raster origins support fourteen-pixel line spacing.  The current browser uses fallback glyphs and twelve-pixel body line height.
+
+The recommendation is to convert the recovered fonts for their identified roles, then test Chromium at device-pixel ratio 1 for exact raster pixels, advances, baselines, line heights, and complete layout.  Font conversion remains subject to the pending fontTools dependency approval.  No conversion dependency or font asset was installed in this research.
