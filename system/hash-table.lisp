@@ -289,6 +289,7 @@
 
 (defmacro define-optimized-hash-table-functions-internal
     (name test-fn hash-fn weakp)
+  (declare (ignore hash-fn))
   (let* ((weak-name (if weakp "WEAK-" ""))
          (gethash (intern (format nil "~AGETHASH-~A" weak-name name) (symbol-package name)))
          (puthash (intern (format nil "~APUTHASH-~A" weak-name name) (symbol-package name)))
@@ -463,7 +464,7 @@
          (declare (optimize speed (safety 0) (debug 1))
                   (type hash-table hash-table))
          (do* ((free-slot nil)
-               (hash (logand #xffffffff (,hash-fn key)))
+               (hash (logand #xffffffff (funcall (hash-table-hash-function hash-table) key)))
                (storage (hash-table-storage hash-table))
                (size (,(if weakp 'weak-hash-table-size 'strong-hash-table-size)
                       storage))
@@ -670,22 +671,50 @@ is below the rehash-threshold."
 (defun sxhash (object)
   (sxhash-1 object 10))
 
+(declaim (inline equalp-hash-combine))
+(defun equalp-hash-combine (hash value)
+  (logand #xffffffff (* (logxor hash (logand #xffffffff value)) #x01000193)))
+
+(defun equalp-number-hash (number)
+  (typecase number
+    (integer
+     (if (bignump number)
+         (hash-bignum number)
+         (logxor number (ash number -32))))
+    (ratio
+     (equalp-hash-combine (equalp-number-hash (numerator number))
+                         (equalp-number-hash (denominator number))))
+    (float
+     (cond ((float-nan-p number) 0)
+           ((float-infinity-p number)
+            (if (minusp number) #xff800000 #x7f800000))
+           (t (equalp-number-hash (rational number)))))
+    (complex
+     (let ((real (equalp-number-hash (realpart number)))
+           (imaginary (imagpart number)))
+       (if (zerop imaginary)
+           real
+           (equalp-hash-combine real (equalp-number-hash imaginary)))))))
+
 (defun equalp-hash (object &optional (depth 10))
-  ;; this is woefully incomplete...
   (if (zerop depth)
       #x12345678
       (typecase object
+        (number (equalp-number-hash object))
         (cons (logxor (equalp-hash (car object) (1- depth))
                       (equalp-hash (cdr object) (1- depth))))
-        ;;(pathname ...)
         (character (char-int (char-upcase object)))
-        (string
-         ;; djb2 string hash
-         ;; We use 25-bit characters (unicode+bucky bits), instead of 8-bit chars.
-         ;; I'm unsure how that'll change the behaviour of the hash function
-         (let ((hash 5381))
+        (vector
+         (let ((hash (equalp-hash-combine #x811c9dc5 (length object))))
            (dotimes (i (length object) hash)
-             (setf hash (logand #xFFFFFFFF (+ (logand #xFFFFFFFF (* hash 33))
-                                              (char-int (char-upcase (char object i)))))))))
+             (setf hash (equalp-hash-combine
+                         hash (equalp-hash (aref object i) (1- depth)))))))
+        (array
+         (let ((hash (equalp-hash-combine #x811c9dc5 (array-rank object))))
+           (dolist (dimension (array-dimensions object))
+             (setf hash (equalp-hash-combine hash dimension)))
+           (dotimes (i (array-total-size object) hash)
+             (setf hash (equalp-hash-combine
+                         hash (equalp-hash (row-major-aref object i) (1- depth)))))))
         (symbol (eql-hash object))
         (t 0))))
