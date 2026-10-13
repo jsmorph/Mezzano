@@ -96,6 +96,6 @@ The Listener functions passed a chunked HTTP GET returning text, an HTTPS GET re
 
 The HTTPS GET to example.org returned HTTP 200 after the x86-64 arithmetic improvements.  Headless Chromium submitted COMPLETE through the Web Listener and displayed its returned text without a debugger stop.
 
-Twenty offline checks of the captured three-certificate chain had a 90-millisecond median and ranged from 90 to 300 milliseconds on x86-64 QEMU with KVM.  Each call allocated approximately 53.65 MB.  These timings exclude certificate parsing, hostname checking, network traffic, and TLS key exchange.  They include collection and scheduling during the call.  The [arithmetic measurements](../tools/long-division.md#runtime-arithmetic) describe the test and its limits.
+After snapshot restoration, twenty offline checks of the captured three-certificate chain had a 90-millisecond median, a 102.5-millisecond mean, and a range of 90–190 milliseconds on x86-64 QEMU with KVM.  Each call allocated approximately 53.65 MB.  These timings exclude certificate parsing, hostname checking, network traffic, and TLS key exchange.  They include collection and scheduling during the call.  The [arithmetic measurements](../tools/long-division.md#runtime-arithmetic) describe the test and its limits.
 
 These tests cover the stated endpoints and error cases.  Streaming responses, certificate revocation, the upstream TLS test suite, ARM64 execution, and bare-metal entropy remain untested.

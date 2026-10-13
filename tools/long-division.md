@@ -1,10 +1,10 @@
-# Long-division experiment
+# Integer arithmetic measurements
 
 [The implementation](long-division.lisp) provides `mezzano-long-division:divide`, which takes two integers and returns the quotient and remainder specified by `truncate`.  It uses normalized long division with base 2^30 digits in unsigned 32-bit arrays.  Digit products and two-digit quotient estimates fit in fixnums on the tested x86-64 systems.  Its temporary arrays hold copies of the operands.
 
 The algorithm follows [GMP's description of basecase division](https://gmplib.org/manual/Basecase-Division), which cites Knuth Algorithm D.  The implementation estimates each quotient digit, corrects the estimate using the next divisor digit, subtracts the product, and adds the divisor back if subtraction borrows beyond the current dividend segment.
 
-This is a standalone experiment.  Runtime integration is deferred.
+The portable implementation remains a standalone comparison.  The x86-64 runtime uses the separate word-arithmetic implementation described under [Runtime arithmetic](#runtime-arithmetic).
 
 ## Tests and compilation
 
@@ -227,7 +227,7 @@ Times below are microseconds per restoration plus division.  Each cell gives the
 
 The updated Mezzano compiler improves these medians by factors of 1.55 and 1.63.  The Mezzano/SBCL ratios are 13.5 and 13.0.  Mezzano's restoration-only medians are 1.175 and 5.891 microseconds.  Every timed sample reported zero allocation.  Prepared-array results agreed with TRUNCATE before and after timing.  The SBCL column repeats the preceding measurement of the same division source.
 
-The compiled division function shrank from 9,591 to 8,372 instruction bytes and from 2,447 to 2,135 instructions.  Each of its 16 element-access sites retains one bounds check.  The disassembly contains no ARRAY-DIMENSION calls or second storage-bounds checks.  Arithmetic checks and overflow paths remain.  Certificate verification still uses the existing runtime division, so these loop measurements do not establish a new certificate-verification time.
+The compiled division function shrank from 9,591 to 8,372 instruction bytes and from 2,447 to 2,135 instructions.  Each of its 16 element-access sites retains one bounds check.  The disassembly contains no ARRAY-DIMENSION calls or second storage-bounds checks.  Arithmetic checks and overflow paths remain.  These loop measurements preceded the runtime arithmetic changes described below.
 
 To compare compiler behavior in a running development guest, compile and load the test file, call CAPTURE before loading the updated compiled transforms, and pass its result to RUN afterward:
 
@@ -239,60 +239,75 @@ To compare compiler behavior in a running development guest, compile and load th
 
 RUN without an argument checks the current compiler's behavior without comparison to a previous compiler.  Evidence is in the build-directory logs `array-transform-reference.log`, `array-transform-load.log`, and `long-division-array-compiler.log`.  The disassembly is `home/long-division-array-compiler.asm`.
 
-A fresh x86-64 image built from an empty target-code directory and booted to the CI completion marker with QEMU exit status 3.  Build and boot evidence is `array-compiler-build.log`, `array-compiler-ci-serial.log`, and `array-compiler-ci.exit`.  ARM64 execution and snapshot restoration of this compiler increment have not been tested.
+A fresh x86-64 image built from an empty target-code directory and booted to the CI completion marker with QEMU exit status 3.  Build and boot evidence is `array-compiler-build.log`, `array-compiler-ci-serial.log`, and `array-compiler-ci.exit`.  ARM64 execution remains untested.  The combined runtime tests below cover the saved compiler and arithmetic.
 
 ## Runtime arithmetic
 
-The x86-64 runtime now shifts a bignum by computing its word offset and residual bit count once.  It fills the result in one pass and passes that result to the existing canonicalizer.  The canonicalizer can allocate a shorter result.  ARM64 retains its previous shift implementation.
+The x86-64 runtime uses Mezzano's Lisp assembler for single-pass bignum shifts, word multiplication, and normalized long division.  TLS, certificate processing, and cryptographic policy remain in the existing Lisp libraries.  ARM64 retains its previous arithmetic implementation.
 
-[The runtime tests](test-bignum-runtime.lisp) use SBCL-generated results for 4,278 shifts through 4,096-bit inputs.  They cover both signs, fixnum and word boundaries, zero shifts, counts that discard the entire input, input immutability, and canonical representation.  The installed shifts also passed the 7,276 division cases.  Candidate assembly functions passed the shift cases before runtime installation.
+### Implementation and tests
 
-Generate the reference file under SBCL, then make it available to the guest:
+| Operation | Implementation |
+| --- | --- |
+| Shifts | Split the count into a word offset and residual bit count, then fill the result once.  Right shifts that discard the input return its sign. |
+| Multiplication | Use 64-bit MUL and ADD/ADC with register carries.  Allocate a work result once, then canonicalize it. |
+| Division | Use Algorithm D with 32-bit digits and 64-bit machine arithmetic.  Lisp handles signs and work-array allocation.  The digit loop allocates no objects. |
+| Result conversion | Find the highest nonzero digit before allocating.  Return a fixnum directly or allocate the exact bignum size. |
+| MOD | For integer operands with at least one bignum, omit quotient storage and construction, then adjust the remainder to the divisor's sign.  Other types and zero divisors retain the FLOOR path. |
+
+Shifts and multiplication use the existing canonicalizer, which can allocate a shorter result.  Array and bignum pointers remain in GC-visible registers or marked stack slots across allocation.  Raw words and carries use unscanned registers.
+
+[The runtime tests](test-bignum-runtime.lisp) passed 4,278 SBCL-generated shifts, 1,824 multiplications, 1,836 divisions, and 1,836 MOD cases.  They cover signs, word and fixnum boundaries, mixed digit patterns, input immutability, and canonical representation.  Multiplication and division include operands through 8,192 by 4,096 bits.  Division includes quotient-estimate and add-back corrections.  A further 1,836 checks verified the remainder-only return values.  Forced full collections at arithmetic allocation passed, as did the 7,276 standalone division comparisons, MOD's noninteger and error cases, integer-to-float rounding, and Jzon's API and numeric tests.
+
+Generate reference files under SBCL and make them available to the guest.  After compiling and loading the test file:
 
 ~~~lisp
-(mezzano-bignum-test:write-shift-cases "/path/to/bignum-shift-cases.sexp")
+(mezzano-bignum-test:write-shift-cases "/path/to/shifts.sexp")
+(mezzano-bignum-test:write-binary-cases "/path/to/multiply.sexp" '*)
+(mezzano-bignum-test:write-binary-cases "/path/to/divide.sexp" 'truncate)
+(mezzano-bignum-test:write-binary-cases "/path/to/mod.sexp" 'mod)
 ~~~
 
-After compiling and loading the test file in each implementation:
+Run the compiled tests in Mezzano:
 
 ~~~lisp
-(mezzano-bignum-test:run-shifts "/path/to/bignum-shift-cases.sexp")
+(mezzano-bignum-test:run-shifts "/path/to/shifts.sexp")
+(mezzano-bignum-test:run-binary-cases "/path/to/multiply.sexp" #'*)
+(mezzano-bignum-test:run-binary-cases "/path/to/divide.sexp" #'truncate)
+(mezzano-bignum-test:run-binary-cases "/path/to/mod.sexp" #'mod)
+(mezzano-bignum-test:run-mod-compatibility)
 ~~~
 
-The [certificate benchmark](https/bench-certificates.lisp) takes a parsed chain and trust roots and measures the existing Lisp verifier.  READ-DATA reads the public DER fixture produced during the certificate investigation, returning the chain, roots, and verification time.  RUN excludes parsing, hostname checking, network traffic, and TLS key exchange.  SBCL reports process allocation.  Mezzano reports allocation by the current thread.
+The fresh x86-64 build and CI boot passed.  After the final shortcut adjustment, the builder recompiled the changed source and the resulting image also booted to the CI completion marker with QEMU exit status 3.  The saved image restarted and passed the arithmetic, float rounding, JSON, TLS, CURL, and COMPLETE tests without loading or redefining those functions.
+
+### Certificate measurements
+
+The [certificate benchmark](https/bench-certificates.lisp) measures the existing Lisp verifier with a parsed three-certificate chain and 150 trust roots.  READ-DATA reads the captured public DER fixture and returns the parsed chain, roots, and captured verification time.  RUN excludes parsing, hostname checking, network traffic, and TLS key exchange.  It includes allocation, collection, and scheduling during each call.  The guest clock resolution is ten milliseconds.
 
 ~~~lisp
 (multiple-value-bind (chain roots now)
     (lispm-certificate-bench:read-data "/path/to/certificate-benchmark-data.sexp")
-  (lispm-certificate-bench:run chain roots :now now))
+  (lispm-certificate-bench:run chain roots :now now :samples 20))
 ~~~
 
-Two measurements before replacing the shifts took 12.31 and 8.99 seconds and allocated about 7.908 GB per verification.  Three measurements afterward took 8.71, 8.24, and 8.30 seconds and allocated about 7.659 GB.  The sample variation limits the timing comparison.  These shift measurements precede the multiplication change below.  The certificate target is below 100 milliseconds.
+The guest used two virtual CPUs and 2 GiB of memory under KVM on an AMD Ryzen 3 PRO 7330U.  Incremental measurements used the same captured chain:
 
-Evidence is in the build-directory logs `bignum-shift-sbcl.log`, `bignum-shift-candidates.log`, and `bignum-shift-installed.log`.
+| Runtime increment | Calls | Median milliseconds | Range milliseconds | Approximate allocated MB/call |
+| --- | ---: | ---: | ---: | ---: |
+| Before arithmetic changes | 2 | 10,650 | 8,990–12,310 | 7,908 |
+| Single-pass shifts | 3 | 8,300 | 8,240–8,710 | 7,659 |
+| Word multiplication | 3 | 7,210 | 7,210–7,380 | 6,992 |
+| Word division | 5 | 110 | 100–220 | 66.9 |
+| Exact result allocation | 10 | 100 | 100–200 | 61.53 |
+| Remainder-only MOD | 20 | 90 | 90–300 | 53.65 |
+| After snapshot restoration | 20 | 90 | 90–190 | 53.65 |
 
-Four tests forced a full collection at the allocation call inside a shift and checked the returned value.  They covered both signs and both directions.  Evidence is `bignum-shift-gc.log`.  Fresh-image boot and snapshot restoration of these runtime changes remain pending.
+Before restart, sixteen calls took 90 milliseconds, one took 100, and three took 130, 200, and 300.  The mean was 108.5 milliseconds.  After restoration, seventeen took 90, one took 140, and two took 190, for a mean of 102.5 milliseconds.  The median meets the below-100-millisecond target.  The means and several individual calls exceed it.
 
-### Word multiplication
+SBCL 2.5.2.debian verified the same parsed chain on the same host.  Its first call took 60 milliseconds and allocated 43.83 MB.  Six subsequent calls took 16–28 milliseconds, with a median of approximately 20, and allocated approximately 29.02 MB each.  SBCL reports process allocation.  Mezzano reports allocation by the current thread.
 
-The x86-64 unsigned multiplication loop now uses MUL and ADD/ADC on raw words and register carries.  It allocates a work result and uses the existing canonicalizer afterward.  The signed Lisp wrapper retains sign handling and its zero and unit cases.  ARM64 retains the previous multiplication loop.
+### Evidence and HTTPS acceptance
 
-The candidate and installed function passed 1,824 SBCL-generated cases through 8,192-bit by 4,096-bit operands, including word boundaries, mixed digit patterns, both signs, input immutability, and canonical representation.  Two tests forced full collection at multiplication's allocation call.  The 7,276 division cases also passed.
+Build-directory evidence includes the `bignum-shift-*`, `bignum-multiply-*`, `bignum-divide-*`, `bignum-result-*`, and `bignum-mod-*` logs.  The allocation profile is `home/bignum-native-certificate-profile.txt`.  SBCL's certificate evidence is `certificate-benchmark-sbcl.log`.  The journal records individual test runs and candidate installation.  Final build and boot evidence is `arithmetic-final-build.log` and `arithmetic-final-ci-serial.log`.  `arithmetic-restored-tests.log` records tests and certificate timings after snapshot restoration.
 
-Three certificate checks after installation took 7.38, 7.21, and 7.21 seconds, allocating approximately 6.992 GB per call.  Division still uses the bit-at-a-time routine.  Evidence is in `bignum-multiply-sbcl.log`, `bignum-multiply-candidate.log`, and `bignum-multiply-installed.log`.
-
-### Word division
-
-The x86-64 runtime now uses normalized Algorithm D with 32-bit digits and 64-bit machine arithmetic.  Lisp handles signs and allocation.  Assembly copies and normalizes operands, performs quotient estimation and correction, and converts the result digits back to integers.  The digit loop allocates no objects.  ARM64 retains its previous division implementation.
-
-The candidate passed 1,824 SBCL-generated cases, twelve signed estimate-correction/add-back cases, and division-by-zero condition checks.  The installed runtime passed the 1,824 cases, full collection at result allocation, and all 7,276 comparisons with the standalone implementation.  The generated division fixture now includes the twelve additional cases.
-
-Five certificate checks took 140, 100, 220, 100, and 110 milliseconds and allocated approximately 66.9 MB each.  These checks include collection and scheduling during the call.  The target remains below 100 milliseconds.  A follow-up profile identifies allocation and result canonicalization as remaining costs.
-
-Evidence is in `bignum-divide-{sbcl,candidate,installed}.log`, `bignum-native-profile.log`, and `home/bignum-native-certificate-profile.txt`.  Fresh-image boot and snapshot restoration remain pending.
-
-The result converter now finds the highest nonzero digit before allocation.  It returns a fixnum directly when possible and otherwise allocates the exact bignum size.  Candidate and installed functions passed the expanded 1,836-case fixture, collection at result allocation, and the 7,276 standalone comparisons.  Ten certificate checks took 140, 100, 100, 100, 100, 200, 100, 100, 100, and 100 milliseconds, allocating approximately 61.53 MB each.  The clock resolution is ten milliseconds.  Evidence is `bignum-result-candidate.log` and `bignum-result-installed.log`.  Build, boot, and snapshot tests remain pending.
-
-MOD now requests only the remainder when both operands are integers and either is a bignum.  The division routine skips quotient allocation and storage.  MOD adjusts a nonzero remainder to the divisor's sign.  Other numeric inputs and zero divisors retain the FLOOR path.  Candidate and installed functions passed 1,836 signed MOD cases and 1,836 division cases.  Collection, rational and float behavior, error types, all 7,276 standalone comparisons, and integer-to-float rounding also passed.
-
-Twenty certificate checks had a median of 90 milliseconds and a range of 90–300 milliseconds.  Sixteen calls took 90 milliseconds, one took 100, and three took 130, 200, and 300.  Allocation was approximately 53.65 MB per call.  The median meets the target.  Individual calls still exceed it.  Evidence is `bignum-mod-{sbcl,candidate,candidate-extra,installed}.log`.  Generate the MOD fixture with WRITE-BINARY-CASES and the symbol MOD, run it with RUN-BINARY-CASES and #'MOD, and call RUN-MOD-COMPATIBILITY for noninteger and error checks.
+Full and resumed HTTPS handshakes passed certificate verification and the hostname, trust-store, and missing-chain rejection tests.  CURL returned HTTP 200 from example.org over HTTPS and HTTP 401 JSON from OpenAI.  COMPLETE returned text with the default and explicit models.  Headless Chromium submitted COMPLETE and displayed its returned string without a debugger stop.  Evidence is `arithmetic-https-tests.log`, `arithmetic-json-tests.log`, and the browser test's saved result and screenshot.  The [HTTPS test guide](https/README.md#listener-function-tests) describes reproduction.
