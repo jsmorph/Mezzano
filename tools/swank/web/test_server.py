@@ -90,6 +90,23 @@ class ProtocolTests(unittest.TestCase):
             server.integer(True)
 
 
+    def test_monitor_offsets(self):
+        name = "a" * 64
+        self.assertEqual(server.operation_arguments("monitor-state", {}, name), [[]])
+        self.assertEqual(server.operation_arguments("monitor-state",
+            {"offsets": [{"name": name, "start": 3}]}, name), [[[name, 3]]])
+        for arguments in [
+            {"offsets": None}, {"offsets": {}}, {"offsets": [1]},
+            {"offsets": [{"name": name}]},
+            {"offsets": [{"name": "bad", "start": 0}]},
+            {"offsets": [{"name": name, "start": True}]},
+            {"offsets": [{"name": name, "start": -1}]},
+            {"offsets": [{"name": name, "start": 0}] * 2},
+        ]:
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(ValueError):
+                    server.operation_arguments("monitor-state", arguments, name)
+
     def test_remote_decode_failure(self):
         reader, writer = socket.socketpair()
         connection = object.__new__(server.Swank)
@@ -326,6 +343,28 @@ def live_test(port):
         option = next(option for option in result["result"] if option["name"] == name)
         return command(stop, "invoke-restart", option["index"])
 
+    def raw(source):
+        connection = server.Swank("127.0.0.1", port, time.monotonic() + 15)
+        try:
+            return connection.rpc(server.parse(source))
+        finally:
+            connection.close()
+
+    session_form = f'(cl:gethash {server.lisp(session)} swank/mezzano-debugger::*sessions*)'
+
+    def handle_count():
+        return raw(f'(cl:hash-table-count (swank/mezzano-debugger::session-handles {session_form}))')
+
+    def assert_released_monitor_object(kind, value):
+        encoded = server.lisp([server.Symbol(value[0]), *value[1:]])
+        extra = "(cl:make-hash-table :test (cl:function cl:equal))" if kind == "job" else ""
+        result = raw(f'''(swank/mezzano-debugger::with-lock
+          (cl:let ((session {session_form}))
+            (swank/mezzano-debugger::monitor-{kind} session
+              (swank/mezzano-debugger::decode-handle session :{kind} (cl:quote {encoded}))
+              {extra})))''')
+        assert result is None, (kind, result)
+
     try:
         connection = server.Swank("127.0.0.1", port, time.monotonic() + 10)
         try:
@@ -346,6 +385,24 @@ def live_test(port):
         assert request("job-output", job=job, start=0)["end"] == 4
         assert request("resume-session") == session
         assert job in request("jobs")
+        monitor = request("monitor-state")
+        row = next(row for row in monitor["jobs"] if row["token"] == job)
+        assert row["information"] == info, row
+        assert row["output"] == {"start": 0, "text": "λ中文\n", "end": 4}, row
+        listener = request("listener-information")
+        for field in ("package", "mode", "prompt", "default-pathname", "busy-p"):
+            assert monitor["listener"][field] == listener[field], (field, monitor["listener"][field])
+        handles = handle_count()
+        monitor = request("monitor-state", offsets=[{"name": name, "start": 1}])
+        row = next(row for row in monitor["jobs"] if row["token"] == job)
+        assert row["output"] == {"start": 1, "text": "中文\n", "end": 4}, row
+        assert handle_count() == handles
+        monitor = request("monitor-state", offsets=[{"name": name, "start": 4}])
+        row = next(row for row in monitor["jobs"] if row["token"] == job)
+        assert row["output"] == {"start": 4, "text": "", "end": 4}, row
+        assert handle_count() == handles
+        request("monitor-state", offsets=[{"name": name, "start": 5}],
+                _expected_error=":invalid-output-range")
         zero = request("start-evaluation", name=secrets.token_hex(32), source="(values)")
         jobs.append(zero)
         assert wait(zero, lambda info: info["state"] == ":returned")["values"] is None
@@ -365,6 +422,11 @@ def live_test(port):
         stopped_job = request("start-evaluation", name=secrets.token_hex(32), source=source)
         jobs.append(stopped_job)
         stop = stop_for(stopped_job)
+        monitor = request("monitor-state")
+        row = next(row for row in monitor["jobs"] if row["token"] == stopped_job)
+        assert stop in row["information"]["stops"], row
+        row = next(row for row in monitor["stops"] if row["token"] == stop)
+        assert row["information"]["state"] == ":stopped", row
         assert "HTTP debugger stop." in command(stop, "condition")["result"]
         frames = command(stop, "frames")["result"]
         frame = next(item for item in frames if function_name.upper() in item["function"])
@@ -373,6 +435,9 @@ def live_test(port):
         assert restart(stop, "CONTINUE")["state"] == ":unwound"
         assert wait(stopped_job, lambda info: info["state"] == ":returned")["values"] == ["333"]
         assert request("information", stop=stop)["state"] == ":closed"
+        monitor = request("monitor-state")
+        row = next(row for row in monitor["stops"] if row["token"] == stop)
+        assert row["information"]["state"] == ":closed", row
 
         interrupt_job = request("start-evaluation", name=secrets.token_hex(32),
             source='(unwind-protect (loop (sleep 0.01)) (format t "cleanup"))')
@@ -444,9 +509,14 @@ def live_test(port):
                 assert request("information", stop=stop)["state"] == ":closed"
                 request("release-stop", stop=stop)
                 request("information", stop=stop, _expected_error=":released-stop")
+                assert_released_monitor_object("stop", stop)
             for job in jobs:
                 request("release-job", job=job)
                 request("job-information", job=job, _expected_error=":released-job")
+                assert_released_monitor_object("job", job)
+            monitor = request("monitor-state")
+            assert not any(row["token"] in jobs for row in monitor["jobs"] or [])
+            assert not any(row["token"] in owned_stops for row in monitor["stops"] or [])
             request("release-session")
             request("resume-session", _expected_error=":expired-session")
         finally:
@@ -457,6 +527,8 @@ def live_test(port):
           "interruption, abort cleanup, child printer recovery, and closed-stop release passed.")
     print("HTTP -> SWANK -> Mezzano: Unicode, output offsets, values, zero values, replay, "
           "session resume, interactive input, and terminal release passed.")
+    print("Monitor state: Unicode increments, invalid offsets, stable handles, "
+          "active and closed stops, and captured-handle release omission passed.")
 
 
 

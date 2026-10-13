@@ -277,6 +277,20 @@ def token(value, kind, session):
 
 
 def operation_arguments(operation, args, session):
+    if operation == "monitor-state":
+        fields(args, (), ("offsets",))
+        offsets = args.get("offsets", [])
+        if not isinstance(offsets, list):
+            raise ValueError("Output offsets must be a list.")
+        result, names = [], set()
+        for offset in offsets:
+            fields(offset, ("name", "start"))
+            name = require_name(offset["name"])
+            if name in names:
+                raise ValueError("Duplicate output offset.")
+            names.add(name)
+            result.append([name, integer(offset["start"])])
+        return [result]
     if operation in ("jobs", "release-session", "listener-information", "processes"):
         fields(args, ())
         return []
