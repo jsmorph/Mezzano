@@ -1,0 +1,200 @@
+(defpackage #:lispm-snapshot-sync-test
+  (:use #:cl)
+  (:export #:prepare #:assert-ready #:finish #:cleanup))
+
+(in-package #:lispm-snapshot-sync-test)
+
+(declaim (optimize (safety 3) (debug 1) (speed 1)))
+
+(defstruct (waiter (:area :wired))
+  kind mutex cv timer thread released-p cancelled-p failure
+  (returns 0) (completions 0) cleaned-p)
+
+(defvar *waiters* nil)
+(defvar *prepared-boot* nil)
+
+(defun await (predicate description)
+  (let ((deadline (+ (get-internal-real-time)
+                     (* 10 internal-time-units-per-second))))
+    (loop
+      (when (funcall predicate) (return))
+      (when (> (get-internal-real-time) deadline)
+        (error "Timed out waiting for ~A." description))
+      (sleep 0.01))))
+
+(defun inspect-waiter (waiter phase)
+  (mezzano.supervisor::safe-without-interrupts (waiter phase)
+    (let ((thread (waiter-thread waiter))
+          (cv (waiter-cv waiter))
+          (mutex (waiter-mutex waiter))
+          (timer (waiter-timer waiter)))
+      (mezzano.supervisor::with-place-spinlock
+          ((mezzano.supervisor::timer-queue-lock
+            mezzano.supervisor::*active-timers*))
+        (mezzano.supervisor::with-wait-queue-lock (cv)
+          (mezzano.supervisor::with-wait-queue-lock (mutex)
+            (mezzano.supervisor::with-global-thread-lock ()
+              (cond
+                ((or (mezzano.supervisor::mutex-owner mutex)
+                     (not (eq (mezzano.supervisor::mutex-state mutex) :unlocked))
+                     (mezzano.supervisor::wait-queue-head mutex)
+                     (mezzano.supervisor::wait-queue-tail mutex))
+                 :mutex)
+                ((eq phase :ready)
+                 (cond
+                   ((not (eq (mezzano.supervisor::thread-state thread) :sleeping))
+                    :thread-state)
+                   ((or (not (eq (mezzano.supervisor::wait-queue-head cv) thread))
+                        (not (eq (mezzano.supervisor::wait-queue-tail cv) thread))
+                        (mezzano.supervisor::thread-queue-prev thread)
+                        (mezzano.supervisor::thread-queue-next thread))
+                    :cv-links)
+                   ((or (not (eq (mezzano.supervisor::thread-wait-item thread) cv))
+                        (not (eq (mezzano.supervisor::thread-unsleep-helper-argument
+                                  thread)
+                                 mutex)))
+                    :wait-context)
+                   ((not (eq (mezzano.supervisor::timer-cvar timer) cv))
+                    :timer-cv)
+                   ((or (not (mezzano.supervisor::timer-list-linked-p timer))
+                        (eq (mezzano.supervisor::timer-prev timer) :unlinked)
+                        (null (mezzano.supervisor:timer-deadline timer))
+                        (<= (mezzano.supervisor:timer-deadline timer)
+                            mezzano.supervisor::*run-time*)
+                        (mezzano.supervisor:timer-expired-p timer))
+                    :timer-state)
+                   ((not
+                     (and
+                      (let ((prev (mezzano.supervisor::timer-prev timer)))
+                        (if prev
+                            (eq (mezzano.supervisor::timer-next prev) timer)
+                            (eq (mezzano.supervisor::timer-queue-head
+                                 mezzano.supervisor::*active-timers*)
+                                timer)))
+                      (let ((next (mezzano.supervisor::timer-next timer)))
+                        (if next
+                            (eq (mezzano.supervisor::timer-prev next) timer)
+                            (eq (mezzano.supervisor::timer-queue-tail
+                                 mezzano.supervisor::*active-timers*)
+                                timer)))))
+                    :timer-links)
+                   (t :ready)))
+                ((or (mezzano.supervisor::wait-queue-head cv)
+                     (mezzano.supervisor::wait-queue-tail cv))
+                 :cv-not-empty)
+                ((or (mezzano.supervisor::timer-cvar timer)
+                     (mezzano.supervisor:timer-deadline timer)
+                     (not (eq (mezzano.supervisor::timer-next timer) :unlinked))
+                     (not (eq (mezzano.supervisor::timer-prev timer) :unlinked))
+                     (mezzano.supervisor:timer-expired-p timer))
+                 :timer-not-disarmed)
+                ((not (eq (mezzano.supervisor::thread-state thread) :dead))
+                 :thread-not-dead)
+                (t :finished)))))))))
+
+(defun wait-body (waiter)
+  (handler-case
+      (unwind-protect
+           (mezzano.supervisor:with-mutex ((waiter-mutex waiter))
+             (loop
+               (when (or (waiter-cancelled-p waiter)
+                         (waiter-released-p waiter)
+                         (mezzano.supervisor:timer-expired-p (waiter-timer waiter)))
+                 (incf (waiter-completions waiter))
+                 (return (cond ((waiter-cancelled-p waiter) :cancelled)
+                               ((waiter-released-p waiter) :notified)
+                               (t :timeout))))
+               (mezzano.supervisor:condition-wait
+                (waiter-cv waiter) (waiter-mutex waiter) (waiter-timer waiter))
+               (assert (mezzano.supervisor:mutex-held-p (waiter-mutex waiter)))
+               (incf (waiter-returns waiter))))
+        (mezzano.supervisor:timer-disarm-absolute (waiter-timer waiter))
+        (setf (waiter-cleaned-p waiter) t))
+    (error (condition)
+      (setf (waiter-failure waiter) condition)
+      :failed)))
+
+(defun waiter-report (waiter)
+  (flet ((address (object) (mezzano.internals::lisp-object-address object)))
+    (list :kind (waiter-kind waiter)
+          :record (address waiter)
+          :thread (address (waiter-thread waiter))
+          :mutex (address (waiter-mutex waiter))
+          :cv (address (waiter-cv waiter))
+          :timer (address (waiter-timer waiter))
+          :returns (waiter-returns waiter)
+          :completions (waiter-completions waiter))))
+
+(defun assert-ready ()
+  (assert (= (length *waiters*) 2))
+  (dolist (waiter *waiters*)
+    (let ((state (inspect-waiter waiter :ready)))
+      (unless (eq state :ready)
+        (error "~S waiter is not ready: ~S." (waiter-kind waiter) state))))
+  (mapcar #'waiter-report *waiters*))
+
+(defun start-waiter (waiter)
+  (setf (waiter-thread waiter)
+        (mezzano.supervisor:make-thread
+         (lambda () (wait-body waiter))
+         :name (format nil "Snapshot sync ~A" (waiter-kind waiter)))))
+
+(defun prepare ()
+  (assert (null *waiters*))
+  (setf *prepared-boot* (mezzano.supervisor:current-boot-id)
+        *waiters* (loop for kind in '(:notify :timeout)
+                       collect (make-waiter
+                                :kind kind
+                                :mutex (mezzano.supervisor:make-mutex kind)
+                                :cv (mezzano.supervisor:make-condition-variable kind)
+                                :timer (mezzano.supervisor:make-timer :name kind
+                                                                    :relative 3600))))
+  (dolist (waiter *waiters*)
+    (start-waiter waiter))
+  (await (lambda ()
+           (every (lambda (waiter) (eq (inspect-waiter waiter :ready) :ready))
+                  *waiters*))
+         "both native timed waiters to sleep")
+  (assert-ready))
+
+(defun join-waiter (waiter)
+  (await (lambda ()
+           (nth-value 1 (mezzano.supervisor:thread-join (waiter-thread waiter) nil)))
+         (waiter-kind waiter))
+  (await (lambda () (eq (inspect-waiter waiter :finished) :finished))
+         "thread exit and empty synchronization queues")
+  (when (waiter-failure waiter) (error (waiter-failure waiter)))
+  (assert (waiter-cleaned-p waiter))
+  (assert (= (waiter-completions waiter) 1))
+  (mezzano.supervisor:thread-join (waiter-thread waiter)))
+
+(defun cleanup ()
+  (dolist (waiter *waiters*)
+    (mezzano.supervisor:with-mutex ((waiter-mutex waiter))
+      (setf (waiter-cancelled-p waiter) t)
+      (mezzano.supervisor:condition-notify (waiter-cv waiter)))
+    (join-waiter waiter))
+  (setf *waiters* nil *prepared-boot* nil)
+  :cleaned)
+
+(defun finish (&key (restored t))
+  (assert *waiters*)
+  (assert (eq (not (eq *prepared-boot* (mezzano.supervisor:current-boot-id)))
+              (not (null restored))))
+  (assert-ready)
+  (let ((report
+          (unwind-protect
+               (let ((notify (first *waiters*)) (timeout (second *waiters*)))
+                 (mezzano.supervisor:with-mutex ((waiter-mutex notify))
+                   (setf (waiter-released-p notify) t)
+                   (mezzano.supervisor:condition-notify (waiter-cv notify)))
+                 (assert (equal (join-waiter notify) '(:notified)))
+                 (mezzano.supervisor:timer-arm 0.01 (waiter-timer timeout))
+                 (assert (equal (join-waiter timeout) '(:timeout)))
+                 (dolist (waiter *waiters*)
+                   (assert (plusp (waiter-returns waiter))))
+                 (mapcar #'waiter-report *waiters*))
+            (cleanup))))
+    (format t "PASS native timed CV notification, timeout, mutex reacquisition, and cleanup (~A).~%"
+            (if restored "restored boot" "same boot"))
+    report))
