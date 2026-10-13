@@ -28,6 +28,20 @@
   (:report (lambda (condition stream)
              (format stream "Unknown documentation topic ~S." (missing-topic-name condition)))))
 
+(define-condition private-document-error (mezzano.debug:debugger-service-error)
+  ((pathname :initarg :pathname :reader private-document-error-pathname)
+   (detail :initarg :detail :reader private-document-error-detail))
+  (:report (lambda (condition stream)
+             (format stream "Private document ~A: ~A"
+                     (private-document-error-pathname condition)
+                     (private-document-error-detail condition)))))
+
+(define-condition invalid-private-document (private-document-error) ()
+  (:default-initargs :reason :invalid-private-document))
+
+(define-condition private-document-io-error (private-document-error) ()
+  (:default-initargs :reason :private-document-io-error))
+
 (defun trim (text)
   (string-trim '(#\Space #\Tab #\Return #\Newline) text))
 
@@ -359,18 +373,42 @@
         (terpri stream)))
     (namestring path)))
 
+(defun private-list-length (value)
+  (when (listp value)
+    (handler-case (list-length value)
+      (type-error () nil))))
+
 (defun read-private-document (name)
   (let ((path (private-pathname name)))
-    (with-open-file (stream path)
-      (with-standard-io-syntax
-        (let* ((*read-eval* nil) (eof (cons nil nil)) (record (read stream nil eof)))
-          (unless (and (listp record) (eql (list-length record) 4)
-                       (eq (first record) :mezzano-document) (eql (second record) 1)
-                       (eq (third record) :topics) (listp (fourth record))
-                       (eq (read stream nil eof) eof))
-            (error "Invalid Mezzano private document ~A." path))
-          (let ((ids (private-topic-ids (fourth record))))
-            (list :pathname (namestring path) :topics (mapcar (lambda (id) (summary (lookup id))) ids))))))))
+    (labels ((invalid (detail)
+               (error 'invalid-private-document :pathname path :detail detail))
+             (io-error (condition)
+               (error 'private-document-io-error :pathname path :detail condition)))
+      (let* ((references
+               (handler-case
+                   (with-open-file (stream path)
+                     (with-standard-io-syntax
+                       (let ((*read-eval* nil) (eof (cons nil nil)))
+                         (handler-case
+                             (let ((record (read stream nil eof)))
+                               (unless (and (eql (private-list-length record) 4)
+                                            (eq (first record) :mezzano-document)
+                                            (eql (second record) 1) (eq (third record) :topics))
+                                 (invalid "Expected (:mezzano-document 1 :topics (...))."))
+                               (unless (eq (read stream nil eof) eof)
+                                 (invalid "Trailing forms follow the private-document record."))
+                               (unless (private-list-length (fourth record))
+                                 (invalid "Topic references must form a finite proper list."))
+                               (unless (every #'stringp (fourth record))
+                                 (invalid "Topic references must be strings."))
+                               (fourth record))
+                           (reader-error (condition) (invalid condition))
+                           (end-of-file (condition) (invalid condition))))))
+                 (file-error (condition) (io-error condition))
+                 (stream-error (condition) (io-error condition))))
+             (ids (private-topic-ids references)))
+        (list :pathname (namestring path)
+              :topics (mapcar (lambda (id) (summary (lookup id))) ids))))))
 
 (defun start-save-private-document (name pathname ids)
   (let* ((path (namestring (private-pathname pathname)))

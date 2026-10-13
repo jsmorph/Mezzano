@@ -63,6 +63,8 @@ The `MEZZANO.DOCUMENT-EXAMINER` package exports `LOAD-CATALOG`, `QUERY`, `ASSIST
 
 SWANK exposes `:document-query`, `:document-assistance`, `:save-private-document`, and `:read-private-document`.  Save takes a retained job name, pathname, and ordered topic list.  Read takes a pathname and returns its canonical namestring and ordered topic summaries.  The HTTP operations use the same names without the colon and JSON strings for actions and modes.  Lisp returns structured topic, block, inline-reference, search, and command-plan records.  Python validates request types and transports them.  The browser renders the records.
 
+Private-document syntax and record-shape errors return `:invalid-private-document`.  File-open and stream failures return `:private-document-io-error`.  These rejected reads preserve the viewer and leave the session usable.  Guest conditions retain the pathname and the parser diagnostic or original I/O condition.
+
 A query for a topic absent from the current catalog returns the service error `:missing-topic`.  The session remains usable, and the query retains no evaluation job or debugger stop.  Command assistance reports the unavailable topic in its error text.
 
 The [SWANK API reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#document-examiner-operations) describes request arguments and returned records.  The [Web interface guide](../tools/swank/web/README.md) describes connecting to the browser interface.
