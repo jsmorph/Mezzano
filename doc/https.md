@@ -22,7 +22,7 @@ The loader defines COMPLETE and CURL in CL-USER, the Listener's default package:
 (complete "Explain dynamic binding in Common Lisp.")
 (complete "Explain dynamic binding in Common Lisp." "gpt-4.1-nano")
 
-(curl "http://example.org/")
+(curl "https://example.org/")
 ```
 
 COMPLETE accepts a prompt string and an optional model string, defaulting to gpt-4.1-nano.  It returns the response's output text as one string.  It sets store to false and signals an error if the response is incomplete or contains no output text.
@@ -94,6 +94,8 @@ The combined guest test passed, including full and resumed handshakes with one c
 
 The Listener functions passed a chunked HTTP GET returning text, an HTTPS GET returning an HTTP 401 body as octets, and completions with the default and explicit models.  In-memory tests also cover chunk decoding with raw and already chunked streams.
 
-In guest testing, example.org closed its HTTPS connection during certificate verification, which took about 13 seconds.  That request failed before receiving an HTTP status line.  This failure remains unresolved.
+The HTTPS GET to example.org returned HTTP 200 after the x86-64 arithmetic improvements.  Headless Chromium submitted COMPLETE through the Web Listener and displayed its returned text without a debugger stop.
+
+Twenty offline checks of the captured three-certificate chain had a 90-millisecond median and ranged from 90 to 300 milliseconds on x86-64 QEMU with KVM.  Each call allocated approximately 53.65 MB.  These timings exclude certificate parsing, hostname checking, network traffic, and TLS key exchange.  They include collection and scheduling during the call.  The [arithmetic measurements](../tools/long-division.md#runtime-arithmetic) describe the test and its limits.
 
 These tests cover the stated endpoints and error cases.  Streaming responses, certificate revocation, the upstream TLS test suite, ARM64 execution, and bare-metal entropy remain untested.

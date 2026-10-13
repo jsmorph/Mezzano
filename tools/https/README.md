@@ -214,7 +214,7 @@ The test procedure preserves a complete disk image before credential ingestion, 
 
 The loader also defines [COMPLETE and CURL](../../doc/https.md#listener-functions) in CL-USER.  COMPLETE reads `openai-api.key` from the guest home directory.  The installed key file contains only the key on its first line, uses mode 0600, and stays outside the checkout.
 
-The GET tests exercise a chunked HTTP text response from example.org and an HTTPS request to OpenAI returning HTTP 401 JSON as octets.  The in-memory tests decode raw and already chunked streams and a complete chunked HTTP response.  The completion tests call the default model and an explicit model:
+The GET tests exercise a chunked HTTP text response and a verified HTTPS response from example.org, plus an HTTPS request to OpenAI returning HTTP 401 JSON as octets.  The in-memory tests decode raw and already chunked streams and a complete chunked HTTP response.  The completion tests call the default model and an explicit model:
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-LISTENER.LISP")
     (lispm-https-listener-test:run-chunked-tests)
@@ -230,4 +230,10 @@ The guest passed the in-memory chunk tests and live chunked HTTP GET after corre
 
 Under SBCL, load `tools/test-clos-method-order.lisp` and call the same function.  The test passed under both implementations.  LISPM-METHOD-ORDER-TEST:CHECK-EXISTING checks already defined functions without replacing them, supporting cache-invalidation and snapshot-restoration tests.
 
-The guest HTTPS request to example.org failed before receiving an HTTP status line.  A trace recorded peer close during certificate verification, which took about 13 seconds.  The live chunked GET test uses HTTP to test the corrected decoding path.  The OpenAI request tests verified HTTPS.
+The verified HTTPS GET to example.org now passes with the x86-64 arithmetic improvements.  The GET test retains both the HTTP chunked-response assertion and the HTTPS request.  The OpenAI request tests verified HTTPS and an HTTP error response.
+
+The browser completion test requires Node, headless Chromium, the running Web service, and the installed guest key file.  It submits COMPLETE through the Listener, checks the returned state and text, and saves the result and screenshot:
+
+    node tools/swank/web/test-browser-complete.mjs http://lispm.example.net:8765/ browser-complete-results
+
+This test sends one authenticated inference request.  It passed against the x86-64 guest.
