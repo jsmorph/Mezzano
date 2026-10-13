@@ -1774,3 +1774,13 @@ Headless Chromium displayed the COMPLETE, Function calls, and Completion errors 
 - [x] Update product documentation and reload the Document Examiner catalog.
 - [x] Save the compiled definitions and documentation catalog in the guest image.
 - [x] Review the implementation and documentation.
+
+## HTTP trace breakpoint and connection registration: 2026-10-13
+
+The user requested a breakpoint for a subsequent COMPLETE call.  Installed `(trace :break t drakma::default-port)` in the running guest.  Drakma calls DEFAULT-PORT from HTTP-REQUEST before opening the connection for the Responses URL.  Its argument is the URI.  TRACE :BREAK uses Mezzano's existing function wrapper and BREAK support.  `(untrace drakma::default-port)` removes this breakpoint.  The request deadline continues during a stop, so the demonstration should use `:timeout 600`.
+
+The initial installation check incorrectly expected FDEFINITION to return the trace wrapper.  FDEFINITION returns its original function.  Inspection through FUNCTION-REFERENCE-FUNCTION confirmed the installed wrapper and its true break condition.  Aborted and released the failed assertion job.
+
+A headless Chromium evaluation of DEFAULT-PORT reached the retained debugger.  An inspection request then returned HTTP 409 with :CLOSED-CONNECTION.  SWANK's MAKE-CONNECTION queues :ADD-CONNECTION to its sentinel and returns before that message must be handled.  The caller can start request workers while the connection is absent from SWANK::*CONNECTIONS*.  The retained service's CHECK-CONNECTION tests membership in that list and rejects an absent connection as closed.  This ordering permits the observed rejection.  Recommendation: complete connection registration before starting request workers, preserving the sentinel's ownership of the connection list.  This correction requires user approval and remains unimplemented.
+
+Inspected the owned test stop through SWANK, confirmed the trace-break condition, invoked CONTINUE, and checked the returned value 443.  Released its stop, job, and session.  The breakpoint remains armed for the user's call.  Evidence: /tmp/http-breakpoint-web.log and the retained-stop inspection result.  The Web debugger test failed.  No source implementation changed in this increment.
