@@ -37,7 +37,11 @@ const cases = [
 ];
 await mkdir(output, { recursive: true });
 const browser = await openBrowser(url);
+const owned = [];
+let session;
 try {
+  await browser.waitFor("typeof connected !== 'undefined' && connected && !busy");
+  session = await browser.evaluate('state.session');
   for (const test of cases) {
     await browser.waitFor("typeof connected !== 'undefined' && connected && !busy");
     const previous = await browser.evaluate('state.inputHistory.map(item => item.name)');
@@ -48,6 +52,8 @@ try {
       await browser.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await browser.waitFor(`state.inputHistory.some(item => !${JSON.stringify(previous)}.includes(item.name))`);
     const name = await browser.evaluate(`state.inputHistory.find(item => !${JSON.stringify(previous)}.includes(item.name)).name`);
+    owned.push(name);
+    await writeFile(join(output, 'owned-fixtures.json'), JSON.stringify({session, jobs: owned}, null, 2));
     const view = `views.get(${JSON.stringify(name)})`;
     await browser.waitFor(`${view}?.info && (${view}.info.state !== ':running' || ${view}.info.stops?.length)`, 120);
     const result = await browser.evaluate(`({
@@ -67,6 +73,25 @@ try {
     assert.deepEqual(browser.errors, []);
     console.log(`PASS browser ${test.name} in ${result.elapsedMilliseconds} ms`);
   }
+  assert.equal(await browser.evaluate('state.session'), session);
+  await browser.evaluate(`(async () => {
+    for (const name of ${JSON.stringify(owned)}) {
+      const job = state.jobs[name];
+      if (!job?.token) throw new Error('Owned HTTPS job token is missing: ' + name);
+      await mutate('release-job', {job: job.token});
+    }
+    await mutate('release-session', {});
+  })()`);
+  assert.equal(await browser.evaluate('connected'), false);
+  for (const name of owned) assert.equal(await browser.evaluate(`Boolean(state.jobs[${JSON.stringify(name)}])`), false);
+  assert.deepEqual(browser.errors, []);
+  await writeFile(join(output, 'cleanup.json'), JSON.stringify({session, releasedJobs: owned, sessionReleased: true}, null, 2));
+  console.log('PASS owned HTTPS evaluations and session released');
+} catch (error) {
+  await writeFile(join(output, 'failure-fixtures.json'), JSON.stringify({session, jobs: owned,
+    state: await browser.evaluate('state'), error: error.stack, browserErrors: browser.errors}, null, 2));
+  await browser.screenshot(join(output, 'failure.png'));
+  throw error;
 } finally {
   await browser.close();
 }

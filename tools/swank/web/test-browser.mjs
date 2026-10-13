@@ -31,12 +31,13 @@ async function enter(selector, input) {
   await browser.click(selector);
   await browser.waitFor(`document.activeElement === document.querySelector(${text(selector)})`);
   await browser.send('Input.insertText', { text: input });
-  await browser.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-  await browser.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await key('Enter', 'Enter', 13);
 }
 
 async function key(key, code, windowsVirtualKeyCode, modifiers = 0) {
-  await browser.send('Input.dispatchKeyEvent', {type: 'keyDown', key, code, windowsVirtualKeyCode, modifiers});
+  const generatedText = key === 'Enter' ? '\r' : undefined;
+  await browser.send('Input.dispatchKeyEvent', {type: 'keyDown', key, code, windowsVirtualKeyCode, modifiers,
+    text: generatedText, unmodifiedText: generatedText});
   await browser.send('Input.dispatchKeyEvent', {type: 'keyUp', key, code, windowsVirtualKeyCode, modifiers});
 }
 async function fill(selector, input) {
@@ -99,10 +100,39 @@ async function discardNextReply(operation) {
   })()`);
 }
 
+async function preventNextDispatch(operation) {
+  await browser.evaluate(`(() => {
+    const original = window.fetch;
+    window.fetch = (...args) => {
+      const request = args[1]?.body && JSON.parse(args[1].body);
+      if (request?.operation === ${text(operation)}) {
+        window.fetch = original;
+        throw new TypeError('Browser test prevented dispatch before a transport failure');
+      }
+      return original(...args);
+    };
+  })()`);
+}
+
 async function unknownReply() {
   await browser.waitFor("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending.some(record => record.status === 'outcome unknown')");
   await openMenu();
   await browser.click('[data-activity="requests"]');
+}
+
+async function repeatUnknown(operation) {
+  await unknownReply();
+  const record = await browser.evaluate(`state.pending.find(item => item.operation === ${text(operation)})`);
+  assert.equal(record.status, 'outcome unknown');
+  await openMenu();
+  await browser.click('#resume-session');
+  await browser.waitFor('connected && !busy');
+  assert.equal(await browser.evaluate('state.session'), record.session);
+  await openMenu();
+  await browser.click('[data-activity="requests"]');
+  await clickText('#pending', 'Repeat Original Request');
+  await browser.waitFor(`!state.pending.some(item => item.id === ${text(record.id)}) && !busy`);
+  return record;
 }
 
 async function listener() {
@@ -152,6 +182,18 @@ try {
   await browser.click('#window-label');
   await screenshot('system-menu');
   await browser.click('#close-menu');
+  const rightClick = await browser.evaluate(`(() => {
+    const source = document.querySelector('#source');
+    source.scrollIntoView({block: 'center'});
+    const rect = source.getBoundingClientRect();
+    return {x: rect.left + 5, y: rect.top + 5};
+  })()`);
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await browser.send('Input.dispatchMouseEvent', {type, button: 'right', clickCount: 1, ...rightClick});
+  }
+  await browser.waitFor("document.querySelector('#system-menu').open");
+  await browser.click('#close-menu');
+  console.log('PASS browser Mouse-Right System Menu');
   await fill('#source', 'Se');
   await browser.send('Input.insertText', {text: ' '});
   await browser.waitFor("document.querySelector('#source').value === 'Set '");
@@ -202,6 +244,31 @@ try {
   assert.deepEqual(presentationRendering, {text: '🚀 /guest/🚀.lisp suffix', pathname: '/guest/🚀.lisp'});
   console.log('PASS browser Unicode assistance cursor/suffix and renderer presentation-offset fixture');
 
+  await fill('#source', 'Set P');
+  await browser.evaluate(`(() => {
+    const original = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await original(...args);
+      const request = args[1]?.body && JSON.parse(args[1].body);
+      if (request?.operation === 'listener-assistance'
+          && request.arguments.action === 'complete' && request.arguments.source === 'Set P') {
+        window.fetch = original;
+        await new Promise(resolve => { window.releaseAssistanceReply = resolve; });
+      }
+      return response;
+    };
+  })()`);
+  await key('Tab', 'Tab', 9);
+  await browser.waitFor('typeof window.releaseAssistanceReply === "function"');
+  await key('a', 'KeyA', 65, 2);
+  const revisedInput = '(values :edited-while-completing)';
+  await browser.send('Input.insertText', {text: revisedInput});
+  await browser.evaluate('window.releaseAssistanceReply()');
+  await browser.waitFor('!busy');
+  assert.equal(await browser.evaluate('document.querySelector("#source").value'), revisedInput);
+  assert.equal(await browser.evaluate('document.querySelector("#source").selectionStart'), revisedInput.length);
+  console.log('PASS delayed command-completion reply preserves newer input and cursor');
+
   commandJob = await accept('Help :Format Detailed');
   await waitText(commandJob.selector, 'Compile File');
   await waitText(commandJob.selector, 'guest Lisp file');
@@ -216,6 +283,10 @@ try {
   const packageName = marker + '-PACKAGE';
   commandJob = await accept(`(defpackage ${JSON.stringify(packageName)} (:use :cl))`);
   await releaseAccepted(commandJob);
+  await openMenu();
+  await browser.click('#set-package');
+  await browser.waitFor("activity === 'listener' && document.querySelector('#source').value === 'Set Package '");
+  assert.equal(await browser.evaluate('document.activeElement.id'), 'source');
   commandJob = await accept('Set Package ' + packageName);
   await waitText('#package-label', packageName);
   await releaseAccepted(commandJob);
@@ -269,6 +340,7 @@ try {
   commandJob = await accept('Compile File ' + pathname + ' :Load Yes');
   await releaseAccepted(commandJob);
   commandJob = await accept(`(delete-file ${JSON.stringify(pathname)}) (delete-file (compile-file-pathname ${JSON.stringify(pathname)})) (delete-file ${JSON.stringify(secondPathname)}) (makunbound '${variableName}) (values)`);
+  assert.equal(await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .returned-values')}).textContent`), '(No values)');
   await releaseAccepted(commandJob);
   console.log('PASS browser Unicode physical pathname presentation/insertion/default, contents, Show/Load/Compile File, and file cleanup');
 
@@ -283,12 +355,48 @@ try {
   await releaseAccepted(secondHistory);
   console.log('PASS browser input recall and fresh request identity on execution');
 
-  await enter('#source', `(format t "${marker}-VALUES~%") (values (+ 20 22) :done)`);
+  const mainSession = await browser.evaluate('state.session');
+  const {targetId: independentTarget} = await browser.send('Target.createTarget', {url: 'about:blank'});
+  const {sessionId: independentConnection} = await browser.send('Target.attachToTarget', {targetId: independentTarget, flatten: true});
+  const independentValue = async expression => {
+    const reply = await browser.send('Runtime.evaluate', {expression, awaitPromise: true, returnByValue: true}, independentConnection);
+    if (reply.exceptionDetails) throw new Error(JSON.stringify(reply.exceptionDetails));
+    return reply.result.value;
+  };
+  try {
+    await browser.send('Runtime.enable', {}, independentConnection);
+    await browser.send('Log.enable', {}, independentConnection);
+    await browser.send('Page.navigate', {url}, independentConnection);
+    const deadline = Date.now() + 30000;
+    while (!await independentValue("typeof connected !== 'undefined' && connected && !busy")) {
+      assert(Date.now() < deadline, 'Independent tab did not connect');
+      await delay(100);
+    }
+    const independent = await independentValue('({session: state.session, inputHistory: state.inputHistory})');
+    await writeFile(join(output, 'independent-tab.json'), JSON.stringify(independent, null, 2));
+    assert.notEqual(independent.session, mainSession);
+    assert.deepEqual(independent.inputHistory, []);
+    assert((await browser.evaluate('state.inputHistory.length')) > 0);
+    assert.equal(await independentValue("(async () => {await mutate('release-session', {}); return connected;})()"), false);
+    assert.equal(await browser.evaluate("api('resume-session')"), mainSession);
+    await writeFile(join(output, 'independent-tab.json'), JSON.stringify({...independent, sessionReleased: true}, null, 2));
+    console.log('PASS independent tabs in one browser profile keep distinct sessions and input histories');
+  } finally {
+    await browser.send('Target.closeTarget', {targetId: independentTarget});
+  }
+
+  const valuesPrefix = `(format t "${marker}-VALUES~%")`;
+  await fill('#source', valuesPrefix);
+  const inputCount = await browser.evaluate('state.inputHistory.length');
+  await key('Enter', 'Enter', 13, 8);
+  assert.equal(await browser.evaluate('document.querySelector("#source").value'), valuesPrefix + '\n');
+  assert.equal(await browser.evaluate('state.inputHistory.length'), inputCount);
+  await enter('#source', '(values (+ 20 22) :done)');
   let job = await selectJob('VALUES');
   await waitText(job, '42\n:DONE');
   await waitText(job, 'returned');
   await screenshot('listener-result');
-  console.log('PASS browser evaluation, output, and multiple values');
+  console.log('PASS browser Shift-Return, evaluation, output, and multiple values');
 
   await browser.send('Page.reload');
   job = await selectJob('VALUES');
@@ -317,13 +425,54 @@ try {
   await enter('#source', `(progn "${marker}-INPUT" (read-line))`);
   job = await selectJob('INPUT');
   await waitText(job, 'awaiting input');
+  const inputJobName = await browser.evaluate(`document.querySelector(${text(job)}).dataset.job`);
+  const inputToken = await browser.evaluate(`state.jobs[${text(inputJobName)}].token`);
+  await discardNextReply('job-input');
   await enter(job + ' .input-form textarea', 'Browser input');
+  const inputReplay = await repeatUnknown('job-input');
+  assert.deepEqual(inputReplay.arguments, {job: inputToken, offset: 0, text: 'Browser input\n', eof: false});
+  await listener();
+  job = await selectJob('INPUT');
   await waitText(job, '"Browser input"\nNIL');
+  assert.equal(await browser.evaluate(`views.get(${text(inputJobName)}).info['input-length']`), 'Browser input\n'.length);
   await releaseJob('INPUT');
+  await enter('#source', `(progn "${marker}-EOF" (read-line *standard-input* nil :eof))`);
+  job = await selectJob('EOF');
+  await waitText(job, 'awaiting input');
+  await clickText(job + ' .input-form', 'EOF');
+  await waitText(job, 'returned');
+  assert.equal(await browser.evaluate(`document.querySelector(${text(job + ' .returned-values')}).textContent`), ':EOF\nT');
+  assert.equal(await browser.evaluate(`views.get(document.querySelector(${text(job)}).dataset.job).info['input-eof-p']`), true);
+  await releaseJob('EOF');
   await browser.click('#window-label');
   await browser.click('#interactive');
   await browser.click('#close-menu');
-  console.log('PASS browser interactive input and returned values');
+  console.log('PASS browser interactive text, EOF, and returned values');
+
+  await enter('#source', `(unwind-protect (loop (sleep 0.01)) (format t "${marker}-INTERRUPT-CLEANUP"))`);
+  job = await selectJob('INTERRUPT');
+  await waitText(job, 'running');
+  const interruptJobName = await browser.evaluate(`document.querySelector(${text(job)}).dataset.job`);
+  const interruptToken = await browser.evaluate(`state.jobs[${text(interruptJobName)}].token`);
+  await discardNextReply('interrupt-job');
+  await clickText(job, 'Interrupt');
+  const interruptReplay = await repeatUnknown('interrupt-job');
+  assert.deepEqual(interruptReplay.arguments.job, interruptToken);
+  assert.equal(await browser.evaluate(`views.get(${text(interruptJobName)}).info['next-interrupt-id']`), interruptReplay.arguments.id + 1);
+  await listener();
+  job = await selectJob('INTERRUPT');
+  await waitText(job, 'Debugger');
+  await clickText(job, 'Debugger');
+  await debuggerAction(':Show Proceed Options');
+  await clickText('.restarts', 'ABORT:');
+  await debuggerAction('Release Stop');
+  await listener();
+  job = await selectJob('INTERRUPT');
+  await waitText(job, 'aborted');
+  assert.equal(await browser.evaluate(`document.querySelector(${text(job + ' .job-output')}).textContent`), marker + '-INTERRUPT-CLEANUP');
+  assert.equal((await browser.evaluate(`api('job-interrupt-result', ${text(interruptReplay.arguments)})`)).state, ':unwound');
+  await releaseJob('INTERRUPT');
+  console.log('PASS browser Interrupt, ABORT, unwind cleanup, and stop/job release');
 
   await discardNextReply('start-listener');
   await enter('#source', `(format t "${marker}-REPLAY~%") (values :replayed)`);
@@ -331,7 +480,7 @@ try {
   const originalRequest = await browser.evaluate("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending[0]");
   assert.equal(originalRequest.operation, 'start-listener');
   await browser.send('Page.reload');
-  await browser.waitFor("document.querySelector('#message').textContent.startsWith('Session ') && connected && !busy");
+  await browser.waitFor("typeof connected !== 'undefined' && connected && !busy && document.querySelector('#message')?.textContent.startsWith('Session ')");
   await browser.click('#window-label');
   await browser.click('[data-activity="requests"]');
   await waitText('#pending', 'Repeat Original Request');
@@ -350,22 +499,57 @@ try {
   job = await selectJob('DEBUG');
   await waitText(job, 'Debugger');
   await clickText(job, 'Debugger');
+  await browser.waitFor('!busy');
+  const debugStop = await browser.evaluate('selectedStop');
+  await discardNextReply('submit');
   await debuggerAction('Inspect Condition');
+  const conditionReplay = await repeatUnknown('submit');
+  assert.deepEqual(conditionReplay.arguments.stop, debugStop);
+  assert.equal(conditionReplay.arguments.command, 'condition');
+  assert.equal(await browser.evaluate(`state.commands.filter(command => same(command.stop, ${text(debugStop)}) && command.id === ${conditionReplay.arguments.id}).length`), 1);
+  assert.equal((await browser.evaluate(`api('information', {stop: ${text(debugStop)}})`))['next-command-id'], conditionReplay.arguments.id + 1);
+  await openMenu();
+  await browser.click('[data-activity="debugger"]');
   await waitText('#stop-detail .condition', marker + ' debugger');
   await debuggerAction(':Show Backtrace');
   await waitText('#stop-detail', functionName);
-  await clickText('#stop-detail', functionName);
+  const frameIndex = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(functionName)}))`);
+  assert(frameIndex >= 0);
+  await enter('#debugger-command', ':Set Current Frame ' + frameIndex);
+  await browser.waitFor(`selectedFrame?.index === ${frameIndex} && !busy`);
   await waitText('.locals', '111');
   await waitText('.locals', '222');
+  await enter('#debugger-command', ':Show Frame');
+  await browser.waitFor("latestCommand('locals')?.display === ':frame' && !busy");
+  assert.equal(await browser.evaluate('selectedFrame.index'), frameIndex);
+  assert((await browser.evaluate("document.querySelector('.current-function').textContent")).includes(functionName));
   assert(await browser.evaluate("document.querySelector('#stop-detail').textContent.includes('Original caller arguments are unavailable')"));
   await enter('#debugger-command', ':Show Local 0');
   await browser.waitFor("document.querySelectorAll('.locals tr').length === 1 && document.querySelector('.locals').textContent.includes('111')");
   await enter('#debugger-command', ':Show Local All');
   await browser.waitFor("document.querySelectorAll('.locals tr').length === 2");
+  await clickText('#stop-detail', functionName);
+  await browser.waitFor(`selectedFrame?.index === ${frameIndex} && !busy`);
+  const unavailable = await browser.evaluate(`(() => {
+    const key = commandKey(latestCommand('locals'));
+    const original = commandResults.get(key);
+    try {
+      commandResults.set(key, {...original, result: [
+        {index: 0, name: 'unavailable-fixture', 'available-p': false, value: 'MUST-NOT-BE-DISPLAYED'}
+      ]});
+      renderStops();
+      return [...document.querySelectorAll('.locals td')].map(cell => cell.textContent);
+    } finally {
+      commandResults.set(key, original);
+      renderStops();
+    }
+  })()`);
+  assert.deepEqual(unavailable, ['Local 0 (unavailable-fixture):', '<unavailable>']);
+  console.log('PASS fixture-only unavailable-local rendering ignores the value field');
   await debuggerAction(':Show Proceed Options');
   await waitText('.restarts', 'Continue browser test.');
   await screenshot('debugger');
-  console.log('PASS browser condition, stack, locals, and restart list');
+  console.log('PASS browser condition, stack, typed/mouse frame selection, Show Frame, locals, and restart list');
   await clickText('.restarts', 'Continue browser test.');
   await waitText('#debugger-menu', 'Release Stop');
   await debuggerAction('Release Stop');
@@ -375,12 +559,84 @@ try {
   console.log('PASS browser restart and returned evaluation');
 
   await releaseJob('DEBUG');
+
+  const conditionName = marker + '-CHILD';
+  await enter('#source', `(define-condition ${conditionName} (error) () (:report (lambda (condition stream) (declare (ignore condition)) (cerror "Resume browser printer." "${marker} child printer") (write-string "${marker} parent condition" stream)))) (unwind-protect (error '${conditionName}) (setf (find-class '${conditionName}) nil))`);
+  job = await selectJob('CHILD');
+  await waitText(job, 'Debugger');
+  await clickText(job, 'Debugger');
+  await browser.waitFor('!busy');
+  const parentStop = await browser.evaluate('({token: selectedStop, id: stops.find(stop => same(stop.token, selectedStop)).info.id})');
+  await debuggerAction('Inspect Condition');
+  await waitText('#stop-detail', 'condition: running');
+  await clickText('#stop-detail', 'Child Stop');
+  await browser.waitFor('!busy');
+  const childStop = await browser.evaluate('({token: selectedStop, id: stops.find(stop => same(stop.token, selectedStop)).info.id})');
+  assert.notDeepEqual(childStop.token, parentStop.token);
+  assert.deepEqual(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info.parent'), parentStop.token);
+  await clickText('#stop-detail', 'Parent Stop');
+  await browser.waitFor(`same(selectedStop, ${text(parentStop.token)}) && !busy`);
+  await waitText('#stop-detail', 'condition: running');
+  await clickText('#stop-detail', 'Child Stop');
+  await browser.waitFor(`same(selectedStop, ${text(childStop.token)}) && !busy`);
+  await debuggerAction('Inspect Condition');
+  await waitText('#stop-detail .condition', marker + ' child printer');
+  await debuggerAction(':Show Proceed Options');
+  await clickText('.restarts', 'Resume browser printer.');
+  await browser.waitFor("stops.find(stop => same(stop.token, selectedStop))?.info.state === ':closed' && !busy");
+  await waitText('#stop-detail .condition', marker + ' child printer');
+  await clickText('#stop-detail', 'Parent Stop');
+  await browser.waitFor(`same(selectedStop, ${text(parentStop.token)}) && !busy`);
+  await waitText('#stop-detail .condition', marker + ' parent condition');
+  await debuggerAction('Stop ' + childStop.id + ' ');
+  await browser.waitFor(`same(selectedStop, ${text(childStop.token)}) && !busy`);
+  await debuggerAction('Release Stop');
+  await clickText('#stops', 'Stop ' + parentStop.id + ' ');
+  await debuggerAction(':Show Proceed Options');
+  await clickText('.restarts', 'ABORT:');
+  await browser.waitFor("stops.find(stop => same(stop.token, selectedStop))?.info.state === ':closed' && !busy");
+  await waitText('#stop-detail .condition', marker + ' parent condition');
+  await debuggerAction('Release Stop');
+  await listener();
+  job = await selectJob('CHILD');
+  await waitText(job, 'aborted');
+  await releaseJob('CHILD');
+  console.log('PASS browser Parent/Child Stop navigation, printer continuation, closed-stop cached results, and owned fixture cleanup');
+
+  const retainedJob = await accept(`(progn "${marker}-RETAINED" (values :retained))`);
+  const retainedToken = await browser.evaluate(`state.jobs[${text(retainedJob.name)}].token`);
+  await preventNextDispatch('release-job');
+  await clickText(retainedJob.selector, 'Release');
+  await unknownReply();
+  const retainedRelease = await browser.evaluate("state.pending.find(record => record.operation === 'release-job')");
+  await openMenu();
+  await browser.click('#release-session');
+  await waitText('#message', 'Resolve the recorded requests before releasing the session.');
+  assert.equal(await browser.evaluate('state.session'), retainedRelease.session);
+  assert.equal(await browser.evaluate('state.pending[0].id'), retainedRelease.id);
+  await browser.click('#close-menu');
+  await clickText('#pending', 'Check Release Outcome');
+  await waitText('#pending', 'retained at last check; original release outcome unknown');
+  assert.deepEqual(await browser.evaluate(`state.jobs[${text(retainedJob.name)}].token`), retainedToken);
+  await clickText('#pending', 'Keep in History');
+  await browser.waitFor('state.pending.length === 0');
+  const archivedRelease = await browser.evaluate(`state.history.flatMap(item => item.pending).find(record => record.id === ${text(retainedRelease.id)})`);
+  assert.equal(archivedRelease.status, 'retained at last check; original release outcome unknown');
+  assert.deepEqual(archivedRelease.arguments.job, retainedToken);
+  await openMenu();
+  await browser.click('#resume-session');
+  await browser.waitFor('connected && !busy');
+  await listener();
+  await releaseAccepted(retainedJob);
+  assert.equal(await browser.evaluate(`state.history.flatMap(item => item.pending).filter(record => record.id === ${text(retainedRelease.id)}).length`), 1);
+  console.log('PASS unresolved-request release guard, still-retained observation, Keep in History, and a separate release');
+
   await discardNextReply('start-listener');
   await enter('#source', 'Clear Output History');
   await browser.waitFor("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending.some(record => record.status === 'outcome unknown')");
   const clearRecord = await browser.evaluate("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending[0]");
   await browser.send('Page.reload');
-  await browser.waitFor("document.querySelector('#message').textContent.startsWith('Session ') && connected && !busy");
+  await browser.waitFor("typeof connected !== 'undefined' && connected && !busy && document.querySelector('#message')?.textContent.startsWith('Session ')");
   const laterJob = await accept(`(progn "${marker}-AFTER-CLEAR" (values :later))`);
   await openMenu();
   await browser.click('[data-activity="requests"]');
@@ -421,10 +677,28 @@ try {
   await clickText('#pending', 'Check Release Outcome');
   await browser.waitFor("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).pending.length === 0");
   await waitText('#pending', 'reference expired; original release outcome unknown');
+  await browser.waitFor("connected && !busy && document.querySelector('#message').textContent.startsWith('Session expired. Connected with a new session.')");
+  console.log('PASS automatic session recovery after a discarded release reply');
+  const replacedSession = await browser.evaluate('state.session');
+  const replacedInput = await browser.evaluate('state.inputHistory');
+  await preventNextDispatch('monitor-state');
+  await openMenu();
+  await browser.click('#refresh');
+  await browser.waitFor('!connected && !busy');
+  assert.equal(await browser.evaluate('state.session'), replacedSession);
   await openMenu();
   await browser.click('#new-session');
-  await browser.waitFor("document.querySelector('#message').textContent.startsWith('Session ') && document.querySelector('#process-state').textContent !== 'Disconnected'");
-  console.log('PASS browser recovery from an expired session after a discarded release reply');
+  await browser.waitFor(`connected && !busy && state.session !== ${text(replacedSession)}`);
+  assert.deepEqual(await browser.evaluate('state.inputHistory'), replacedInput);
+  assert(await browser.evaluate(`state.history.some(item => item.session === ${text(replacedSession)})`));
+  await browser.evaluate(`(async () => {
+    const response = await fetch('/api', {method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Mezzano-Request': '1'},
+      body: JSON.stringify({session: ${text(replacedSession)}, operation: 'release-session', arguments: {}})});
+    const reply = await response.json();
+    if (!response.ok) throw new Error('Could not release replaced test session: ' + reply.error);
+  })()`);
+  console.log('PASS explicit New Session while disconnected preserves history; replaced owned session released');
   await openMenu();
   await browser.click('#release-session');
   await waitText('#message', 'Session released');
