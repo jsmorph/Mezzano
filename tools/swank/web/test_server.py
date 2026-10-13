@@ -403,6 +403,72 @@ def live_test(port):
         assert handle_count() == handles
         request("monitor-state", offsets=[{"name": name, "start": 5}],
                 _expected_error=":invalid-output-range")
+        growing_name, short_name = secrets.token_hex(32), secrets.token_hex(32)
+        growing = request("start-evaluation", name=growing_name, interactive=True,
+                          source='(progn (write-string (make-string 70000 :initial-element #\\λ)) '
+                                 '(finish-output) (read-line) (write-string "tail😀") (values))')
+        jobs.append(growing)
+        assert wait(growing, lambda info: info["input-waiting-p"])["output-length"] == 70000
+        short = request("start-evaluation", name=short_name,
+                        source='(progn (write-string "small") (values))')
+        jobs.append(short)
+        wait(short, lambda info: info["state"] == ":returned")
+        fixture_tokens = [job, growing, short]
+        fixture_names = [name, growing_name, short_name]
+        starts = dict.fromkeys(fixture_names, 0)
+        prefixes = dict.fromkeys(fixture_names, "")
+        token_form = server.lisp([[server.Symbol(token[0]), *token[1:]] for token in fixture_tokens])
+        for _ in range(3):
+            assignments = " ".join(f'(cl:setf (cl:gethash {server.lisp(key)} starts) {start})'
+                                   for key, start in starts.items())
+            rows = server.json_value(raw(f"""(swank/mezzano-debugger::with-lock
+              (cl:let ((session {session_form}) (starts (cl:make-hash-table :test (cl:function cl:equal))))
+                {assignments}
+                (swank/mezzano-debugger::fill-monitor-output
+                  (cl:mapcar (cl:lambda (token)
+                    (cl:let ((handle (swank/mezzano-debugger::decode-handle session :job token)))
+                      (cl:cons handle (swank/mezzano-debugger::monitor-job session handle starts))))
+                    (cl:quote {token_form})) 2)))"""))
+            assert [row["token"] for row in rows] == fixture_tokens
+            assert sum(len(row["output"]["text"]) for row in rows) == 2
+            for row in rows:
+                key, output = row["information"]["name"], row["output"]
+                assert output["start"] == starts[key]
+                assert len(output["text"]) == output["end"] - output["start"]
+                starts[key] = output["end"]
+                prefixes[key] += output["text"]
+        assert all(start > 0 for start in starts.values()), starts
+        assert prefixes[name] == "λ中文\n"[:starts[name]]
+        assert prefixes[growing_name] == "λ" * starts[growing_name]
+        assert prefixes[short_name] == "small"[:starts[short_name]]
+
+        expected = {name: "λ中文\n", growing_name: "λ" * 70000 + "tail😀", short_name: "small"}
+        starts = dict.fromkeys(fixture_names, 0)
+        received = dict.fromkeys(fixture_names, "")
+        for round_number in range(40):
+            monitor = request("monitor-state", offsets=[{"name": key, "start": start}
+                                                         for key, start in starts.items()])
+            rows = monitor["jobs"] or []
+            assert sum(len(row["output"]["text"]) for row in rows) <= 65536
+            for row in rows:
+                key, output = row["information"]["name"], row["output"]
+                assert output["start"] == starts.get(key, 0)
+                assert output["end"] <= row["information"]["output-length"]
+                assert len(output["text"]) == output["end"] - output["start"]
+                starts[key] = output["end"]
+                if key in received:
+                    received[key] += output["text"]
+                    assert expected[key].startswith(received[key])
+            if round_number == 0:
+                assert received[short_name] == "small"
+                assert 0 < len(received[growing_name]) < 70000
+                request("job-input", job=growing, offset=0, text="continue\n")
+                assert wait(growing, lambda info: info["state"] == ":returned")["output-length"] == 70005
+            if received == expected:
+                break
+        assert received == expected, {key: len(value) for key, value in received.items()}
+        print("Bounded monitor output: exact Unicode prefixes, growing and short jobs, "
+              "and three unread jobs sharing two characters passed.", flush=True)
         zero = request("start-evaluation", name=secrets.token_hex(32), source="(values)")
         jobs.append(zero)
         assert wait(zero, lambda info: info["state"] == ":returned")["values"] is None
