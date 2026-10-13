@@ -95,31 +95,35 @@
                   (+ sys.int::+card-table-base+ sys.int::+card-table-size+)
                   :sparse t)
     (alloc-blocks sys.int::*wired-function-area-limit* sys.int::*function-area-base*))
-  ;; FIXME: This should completely suspend other CPUs for the duration. Stopping
-  ;; the world is not enough.
-  ;; I bet this could be partially done with CoW. Evil.
-  ;; Copy without interrupts to avoid smearing.
-  (without-interrupts
-    (flet ((copy-pages (start end &key sparse)
-             (map-ptes
-              start end
-              (dx-lambda (wired-page pte)
-                (when (not pte)
-                  (panic "No page table entry for " wired-page))
-                (let* ((page-frame (and (page-present-p pte)
-                                        (ash (pte-physical-address (sys.int::memref-unsigned-byte-64 pte 0)) -12)))
-                       (other-frame (and page-frame
-                                         (physical-page-frame-next page-frame))))
-                  (when page-frame
-                    (%fast-page-copy (convert-to-pmap-address (ash other-frame 12))
-                                     wired-page)
-                    (snapshot-add-to-writeback-list other-frame))))
-              :sparse sparse)))
-      (copy-pages sys.int::*wired-area-base* sys.int::*wired-area-bump*)
-      (copy-pages sys.int::+card-table-base+
-                  (+ sys.int::+card-table-base+ sys.int::+card-table-size+)
-                  :sparse t)
-      (copy-pages sys.int::*wired-function-area-limit* sys.int::*function-area-base*))))
+  ;; Keep local interrupts enabled while peers enter the rendezvous so an
+  ;; outstanding profiler IPI can complete before they stop.
+  ;; FIXME: ARM64 also needs peer CPU suspension during this copy.
+  #+x86-64
+  (begin-tlb-shootdown)
+  (unwind-protect
+       (without-interrupts
+         (flet ((copy-pages (start end &key sparse)
+                  (map-ptes
+                   start end
+                   (dx-lambda (wired-page pte)
+                     (when (not pte)
+                       (panic "No page table entry for " wired-page))
+                     (let* ((page-frame (and (page-present-p pte)
+                                             (ash (pte-physical-address (sys.int::memref-unsigned-byte-64 pte 0)) -12)))
+                            (other-frame (and page-frame
+                                              (physical-page-frame-next page-frame))))
+                       (when page-frame
+                         (%fast-page-copy (convert-to-pmap-address (ash other-frame 12))
+                                          wired-page)
+                         (snapshot-add-to-writeback-list other-frame))))
+                   :sparse sparse)))
+           (copy-pages sys.int::*wired-area-base* sys.int::*wired-area-bump*)
+           (copy-pages sys.int::+card-table-base+
+                       (+ sys.int::+card-table-base+ sys.int::+card-table-size+)
+                       :sparse t)
+           (copy-pages sys.int::*wired-function-area-limit* sys.int::*function-area-base*)))
+    #+x86-64
+    (finish-tlb-shootdown)))
 
 (defun snapshot-clone-cow-page (new-frame fault-addr)
   (let* ((pte (or (get-pte-for-address fault-addr nil)
