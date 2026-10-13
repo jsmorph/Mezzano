@@ -82,15 +82,16 @@
 
 #+x86-64
 (defun %%bignum-truncate (a b &optional (quotientp t))
+  "Return quotient and remainder, or NIL and remainder when QUOTIENTP is false."
   (declare (optimize (speed 3) (safety 3) (debug 1)))
   (when (zerop b)
     (error 'division-by-zero :operands (list a b) :operation 'truncate))
-  (when (= b 1) (return-from %%bignum-truncate (values a 0)))
-  (when (= b -1) (return-from %%bignum-truncate (values (- a) 0)))
+  (when (= b 1) (return-from %%bignum-truncate (values (and quotientp a) 0)))
+  (when (= b -1) (return-from %%bignum-truncate (values (and quotientp (- a)) 0)))
   (let* ((positive-a (abs a))
          (positive-b (abs b)))
     (when (< positive-a positive-b)
-      (return-from %%bignum-truncate (values 0 a)))
+      (return-from %%bignum-truncate (values (and quotientp 0) a)))
     (let* ((a-bits (integer-length positive-a))
            (b-bits (integer-length positive-b))
            (m (ceiling a-bits 32))
