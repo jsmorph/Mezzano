@@ -38,8 +38,8 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 
 | Area | Commands | Current status |
 |---|---|---|
-| Recovery | Abort; Proceed; Disable Aborts; Enable Aborts | Planned.  Indexed zero-argument restart calls exist. |
-| Help and display | Help; Display Debugger | Planned command compatibility.  Separate Web Debugger view exists. |
+| Recovery | Abort; Proceed; Disable Aborts; Enable Aborts | Abort is implemented.  Proceed selection and abort disabling remain planned. |
+| Help and display | Help; Display Debugger | Help lists implemented commands.  Display Debugger command remains planned.  Separate Web view exists. |
 | Frame movement | Top Of Stack; Bottom Of Stack; Next Frame; Previous Frame; Find Frame; Set Current Frame | Set Current Frame is partial.  Remaining commands planned. |
 | Frame inspection | Show Backtrace; Show Frame; Show Function; Show Arglist; Show Argument; Show Rest Argument; Show Local; Show Stack; Show Value | Backtrace, frame, and local inspection are partial.  Remaining commands planned. |
 | Environment | Show Bindings; Show Catch Blocks; Show Condition Handlers; Show Lexical Environment; Show Special; Show Standard Value Warnings; Use Dynamic Environment; Use Lexical Environment | Planned. |
@@ -148,9 +148,9 @@ A stop accepts one outstanding command.  A pending command, running command, or 
 | `:cancelled` | The stop closed while the command was pending. |
 | `:expired` | The command loop selected a queued command from an earlier boot. |
 
-A failure during command execution can enter a child stop.  The parent command remains running, and new parent commands are rejected until the child resolves.  Client polling needs a deadline and a way to inspect child stops.  The API provides no remote command-cancellation operation.
+A failure during command execution can enter a child stop.  The parent command remains running, and new parent commands are rejected until the child resolves.  Each command establishes an ABORT restart with report "Abort this debugger command."  Invoking that captured restart in a child unwinds the parent command, records :unwound, and resumes the parent's command loop.  Its original computation stays stopped.  Client polling needs a deadline and a way to inspect child stops.  The API provides no remote command-cancellation operation.
 
-The operation set is `:condition`, `:restarts`, `:frames`, `:locals`, and `:invoke-restart`.  Restart invocation supplies zero arguments.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#command-results) specifies result fields.
+The operation set is `:condition`, `:restarts`, `:frames`, `:locals`, `:abort`, `:help`, `:invoke-restart`, and `:invoke-restart-interactively`.  Abort invokes the innermost captured restart named CL:ABORT.  Help returns the guest command descriptions.  INVOKE-RESTART supplies zero arguments.  INVOKE-RESTART-INTERACTIVELY uses the selected restart's interactive function to obtain arguments.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#command-results) specifies result fields.
 
 Values are printed on the stopped thread with `*print-readably* NIL`, `*print-circle* T`, `*print-level* 5`, and `*print-length* 20`.  User printers can allocate, block, signal conditions, or enter another stop.  Those bindings do not bound a custom printer's runtime or output.  The returned strings contain representations of objects.  The API provides no retained object references for browsing or editing.
 
@@ -248,7 +248,7 @@ Local records describe names, locations, and representations.  An unavailable va
 
 ## Operation limits
 
-The retained service lists applicable restarts and invokes them with zero arguments.  It has no argument-taking or interactive restart call.  A nonlocal restart exit follows Common Lisp unwinding rules.  It does not provide arbitrary frame return, frame reinvocation, or a selected-frame THROW operation.
+The retained service lists applicable restarts, supports zero-argument calls, and invokes their interactive argument readers.  The Web restart buttons use interactive invocation.  An interactive evaluation supplies QUERY-IO through its retained input and output streams.  An application restart with required arguments needs an interactive function for that operation.  Explicit argument submission remains planned.  A nonlocal restart exit follows Common Lisp unwinding rules.  It does not provide arbitrary frame return, frame reinvocation, or a selected-frame THROW operation.
 
 The API provides no selected-frame dynamic evaluation, special-binding history, catch or handler enumeration, breakpoint management, call/exit traps, instruction or source stepping, location monitoring, or raw-stack modification.  Function-level source information and the separate Lisp disassembler do not provide source display tied to the executing function version through this API.
 

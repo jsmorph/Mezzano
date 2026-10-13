@@ -5,15 +5,40 @@
 (in-package #:lispm-evaluation-test)
 
 (defvar *next-name* 0)
+(defvar *job-names* (make-hash-table :test 'equal))
+(defvar *job-threads* (make-hash-table :test 'eq))
 (defvar *body-count* 0)
 (defvar *cleanup-count* 0)
 (defvar *print-failed* nil)
 
 (defun new-name ()
-  (string-downcase (format nil "~64,'0X" (incf *next-name*))))
+  (let ((name (string-downcase (format nil "~64,'0X" (incf *next-name*)))))
+    (setf (gethash name *job-names*) t)
+    name))
+
+(defun owned-jobs ()
+  (remove-if-not
+   (lambda (handle)
+     (gethash (mezzano.debug::evaluation-job-name
+               (mezzano.debug::evaluation-handle-job handle))
+              *job-names*))
+   (evaluation-jobs)))
 
 (defun information (job)
-  (evaluation-job-information job))
+  (let ((information (evaluation-job-information job)))
+    (setf (gethash (mezzano.debug::evaluation-job-thread
+                    (mezzano.debug::evaluation-handle-job job))
+                  *job-threads*)
+          t)
+    information))
+
+(defun owned-stops ()
+  (remove-if-not
+   (lambda (handle)
+     (gethash (mezzano.debug::service-stop-thread
+               (mezzano.debug::service-handle-stop handle))
+              *job-threads*))
+   (debugger-stops)))
 
 (defun completed (job)
   (await (lambda ()
@@ -136,7 +161,7 @@
     (assert (equal (getf (information job) :values) '("RESULT-PROBE")))
     (assert (typep (first (evaluation-job-result-values job)) 'result-probe))
     (release-evaluation-job job))
-  (assert (null (evaluation-jobs)))
+  (assert (null (owned-jobs)))
   (format t "PASS retained batch evaluation, submission identity, source order, package changes, input, output, values, conditions, reader and printer recovery, GC, abort, and release~%"))
 
 (defvar *input-stream* nil)
@@ -239,7 +264,7 @@
     (expect-error :input-not-interactive
                   (lambda () (supply-evaluation-input job 0 "" :eof t)))
     (release-evaluation-job job))
-  (assert (null (evaluation-jobs)))
+  (assert (null (owned-jobs)))
   (format t "PASS interactive waiting, Unicode offsets, input replay and conflicts, EOF, peek/unread/listen, nonblocking input, buffer growth, clear/close, GC, cleanup, and stream closure~%"))
 
 (run-tests)

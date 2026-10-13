@@ -62,16 +62,18 @@ The current editor displays the argument prompt and contextual help above the co
 
 ### Debugger commands
 
-The debugger input requires a leading colon.  Lisp parses its command and returns an action using the retained debugger operations.  The browser resolves the selected frame token and renders the result.
+A stopped Listener uses its guest-reported innermost debugger stop and nesting prompt.  Debugger commands require a leading colon.  Lisp parses the command and selects the retained operation.  The browser resolves the selected frame token and renders the result.  It preserves ordinary Listener input and each debugger level's draft and cursor across entry, exit, and reload.  Frame evaluation remains planned.
 
 | Command | Supported behavior |
 |---|---|
+| :Abort | Invokes the innermost CL:ABORT restart captured by this stop.  At a child caused by a debugger command, its command abort returns to the parent debugger. |
+| :Help | Lists the implemented guest debugger commands and descriptions. |
 | :Show Backtrace | Lists retained call frames. |
 | :Set Current Frame index | Selects a frame by its zero-based decimal index and displays its available locals. |
 | :Show Frame | Displays the selected function and available locals.  Original argument values remain unavailable. |
 | :Show Local All | Displays all available local records for the selected frame.  All is the default. |
 | :Show Local index | Displays one local by its zero-based decimal index. |
-| :Show Proceed Options | Displays retained restart choices.  The browser can invoke zero-argument restarts. |
+| :Show Proceed Options | Displays retained restart choices.  The browser invokes the chosen restart's interactive function to obtain any arguments. |
 
 Show Backtrace lists call frames.  Raw stack-slot inspection is unavailable through the retained API.
 
@@ -85,7 +87,7 @@ Listener state survives connection closure.  Session release or a new boot retir
 
 | HTTP operation | Arguments and result |
 |---|---|
-| listener-information | No arguments.  Returns package, mode, prompt, busy-p, default-pathname, and a detailed herald sample. |
+| listener-information | No arguments.  Returns package, mode, prompt, busy-p, active-job, debugger, default-pathname, and a detailed herald sample. |
 | start-listener | name, source, and optional interactive.  Returns an ordinary retained job token. |
 | listener-assistance | source, cursor, action, optional context and presentation.  Returns input classification, replacement text and cursor, prompt, default, expected-type, help, candidates, complete-p, and error. |
 
@@ -94,3 +96,5 @@ Assistance actions are inspect, space, complete, help, parse, and insert.  Conte
 Job information adds :listener-result.  It is NIL for ordinary evaluation jobs.  A Listener result records :kind (:command or :form), optional :command, :effects, :presentations, and any command input :error.  An input error is printed and recorded.  Runtime conditions, including file and compiler errors, enter the retained debugger.
 
 Herald presentations contain :type :herald, :start and :end character offsets, and :herald.  The offsets delimit the plain-text herald in job output.  The payload contains :title, :facts, :detailed-p, :systems, and :help.  Facts and help are lists of lines, each containing inline records with :kind (:text, :emphasis, or :key) and :text.  System records contain :name and :version, with NIL for an undeclared version.  Listener information returns the same payload in :herald.
+
+The :DEBUGGER descriptor is NIL outside a stop.  Otherwise it identifies the innermost stop in this Listener's active job, its one-based :DEPTH, and :PROMPT.  SWANK encodes :STOP as a stop token.  Listener ownership and the descriptor are sampled under the guest service lock.  The browser uses this descriptor to select input context.

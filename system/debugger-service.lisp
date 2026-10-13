@@ -157,11 +157,32 @@
         (concatenate 'string (subseq text 0 (min (length text) 149)) "[truncated]")
         text)))
 
+(defun service-stop-depth (stop)
+  (loop for current = stop then (service-stop-parent current)
+        while current count t))
+
+(defun service-stop-prompt (stop)
+  (concatenate 'string
+               (make-string (service-stop-depth stop)
+                            :initial-element (code-char #x2192))
+               " "))
+
+(defun service-thread-debugger-information (thread)
+  (loop for stop being the hash-values of *service-stops*
+        when (and (eq (service-stop-thread stop) thread)
+                  (eq (service-stop-state stop) :stopped)
+                  (null (service-stop-child stop)))
+          return (list :stop (service-handle stop)
+                       :depth (service-stop-depth stop)
+                       :prompt (service-stop-prompt stop))))
+
 (defun debugger-stop-information (handle)
   (with-service-lock
     (let ((stop (check-service-handle handle)))
       (list :id (service-stop-id stop)
             :state (service-stop-state stop)
+            :depth (service-stop-depth stop)
+            :prompt (service-stop-prompt stop)
             :thread (bounded-display-label
                      (mezzano.supervisor:thread-name (service-stop-thread stop)))
             :parent-id (when (service-stop-parent stop)
@@ -221,10 +242,10 @@
                 (service-stop-child stop))
         (service-error :stop-busy))
       (case operation
-        ((:frames :restarts :condition)
+        ((:frames :restarts :condition :abort :help)
          (when argument (service-error :unexpected-argument)))
         (:locals (check-service-frame argument stop))
-        (:invoke-restart
+        ((:invoke-restart :invoke-restart-interactively)
          (unless (and (integerp argument)
                       (<= 0 argument)
                       (< argument (length (service-stop-restarts stop))))
@@ -267,6 +288,11 @@
 (defun execute-service-command (stop command)
   (ecase (service-command-operation command)
     (:condition (service-print (service-stop-condition stop) t))
+    (:help (mezzano.command-processor::debugger-help))
+    (:abort
+     (let ((restart (find 'abort (service-stop-restarts stop) :key #'restart-name)))
+       (unless restart (service-error :no-abort-restart))
+       (mapcar #'service-print (multiple-value-list (invoke-restart restart)))))
     (:restarts
      (loop for restart in (service-stop-restarts stop)
            for index from 0
@@ -291,23 +317,27 @@
                              :name (service-print (local-variable-name local))
                              :available-p available-p
                              :value (when available-p (service-print value)))))))
-    (:invoke-restart
+    ((:invoke-restart :invoke-restart-interactively)
      (mapcar #'service-print
              (multiple-value-list
-              (invoke-restart (nth (service-command-argument command)
-                                   (service-stop-restarts stop))))))))
+              (funcall (if (eq (service-command-operation command) :invoke-restart-interactively)
+                           #'invoke-restart-interactively
+                           #'invoke-restart)
+                       (nth (service-command-argument command)
+                            (service-stop-restarts stop))))))))
 
 (defun run-service-command (stop command)
-  (unwind-protect
-       (let ((result (execute-service-command stop command)))
-         (with-service-lock
-           (setf (service-command-result command) result
-                 (service-command-state command) :returned
-                 (service-stop-active stop) nil)))
-    (with-service-lock
-      (when (eq (service-command-state command) :running)
-        (setf (service-command-state command) :unwound))
-      (setf (service-stop-active stop) nil))))
+  (with-simple-restart (abort "Abort this debugger command.")
+    (unwind-protect
+         (let ((result (execute-service-command stop command)))
+           (with-service-lock
+             (setf (service-command-result command) result
+                   (service-command-state command) :returned
+                   (service-stop-active stop) nil)))
+      (with-service-lock
+        (when (eq (service-command-state command) :running)
+          (setf (service-command-state command) :unwound))
+        (setf (service-stop-active stop) nil)))))
 
 (defun service-command-loop (stop)
   (loop

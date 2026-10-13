@@ -13,7 +13,7 @@ SWANK_PORT="${SWANK_PORT:-4005}"
 TEST_STATE_DIR="$(mktemp -d)"
 ```
 
-Run guest tests sequentially on a dedicated test VM.  Tests define guest functions and packages, create threads and retained records, and may request full GC.  A failure can leave a stopped fixture for inspection.  Restore fixtures share counters and must run separately.  Their host state files must survive the VM restart.
+Run guest tests sequentially on a dedicated test VM.  Tests define guest functions and packages, create threads and retained records, and may request full GC.  The evaluation-service fixture tracks its generated job names and checks release of those jobs, so its cleanup assertions preserve unrelated evaluations.  A failure can leave a stopped fixture for inspection.  Restore fixtures share counters and must run separately.  Their host state files must survive the VM restart.
 
 The instruction-position and saved-register tests target x86-64.  Compiler tests select the policies they exercise.  The default running compiler policy is `(safety 3 debug 3 speed 1)` and the image bootstrap policy is `(safety 3 debug 1 speed 1)`.  These tests do not establish ARM64, bare-metal, supervisor-trap, or arbitrary-suspension support.
 
@@ -207,6 +207,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-debug-policy.lisp` | Local debug declarations, preserved heap roots, writes, and GC. |
 | `test-keyword-lowering.lisp` | Keyword semantics and allocation at debug levels 1 and 3. |
 | `test-jump-table-bindings.lisp` | Branch binding cleanup and invalid selectors. |
+| `test-debugger-control.lisp` | Nested command abort, parent recovery, typed command parsing, returning and interactive restarts, replay, cleanup, and Listener reuse.  Compile and load the file, then call LISPM-DEBUGGER-CONTROL-TEST:RUN. |
 | `test-debugger-service.lisp` | Ownership, frames, GC, duplicate commands, child stops, repair, values, release, and cleanup. |
 | `test-debugger-service-restore.lisp` | Guest handles, completed-command history, queued-command expiration, and a running restart blocked on a Lisp event across restore. |
 | `test-evaluation-service.lisp` | Batch submission identity, source order, package changes, values, condition/printer recovery, GC, abort, release, and interactive stream behavior. |

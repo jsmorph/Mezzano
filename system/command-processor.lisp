@@ -33,11 +33,18 @@
      :keywords (("Load" :boolean "No" "Yes") ("Binary File" :pathname nil nil)))))
 
 (defparameter *debugger-commands*
-  '((:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
+  '((:name "Abort" :id :abort :help "Invoke this stop's innermost ABORT restart.")
+    (:name "Help" :id :help :help "List the supported debugger commands.")
+    (:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
     (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
     (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
     (:name "Show Local" :id :show-local :type :local :help "Display All locals, or a local by its zero-based decimal index.")
     (:name "Set Current Frame" :id :set-current-frame :type :frame :help "Select a zero-based frame index from Show Backtrace.")))
+
+(defun debugger-help ()
+  (with-output-to-string (stream)
+    (dolist (command *debugger-commands*)
+      (format stream ":~A  ~A~%" (getf command :name) (getf command :help)))))
 
 (define-condition input-error (error)
   ((text :initarg :text :reader input-error-text))
@@ -286,6 +293,9 @@
               :default-pathname (namestring (listener-pathname listener))
               :busy-p (not (null active))
               :active-job (when active (mezzano.debug::evaluation-job-name active))
+              :debugger (when active
+                          (mezzano.debug::service-thread-debugger-information
+                           (mezzano.debug::evaluation-job-thread active)))
               :herald herald)))))
 
 (defun start-listener (listener name source &key interactive)
@@ -397,6 +407,8 @@
 
 (defun debugger-plan (command argument)
   (case (getf command :id)
+    (:abort (list :operation "abort"))
+    (:help (list :operation "help"))
     (:show-backtrace (list :operation "frames"))
     (:show-proceed-options (list :operation "restarts"))
     (:show-frame (list :operation "locals" :needs-frame t :display :frame))

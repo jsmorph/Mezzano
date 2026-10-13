@@ -187,8 +187,8 @@
   (assert (equal (evaluation-job-result-values *self-job*) '(:self-interrupt)))
   (release-evaluation-job *self-job*)
   (setf *self-job* nil)
-  (assert (null (evaluation-jobs)))
-  (assert (null (debugger-stops)))
+  (assert (null (lispm-evaluation-test::owned-jobs)))
+  (assert (null (lispm-evaluation-test::owned-stops)))
   (format t "PASS retained interruption of computing and input-waiting jobs, locals, GC, continuation, abort, duplicates, existing stops, immediate requests, inhibited delivery, self rejection, and cleanup~%"))
 
 (run-tests)
