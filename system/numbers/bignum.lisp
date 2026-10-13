@@ -175,6 +175,8 @@ Implements the dumb mp_div algorithm from BigNum Math."
     c))
 
 (defun %bignum-left-shift (integer count)
+  #+x86-64 (%%bignum-left-shift integer count)
+  #-x86-64
   (multiple-value-bind (quot rem)
       (truncate count 32)
     (dotimes (i quot)
@@ -182,6 +184,8 @@ Implements the dumb mp_div algorithm from BigNum Math."
     (%%bignum-left-shift integer rem)))
 
 (defun %bignum-right-shift (integer count)
+  #+x86-64 (%%bignum-right-shift integer count)
+  #-x86-64
   (multiple-value-bind (quot rem)
       (truncate count 32)
     (dotimes (i quot

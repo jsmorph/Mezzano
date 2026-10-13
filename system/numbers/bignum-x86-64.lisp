@@ -395,105 +395,126 @@
 
 (define-lap-function %%bignum-left-shift ()
   (:gc :no-frame :layout #*0)
+  (sys.lap-x86:test64 :r9 :r9)
+  (sys.lap-x86:jz unchanged)
   (sys.lap-x86:push :rbp)
   (:gc :no-frame :layout #*00)
   (sys.lap-x86:mov64 :rbp :rsp)
-  ;; Save objects.
-  (sys.lap-x86:push :r8) ; src
+  (:gc :frame)
+  (sys.lap-x86:push :r8)
   (:gc :frame :layout #*1)
-  (sys.lap-x86:push :r9) ; count
+  (sys.lap-x86:push :r9)
   (:gc :frame :layout #*11)
-  ;; Allocate a new bignum large enough to hold the result.
   (sys.lap-x86:mov64 :rax (:r8 #.(- +tag-object+)))
   (sys.lap-x86:shr64 :rax #.+object-data-shift+)
-  (sys.lap-x86:mov64 :rcx #.(ash 1 +n-fixnum-bits+)) ; fixnum 1
+  (sys.lap-x86:mov64 :rdx :r9)
+  (sys.lap-x86:shr64 :rdx #.(+ +n-fixnum-bits+ 6))
+  (sys.lap-x86:add64 :rax :rdx)
   (sys.lap-x86:lea64 :r8 ((:rax #.(ash 1 +n-fixnum-bits+))
-                          #.(ash 1 +n-fixnum-bits+))) ; fixnumize +1
+                          #.(ash 1 +n-fixnum-bits+)))
+  (sys.lap-x86:mov32 :ecx #.(ash 1 +n-fixnum-bits+))
   (sys.lap-x86:call (:named-call %make-bignum-of-length))
-  ;; R8: dest
-  ;; R9: src
-  ;; CL: count
-  ;; RBX: n words.
-  ;; R10: current word.
   (sys.lap-x86:mov64 :rcx (:stack 1))
   (sys.lap-x86:mov64 :r9 (:stack 0))
   (:gc :frame)
-  (sys.lap-x86:mov64 :rbx (:r9 #.(- +tag-object+)))
-  (sys.lap-x86:sar64 :rcx #.+n-fixnum-bits+)
-  (sys.lap-x86:and64 :rbx #.(lognot (1- (ash 1 +object-data-shift+))))
-  (sys.lap-x86:shr64 :rbx #.(- +object-data-shift+ +n-fixnum-bits+))
-  (sys.lap-x86:mov32 :r10d #.(ash 1 +n-fixnum-bits+))
-  loop
+  (sys.lap-x86:shr64 :rcx #.+n-fixnum-bits+)
+  (sys.lap-x86:mov64 :rdx :rcx)
+  (sys.lap-x86:shr64 :rdx 6)
+  (sys.lap-x86:lea64 :rbx ((:rdx 8)))
+  (sys.lap-x86:and32 :ecx 63)
+  (sys.lap-x86:xor32 :r10d :r10d)
+  zero-loop
   (sys.lap-x86:cmp64 :r10 :rbx)
-  (sys.lap-x86:jae last-word)
-  (sys.lap-x86:mov64 :rax (:r9 #.(+ (- +tag-object+) 8) (:r10 #.(/ 8 (ash 1 +n-fixnum-bits+)))))
-  (sys.lap-x86:mov64 :rdx (:r9 #.(+ (- +tag-object+)) (:r10 #.(/ 8 (ash 1 +n-fixnum-bits+)))))
-  (sys.lap-x86:shld64 :rax :rdx :cl)
-  (sys.lap-x86:mov64 (:r8 #.(+ (- +tag-object+) 8) (:r10 #.(/ 8 (ash 1 +n-fixnum-bits+)))) :rax)
-  (sys.lap-x86:add64 :r10 #.(ash 1 +n-fixnum-bits+))
-  (sys.lap-x86:jmp loop)
-  last-word
-  (sys.lap-x86:mov64 :rax (:r9 #.(- +tag-object+) (:rbx #.(/ 8 (ash 1 +n-fixnum-bits+)))))
-  (sys.lap-x86:cqo)
-  (sys.lap-x86:shld64 :rdx :rax :cl)
-  (sys.lap-x86:mov64 (:r8 #.(+ (- +tag-object+) 8) (:rbx #.(/ 8 (ash 1 +n-fixnum-bits+)))) :rdx)
-  (sys.lap-x86:mov64 :rax (:r9 #.(+ (- +tag-object+) 8)))
-  (sys.lap-x86:shl64 :rax :cl)
-  (sys.lap-x86:mov64 (:r8 #.(+ (- +tag-object+) 8)) :rax)
+  (sys.lap-x86:jae copy-start)
+  (sys.lap-x86:mov64 (:r8 #.(+ 8 (- +tag-object+)) :r10) 0)
+  (sys.lap-x86:add64 :r10 8)
+  (sys.lap-x86:jmp zero-loop)
+  copy-start
+  (sys.lap-x86:mov64 :rdx (:r9 #.(- +tag-object+)))
+  (sys.lap-x86:shr64 :rdx #.+object-data-shift+)
+  (sys.lap-x86:shl64 :rdx 3)
+  (sys.lap-x86:xor32 :r10d :r10d)
+  (sys.lap-x86:xor32 :esi :esi)
+  copy-loop
+  (sys.lap-x86:mov64 :rdi (:r9 #.(+ 8 (- +tag-object+)) :r10))
+  (sys.lap-x86:mov64 :rax :rdi)
+  (sys.lap-x86:shld64 :rax :rsi :cl)
+  (sys.lap-x86:mov64 (:r8 #.(+ 8 (- +tag-object+)) :rbx) :rax)
+  (sys.lap-x86:mov64 :rsi :rdi)
+  (sys.lap-x86:add64 :r10 8)
+  (sys.lap-x86:add64 :rbx 8)
+  (sys.lap-x86:cmp64 :r10 :rdx)
+  (sys.lap-x86:jb copy-loop)
+  (sys.lap-x86:mov64 :rax :rsi)
+  (sys.lap-x86:sar64 :rax 63)
+  (sys.lap-x86:shld64 :rax :rsi :cl)
+  (sys.lap-x86:mov64 (:r8 #.(+ 8 (- +tag-object+)) :rbx) :rax)
   (sys.lap-x86:mov32 :ecx #.(ash 1 +n-fixnum-bits+))
   (sys.lap-x86:leave)
   (:gc :no-frame :layout #*0)
-  (sys.lap-x86:jmp (:named-call %%canonicalize-bignum)))
+  (sys.lap-x86:jmp (:named-call %%canonicalize-bignum))
+  unchanged
+  (sys.lap-x86:mov32 :ecx #.(ash 1 +n-fixnum-bits+))
+  (sys.lap-x86:ret))
 
 (define-lap-function %%bignum-right-shift ()
   (:gc :no-frame :layout #*0)
+  (sys.lap-x86:test64 :r9 :r9)
+  (sys.lap-x86:jz unchanged)
+  (sys.lap-x86:mov64 :rax (:r8 #.(- +tag-object+)))
+  (sys.lap-x86:shr64 :rax #.+object-data-shift+)
+  (sys.lap-x86:mov64 :rdx :r9)
+  (sys.lap-x86:shr64 :rdx #.(+ +n-fixnum-bits+ 6))
+  (sys.lap-x86:cmp64 :rdx :rax)
+  (sys.lap-x86:jae sign-only)
+  (sys.lap-x86:sub64 :rax :rdx)
   (sys.lap-x86:push :rbp)
   (:gc :no-frame :layout #*00)
   (sys.lap-x86:mov64 :rbp :rsp)
   (:gc :frame)
-  ;; Save objects.
-  (sys.lap-x86:push :r8) ; src
+  (sys.lap-x86:push :r8)
   (:gc :frame :layout #*1)
-  (sys.lap-x86:push :r9) ; count
+  (sys.lap-x86:push :r9)
   (:gc :frame :layout #*11)
-  ;; Allocate a new bignum large enough to hold the result.
-  (sys.lap-x86:mov64 :rax (:r8 #.(- +tag-object+)))
-  (sys.lap-x86:shr64 :rax #.+object-data-shift+)
-  (sys.lap-x86:mov64 :rcx #.(ash 1 +n-fixnum-bits+)) ; fixnum 1
-  (sys.lap-x86:lea64 :r8 ((:rax #.(ash 1 +n-fixnum-bits+)))) ; fixnumize
+  (sys.lap-x86:lea64 :r8 ((:rax #.(ash 1 +n-fixnum-bits+))))
+  (sys.lap-x86:mov32 :ecx #.(ash 1 +n-fixnum-bits+))
   (sys.lap-x86:call (:named-call %make-bignum-of-length))
-  ;; R8: dest
-  ;; R9: src
-  ;; CL: count (raw)
-  ;; RBX: n words. (fixnum)
-  ;; R10: current word. (fixnum)
-  (sys.lap-x86:pop :rcx)
-  (sys.lap-x86:pop :r9)
+  (sys.lap-x86:mov64 :rcx (:stack 1))
+  (sys.lap-x86:mov64 :r9 (:stack 0))
   (:gc :frame)
-  (sys.lap-x86:sar64 :rcx #.+n-fixnum-bits+)
-  (sys.lap-x86:mov64 :rbx (:r9 #.(- +tag-object+)))
-  (sys.lap-x86:and64 :rbx #.(lognot (1- (ash 1 +object-data-shift+))))
-  (sys.lap-x86:shr64 :rbx #.(- +object-data-shift+ +n-fixnum-bits+))
-  (sys.lap-x86:mov32 :r10d #.(ash 1 +n-fixnum-bits+))
-  loop
-  (sys.lap-x86:cmp64 :r10 :rbx)
+  (sys.lap-x86:shr64 :rcx #.+n-fixnum-bits+)
+  (sys.lap-x86:mov64 :rdx :rcx)
+  (sys.lap-x86:shr64 :rdx 6)
+  (sys.lap-x86:lea64 :r10 ((:rdx 8)))
+  (sys.lap-x86:and32 :ecx 63)
+  (sys.lap-x86:mov64 :rdx (:r9 #.(- +tag-object+)))
+  (sys.lap-x86:shr64 :rdx #.+object-data-shift+)
+  (sys.lap-x86:lea64 :rdx ((:rdx 8) -8))
+  (sys.lap-x86:xor32 :ebx :ebx)
+  copy-loop
+  (sys.lap-x86:mov64 :rax (:r9 #.(+ 8 (- +tag-object+)) :r10))
+  (sys.lap-x86:cmp64 :r10 :rdx)
   (sys.lap-x86:jae last-word)
-  ;; current+1
-  (sys.lap-x86:mov64 :rax (:r9 #.(+ (- +tag-object+) 8) (:r10 #.(/ 8 (ash 1 +n-fixnum-bits+)))))
-  ;; current
-  (sys.lap-x86:mov64 :rdx (:r9 #.(- +tag-object+) (:r10 #.(/ 8 (ash 1 +n-fixnum-bits+)))))
-  (sys.lap-x86:shrd64 :rdx :rax :cl)
-  (sys.lap-x86:mov64 (:r8 #.(- +tag-object+) (:r10 #.(/ 8 (ash 1 +n-fixnum-bits+)))) :rdx)
-  (sys.lap-x86:add64 :r10 #.(ash 1 +n-fixnum-bits+))
-  (sys.lap-x86:jmp loop)
+  (sys.lap-x86:mov64 :rsi (:r9 #.(+ 16 (- +tag-object+)) :r10))
+  (sys.lap-x86:shrd64 :rax :rsi :cl)
+  (sys.lap-x86:mov64 (:r8 #.(+ 8 (- +tag-object+)) :rbx) :rax)
+  (sys.lap-x86:add64 :r10 8)
+  (sys.lap-x86:add64 :rbx 8)
+  (sys.lap-x86:jmp copy-loop)
   last-word
-  (sys.lap-x86:mov64 :rax (:r9 #.(- +tag-object+) (:rbx #.(/ 8 (ash 1 +n-fixnum-bits+)))))
   (sys.lap-x86:sar64 :rax :cl)
-  (sys.lap-x86:mov64 (:r8 #.(- +tag-object+) (:rbx #.(/ 8 (ash 1 +n-fixnum-bits+)))) :rax)
+  (sys.lap-x86:mov64 (:r8 #.(+ 8 (- +tag-object+)) :rbx) :rax)
   (sys.lap-x86:mov32 :ecx #.(ash 1 +n-fixnum-bits+))
   (sys.lap-x86:leave)
   (:gc :no-frame :layout #*0)
-  (sys.lap-x86:jmp (:named-call %%canonicalize-bignum)))
+  (sys.lap-x86:jmp (:named-call %%canonicalize-bignum))
+  sign-only
+  (sys.lap-x86:mov64 :rax (:r8 #.(- +tag-object+) (:rax 8)))
+  (sys.lap-x86:sar64 :rax 63)
+  (sys.lap-x86:lea64 :r8 ((:rax #.(ash 1 +n-fixnum-bits+))))
+  unchanged
+  (sys.lap-x86:mov32 :ecx #.(ash 1 +n-fixnum-bits+))
+  (sys.lap-x86:ret))
 
 ;;; Convert a bignum to canonical form.
 ;;; If it can be represented as a fixnum it is converted,

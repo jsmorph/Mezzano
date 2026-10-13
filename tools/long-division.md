@@ -240,3 +240,35 @@ To compare compiler behavior in a running development guest, compile and load th
 RUN without an argument checks the current compiler's behavior without comparison to a previous compiler.  Evidence is in the build-directory logs `array-transform-reference.log`, `array-transform-load.log`, and `long-division-array-compiler.log`.  The disassembly is `home/long-division-array-compiler.asm`.
 
 A fresh x86-64 image built from an empty target-code directory and booted to the CI completion marker with QEMU exit status 3.  Build and boot evidence is `array-compiler-build.log`, `array-compiler-ci-serial.log`, and `array-compiler-ci.exit`.  ARM64 execution and snapshot restoration of this compiler increment have not been tested.
+
+## Runtime arithmetic
+
+The x86-64 runtime now shifts a bignum by computing its word offset and residual bit count once.  It fills the result in one pass and passes that result to the existing canonicalizer.  The canonicalizer can allocate a shorter result.  ARM64 retains its previous shift implementation.
+
+[The runtime tests](test-bignum-runtime.lisp) use SBCL-generated results for 4,278 shifts through 4,096-bit inputs.  They cover both signs, fixnum and word boundaries, zero shifts, counts that discard the entire input, input immutability, and canonical representation.  The installed shifts also passed the 7,276 division cases.  Candidate assembly functions passed the shift cases before runtime installation.
+
+Generate the reference file under SBCL, then make it available to the guest:
+
+~~~lisp
+(mezzano-bignum-test:write-shift-cases "/path/to/bignum-shift-cases.sexp")
+~~~
+
+After compiling and loading the test file in each implementation:
+
+~~~lisp
+(mezzano-bignum-test:run-shifts "/path/to/bignum-shift-cases.sexp")
+~~~
+
+The [certificate benchmark](https/bench-certificates.lisp) takes a parsed chain and trust roots and measures the existing Lisp verifier.  READ-DATA reads the public DER fixture produced during the certificate investigation, returning the chain, roots, and verification time.  RUN excludes parsing, hostname checking, network traffic, and TLS key exchange.  SBCL reports process allocation.  Mezzano reports allocation by the current thread.
+
+~~~lisp
+(multiple-value-bind (chain roots now)
+    (lispm-certificate-bench:read-data "/path/to/certificate-benchmark-data.sexp")
+  (lispm-certificate-bench:run chain roots :now now))
+~~~
+
+Two measurements before replacing the shifts took 12.31 and 8.99 seconds and allocated about 7.908 GB per verification.  Three measurements afterward took 8.71, 8.24, and 8.30 seconds and allocated about 7.659 GB.  The sample variation limits the timing comparison.  Bignum multiplication and division still use their previous implementations.  The certificate target is below 100 milliseconds.
+
+Evidence is in the build-directory logs `bignum-shift-sbcl.log`, `bignum-shift-candidates.log`, and `bignum-shift-installed.log`.
+
+Four tests forced a full collection at the allocation call inside a shift and checked the returned value.  They covered both signs and both directions.  Evidence is `bignum-shift-gc.log`.  Fresh-image boot and snapshot restoration of these runtime changes remain pending.
