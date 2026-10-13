@@ -118,6 +118,7 @@ Implements the dumb mp_div algorithm from BigNum Math."
       (setf ta (- ta)))
     (values q ta)))
 
+#-x86-64
 (defun %%bignum-multiply-unsigned (a b)
   (assert (bignump a))
   (assert (bignump b))

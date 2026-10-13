@@ -267,8 +267,16 @@ The [certificate benchmark](https/bench-certificates.lisp) takes a parsed chain 
   (lispm-certificate-bench:run chain roots :now now))
 ~~~
 
-Two measurements before replacing the shifts took 12.31 and 8.99 seconds and allocated about 7.908 GB per verification.  Three measurements afterward took 8.71, 8.24, and 8.30 seconds and allocated about 7.659 GB.  The sample variation limits the timing comparison.  Bignum multiplication and division still use their previous implementations.  The certificate target is below 100 milliseconds.
+Two measurements before replacing the shifts took 12.31 and 8.99 seconds and allocated about 7.908 GB per verification.  Three measurements afterward took 8.71, 8.24, and 8.30 seconds and allocated about 7.659 GB.  The sample variation limits the timing comparison.  These shift measurements precede the multiplication change below.  The certificate target is below 100 milliseconds.
 
 Evidence is in the build-directory logs `bignum-shift-sbcl.log`, `bignum-shift-candidates.log`, and `bignum-shift-installed.log`.
 
 Four tests forced a full collection at the allocation call inside a shift and checked the returned value.  They covered both signs and both directions.  Evidence is `bignum-shift-gc.log`.  Fresh-image boot and snapshot restoration of these runtime changes remain pending.
+
+### Word multiplication
+
+The x86-64 unsigned multiplication loop now uses MUL and ADD/ADC on raw words and register carries.  It allocates a work result and uses the existing canonicalizer afterward.  The signed Lisp wrapper retains sign handling and its zero and unit cases.  ARM64 retains the previous multiplication loop.
+
+The candidate and installed function passed 1,824 SBCL-generated cases through 8,192-bit by 4,096-bit operands, including word boundaries, mixed digit patterns, both signs, input immutability, and canonical representation.  Two tests forced full collection at multiplication's allocation call.  The 7,276 division cases also passed.
+
+Three certificate checks after installation took 7.38, 7.21, and 7.21 seconds, allocating approximately 6.992 GB per call.  Division still uses the bit-at-a-time routine.  Evidence is in `bignum-multiply-sbcl.log`, `bignum-multiply-candidate.log`, and `bignum-multiply-installed.log`.
