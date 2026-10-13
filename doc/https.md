@@ -94,7 +94,7 @@ The combined guest test passed, including full and resumed handshakes with one c
 
 The Listener functions passed a chunked HTTP GET returning text, an HTTPS GET returning an HTTP 401 body as octets, and completions with the default and explicit models.  In-memory tests also cover chunk decoding with raw and already chunked streams.
 
-The HTTPS GET to example.org returned HTTP 200 after the x86-64 arithmetic improvements.  Headless Chromium submitted COMPLETE through the Web Listener and displayed its returned text without a debugger stop.
+The HTTPS GET to example.org returned HTTP 200 after the x86-64 arithmetic improvements.  Headless Chromium submitted COMPLETE and CURL through one Web Listener session.  COMPLETE returned text.  CURL displayed the body, status, and headers for both an HTTPS text response with status 200 and an OpenAI octet response with status 401.  All three evaluations returned without a debugger stop or browser error.
 
 After snapshot restoration, twenty offline checks of the captured three-certificate chain had a 90-millisecond median, a 102.5-millisecond mean, and a range of 90–190 milliseconds on x86-64 QEMU with KVM.  Each call allocated approximately 53.65 MB.  These timings exclude certificate parsing, hostname checking, network traffic, and TLS key exchange.  They include collection and scheduling during the call.  The [arithmetic measurements](../tools/long-division.md#runtime-arithmetic) describe the test and its limits.
 

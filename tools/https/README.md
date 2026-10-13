@@ -232,8 +232,8 @@ Under SBCL, load `tools/test-clos-method-order.lisp` and call the same function.
 
 The verified HTTPS GET to example.org now passes with the x86-64 arithmetic improvements.  The GET test retains both the HTTP chunked-response assertion and the HTTPS request.  The OpenAI request tests verified HTTPS and an HTTP error response.
 
-The browser completion test requires Node, headless Chromium, the running Web service, and the installed guest key file.  It submits COMPLETE through the Listener, checks the returned state and text, and saves the result and screenshot:
+The browser HTTPS test requires Node, headless Chromium, the running Web service, and the installed guest key file.  It submits COMPLETE and two CURL expressions through one Listener session.  It checks the completion text, the HTTPS text response with status 200, and an OpenAI octet response with status 401.  Each CURL result must display all three values, including headers.  The test saves each result and screenshot:
 
-    node tools/swank/web/test-browser-complete.mjs http://lispm.example.net:8765/ browser-complete-results
+    node tools/swank/web/test-browser-https.mjs http://lispm.example.net:8765/ browser-https-results
 
-This test sends one authenticated inference request.  It passed against the x86-64 guest.
+This test sends one authenticated inference request and two GET requests.  All three cases passed against the x86-64 guest.

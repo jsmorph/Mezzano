@@ -1429,3 +1429,13 @@ Restoration tests passed without loading or redefining the saved functions: comp
 The browser COMPLETE test also passed after snapshot restoration, displaying its returned text in 2,575 milliseconds from submission through observation.  Evidence is the workstation's /tmp/arithmetic-browser-restored.log and /tmp/arithmetic-browser-restored/.  The final product documentation catalog reloaded and the guest completed another snapshot, confirmed by arithmetic-final-snapshot.log and the serial End snapshot marker.
 
 This increment implements and tests the approved x86-64 arithmetic primitives and restores working browser inference.  Certificate verification remains above 100 milliseconds in its measured mean and slower individual calls.  The remaining 53.65 MB allocated per check warrants further profiling before choosing another implementation change.  ARM64 arithmetic and execution remain untested.
+
+## Web Listener COMPLETE and CURL: 2026-10-12
+
+The user accepted the arithmetic performance and requested browser checks of both Listener functions.  Extend the existing Chromium test to submit COMPLETE, a text HTTPS GET, and an unauthenticated OpenAI GET in one Listener session.  Require returned evaluations, the expected values, and matching displayed text.  CURL must display all three values, including HTTP status and headers.  Retain each result and screenshot.  The test uses the existing Node/Chromium tools and adds no dependency or runtime behavior.
+
+The combined test passed in headless Chromium against the running Web service.  COMPLETE returned "Browser completion works." in 4,509 milliseconds.  CURL to https://example.org/ returned the HTML string, status 200, and headers in 3,391 milliseconds.  CURL to the unauthenticated OpenAI models endpoint returned an octet vector, status 401, and JSON content-type headers in 3,799 milliseconds.  Each displayed value string matched the retained evaluation result.  All three evaluations returned without a debugger stop, and Chromium reported no browser errors.  The screenshot confirms the completion text and CURL's HTML, status, and headers in the Listener.
+
+The test is now named tools/swank/web/test-browser-https.mjs.  It retains the existing browser driver and runs the three cases in one session.  Development used tailscale ssh on the VM host.  The installed workstation Node and Chromium ran the browser test.  Evidence is /tmp/listener-https-browser/run.log and the results directory beside it.  The product documentation records the tested browser behavior.
+
+The updated Document Examiner catalog loaded, and the guest completed its snapshot.  Evidence is web-https-catalog-snapshot.log.  The Web service remains running with the tested functions.
