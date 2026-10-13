@@ -146,3 +146,55 @@ node tools/swank/web/test-document-commands.mjs \
 ```
 
 The driver saves and reads one unique private file through a relative logical pathname.  It then replaces that owned file with malformed records, improper and circular lists, truncated input, and reader-evaluation syntax.  It checks distinct errors for invalid contents, a missing topic, and a missing file, with unchanged viewer state and successful subsequent queries.  Its cleanup removes the owned file and releases its jobs and session, including after failed assertions.  Expected HTTP 409 responses are counted separately from unexpected browser errors.
+
+## Saved images
+
+The x86-64 CPU observer and native waiter fixture test snapshot exclusion and restoration.  Compile both guest test files and load their output into wired memory:
+
+```lisp
+(dolist (source '("SYS:SOURCE;TOOLS;SWANK;TEST-SNAPSHOT-CPU.LISP"
+                  "SYS:SOURCE;TOOLS;SWANK;TEST-SNAPSHOT-SYNC.LISP"))
+  (multiple-value-bind (output warnings failure) (compile-file source)
+    (declare (ignore warnings))
+    (assert (not failure))
+    (load output :wired t)))
+```
+
+Prepare the two native waiters and install the CPU observer before saving:
+
+```lisp
+(lispm-snapshot-sync-test:prepare)
+(lispm-snapshot-cpu-test:install)
+(mezzano.supervisor:snapshot)
+(mezzano.supervisor:wait-for-snapshot-completion)
+(lispm-snapshot-cpu-test:observation)
+(lispm-snapshot-cpu-test:check)
+```
+
+CHECK requires copying on a CPU other than the timer's BSP, with unchanged PIT and runtime counts for at least 10 milliseconds and completed peer acknowledgments.  OBSERVATION identifies the CPU and measurements.  A BSP-only run requires another attempt to exercise peer exclusion.  Record the complete observation before restart: the saved observer record represents an intermediate point in copying.
+
+After restarting the saved image, remove the temporary observers and finish the waiter tests:
+
+```lisp
+(lispm-snapshot-cpu-test:uninstall)
+(lispm-snapshot-sync-test:finish)
+```
+
+FINISH requires a new boot.  It checks saved sleeping-state and queue relationships, notification, timer expiration, mutex reacquisition, and cleanup.  FINISH with :RESTORED NIL tests the same native operations without restarting.  CLEANUP cancels and joins only the fixture's waiters.  Remove the CPU observers before saving the final operating image.
+
+### Browser restoration
+
+The browser driver retains a session, a completed counter evaluation, and input history while the operator saves and restarts the VM.  Use a fresh output directory:
+
+```sh
+node tools/swank/web/test-image-restore.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-image-restore-test
+```
+
+After READY appears, save the guest, wait for snapshot completion, stop QEMU, and restart the saved image.  Once SWANK responds, signal the driver from another terminal:
+
+```sh
+touch /tmp/mezzano-image-restore-test/restored
+```
+
+The driver reloads the browser and checks session replacement, retained result/history, an unchanged counter value, current documentation, and live Processes data.  It removes its counter symbol, jobs, and session.  Expected HTTP errors during the deliberate outage and expired-session recovery are recorded separately from subsequent browser operations.  The driver requires restart confirmation within 15 minutes.
