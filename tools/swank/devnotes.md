@@ -1617,3 +1617,27 @@ The final documentation-command browser test passed typed topic, contents, and o
 ## Saved-image restoration test: 2026-10-12
 
 Recommendation: refresh the guest documentation catalog, verify the changed production functions are compiled, and snapshot the running development image.  Retain a browser session and a counter evaluation across a real QEMU stop/restart.  Check that boot invalidates the old session, the browser acquires new tokens, the retained counter remains one without replay, and current documentation and process data remain available.  Then run COMPLETE and CURL through the restored Web Listener.  Keep a stopped-image copy before restart.  This tests restoration of the current image, not reconstruction from a clean bootstrap.
+
+## HTTP request-boundary tests: 2026-10-12
+
+Recommendation after reading the HTTP handler and Web API guide: construct raw HTTP headers so the test client cannot supply a missing Content-Length.  Replace only Application.dispatch with a standard-library mock.  Check that missing, duplicate, malformed, and truncated lengths reject before dispatch, an exact one-MiB JSON body reaches dispatch, an over-limit length rejects without reading a body, and Transfer-Encoding rejects even alongside Content-Length.  Check optional Boolean, range, and string arguments at their existing validation boundaries.  These isolated tests require no guest evaluations.
+
+The HTTP request-boundary increment passed all fourteen isolated tests in 0.523 seconds.  Exact-size UTF-8 JSON reached dispatch.  Missing, duplicate, malformed, truncated, and oversized request lengths and unsupported transfer encodings rejected before dispatch.  Optional Boolean and string arguments and end-offset types passed their acceptance and rejection cases.  No handler change was needed.  Evidence: http-request-boundaries.log.  Commit d750bebc contains the tests.
+
+## Saved-image startup failure: 2026-10-13
+
+The snapshot completed, with :SNAPSHOT-COMPLETE returned and End snapshot in the serial log.  Restarting the saved image failed before SWANK initialization.  The serial trace reports WAKE-THREAD-1's sleeping-state assertion for cl-cancel-deadline-timer.  The caller chain is CONDITION-NOTIFY, BEAT-HEARTBEAT, PIT-IRQ-HANDLER, and INITIALIZE-PLATFORM-TIME.  The saved thread was already runnable or active when the condition notification attempted to wake it.  This is a kernel startup failure, not an HTTP failure.  The pending SWANK readiness probe reached its host deadline without a reply.
+
+The failing disk is preserved as mezzano-debugging-ui-saved.image.  Preserve its serial trace separately.  Recommendation: restore a copy of the previously tested certificate-cache image as the guest environment for investigating and compiling a correction.  Reload the already tested UI backend from current sources there.  Determine the invalid thread/wait-queue transition in the snapshot, startup, and cl-cancel code before editing it, then test a new snapshot and restoration.  The earlier browser restoration test has not passed.
+
+The cl-cancel review found native condition-variable use under the required mutex, with no library manipulation of thread state or wait queues.  An empty deadline heap still performs a one-second timed wait.  The Mezzano threading adapter delegates directly to native CONDITION-WAIT and CONDITION-NOTIFY, and these libraries have no restoration hooks.  The previously tested certificate-cache snapshot booted successfully.  Current UI backend modules are being recompiled and loaded in that diagnostic guest.
+
+## Confirmed snapshot inconsistency: 2026-10-13
+
+Read-only decoding of the failed image, using the image-manip.lisp format and instance layout, found the invalid state already on disk.  Thread 0x17b5be9 is cl-cancel-deadline-timer.  Its saved state is :RUNNABLE, queue-next is NIL, and queue-prev is run-queue predecessor 0x16d66f9.  Its saved wait-item is deadline-timer-condition at 0xe3fc29, whose saved head and tail both still point to that same thread.  The CV's wired page 0xe3f000 was copied before thread page 0x17b5000.  Boot consumes this contradictory snapshot rather than creating it.
+
+SNAPSHOT-COPY-WIRED-AREA disables interrupts on its own CPU only.  Its existing FIXME records that stopping the world is insufficient to suspend the other CPUs.  Ordinary threads stop, but the other CPU's idle loop reenables interrupts.  A PIT timeout can therefore remove a CV waiter and make it runnable while those wired pages are being copied.  The saved older CV and newer thread match that sequence.
+
+Required correction: quiesce interrupt handling on every other CPU for the wired-copy interval, using the existing CPU coordination mechanisms where possible.  Disabling a library timer or reducing QEMU's CPU count would leave the snapshot defect.  Review the rendezvous, lock ordering, and release path before implementing the exclusion.  Test a native timed CV waiter across a two-CPU snapshot, repeat restoration under timer activity, and complete the retained-browser and HTTPS checks.
+
+The final UI backend recompiled and loaded in the diagnostic guest.  The guest Clear All suite passed again, including early entry, concurrent clearing, termination counts, input/debugger waits, cleanup, later submissions, and Listener defaults.  It released the old snapshot's retained evaluations as part of the explicitly global test.  Evidence: ui-backend-reload.log and ui-reload-clear-all.log.
