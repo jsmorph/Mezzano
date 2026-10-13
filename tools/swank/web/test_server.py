@@ -6,6 +6,7 @@ import socket
 import threading
 import time
 import unittest
+from unittest import mock
 from http.server import ThreadingHTTPServer
 
 import server
@@ -89,6 +90,40 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.integer(True)
 
+
+    def test_optional_argument_types(self):
+        name = "a" * 64
+        job = [":job", name, 1]
+        cases = [
+            ("stops", {}, "include_closed"),
+            ("start-listener", {"name": name, "source": "(values)"}, "interactive"),
+            ("start-evaluation", {"name": name, "source": "(values)"}, "interactive"),
+            ("job-input", {"job": job, "offset": 0, "text": ""}, "eof"),
+            ("document-query", {"action": "search", "query": "Lisp"}, "adjacent"),
+        ]
+        for operation, arguments, field in cases:
+            with self.subTest(operation=operation, field=field):
+                self.assertIs(server.operation_arguments(operation, arguments, name)[-1], False)
+                for value in (False, True):
+                    self.assertIs(server.operation_arguments(operation,
+                        {**arguments, field: value}, name)[-1], value)
+                for value in (None, 0, 1, "false", []):
+                    with self.subTest(value=value), self.assertRaises(ValueError):
+                        server.operation_arguments(operation, {**arguments, field: value}, name)
+        for field in ("package", "input"):
+            arguments = {"name": name, "source": "(values)"}
+            for value in ("", "λ"):
+                values = server.operation_arguments("start-evaluation", {**arguments, field: value}, name)
+                self.assertEqual(values[values.index(server.Symbol(":" + field)) + 1], value)
+            for value in (None, 0, False, []):
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    server.operation_arguments("start-evaluation", {**arguments, field: value}, name)
+        for end in (0, 2):
+            self.assertEqual(server.operation_arguments("job-output",
+                {"job": job, "start": 0, "end": end}, name)[-1], end)
+        for end in (None, True, -1, 0.5, "0"):
+            with self.subTest(end=end), self.assertRaises(ValueError):
+                server.operation_arguments("job-output", {"job": job, "start": 0, "end": end}, name)
 
     def test_monitor_offsets(self):
         name = "a" * 64
@@ -191,6 +226,68 @@ class HTTPTests(unittest.TestCase):
             return reply.status, body
         finally:
             conn.close()
+
+    def raw_post(self, headers, body=b"", end_input=False):
+        conn = http.client.HTTPConnection("127.0.0.1", self.http.server_port, timeout=3)
+        try:
+            conn.putrequest("POST", "/api")
+            conn.putheader("Content-Type", "application/json")
+            conn.putheader("X-Mezzano-Request", "1")
+            for key, value in headers:
+                conn.putheader(key, value)
+            conn.endheaders(body)
+            if end_input:
+                conn.sock.shutdown(socket.SHUT_WR)
+            reply = conn.getresponse()
+            return reply.status, json.loads(reply.read())
+        finally:
+            conn.close()
+
+    def test_content_length_boundaries(self):
+        with mock.patch.object(self.http.application, "dispatch") as dispatch:
+            cases = [[], [("Content-Length", "2"), ("Content-Length", "2")],
+                     [("Content-Length", "2, 2")], [("Content-Length", "-1")],
+                     [("Content-Length", "+2")], [("Content-Length", "2.0")]]
+            for headers in cases:
+                with self.subTest(headers=headers):
+                    status, reply = self.raw_post(headers, b"{}")
+                    self.assertEqual(status, 400)
+                    self.assertEqual(reply["error"], "Expected one Content-Length.")
+                    self.assertIs(reply["uncertain"], False)
+            status, reply = self.raw_post([("Content-Length", "3")], b"{}", end_input=True)
+            self.assertEqual(status, 400)
+            self.assertEqual(reply["error"], "Incomplete HTTP request body.")
+            self.assertIs(reply["uncertain"], False)
+            status, reply = self.raw_post([("Content-Length", str(server.LIMIT + 1))])
+            self.assertEqual(status, 413)
+            self.assertEqual(reply["error"], "Request exceeds one MiB.")
+            dispatch.assert_not_called()
+
+            name = "a" * 64
+            data = {"session": name, "operation": "start-evaluation",
+                    "arguments": {"name": name, "source": '"λ"'}}
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            body += b" " * (server.LIMIT - len(body))
+            self.assertEqual(len(body), 1024 * 1024)
+            dispatch.return_value = {"value": "accepted", "diagnostics": []}
+            status, reply = self.raw_post([("Content-Length", str(len(body)))], body)
+            self.assertEqual(status, 200)
+            self.assertEqual(reply, dispatch.return_value)
+            dispatch.assert_called_once()
+            prepared = dispatch.call_args.args[0]
+            self.assertEqual(prepared[:2], (name, "start-evaluation"))
+            self.assertEqual(prepared[2][:2], [name, '"λ"'])
+
+    def test_transfer_encoding_rejected(self):
+        with mock.patch.object(self.http.application, "dispatch") as dispatch:
+            for headers in [[("Transfer-Encoding", "chunked")],
+                            [("Transfer-Encoding", "chunked"), ("Content-Length", "5")],
+                            [("Transfer-Encoding", "gzip")]]:
+                with self.subTest(headers=headers):
+                    status, reply = self.raw_post(headers, b"0\r\n\r\n")
+                    self.assertEqual(status, 400)
+                    self.assertEqual(reply["error"], "Transfer-Encoding is unsupported.")
+            dispatch.assert_not_called()
 
     def test_herald_font_routes(self):
         for name in ("hl8", "5x5"):
