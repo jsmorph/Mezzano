@@ -34,8 +34,8 @@
           <div id="peek-help">
             <h2>Peek</h2>
             <p>P selects Processes. F12 selects Help. Q returns to the previous activity.</p>
-            <p>SPACE refreshes the process sample. A number followed by Z sets the update interval
-              in seconds. The initial interval is 20 seconds. Only the visible Processes display updates.</p>
+            <p>SPACE refreshes the process sample. A number from 1 to 86400 followed by Z sets
+              the update interval in seconds. The initial interval is 20 seconds. Only the visible Processes display updates.</p>
             <p>Process names open a menu. Describe displays sampled fields. Debugger selects an
               existing retained stop for that thread.</p>
             <p>Rows contain scheduler state, priority, a bounded wait description, and recorded runtime.
@@ -135,27 +135,38 @@
           <h2>Mezzano Listener and Debugger</h2>
           <p>F9 starts SELECT. L selects the Listener, D selects Document Examiner, and P selects Peek.
             F9 then F12 lists these activities. Backspace cancels SELECT without changing input.</p>
-          <p>Return executes input through the guest Command Processor. Alphabetic input or an
+          <p>Return or Shift-F11 executes input through the guest Command Processor. Alphabetic input or an
             initial colon introduces a command. A bound variable name is accepted when it does
             not name a command. Other input is Lisp. A leading comma forces Lisp.
-            Shift-Return inserts a newline. One Listener job runs at a time in this session.</p>
-          <p>SPACE completes a command word. Tab or COMPLETE completes a token. F12 or Ctrl-?
-            requests contextual help. The guest supplies argument prompts and defaults.
+            Shift-Return inserts a newline. Ordinary Listener submissions run one at a time in this session.</p>
+          <p>SPACE completes a command word. Tab or F11 completes a name. F12 or Ctrl-?
+            requests contextual help. Another SPACE accepts a displayed argument default. The guest supplies argument prompts and defaults.
             Argument prompts and contextual help appear above the input.</p>
-          <p>Ctrl-Meta-Y recalls the latest accepted input. Meta-Y recalls earlier input.
+          <p>Ctrl-Alt-Y recalls the latest accepted Listener input. Alt-Y recalls earlier input.
             Escape or Input History displays accepted input. Recall fills the editor.
             Return executes recalled input as a new request. F10 clears input.</p>
           <p>Pathnames in command output are mouse-sensitive. Mouse-Left inserts a pathname
             into the expected pathname argument. Return executes the completed command.</p>
           <p>Mouse-Right opens the System Menu. The bottom activity label also opens it.</p>
           <p>Evaluations retains output and values in the machine. An interactive evaluation
-            waits for supplied input or EOF. Release removes a completed evaluation's storage.</p>
+            waits for supplied input or EOF. Release removes a completed evaluation's storage.
+            Clear All terminates retained evaluations across Listeners, releases their data and closed
+            debugger records, and clears this tab's evaluation histories. Its own result remains in
+            Evaluations for request recovery. Document viewers and bookmarks remain stored.
+            Clear Output History clears the displayed transcript while preserving input history
+            and retained evaluations.</p>
           <p>Debugger lists retained stops. Select a stop, inspect its condition, frames, and
-            locals, or invoke an available zero-argument restart. A printer can enter a child stop.
-            Typed commands include :Show Backtrace, :Show Proceed Options, :Set Current Frame N,
-            :Show Frame, and :Show Local All. Original caller arguments remain unavailable.</p>
+            locals, or invoke an available zero-argument restart. Interrupt requests a stop in a running
+            evaluation. A printer can enter a child stop. Parent Stop and Child Stop navigate
+            those stops. Typed commands include :Show Backtrace, :Show Proceed Options,
+            :Set Current Frame N, :Show Frame, :Show Local N, and :Show Local All.
+            Queried results remain available after a stop closes, until Release Stop.
+            Original caller arguments remain unavailable.</p>
           <p>Requests keeps submissions whose replies were lost. Repeating a recorded request
-            uses its original name, range, or ID. An expired session requires a new session.</p>
+            uses its original name, range, or ID. After an explicit expired-session response, the
+            browser creates a new session, archives prior requests, and refreshes the current activity.
+            Archived requests retain their original identity and cannot replay in the new session.
+            Connect / Resume preserves the session after a transport failure.</p>
           <p>The clock shows browser time. Printed values are text. Binding writes,
             frame evaluation, object browsing, and stepping are unavailable in this interface.</p>
           <p>Document Examiner contains the installation, Command Processor, debugger,

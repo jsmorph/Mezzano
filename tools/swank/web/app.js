@@ -95,6 +95,14 @@ function run(action) {
       await action();
     } catch (error) {
       report(error);
+      if (error.reason === ":expired-session") {
+        try {
+          await newSession();
+          message("Session expired. Connected with a new session. Recorded requests remain in Request History and were not replayed.");
+        } catch (recoveryError) {
+          report(recoveryError);
+        }
+      }
     } finally {
       busy = false;
       updateStatus();
@@ -148,12 +156,43 @@ async function connect() {
   message("Session " + state.session.slice(0, 12) + ".  Mouse-Right: System Menu.");
   await refresh();
 }
+async function newSession() {
+  if (connected) throw new Error("Release the current session before replacing it.");
+  if (state.session) {
+    state.history.push({session: state.session, pending: state.pending, commands: state.commands});
+  }
+  state.pending = [];
+  state.session = null;
+  state.attempted = false;
+  state.commands = [];
+  selectedStop = null;
+  selectedFrame = null;
+  commandResults.clear();
+  views.clear();
+  $("transcript").replaceChildren();
+  for (const job of Object.values(state.jobs)) job.token = null;
+  save();
+  $("system-menu").close();
+  await connect();
+  showActivity(activity);
+}
+function removeJob(token) {
+  for (const [name, job] of Object.entries(state.jobs)) {
+    if (same(job.token, token)) {
+      delete state.jobs[name];
+      views.get(name)?.element.remove();
+      views.delete(name);
+    }
+  }
+}
 function applyMutation(record, result) {
   const args = record.arguments;
   if (["start-evaluation", "start-listener", "save-private-document"].includes(record.operation)) {
     state.jobs[args.name] = {...state.jobs[args.name], name: args.name, source: args.source ?? record.source,
-      token: result, listener: record.operation === "start-listener", clearBefore: record.clearBefore};
+      token: result, listener: record.operation === "start-listener", clearBefore: record.clearBefore,
+      clearState: record.clearState};
     if (record.operation === "start-listener"
+        && !state.jobs[args.name].receipt
         && !state.inputHistory.some(item => item.name === args.name)) {
       state.inputHistory.push({name: args.name, source: args.source,
         sequence: record.inputSequence ?? state.nextInputSequence++});
@@ -166,13 +205,7 @@ function applyMutation(record, result) {
       state.commands.push(command);
     }
   } else if (record.operation === "release-job") {
-    for (const [name, job] of Object.entries(state.jobs)) {
-      if (same(job.token, args.job)) {
-        delete state.jobs[name];
-        views.get(name)?.element.remove();
-        views.delete(name);
-      }
-    }
+    removeJob(args.job);
   } else if (record.operation === "release-stop") {
     state.commands = state.commands.filter(command => !same(command.stop, args.stop));
     if (same(selectedStop, args.stop)) selectedStop = null;
@@ -228,8 +261,8 @@ async function reconcileRelease(record) {
     }
     if ([":expired-session", ":expired-job", ":expired-stop"].includes(error.reason)) {
       record.status = "reference expired; original release outcome unknown";
-      if (error.reason === ":expired-session") connected = false;
       archive(record);
+      if (error.reason === ":expired-session") throw error;
       return;
     }
     throw error;
@@ -271,7 +304,10 @@ async function evaluate(source, interactive) {
   if (!source.trim()) return;
   state.interactive = interactive;
   const clearBefore = Object.values(state.jobs).filter(job => !job.hidden).map(job => job.name);
-  await mutate("start-listener", {name: freshName(), source, interactive}, {clearBefore});
+  const clearState = {pending: state.pending.map(record => record.id),
+    commands: state.commands.map(commandKey), history: state.history.length,
+    inputSequence: state.nextInputSequence};
+  await mutate("start-listener", {name: freshName(), source, interactive}, {clearBefore, clearState});
   if ($("source").value === source) setEditor($("source"), "", 0);
   historyIndex = null;
   showActivity("listener");
@@ -448,17 +484,23 @@ function renderHerald(payload) {
   return herald;
 }
 
-function renderOutput(view, presentations) {
-  const signature = JSON.stringify([view.text, presentations]);
+function renderOutput(view, presentations, totalLength = Array.from(view.text).length) {
+  const signature = JSON.stringify([view.text, presentations, totalLength]);
   if (signature === view.outputSignature) return;
   const chars = Array.from(view.text);
   const pieces = [];
   let offset = 0;
+  let previousEnd = 0;
   for (const presentation of presentations || []) {
     if (!Number.isInteger(presentation.start) || !Number.isInteger(presentation.end)
-        || presentation.start < offset || presentation.end < presentation.start || presentation.end > chars.length) {
+        || presentation.start < previousEnd || presentation.end < presentation.start || presentation.end > totalLength) {
       throw new Error("Invalid Listener presentation range.");
     }
+    previousEnd = presentation.end;
+    if (![":pathname", ":herald"].includes(presentation.type)) {
+      throw new Error("Unknown Listener presentation type: " + presentation.type);
+    }
+    if (presentation.end > chars.length) continue;
     pieces.push(document.createTextNode(chars.slice(offset, presentation.start).join("")));
     if (presentation.type === ":pathname") {
       if (typeof presentation.value !== "string") throw new Error("Invalid pathname presentation.");
@@ -481,7 +523,8 @@ function renderOutput(view, presentations) {
 function applyListenerEffects(job, info) {
   const result = info["listener-result"];
   if (![":returned", ":aborted", ":unwound"].includes(info.state)
-      || !job.listener || job.effectsApplied || !result) return;
+      || job.effectsApplied || !result) return;
+  if (!job.listener && !result.effects?.some(effect => effect.operation === ":clear-all")) return;
   for (const effect of result.effects || []) {
     if (effect.operation === ":clear-output-history") {
       if (state.initialHerald?.session === state.session) state.initialHerald.hidden = true;
@@ -489,6 +532,41 @@ function applyListenerEffects(job, info) {
         if (state.jobs[name]) state.jobs[name].hidden = true;
         if (views.has(name)) views.get(name).element.hidden = true;
       }
+    } else if (effect.operation === ":clear-all") {
+      const targets = new Set(effect.jobs || []);
+      const stopped = stops.filter(stop => (effect.stops || []).includes(stop.info.id));
+      const commandKeys = new Set(job.clearState?.commands || []);
+      for (const command of state.commands) {
+        if (stopped.some(stop => same(stop.token, command.stop))) commandKeys.add(commandKey(command));
+      }
+      for (const name of targets) {
+        delete state.jobs[name];
+        views.get(name)?.element.remove();
+        views.delete(name);
+      }
+      const pending = new Set(job.clearState?.pending || []);
+      state.pending = state.pending.filter(record => !pending.has(record.id));
+      state.commands = state.commands.filter(command => !commandKeys.has(commandKey(command)));
+      for (const key of commandKeys) commandResults.delete(key);
+      if (stopped.some(stop => same(stop.token, selectedStop))) {
+        selectedStop = null;
+        selectedFrame = null;
+      }
+      if (job.clearState) {
+        state.history = state.history.slice(job.clearState.history).map(record => ({...record,
+          pending: record.pending.filter(item => !pending.has(item.id)),
+          commands: record.commands.filter(item => !commandKeys.has(commandKey(item)))}))
+          .filter(record => record.pending.length || record.commands.length);
+      }
+      if (job.listener || job.clearState) {
+        state.inputHistory = state.inputHistory.filter(item => item.name !== job.name
+          && !targets.has(item.name)
+          && (!job.clearState || item.sequence >= job.clearState.inputSequence));
+        historyIndex = null;
+        if (state.initialHerald) state.initialHerald.hidden = true;
+      }
+      job.hidden = true;
+      job.receipt = true;
     } else throw new Error("Unknown Listener display effect: " + effect.operation);
   }
   job.effectsApplied = true;
@@ -532,27 +610,32 @@ function createView(job) {
   views.set(job.name, view);
   return view;
 }
-async function updateJob(job, info) {
+function updateJob(job, info, output) {
+  const pending = state.pending.find(record => record.operation === "start-listener"
+    && record.arguments.name === job.name);
+  if (pending) {
+    job.source = pending.arguments.source;
+    job.clearBefore = pending.clearBefore;
+    job.clearState = pending.clearState;
+  }
   const view = views.get(job.name) || createView(job);
   view.info = info;
   view.source.textContent = job.source ? "Command: " + job.source : "Retained evaluation " + job.name.slice(0, 12);
   view.source.title = job.name;
-  if (info["output-length"] < view.end) {
-    view.end = 0;
-    view.text = "";
+  if (output.start !== view.end || output.end < output.start || output.end > info["output-length"]
+      || Array.from(output.text).length !== output.end - output.start) {
+    throw new Error("Invalid retained output range.");
   }
-  if (info["output-length"] > view.end) {
-    const output = await api("job-output", {job: job.token, start: view.end});
-    view.text += output.text;
-    view.end = output.end;
-  }
-  applyListenerEffects(job, info);
+  view.text += output.text;
+  view.end = output.end;
   view.element.hidden = Boolean(job.hidden);
-  renderOutput(view, info["listener-result"]?.presentations);
+  renderOutput(view, info["listener-result"]?.presentations, info["output-length"]);
   view.values.textContent = info.state === ":returned" && info["listener-result"]?.kind !== ":command"
     ? ((info.values || []).length ? info.values.join("\n") : "(No values)") : "";
   view.status.textContent = label(info.state) + (info["input-waiting-p"] ? " — awaiting input" : "")
-    + (info["current-boot-p"] ? "" : " — accepted before this boot");
+    + (info["current-boot-p"] ? "" : " — accepted before this boot")
+    + (view.end < info["output-length"] ? " — receiving output (" + view.end + " of "
+      + info["output-length"] + " characters)" : "");
   view.inputForm.hidden = info.state !== ":running" || info["input-mode"] !== ":interactive" || info["input-eof-p"];
   view.operations.replaceChildren();
   for (const stop of info.stops || []) {
@@ -577,7 +660,9 @@ async function updateJob(job, info) {
 }
 async function refresh() {
   if (!connected) return;
-  const listenerInfo = await api("listener-information");
+  const offsets = [...views.entries()].map(([name, view]) => ({name, start: view.end}));
+  const sample = await api("monitor-state", {offsets});
+  const listenerInfo = sample.listener;
   if (state.initialHerald?.session !== state.session) state.initialHerald = {session: state.session, hidden: false};
   if ($("herald").dataset.session !== state.session && listenerInfo.herald) {
     $("herald").replaceChildren(renderHerald(listenerInfo.herald));
@@ -586,28 +671,24 @@ async function refresh() {
   state.package = listenerInfo.package;
   $("listener-prompt").textContent = listenerInfo.prompt;
   $("package").textContent = listenerInfo.package;
-  const tokens = await api("jobs") || [];
   const names = new Set();
-  for (const token of tokens) {
-    const info = await api("job-information", {job: token});
+  for (const record of sample.jobs || []) {
+    const info = record.information;
     names.add(info.name);
     const job = state.jobs[info.name] || {name: info.name, source: ""};
-    job.token = token;
+    job.token = record.token;
     state.jobs[info.name] = job;
-    await updateJob(job, info);
+    updateJob(job, info, record.output);
   }
   for (const [name, job] of Object.entries(state.jobs)) {
-    if (job.token && !names.has(name)) {
-      delete state.jobs[name];
-      views.get(name)?.element.remove();
-      views.delete(name);
-    }
+    if (!names.has(name)) removeJob(job.token);
   }
-  const stopTokens = await api("stops", {include_closed: true}) || [];
-  stops = [];
-  for (const token of stopTokens) {
-    stops.push({token, info: await api("information", {stop: token})});
+  stops = (sample.stops || []).map(record => ({token: record.token, info: record.information}));
+  for (const record of sample.jobs || []) {
+    const job = state.jobs[record.information.name];
+    if (job) applyListenerEffects(job, record.information);
   }
+  for (const [name, view] of views) view.element.hidden = Boolean(state.jobs[name]?.hidden);
   state.commands = state.commands.filter(command => stops.some(stop => same(stop.token, command.stop)));
   if (selectedStop && !stops.some(stop => same(stop.token, selectedStop))) {
     selectedStop = null;
@@ -635,7 +716,7 @@ function renderJobs() {
   for (const job of Object.values(state.jobs)) {
     const view = views.get(job.name);
     const row = node("div", undefined, "job-row");
-    row.append(button(job.name.slice(0, 12) + "  " + label(view?.info?.state), () => {
+    row.append(button((job.receipt ? "Command result " : "") + job.name.slice(0, 12) + "  " + label(view?.info?.state), () => {
       job.hidden = false;
       if (view) view.element.hidden = false;
       save();
@@ -935,24 +1016,7 @@ $("set-package").onclick = () => {
 };
 $("refresh").onclick = () => { $("system-menu").close(); run(refresh); };
 $("resume-session").onclick = () => { $("system-menu").close(); run(connect); };
-$("new-session").onclick = () => run(async () => {
-  if (connected) throw new Error("Release the current session before replacing it.");
-  if (state.session) {
-    state.history.push({session: state.session, pending: state.pending, commands: state.commands});
-  }
-  state.pending = [];
-  state.session = null;
-  state.attempted = false;
-  state.commands = [];
-  selectedStop = null;
-  commandResults.clear();
-  views.clear();
-  $("transcript").replaceChildren();
-  for (const job of Object.values(state.jobs)) job.token = null;
-  save();
-  $("system-menu").close();
-  await connect();
-});
+$("new-session").onclick = () => run(newSession);
 $("release-session").onclick = () => run(async () => {
   if (state.pending.length) throw new Error("Resolve the recorded requests before releasing the session.");
   await mutate("release-session", {});

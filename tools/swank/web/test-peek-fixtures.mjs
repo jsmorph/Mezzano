@@ -24,6 +24,7 @@ try {
       switch(request.operation){
         case 'open-session':case 'resume-session':case 'release-session':value={};break;
         case 'jobs':case 'stops':value=[];break;
+        case 'monitor-state': value={listener:{package:'COMMON-LISP-USER',mode:':command-preferred',prompt:'Command: ','busy-p':false,'default-pathname':'SYS:HOME;'},jobs:[],stops:[]};break;
         case 'listener-information':value={package:'COMMON-LISP-USER',mode:':command-preferred',prompt:'Command: ','busy-p':false,'default-pathname':'SYS:HOME;'};break;
         case 'processes':{
           const f=window.peekFixture;f.count++;f.active++;f.maximum=Math.max(f.maximum,f.active);

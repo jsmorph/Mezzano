@@ -44,6 +44,17 @@ Each driver starts a separate headless browser profile and removes that profile 
 
 Lost-reply tests discard a completed HTTP response after server dispatch.  They exercise saved-request recovery rather than every possible transport failure point.  Print tests intercept print dispatch.  They do not verify physical printer output.  Browser screenshots require separate comparison before supporting a visual-fidelity claim.
 
+## Expired sessions
+
+The session-recovery driver releases its own guest session to test expiration during startup, evaluation submission, command completion, documentation lookup, and process sampling.  It checks request and debugger-command archives, input and viewer history, renewed tokens, and a Lisp counter that detects repeated evaluation.  It also checks that recovery from a transport failure resumes the same session and that other rejected requests preserve the session.
+
+```sh
+node tools/swank/web/test-session-recovery.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-session-recovery-test
+```
+
+The test creates and removes its own Lisp counter, retained evaluations, debugger stop, and sessions.  It saves failed-run identities for cleanup.  Expiration uses the live guest's release operation.  Constructed failures cover a lost successful reply, a transport failure, and another typed rejection.
+
 ## Peek and activity navigation
 
 The Peek driver tests SELECT navigation, input preservation, product-guide links, live process fields, 980-pixel column bounds with a 160-character name, Describe, retained-stop selection, Show Processes, and continuation/cleanup of its own condition fixture.  It creates one named worker and two retained evaluations, then releases their objects and its session.  The `--navigation-only` option exercises activity selection and product documentation without creating guest jobs.
@@ -78,3 +89,40 @@ node tools/swank/web/test-herald.mjs \
 ```
 
 The test records command identities before replay and preserves failed-run state for cleanup.  The isolated HTTP suite also verifies both herald font routes.  Recovered-glyph and historical-position comparisons remain separate from command and recovery tests.
+
+## Clearing retained state
+
+The Clear All tests delete retained evaluations across every Listener.  Run them only on a guest whose retained evaluation state may be discarded.
+
+Compile and load the guest test, then invoke it from a retained evaluation:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-CLEAR-ALL.LISP"))
+(lispm-clear-all-test:run :allow-global-clear t)
+```
+
+The test checks returned jobs, running evaluations, interactive input waits, debugger stops, unwind cleanup, and preservation of a submission created after target capture.  Its invoking evaluation survives.
+
+The browser driver tests same-Listener input waiting, guest release, this-tab histories, retained command receipts, document-viewer preservation, reload, and replay after a lost reply:
+
+```sh
+node tools/swank/web/test-clear-all.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-clear-all-test --allow-global-clear
+node tools/swank/web/test-clear-all-fixtures.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-clear-all-fixtures
+```
+
+The second driver supplies every API reply locally and makes no guest requests.  It checks captured history boundaries, foreign command receipts, lost-reply reconciliation, and preservation of later records.  The live driver releases its surviving receipts, later evaluation, and session.
+
+## Bounded output
+
+The live driver creates a 524,800-character Unicode output job and a short output job.  It checks progress for both jobs, the aggregate response limit, contiguous offsets, exact final text, and command completion and documentation lookup while unread output remains.  It releases its two jobs and session.
+
+```sh
+node tools/swank/web/test-large-output.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-large-output-test
+node tools/swank/web/test-output-fixtures.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-output-fixtures
+```
+
+The second driver supplies API replies locally and makes no guest requests.  It splits Unicode output across pathname and herald presentation boundaries, checks transfer status and exact accumulation, and rejects invalid ranges and unknown presentation types.

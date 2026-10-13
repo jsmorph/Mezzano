@@ -47,9 +47,11 @@ Command: Help :Format Detailed
 
 SPACE completes a command word, Tab completes a name, and F12 requests contextual help.  Another SPACE accepts a displayed argument default.  Pathnames in command output are mouse-sensitive: clicking one inserts it into the expected pathname argument.  The [Command Processor guide](../../../doc/command-processor.md) describes commands, arguments, pathname rules, and input history.
 
-Mouse-Right or the lower activity label opens the System Menu.  The menu selects an activity, package, interactive-input mode, or connection operation.  The Listener displays program output and each returned value.  A form returning zero values displays `(No values)`.  One Listener job runs at a time in a session.
+Mouse-Right or the lower activity label opens the System Menu.  The menu selects an activity, package, interactive-input mode, or connection operation.  The Listener displays program output and each returned value.  A form returning zero values displays `(No values)`.  Ordinary Listener submissions run one at a time in a session.
 
-Interactive evaluations accept text and EOF through their input controls.  Interrupt requests a debugger stop.  Evaluations lists retained jobs and their states.  Release removes a completed job's stored output and results.  Clear Output History clears the displayed transcript and initial herald while preserving input history and retained jobs.  The cleared state persists across tab reloads.
+Large output arrives across successive refreshes.  The job status displays `receiving output` with received and total character counts until the browser has received the captured output.  Evaluation completion and output transfer are separate states.  Pathname and herald presentations become active when their complete text range has arrived.
+
+Interactive evaluations accept text and EOF through their input controls.  Interrupt requests a debugger stop.  Evaluations lists retained jobs and their states.  Release removes a completed job's stored output and results.  Clear All terminates retained evaluations across Listeners, releases their stored data and closed debugger records, and clears this tab's evaluation histories.  Its result remains available as Command result in Evaluations for request recovery.  Clear Output History clears the displayed transcript and initial herald while preserving input history and retained jobs.  The cleared state persists across tab reloads.
 
 ## Debugger
 
@@ -94,7 +96,7 @@ Request History distinguishes rejected requests from requests whose replies were
 
 For an uncertain release, Check Release Outcome queries the original object.  A released-object response establishes its current state.  An expired reference leaves the original release outcome unknown.  A successful query records that the object was still retained.  Keep in History preserves that observation and permits a separate release request.
 
-An expired session requires New Session.  This archives unresolved records under their original session and discovers retained jobs and stops through new tokens.  Archived requests cannot replay under the replacement session.  Release Session requires unresolved requests to be resolved or archived.
+When the guest reports an expired session, the browser creates a new session, archives request and debugger-command records under their original session, and discovers retained jobs and stops through new tokens.  Input history and Document Examiner viewers remain stored.  The current activity refreshes after connection.  Recovery preserves prior requests in Request History and requires a new submission to evaluate an expression again.  Transport failures retain the existing session identity for Connect / Resume.  New Session also permits explicit replacement while disconnected.  Release Session requires unresolved requests to be resolved or archived.
 
 ## HTTP API
 
@@ -105,6 +107,7 @@ An expired session requires New Session.  This archives unresolved records under
 | open-session, resume-session, jobs, release-session | None. |
 | stops | Optional include_closed. |
 | listener-information, processes | None. |
+| monitor-state | Optional offsets: objects with name and start fields. |
 | start-listener | name, source.  Optional interactive. |
 | listener-assistance | source, cursor, action.  Optional context, presentation. |
 | start-evaluation | name, source.  Optional package, input, interactive. |
@@ -119,6 +122,8 @@ An expired session requires New Session.  This archives unresolved records under
 | document-assistance | source, cursor, action. |
 | save-private-document | name, pathname, topics. |
 | read-private-document | pathname. |
+
+Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
 
 Submit accepts condition, restarts, frames, locals, and invoke-restart.  Locals requires a frame token.  Invoke-restart requires a restart index.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
 
