@@ -18,6 +18,8 @@
      :help "Display the Listener mode, prompt, package, and pathname default.")
     (:name "Show Processes" :id :show-processes
      :help "Display Mezzano thread states, priorities, wait reasons, recorded run time, and retained debugger stops.")
+    (:name "Clear All" :id :clear-all
+     :help "Terminate retained evaluations and delete their output, debugger records, and Listener histories.")
     (:name "Clear Output History" :id :clear-output-history
      :help "Clear the displayed transcript. Retain input history and guest jobs.")
     (:name "Show Directory" :id :show-directory :type :directory
@@ -279,7 +281,14 @@
             :herald herald))))
 
 (defun start-listener (listener name source &key interactive)
-  (mezzano.debug:start-evaluation-job name source :interactive interactive :listener listener))
+  (let ((clear-all-p
+          (and (not (form-input-p source listener :listener))
+               (handler-case
+                   (eq (getf (parse-command source listener :listener) :id) :clear-all)
+                 (input-error () nil)))))
+    (mezzano.debug:start-evaluation-job
+     name source :interactive interactive :listener listener
+     :allow-concurrent-listener clear-all-p)))
 
 (defun execute-input (listener job source)
   (let* ((*package* (listener-package listener))
@@ -343,6 +352,19 @@
                "Command: " (package-name *package*) (namestring (listener-pathname listener))))
       (:show-processes
        (mezzano.debug::print-process-summary (mezzano.debug:process-summary)))
+      (:clear-all
+       (let ((result (mezzano.debug::clear-evaluation-history job)))
+         (format t "Released ~D evaluations and ~D debugger records.~%"
+                 (getf result :jobs) (getf result :stops))
+         (when (plusp (getf result :active-stops))
+           (format t "~D active debugger stops belong to other threads.~%"
+                   (getf result :active-stops)))
+         (mezzano.debug::with-service-lock
+           (setf (getf metadata :effects)
+                 (list (list :operation :clear-all
+                             :jobs (getf result :job-names)
+                             :stops (getf result :stop-ids)
+                             :result result))))))
       (:clear-output-history
        (mezzano.debug::with-service-lock
          (setf (getf metadata :effects) (list (list :operation :clear-output-history)))))

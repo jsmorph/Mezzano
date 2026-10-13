@@ -273,7 +273,8 @@
                  (evaluation-job-representations job) representations
                  (evaluation-job-state job) state)))))))
 
-(defun start-evaluation-job (name source &key (package "CL-USER") (input "") interactive listener)
+(defun start-evaluation-job (name source &key (package "CL-USER") (input "")
+                                            interactive listener allow-concurrent-listener)
   (unless (and (stringp name) (= (length name) 64)
                (every (lambda (character) (find character "0123456789abcdef")) name))
     (service-error :invalid-job-name))
@@ -297,7 +298,8 @@
           (return-from start-evaluation-job (evaluation-handle existing))))
       (when listener
         (let ((active (mezzano.command-processor::listener-job listener)))
-          (when (and active (eq (evaluation-job-state active) :running))
+          (when (and active (eq (evaluation-job-state active) :running)
+                     (not allow-concurrent-listener))
             (service-error :listener-busy)))
         (setf package (mezzano.command-processor::listener-package listener)))
       (let ((job (%make-evaluation-job
@@ -404,24 +406,70 @@
         (service-error :job-not-returned))
       (copy-list (evaluation-job-values job)))))
 
+(defun release-evaluation-record (job)
+  (when (eq (evaluation-job-state job) :running)
+    (service-error :job-active))
+  (clrhash (evaluation-job-interrupts job))
+  (when (evaluation-job-interactive-p job)
+    (setf (slot-value (evaluation-job-input-stream job) 'buffer) nil))
+  (setf (slot-value (evaluation-job-output-stream job) 'buffer) nil
+        (evaluation-job-source job) nil
+        (evaluation-job-listener job) nil
+        (evaluation-job-listener-result job) nil
+        (evaluation-job-package job) nil
+        (evaluation-job-input job) nil
+        (evaluation-job-input-stream job) nil
+        (evaluation-job-thread job) nil
+        (evaluation-job-output-stream job) nil
+        (evaluation-job-values job) nil
+        (evaluation-job-representations job) nil
+        (evaluation-job-state job) :released))
+
 (defun release-evaluation-job (handle)
   (with-service-lock
-    (let ((job (check-evaluation-handle handle)))
-      (when (eq (evaluation-job-state job) :running)
-        (service-error :job-active))
-      (clrhash (evaluation-job-interrupts job))
-      (when (evaluation-job-interactive-p job)
-        (setf (slot-value (evaluation-job-input-stream job) 'buffer) nil))
-      (setf (slot-value (evaluation-job-output-stream job) 'buffer) nil
-            (evaluation-job-source job) nil
-            (evaluation-job-listener job) nil
-            (evaluation-job-listener-result job) nil
-            (evaluation-job-package job) nil
-            (evaluation-job-input job) nil
-            (evaluation-job-input-stream job) nil
-            (evaluation-job-thread job) nil
-            (evaluation-job-output-stream job) nil
-            (evaluation-job-values job) nil
-            (evaluation-job-representations job) nil
-            (evaluation-job-state job) :released)))
+    (release-evaluation-record (check-evaluation-handle handle)))
   (values))
+
+(defun clear-evaluation-history (current-job)
+  (let ((jobs nil)
+        (threads nil)
+        (stops nil)
+        (terminated 0)
+        (released-jobs 0)
+        (released-stops 0)
+        (stop-ids nil)
+        (active-stops 0))
+    (with-service-lock
+      (maphash (lambda (name job)
+                 (declare (ignore name))
+                 (unless (or (eq job current-job)
+                             (eq (evaluation-job-state job) :released))
+                   (push job jobs)
+                   (when (eq (evaluation-job-state job) :running)
+                     (push (evaluation-job-thread job) threads))))
+               *evaluation-jobs*)
+      (setf stops (loop for stop being the hash-values of *service-stops*
+                        collect stop)))
+    (dolist (thread threads)
+      (mezzano.supervisor:terminate-thread thread)
+      (incf terminated))
+    (dolist (thread threads)
+      (mezzano.supervisor:thread-join thread))
+    (with-service-lock
+      (dolist (job jobs)
+        (unless (eq (evaluation-job-state job) :released)
+          (release-evaluation-record job)
+          (incf released-jobs)))
+      (dolist (stop (loop for stop being the hash-values of *service-stops*
+                         when (or (member stop stops)
+                                  (member (service-stop-thread stop) threads))
+                           collect stop))
+        (if (eq (service-stop-state stop) :closed)
+            (progn
+              (push (service-stop-id stop) stop-ids)
+              (release-service-stop stop)
+              (incf released-stops))
+            (incf active-stops))))
+    (list :jobs released-jobs :stops released-stops
+          :terminated terminated :active-stops active-stops
+          :job-names (mapcar #'evaluation-job-name jobs) :stop-ids stop-ids)))

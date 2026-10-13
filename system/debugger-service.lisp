@@ -188,16 +188,18 @@
       (setf (service-stop-owner stop)
             (%make-service-lease handle controller)))))
 
+(defun release-service-stop (stop)
+  (unless (eq (service-stop-state stop) :closed)
+    (service-error :stop-active))
+  (remhash (service-stop-id stop) *service-stops*)
+  (clrhash (service-stop-commands stop))
+  (setf (service-stop-owner stop) nil
+        (service-stop-thread stop) nil
+        (service-stop-parent stop) nil))
+
 (defun release-debugger-stop (lease)
   (with-service-lock
-    (let ((stop (check-service-lease lease)))
-      (unless (eq (service-stop-state stop) :closed)
-        (service-error :stop-active))
-      (remhash (service-stop-id stop) *service-stops*)
-      (clrhash (service-stop-commands stop))
-      (setf (service-stop-owner stop) nil
-            (service-stop-thread stop) nil
-            (service-stop-parent stop) nil)))
+    (release-service-stop (check-service-lease lease)))
   (values))
 
 (defun submit-debugger-command (lease id operation &optional argument)

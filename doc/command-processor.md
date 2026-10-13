@@ -21,6 +21,7 @@ Command: ,help
 | Show Herald | Displays the Listener herald: image version, architecture, memory totals, and keyboard help.  :Detailed Yes adds loaded ASDF systems and declared versions.  An omitted :Detailed means No.  Mentioning it without a value means Yes. |
 | Show Command Processor Status | Displays mode, prompt, package, and pathname default. |
 | Show Processes | Displays thread names, scheduler states, priorities, wait reasons, recorded run time, and retained debugger stop IDs. |
+| Clear All | Terminates retained evaluations across Listeners, releases their output and closed debugger records, and clears this tab's evaluation histories. |
 | Clear Output History | Clears the tab's prior displayed transcript while preserving input history and retained jobs. |
 | Show Directory | Lists guest files matching a pathname.  An omitted argument uses a wildcard in the default directory.  A directory pathname acquires wildcard name and type components. |
 | Show File | Displays a guest text file and records its pathname as the default. |
@@ -33,13 +34,21 @@ These commands implement the listed arguments and keywords.  Unsupported or dupl
 
 Show Processes uses `mezzano.debug:process-summary`, the same guest query as Peek's Processes view.  It reports live observations assembled from per-thread scheduler samples.  Run time counts recorded processor time in the displayed units.  An active scheduling interval enters that counter when the thread switches out.  Scheduler state and retained debugger stops are separate: a thread waiting at a retained stop usually has scheduler state Sleeping.  Idle threads are absent from the supervisor's live-thread list.
 
+### Clear All
+
+Clear All deletes retained evaluation data across all Listeners.  Running evaluations terminate through the supervisor's thread termination operation, which runs their unwind cleanup.  The command waits for those threads to exit before releasing their output, values, and closed debugger records.  It also clears this tab's transcript, input history, and prior request and debugger-command records.  Document Examiner viewers and bookmarks retain their documentation state.
+
+The command captures its target jobs when it starts.  Later submissions survive.  Clear All can run while the same Listener has an active evaluation.  Active debugger stops in threads outside the evaluation service remain under debugger control, and the result reports their count.
+
+The clearing command retains its own result for recovery after a lost reply.  The Web interface hides that result from the transcript and labels it Command result in Evaluations.  Repeating its original request recovers the same operation and preserves later work.
+
 ### Listener herald
 
 A new Web Listener opens with a detailed herald.  The title, facts, and help come from the guest.  The image version includes the revision recorded at build time.  Physical memory and backing store are totals in KiB.  The backing store holds persistent object memory and paging data.
 
 Show Herald appends the same display to the transcript.  :Detailed lists loaded ASDF systems in two columns.  A dash means the system declares no version.
 
-The opening herald remains above subsequent output until Clear Output History.  Reload obtains a fresh opening sample.  A retained Show Herald result preserves the data captured when the command ran, including after reload or request replay.  Text clients receive the same facts and help as plain text, with one system per line.
+The opening herald remains above subsequent output until Clear Output History or Clear All.  Reload obtains a fresh opening sample.  A retained Show Herald result preserves the data captured when the command ran, including after reload or request replay.  Text clients receive the same facts and help as plain text, with one system per line.
 
 ### Completion, help, and history
 
@@ -70,7 +79,7 @@ Show Backtrace lists call frames.  Raw stack-slot inspection is unavailable thro
 
 The package MEZZANO.COMMAND-PROCESSOR exports MAKE-LISTENER, LISTENER-INFORMATION, START-LISTENER, and ASSISTANCE.  Command definitions, parsing, argument validation, completion, execution, and presentation metadata live in [the guest implementation](../system/command-processor.lisp).
 
-START-LISTENER uses the existing retained evaluation service.  Each Listener accepts one active submission.  A second new submission reports :listener-busy.  Other Listeners and ordinary evaluation jobs remain independent.  Accepted work survives disconnection and session release.  Repeating a creation name, source, and interactive setting in the same Listener returns the existing job, including after that job changed the package.  Conflicting content or another Listener reports :request-conflict.  Release and image-restore rules follow the [retained service](../tools/swank/README.md).
+START-LISTENER uses the existing retained evaluation service.  Each Listener accepts one active ordinary submission.  A second ordinary submission reports :listener-busy.  Clear All accepts a control submission that terminates the earlier evaluation.  Other Listeners and ordinary evaluation jobs remain independent.  Accepted work survives disconnection and session release.  Repeating a creation name, source, and interactive setting in the same Listener returns the existing job, including after that job changed the package.  Conflicting content or another Listener reports :request-conflict.  Release and image-restore rules follow the [retained service](../tools/swank/README.md).
 
 Listener state survives connection closure.  Session release or a new boot retires that session's Listener identity.  Retained jobs and stops remain discoverable through a new session.  Their prior Listener's package and defaults are not adopted by the new session.
 
