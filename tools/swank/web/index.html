@@ -23,6 +23,7 @@
         <section id="listener" class="activity">
           <div id="herald" hidden></div>
           <div id="transcript" aria-label="Evaluation history"></div>
+          <div id="listener-debugger" hidden></div>
           <div id="listener-assistance" class="assistance" aria-live="polite"></div>
           <div id="listener-state" role="status" hidden></div>
           <form id="evaluate">
@@ -123,7 +124,7 @@
           <div id="stop-detail"></div>
           <div id="debugger-assistance" class="assistance" aria-live="polite"></div>
           <form id="debug-command" hidden>
-            <label for="debugger-command">→</label>
+            <label id="debugger-prompt" for="debugger-command">→</label>
             <input id="debugger-command" aria-label="Debugger command" autocomplete="off"
               spellcheck="false" data-help="Debugger commands start with a colon. Tab: Complete. F12: Help.">
           </form>
@@ -156,10 +157,13 @@
             Evaluations for request recovery. Document viewers and bookmarks remain stored.
             Clear Output History clears the displayed transcript while preserving input history
             and retained evaluations.</p>
-          <p>Debugger lists retained stops. Select a stop, inspect its condition, frames, and
-            locals, or invoke an available zero-argument restart. Interrupt requests a stop in a running
-            evaluation. A printer can enter a child stop. Parent Stop and Child Stop navigate
-            those stops. Typed commands include :Show Backtrace, :Show Proceed Options,
+          <p>A stopped Listener directs input to its innermost debugger. Each level preserves its
+            draft and cursor. :Abort leaves that level, and :Help displays guest command help.
+            Debugger lists retained stops. Select a stop, inspect its condition, frames, and
+            locals, or invoke a restart interactively. Restart argument readers use the evaluation's
+            input controls. Interrupt requests a stop in a running evaluation. A printer can enter
+            a child stop. Parent Stop and Child Stop navigate those stops.
+            Typed commands include :Show Backtrace, :Show Proceed Options,
             :Set Current Frame N, :Show Frame, :Show Local N, and :Show Local All.
             Queried results remain available after a stop closes, until Release Stop.
             Original caller arguments remain unavailable.</p>

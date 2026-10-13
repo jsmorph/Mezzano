@@ -26,10 +26,11 @@ async function clickText(container, value) {
   await browser.evaluate("document.querySelector('[data-browser-test=target]')?.removeAttribute('data-browser-test')");
 }
 
-async function enter(selector, input) {
+async function enter(selector, input, append = false) {
   await browser.waitFor('connected && !busy');
   await browser.click(selector);
   await browser.waitFor(`document.activeElement === document.querySelector(${text(selector)})`);
+  if (!append) await key('a', 'KeyA', 65, 2);
   await browser.send('Input.insertText', { text: input });
   await key('Enter', 'Enter', 13);
 }
@@ -441,7 +442,7 @@ try {
   await key('Enter', 'Enter', 13, 8);
   assert.equal(await browser.evaluate('document.querySelector("#source").value'), valuesPrefix + '\n');
   assert.equal(await browser.evaluate('state.inputHistory.length'), inputCount);
-  await enter('#source', '(values (+ 20 22) :done)');
+  await enter('#source', '(values (+ 20 22) :done)', true);
   let job = await selectJob('VALUES');
   await waitText(job, '42\n:DONE');
   await waitText(job, 'returned');
@@ -571,22 +572,15 @@ try {
   await listener();
   await waitText('#listener-state', 'stopped in the debugger');
   const jobCount = await browser.evaluate('Object.keys(state.jobs).length');
-  await enter('#source', '(+ 20 22)');
-  await waitText('#message', 'Your input is preserved.');
-  assert.equal(await browser.evaluate("document.querySelector('#source').value"), '(+ 20 22)');
+  await enter('#source', ':Help');
+  await waitText('#listener-debugger .debugger-help', 'Abort');
   assert.equal(await browser.evaluate('Object.keys(state.jobs).length'), jobCount);
   assert.equal(await browser.evaluate('activeListenerJob'), activeJob);
   assert.equal(await browser.evaluate('connected'), true);
   assert.equal(await browser.evaluate("document.querySelector('#process-state').textContent"), 'Debugger');
-  await openMenu();
-  await browser.click('[data-activity="requests"]');
-  await clickText('#pending', 'Keep in History');
-  await browser.waitFor('state.pending.length === 0');
-  await listener();
   await clickText('#listener-state', 'Debugger');
   await browser.waitFor(`same(selectedStop, ${text(debugStop)}) && !busy`);
-  assert.equal(await browser.evaluate("document.querySelector('#source').value"), '(+ 20 22)');
-  console.log('PASS same-Listener busy rejection preserves input, ownership, and debugger access');
+  console.log('PASS owning Listener routes typed Help to its retained debugger stop');
   await discardNextReply('submit');
   await debuggerAction('Inspect Condition');
   const conditionReplay = await repeatUnknown('submit');
@@ -645,15 +639,13 @@ try {
   console.log('PASS browser restart and returned evaluation');
   await browser.waitFor("document.querySelector('#listener-state').hidden && !activeListenerJob && !busy");
   assert.equal(await browser.evaluate("document.querySelector('#process-state').textContent"), 'User Input');
-  assert.equal(await browser.evaluate("document.querySelector('#source').value"), '(+ 20 22)');
-  await browser.click('#source');
-  await key('Enter', 'Enter', 13);
+  await enter('#source', '(+ 20 22)');
   await browser.waitFor("state.inputHistory.at(-1)?.source === '(+ 20 22)'");
   const resumedName = await browser.evaluate('state.inputHistory.at(-1).name');
   const resumedSelector = '[data-job="' + resumedName + '"]';
   await waitText(resumedSelector + ' .returned-values', '42');
   await releaseAccepted({selector: resumedSelector});
-  console.log('PASS preserved input evaluates after CONTINUE');
+  console.log('PASS ordinary Listener input evaluates after CONTINUE');
 
   await releaseJob('DEBUG');
 
@@ -800,9 +792,9 @@ try {
   console.log('PASS browser release of test jobs, stop, and session');
   const expectedConflicts = browser.errors.filter(error => error.source === 'network'
     && error.url === new URL('/api', url).href && error.text.includes('status of 409'));
-  assert.equal(expectedConflicts.length, 3, 'Expected listener-busy, released-job, and expired-session HTTP responses');
+  assert.equal(expectedConflicts.length, 2, 'Expected released-job and expired-session HTTP responses');
   assert.deepEqual(browser.errors.filter(error => !expectedConflicts.includes(error)), []);
-  console.log('PASS no unexpected browser errors (three expected HTTP 409 responses)');
+  console.log('PASS no unexpected browser errors (two expected HTTP 409 responses)');
   console.log('Screenshots:', output);
 } catch (error) {
   await screenshot('failure');

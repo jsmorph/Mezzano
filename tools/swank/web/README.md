@@ -47,7 +47,9 @@ Command: Help :Format Detailed
 
 SPACE completes a command word, Tab completes a name, and F12 requests contextual help.  Another SPACE accepts a displayed argument default.  Pathnames in command output are mouse-sensitive: clicking one inserts it into the expected pathname argument.  The [Command Processor guide](../../../doc/command-processor.md) describes commands, arguments, pathname rules, and input history.
 
-Mouse-Right or the lower activity label opens the System Menu.  The menu selects an activity, package, interactive-input mode, or connection operation.  The Listener displays program output and each returned value.  A form returning zero values displays `(No values)`.  Ordinary Listener submissions run one at a time in a session.  While a submission is running, the status beside the input identifies whether that Listener is evaluating, waiting for evaluation input, or stopped in the debugger.  A stopped Listener provides a Debugger button there.  Submitting another ordinary form reports that the Listener is busy and preserves the typed input.  Continue or abort the active evaluation before submitting that form again.  Other Listener sessions remain independent.
+Mouse-Right or the lower activity label opens the System Menu.  The menu selects an activity, package, interactive-input mode, or connection operation.  The Listener displays program output and each returned value.  A form returning zero values displays `(No values)`.  Ordinary Listener submissions run one at a time in a session.  While a submission is running, the status beside the input identifies whether that Listener is evaluating, waiting for evaluation input, or stopped in the debugger.
+
+When the evaluation stops, that Listener displays its innermost debugger and directs command input to that stop.  The prompt identifies the nesting level.  Ordinary Listener input and each debugger level retain their drafts and cursor positions, including across reload.  Leaving a level restores the preceding draft.  Other Listener sessions remain independent.  A second ordinary submission while the Listener is evaluating or waiting for program input reports that the Listener is busy and preserves the typed input.
 
 Large output arrives across successive refreshes.  The job status displays `receiving output` with received and total character counts until the browser has received the captured output.  Evaluation completion and output transfer are separate states.  Pathname and herald presentations become active when their complete text range has arrived.
 
@@ -55,10 +57,12 @@ Interactive evaluations accept text and EOF through their input controls.  Inter
 
 ## Debugger
 
-An evaluation's Debugger action opens its retained stop and loads the stack, restart choices, and condition.  Each inspection runs once on initial selection.  Reload reuses retained results.  Inspection and restart buttons are disabled while a debugger command is outstanding or a child stop is active.  The command input remains editable while stopped.  The Debugger activity also lists stops.  Condition inspection is also available from the System Menu.  The debugger prompt accepts these commands:
+The owning Listener displays a stopped evaluation inline.  Its Debugger action opens the same retained stop in the separate Debugger activity.  Both views use the guest command parser and display the stack, restart choices, and condition.  Each inspection runs once on initial selection.  Reload reuses retained results.  A repeated inspection keeps its previous completed result visible while the new command is pending.  Inspection and restart buttons are disabled while a debugger command is outstanding or a child stop is active.  The command input remains editable while stopped.  The Debugger activity also lists stops.  Condition inspection is also available from the System Menu.  The debugger prompt accepts these commands:
 
 | Command | Behavior |
 |---|---|
+| `:Abort` | Invokes the stop's ABORT restart.  In a child entered by a debugger command, it abandons that command and returns to the enclosing debugger. |
+| `:Help` | Displays the guest debugger command help. |
 | `:Show Backtrace` | Lists frames. |
 | `:Set Current Frame N` | Selects a frame by its zero-based index and displays its locals. |
 | `:Show Frame` | Displays the selected function and available locals. |
@@ -66,11 +70,11 @@ An evaluation's Debugger action opens its retained stop and loads the stack, res
 | `:Show Local N` | Displays one local by its zero-based index. |
 | `:Show Proceed Options` | Lists restart choices. |
 
-Restart lines invoke zero-argument restarts.  Unavailable local values display `<unavailable>`.  Original caller argument values are unavailable.  The selected frame's function and index identify the displayed locals.  The [debugger guide](../../../doc/debugger.md) describes stopping states and the compiler information required for local inspection.
+Restart lines invoke the selected restart interactively.  For an evaluation started with interactive input, a restart's QUERY-IO reader accepts text and EOF through the existing input controls.  A restart can return to the same stop or transfer control out of it.  Returned restart values, including values from a returning :Abort, appear in the debugger, with `(No values)` for zero values.  Unavailable local values display `<unavailable>`.  Original caller argument values are unavailable.  The selected frame's function and index identify the displayed locals.  The [debugger guide](../../../doc/debugger.md) describes stopping states and the compiler information required for local inspection.
 
-Printing a condition or value can enter a child stop.  Parent Stop and Child Stop navigate the relationship while the parent command remains running.  Closed stops retain previously queried results until Release Stop.
+Printing a condition or value can enter a child stop.  The owning Listener follows that child, and :Abort returns to its parent without continuing the original computation.  Parent Stop and Child Stop navigate the relationship in the separate Debugger while the parent command remains running.  Closed stops retain previously queried results until Release Stop.
 
-The Web debugger currently exposes condition, frame, local, and restart inspection, interruption, and zero-argument restart invocation.  It does not provide object browsing, source or disassembly views, binding writes, frame evaluation, or stepping.
+The Web debugger currently exposes condition, frame, local, and restart inspection, interruption, and interactive restart invocation.  It does not provide object browsing, source or disassembly views, binding writes, frame evaluation, or stepping.
 
 ## Document Examiner
 
@@ -125,6 +129,6 @@ When the guest reports an expired session, the browser creates a new session, ar
 
 Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
 
-Submit accepts condition, restarts, frames, locals, and invoke-restart.  Locals requires a frame token.  Invoke-restart requires a restart index.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
+Submit accepts condition, restarts, frames, locals, abort, help, invoke-restart, and invoke-restart-interactively.  Locals requires a frame token.  Both restart operations require a restart index.  Invoke-restart calls the restart with zero arguments.  Invoke-restart-interactively runs its interactive argument reader.  Abort and Help take no argument.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
 
 Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns an `error` and, for operation failures, an `uncertain` flag.  Input validation precedes SWANK dispatch.  Transport or remote decoding failures after dispatch report an uncertain outcome.  Requests require a Content-Length header, and bodies are limited to one MiB.  Chunked transfer encoding is unsupported.

@@ -3,7 +3,7 @@
 const $ = id => document.getElementById(id);
 const storageKey = "mezzano-monitor-v1";
 const defaultState = {session: null, attempted: false, jobs: {}, pending: [], commands: [],
-                      package: "CL-USER", interactive: false, history: [], inputHistory: [], nextInputSequence: 0, initialHerald: null};
+                      package: "CL-USER", interactive: false, history: [], inputHistory: [], nextInputSequence: 0, initialHerald: null, drafts: {}};
 let state = defaultState;
 let storageError = null;
 try {
@@ -24,12 +24,16 @@ let selectedStop = null;
 let selectedFrame = null;
 let stops = [];
 let activeListenerJob = null;
+let listenerDebugger = null;
+let listenerPrompt = "Command: ";
+const editorDraftKeys = new Map();
 let historyIndex = null;
 let selectingActivity = false;
 let selectHelpFocus = null;
 const assistanceTimers = new Map();
 const views = new Map();
 const commandResults = new Map();
+let stopControls = new Map();
 
 function save() {
   sessionStorage.setItem(storageKey, JSON.stringify(state));
@@ -203,7 +207,7 @@ function applyMutation(record, result) {
     }
   } else if (record.operation === "submit") {
     const command = {stop: args.stop, id: args.id, command: args.command, argument: args.argument,
-      display: record.display, localIndex: record.localIndex};
+      display: record.display, localIndex: record.localIndex, source: record.source};
     if (!state.commands.some(item => same(item.stop, command.stop) && item.id === command.id)) {
       state.commands.push(command);
     }
@@ -281,8 +285,47 @@ async function mutate(operation, arguments_, metadata = {}) {
   save();
   return replay(record);
 }
+function debuggerDraftKey(stop) {
+  return "debugger:" + JSON.stringify(stop);
+}
+function storeEditorDraft(editor) {
+  const key = editorDraftKeys.get(editor);
+  if (!key) return;
+  state.drafts[key] = {...state.drafts[key], text: editor.value, start: editor.selectionStart,
+    end: editor.selectionEnd, direction: editor.selectionDirection};
+  save();
+}
+function useEditorDraft(editor, key, reload = false) {
+  const prior = editorDraftKeys.get(editor);
+  if (prior === key && !reload) return;
+  if (prior !== key) storeEditorDraft(editor);
+  editorDraftKeys.set(editor, key);
+  const draft = state.drafts[key];
+  clearAssistance(editor);
+  editor.value = draft?.text || "";
+  editor.setSelectionRange(draft?.start || 0, draft?.end || 0, draft?.direction || "none");
+  if (editor.id === "source") resizeSource();
+}
+function activateStop(stop) {
+  if (same(selectedStop, stop)) return;
+  if (selectedStop) {
+    const key = debuggerDraftKey(selectedStop);
+    state.drafts[key] = {...state.drafts[key], frame: selectedFrame};
+  }
+  selectedStop = stop;
+  selectedFrame = stop ? state.drafts[debuggerDraftKey(stop)]?.frame || null : null;
+}
+function updateListenerInput(reload = false) {
+  const stop = listenerDebugger?.stop;
+  useEditorDraft($("source"), stop ? debuggerDraftKey(stop) : "listener", reload);
+  $("source").dataset.debuggerStop = stop ? JSON.stringify(stop) : "";
+  $("listener-prompt").textContent = listenerDebugger?.prompt || listenerPrompt;
+  if (activity === "listener" && stop) activateStop(stop);
+}
 function showActivity(name) {
   const previous = activity;
+  if (previous === "listener") storeEditorDraft($("source"));
+  else if (previous === "debugger") storeEditorDraft($("debugger-command"));
   activity = name;
   $("monitor").classList.toggle("examiner-active", name === "examiner");
   document.querySelectorAll(".activity").forEach(element => { element.hidden = element.id !== name; });
@@ -295,13 +338,20 @@ function showActivity(name) {
   else if (name === "debugger" && selectedStop) $("debugger-command").focus();
   else if (name === "examiner") { $("examiner-command").focus(); run(() => examiner.show()); }
   else $("page").focus();
+  updateListenerInput(name === "listener");
+  renderStops();
+  if (name === "debugger" && selectedStop) {
+    useEditorDraft($("debugger-command"), debuggerDraftKey(selectedStop), true);
+  }
   updateTracks();
   document.dispatchEvent(new CustomEvent("activitychange", {detail: {name, previous}}));
 }
 function queueEvaluation() {
   const source = $("source").value;
   const interactive = $("interactive").checked;
-  return run(() => evaluate(source, interactive));
+  const stop = listenerDebugger?.stop;
+  return stop ? queueDebuggerInput($("source"), source, stop)
+    : run(() => evaluate(source, interactive));
 }
 async function evaluate(source, interactive) {
   if (!source.trim()) return;
@@ -326,15 +376,20 @@ function setEditor(editor, text, cursor) {
   const offset = Array.from(text).slice(0, cursor).join("").length;
   editor.setSelectionRange(offset, offset);
   if (editor.id === "source") resizeSource();
+  storeEditorDraft(editor);
 }
 function editorContext(editor) {
-  return editor.id === "source" ? "listener" : editor.id === "examiner-command" ? "examiner" : "debugger";
+  return editor.id === "source" ? (listenerDebugger ? "debugger" : "listener")
+    : editor.id === "examiner-command" ? "examiner" : "debugger";
+}
+function assistancePanel(editor) {
+  return $(editor.id === "source" ? "listener-assistance" : editorContext(editor) + "-assistance");
 }
 function clearAssistance(editor) {
-  $(editorContext(editor) + "-assistance").replaceChildren();
+  assistancePanel(editor).replaceChildren();
 }
 function renderAssistance(editor, result, source, cursor, action) {
-  const panel = $(editorContext(editor) + "-assistance");
+  const panel = assistancePanel(editor);
   panel.replaceChildren();
   if (result.prompt) {
     const prompt = node("pre", result.prompt, "argument-prompt");
@@ -357,19 +412,22 @@ function renderAssistance(editor, result, source, cursor, action) {
     panel.append(choice);
   }
   updateTracks();
-  if (activity === editorContext(editor)) editor.scrollIntoView({block: "nearest"});
+  if (!editor.closest(".activity")?.hidden) editor.scrollIntoView({block: "nearest"});
 }
 function scheduleAssistance(editor, action, presentation) {
   clearTimeout(assistanceTimers.get(editor));
   const source = editor.value;
   const cursor = editorCursor(editor);
+  const context = editorContext(editor);
+  const draftKey = editorDraftKeys.get(editor);
   const request = () => run(async () => {
-    if (!connected || editor.value !== source || editorCursor(editor) !== cursor) return;
-    const context = editorContext(editor);
+    if (!connected || editor.value !== source || editorCursor(editor) !== cursor
+        || context !== editorContext(editor) || draftKey !== editorDraftKeys.get(editor)) return;
     const result = await api(context === "examiner" ? "document-assistance" : "listener-assistance", {
       source, cursor, action, ...(context === "examiner" ? {} : {context}),
       ...(presentation === undefined ? {} : {presentation})});
-    if (editor.value !== source || editorCursor(editor) !== cursor) return;
+    if (editor.value !== source || editorCursor(editor) !== cursor
+        || context !== editorContext(editor) || draftKey !== editorDraftKeys.get(editor)) return;
     if (action !== "inspect" && !result.error) setEditor(editor, result.text, result.cursor);
     renderAssistance(editor, result, editor.value, editorCursor(editor), action);
     if (action !== "inspect" && action !== "help" && !result.error
@@ -428,6 +486,7 @@ function editorKey(editor, event) {
   }
 }
 function editorChanged(editor, event) {
+  storeEditorDraft(editor);
   clearAssistance(editor);
   if (editor.id === "source") { historyIndex = null; resizeSource(); }
   scheduleAssistance(editor, event.inputType === "insertText" && event.data === " " ? "space" : "inspect");
@@ -640,6 +699,9 @@ function updateJob(job, info, output) {
     + (view.end < info["output-length"] ? " — receiving output (" + view.end + " of "
       + info["output-length"] + " characters)" : "");
   view.inputForm.hidden = info.state !== ":running" || info["input-mode"] !== ":interactive" || info["input-eof-p"];
+  const operationsSignature = JSON.stringify([job.token, info.stops, info.state === ":running", info["interrupt-id"] !== null]);
+  if (view.operationsSignature === operationsSignature) return;
+  view.operationsSignature = operationsSignature;
   view.operations.replaceChildren();
   for (const stop of info.stops || []) {
     view.operations.append(button("Debugger", () => selectStop(stop), "Mouse-Left: Select this evaluation's debugger stop."));
@@ -665,15 +727,24 @@ async function refresh() {
   if (!connected) return;
   const offsets = [...views.entries()].map(([name, view]) => ({name, start: view.end}));
   const sample = await api("monitor-state", {offsets});
+  const editor = $("source");
+  const priorDraft = editorDraftKeys.get(editor);
+  const editorBounds = editor.getBoundingClientRect();
+  const pageBounds = $("page").getBoundingClientRect();
+  const editorVisible = document.activeElement === editor
+    && editorBounds.top >= pageBounds.top && editorBounds.bottom <= pageBounds.bottom;
   const listenerInfo = sample.listener;
   activeListenerJob = listenerInfo["active-job"] ?? null;
+  listenerDebugger = listenerInfo.debugger || null;
+  listenerPrompt = listenerInfo.prompt;
+  updateListenerInput();
   if (state.initialHerald?.session !== state.session) state.initialHerald = {session: state.session, hidden: false};
   if ($("herald").dataset.session !== state.session && listenerInfo.herald) {
     $("herald").replaceChildren(renderHerald(listenerInfo.herald));
     $("herald").dataset.session = state.session;
   }
   state.package = listenerInfo.package;
-  $("listener-prompt").textContent = listenerInfo.prompt;
+  $("listener-prompt").textContent = listenerDebugger?.prompt || listenerInfo.prompt;
   $("package").textContent = listenerInfo.package;
   const names = new Set();
   for (const record of sample.jobs || []) {
@@ -716,19 +787,28 @@ async function refresh() {
   renderPending();
   updateStatus();
   updateTracks();
+  if (activity === "listener") {
+    if (priorDraft !== editorDraftKeys.get(editor)) editor.focus();
+    if (editorVisible || priorDraft !== editorDraftKeys.get(editor)) editor.scrollIntoView({block: "nearest"});
+  }
 }
 function renderListenerState() {
   const panel = $("listener-state");
   const info = views.get(activeListenerJob)?.info;
-  panel.replaceChildren();
   panel.hidden = !info;
   if (!info) return;
-  const stop = info.stops?.[0];
-  panel.append(node("span", stop
+  const stop = listenerDebugger?.stop || info.stops?.[0];
+  let status = panel.querySelector("span");
+  if (!status) { status = node("span"); panel.append(status); }
+  status.textContent = stop
     ? "This Listener is stopped in the debugger. "
     : info["input-waiting-p"] ? "This Listener is waiting for evaluation input. "
-      : "This Listener is evaluating. "));
-  if (stop) panel.append(button("Debugger", () => selectStop(stop)));
+      : "This Listener is evaluating. ";
+  let action = panel.querySelector("button");
+  if (stop) {
+    if (!action) { action = button("Debugger", () => selectStop(stop)); panel.append(action); }
+    action.onclick = () => run(() => selectStop(stop));
+  } else action?.remove();
 }
 function stopCommandPending(stop) {
   return state.pending.some(record => record.operation === "submit" && same(record.arguments.stop, stop))
@@ -740,7 +820,8 @@ function stopCommandPending(stop) {
 }
 async function inspectSelectedStop() {
   const selected = stops.find(stop => same(stop.token, selectedStop));
-  if (activity !== "debugger" || !selected || selected.info.state !== ":stopped"
+  if (!(activity === "debugger" || (activity === "listener" && listenerDebugger))
+      || !selected || selected.info.state !== ":stopped"
       || selected.info.child || stopCommandPending(selectedStop)) return;
   const command = ["frames", "restarts", "condition"].find(name => !latestCommand(name));
   if (command) await mutate("submit", {stop: selectedStop,
@@ -773,8 +854,7 @@ async function submit(stop, command, argument = null, metadata = {}) {
   await refresh();
 }
 async function selectStop(stop) {
-  selectedStop = stop;
-  selectedFrame = null;
+  activateStop(stop);
   showActivity("debugger");
   await refresh();
   $("debugger-command").focus();
@@ -782,20 +862,22 @@ async function selectStop(stop) {
 function latestCommand(commandName) {
   return state.commands.findLast(command => same(command.stop, selectedStop) && command.command === commandName);
 }
+function returnedInspection(commandName) {
+  const command = state.commands.findLast(item => same(item.stop, selectedStop)
+    && item.command === commandName && commandResults.get(commandKey(item))?.state === ":returned");
+  return command ? {command, result: commandResults.get(commandKey(command)).result} : null;
+}
 function returnedResult(commandName) {
-  const command = latestCommand(commandName);
-  const record = command && commandResults.get(commandKey(command));
-  return record?.state === ":returned" ? record.result : null;
+  return returnedInspection(commandName)?.result ?? null;
 }
 function debuggerAction(action) {
   return async () => {
-    $("system-menu").close();
     await action();
-    $("debugger-command").focus();
+    (activity === "listener" ? $("source") : $("debugger-command")).focus();
   };
 }
-async function debuggerCommand(text) {
-  const selected = stops.find(stop => same(stop.token, selectedStop));
+async function debuggerCommand(text, stop = selectedStop) {
+  const selected = stops.find(item => same(item.token, stop));
   if (!selected) throw new Error("Select a debugger stop first.");
   const plan = await api("listener-assistance", {source: text, cursor: Array.from(text).length,
     action: "parse", context: "debugger"});
@@ -811,78 +893,126 @@ async function debuggerCommand(text) {
   if (plan["needs-frame"] && !selectedFrame) {
     throw new Error(":Show Backtrace, then select a frame.");
   }
-  await submit(selectedStop, plan.operation, plan["needs-frame"] ? selectedFrame.token : null,
-    {display: plan.display, localIndex: plan["local-index"]});
+  await submit(stop, plan.operation, plan["needs-frame"] ? selectedFrame.token : (plan.argument ?? null),
+    {display: plan.display, localIndex: plan["local-index"], source: text});
+}
+function queueDebuggerInput(editor, text, stop) {
+  const key = editorDraftKeys.get(editor);
+  return run(async () => {
+    await debuggerCommand(text, stop);
+    if (editorDraftKeys.get(editor) === key && editor.value === text) {
+      setEditor(editor, "", 0);
+      clearAssistance(editor);
+    } else if (state.drafts[key]?.text === text) {
+      state.drafts[key] = {...state.drafts[key], text: "", start: 0, end: 0};
+      save();
+    }
+  });
 }
 function queueDebuggerCommand() {
-  const text = $("debugger-command").value;
-  run(async () => {
-    await debuggerCommand(text);
-    if ($("debugger-command").value === text) setEditor($("debugger-command"), "", 0);
-    clearAssistance($("debugger-command"));
-  });
+  return queueDebuggerInput($("debugger-command"), $("debugger-command").value, selectedStop);
+}
+function reconcileChildren(parent, children) {
+  const retained = new Set(children);
+  for (const child of [...parent.childNodes]) if (!retained.has(child)) child.remove();
+  let next = parent.firstChild;
+  for (const child of children) {
+    if (child !== next) parent.insertBefore(child, next);
+    next = child.nextSibling;
+  }
 }
 function renderStops() {
   const selected = stops.find(stop => same(stop.token, selectedStop));
+  const controls = new Map();
+  const prefix = JSON.stringify(selectedStop) + ":";
+  function control(key, text, action, help) {
+    const element = stopControls.get(key) || button(text, action, help);
+    if (element.textContent !== text) element.textContent = text;
+    element.onclick = () => {
+      if (element.closest("#debugger-menu")) $("system-menu").close();
+      return run(action);
+    };
+    if (help) element.dataset.help = help;
+    controls.set(key, element);
+    return element;
+  }
   const menu = $("debugger-menu");
-  menu.replaceChildren(node("h3", "This Debugger"));
+  const menuChildren = [node("h3", "This Debugger")];
   const list = $("stops");
-  list.replaceChildren();
+  const listChildren = [];
   list.hidden = Boolean(selected);
   $("debugger-heading").hidden = Boolean(selected);
   for (const stop of stops) {
-    const select = button("Stop " + stop.info.id + "  " + shortIdentity(stop.info.thread) + "  " + label(stop.info.state),
+    const select = control("stop:" + JSON.stringify(stop.token), "Stop " + stop.info.id + "  " + shortIdentity(stop.info.thread) + "  " + label(stop.info.state),
       debuggerAction(() => selectStop(stop.token)), "Mouse-Left: Select this stop.");
     select.title = stop.info.thread;
-    if (selected) menu.append(select);
-    else list.append(select);
+    if (selected) menuChildren.push(select);
+    else listChildren.push(select);
   }
-  if (!stops.length) list.textContent = "No retained debugger stops.";
-  $("stop-detail").replaceChildren();
+  if (!stops.length) listChildren.push(document.createTextNode("No retained debugger stops."));
+  reconcileChildren(list, listChildren);
+  const detail = $("stop-detail");
+  const detailChildren = [];
   $("debug-command").hidden = !selected;
   if (!selected) {
+    reconcileChildren(menu, menuChildren);
+    reconcileChildren(detail, detailChildren);
+    stopControls = controls;
+    $("listener-debugger").hidden = true;
     if (activity === "debugger") {
       $("window-label").textContent = "Debugger";
       $("window-label").title = "";
     }
     return;
   }
-  const detail = $("stop-detail");
+  const inline = activity === "listener" && listenerDebugger && same(selectedStop, listenerDebugger.stop);
+  $("listener-debugger").hidden = !inline;
+  if (inline) {
+    if (detail.parentElement !== $("listener-debugger")) $("listener-debugger").append(detail);
+  } else if (detail.parentElement !== $("debugger")) {
+    $("debugger").insertBefore(detail, $("debugger-assistance"));
+  }
+  $("debug-command").hidden = inline;
+  if (!inline) useEditorDraft($("debugger-command"), debuggerDraftKey(selectedStop));
   const info = selected.info;
+  $("debugger-prompt").textContent = info.prompt || "→";
   const available = info.state === ":stopped" && !info.child && !stopCommandPending(selectedStop);
   $("debugger-command").disabled = info.state !== ":stopped";
   if (activity === "debugger") {
     $("window-label").textContent = "Lisp Debugger: Stop " + info.id + "  " + label(info.state);
     $("window-label").title = info.thread;
   }
-  if (info.parent) detail.append(button("Parent Stop", debuggerAction(() => selectStop(info.parent))));
-  if (info.child) detail.append(button("Child Stop", debuggerAction(() => selectStop(info.child))));
+  if (info.parent) detailChildren.push(control(prefix + "parent:" + JSON.stringify(info.parent), "Parent Stop", debuggerAction(() => selectStop(info.parent))));
+  if (info.child) detailChildren.push(control(prefix + "child:" + JSON.stringify(info.child), "Child Stop", debuggerAction(() => selectStop(info.child))));
   if (info.state === ":closed") {
-    menu.append(button("Release Stop", debuggerAction(async () => {
+    menuChildren.push(control(prefix + "release", "Release Stop", debuggerAction(async () => {
       await mutate("release-stop", {stop: selectedStop});
       await refresh();
     })));
   } else {
-    const inspect = button("Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
+    const inspect = control(prefix + "condition", "Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
     inspect.disabled = !available;
-    menu.append(inspect);
+    menuChildren.push(inspect);
     for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All"]) {
-      const command = button(name, debuggerAction(() => debuggerCommand(name)));
+      const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
       command.disabled = !available;
-      menu.append(command);
+      menuChildren.push(command);
     }
   }
+  const help = returnedResult("help");
+  if (help !== null) detailChildren.push(node("pre", help, "debugger-help"));
   const condition = returnedResult("condition");
-  if (condition !== null) detail.append(node("pre", condition, "condition"));
-  if (selectedFrame) detail.append(node("pre", selectedFrame.function, "current-function"));
-  const locals = returnedResult("locals");
-  if (locals && selectedFrame && same(latestCommand("locals")?.argument, selectedFrame.token)) {
-    const request = latestCommand("locals");
+  if (condition !== null) detailChildren.push(node("pre", condition, "condition"));
+  if (selectedFrame) detailChildren.push(node("pre", selectedFrame.function, "current-function"));
+  const localInspection = returnedInspection("locals");
+  const locals = localInspection?.result;
+  if (locals && selectedFrame && same(localInspection.command.argument, selectedFrame.token)) {
+    const request = localInspection.command;
     if (request.display === ":frame") {
-      detail.append(node("pre", "Original caller arguments are unavailable. Available lexical locals follow."));
+      detailChildren.push(node("pre", "Original caller arguments are unavailable. Available lexical locals follow."));
     }
     const visibleLocals = request.localIndex == null ? locals : locals.filter(local => local.index === request.localIndex);
-    if (!visibleLocals.length) detail.append(node("pre", "No local value with the requested index."));
+    if (!visibleLocals.length) detailChildren.push(node("pre", "No local value with the requested index."));
     const table = node("table", undefined, "locals");
     table.setAttribute("aria-label", "Frame locals");
     table.title = "Frame " + selectedFrame.index + ": " + selectedFrame.function;
@@ -892,37 +1022,50 @@ function renderStops() {
                  node("td", local["available-p"] ? local.value : "<unavailable>"));
       table.append(row);
     }
-    detail.append(table);
+    detailChildren.push(table);
   }
   const restarts = returnedResult("restarts");
   if (restarts) {
-    const panel = node("div", undefined, "restarts");
+    const panel = stopControls.get(prefix + "restarts") || node("div", undefined, "restarts");
+    controls.set(prefix + "restarts", panel);
+    const restartChildren = [];
     for (const restart of restarts) {
-      const action = button(restart.name + ": " + restart.description,
-        () => submit(selectedStop, "invoke-restart", restart.index),
-        "Mouse-Left: Invoke this restart with zero arguments.");
+      const action = control(prefix + "restart:" + restart.index, restart.name + ": " + restart.description,
+        () => submit(selectedStop, "invoke-restart-interactively", restart.index),
+        "Mouse-Left: Invoke this restart and request any interactive arguments.");
       action.disabled = !available;
-      panel.append(action);
+      restartChildren.push(action);
     }
-    detail.append(panel);
+    reconcileChildren(panel, restartChildren);
+    detailChildren.push(panel);
+  }
+  const restartCommand = state.commands.findLast(command => same(command.stop, selectedStop)
+    && ["invoke-restart", "invoke-restart-interactively", "abort"].includes(command.command));
+  const restartResult = restartCommand && commandResults.get(commandKey(restartCommand));
+  if (restartResult?.state === ":returned") {
+    const values = restartResult.result || [];
+    detailChildren.push(node("pre", "Restart returned:\n" + (values.length ? values.join("\n") : "(No values)"), "restart-values"));
   }
   const frames = returnedResult("frames");
   if (frames) {
-    detail.append(node("pre", "→ :Show Backtrace", "debugger-transcript"));
+    detailChildren.push(node("pre", "→ :Show Backtrace", "debugger-transcript"));
     for (const [index, frame] of frames.entries()) {
-      const item = button(index + "  " + frame.function, () => debuggerCommand(":Set Current Frame " + index),
+      const item = control(prefix + "frame:" + index, index + "  " + frame.function, () => debuggerCommand(":Set Current Frame " + index),
         "Mouse-Left: Select this frame and show its locals.");
-      item.className = "frame" + (same(frame.frame, selectedFrame?.token) ? " selected" : "");
+      item.className = "frame" + (index === selectedFrame?.index ? " selected" : "");
       item.disabled = !available;
-      detail.append(item);
+      detailChildren.push(item);
     }
   }
   for (const command of state.commands.filter(item => same(item.stop, selectedStop))) {
     const result = commandResults.get(commandKey(command));
     if (!result || result.state === ":pending" || result.state === ":running") {
-      detail.append(node("p", command.command + ": " + label(result?.state)));
+      detailChildren.push(node("p", command.command + ": " + label(result?.state)));
     }
   }
+  reconcileChildren(menu, menuChildren);
+  reconcileChildren(detail, detailChildren);
+  stopControls = controls;
 }
 function renderPending() {
   $("requests").querySelector("h2").textContent = "Request History";
@@ -1050,7 +1193,9 @@ for (const id of ["source", "debugger-command"]) {
   const editor = $(id);
   editor.onkeydown = event => editorKey(editor, event);
   editor.oninput = event => editorChanged(editor, event);
-  editor.onclick = () => scheduleAssistance(editor, "inspect");
+  editor.onclick = () => { storeEditorDraft(editor); scheduleAssistance(editor, "inspect"); };
+  editor.onkeyup = () => storeEditorDraft(editor);
+  editor.onselect = () => storeEditorDraft(editor);
 }
 $("debug-command").onsubmit = event => { event.preventDefault(); queueDebuggerCommand(); };
 $("evaluate-button").onclick = () => { $("system-menu").close(); queueEvaluation(); };

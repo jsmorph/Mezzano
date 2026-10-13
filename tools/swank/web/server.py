@@ -382,12 +382,13 @@ def operation_arguments(operation, args, session):
     if operation == "submit":
         fields(args, ("stop", "id", "command"), ("argument",))
         command = string(args["command"])
-        if command not in ("condition", "restarts", "frames", "locals", "invoke-restart"):
+        if command not in ("condition", "restarts", "frames", "locals", "invoke-restart",
+                           "invoke-restart-interactively", "abort", "help"):
             raise ValueError("Unsupported debugger command.")
         argument = args.get("argument")
         if command == "locals":
             argument = token(argument, "frame", session)
-        elif command == "invoke-restart":
+        elif command in ("invoke-restart", "invoke-restart-interactively"):
             argument = integer(argument)
         elif argument is not None:
             raise ValueError("This debugger command takes no argument.")

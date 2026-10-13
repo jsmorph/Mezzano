@@ -38,11 +38,22 @@ node tools/swank/web/test-peek.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-peek-test
 ```
 
-The Listener driver covers command assistance, evaluation and input history, guest file commands, Unicode presentations, interactive input, debugger commands and restarts, retained-request recovery, and release reconciliation.  It checks initial debugger inspection, Listener ownership through reload, busy rejection with preserved input, and successful submission after CONTINUE.  The Examiner driver covers topics, mouse operations, candidate history, search options, bookmarks, named viewers, reload, reading positions, and print dispatch.  The private-document driver covers command menus, defaults, bookmark order, Save replay, Load, Read, Hardcopy, and file cleanup.
+The Listener driver covers command assistance, evaluation and input history, guest file commands, Unicode presentations, interactive input, debugger commands and restarts, retained-request recovery, and release reconciliation.  It checks initial debugger inspection, Listener ownership through reload, typed Help through the owning Listener, and successful ordinary submission after CONTINUE.  The Examiner driver covers topics, mouse operations, candidate history, search options, bookmarks, named viewers, reload, reading positions, and print dispatch.  The private-document driver covers command menus, defaults, bookmark order, Save replay, Load, Read, Hardcopy, and file cleanup.
 
 Each driver starts a separate headless browser profile and removes that profile on exit.  Successful runs release their owned guest sessions and fixtures.  Failed interactions save session state and fixture identities for inspection and cleanup.  The Listener and private-document tests create guest files and evaluation jobs.  They require a writable guest home directory.  Other clients' retained objects must remain untouched.
 
 Lost-reply tests discard a completed HTTP response after server dispatch.  They exercise saved-request recovery rather than every possible transport failure point.  Print tests intercept print dispatch.  They do not verify physical printer output.  Browser screenshots require separate comparison before supporting a visual-fidelity claim.
+
+## Listener debugger input
+
+The focused debugger driver tests inline and standalone Help, completion and contextual help, guest nesting prompts, ordinary and nested Abort, and interactive restart arguments through retained evaluation input.  It distinguishes a restart that exits the stop from one that returns a command result while the stop remains active, including visible values, zero values, and a normally returning typed Abort.  Native mouse clicks spanning a monitor refresh check that unchanged Debugger and restart actions retain their DOM elements and receive the click.  The restart test also renders a pending replacement query and changes an unrelated stop row while the mouse button is pressed.  A held action queue tests immediate debugger-menu dismissal.  Its nested operation-error case reloads at the child stop, aborts that command, verifies the restored outer draft and selection, and continues the original computation.  It checks that invalid no-argument and restart-index requests return HTTP 400 without advancing the stop's command ID.
+
+```sh
+node tools/swank/web/test-listener-debugger.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-listener-debugger-test
+```
+
+The driver selects the CONTINUE button for continuation.  `PROTECTED_STOP` optionally names a numeric stop ID whose state and next command ID must remain unchanged.  The driver records its session and releases its owned evaluations, stops, and session.
 
 ## Expired sessions
 
