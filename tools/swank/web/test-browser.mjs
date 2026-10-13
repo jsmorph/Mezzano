@@ -47,10 +47,10 @@ async function fill(selector, input) {
   await key('a', 'KeyA', 65, 2);
   await browser.send('Input.insertText', {text: input});
 }
-async function accept(command) {
+async function accept(command, endKey = false) {
   const previous = await browser.evaluate("JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).inputHistory.map(item => item.name)");
   await fill('#source', command);
-  await key('Enter', 'Enter', 13);
+  await key(endKey ? 'F11' : 'Enter', endKey ? 'F11' : 'Enter', endKey ? 122 : 13, endKey ? 8 : 0);
   const expression = `JSON.parse(sessionStorage.getItem('mezzano-monitor-v1')).inputHistory.find(item => item.source === ${text(command)} && !${text(previous)}.includes(item.name))`;
   await browser.waitFor(expression);
   const {name} = await browser.evaluate(expression);
@@ -208,9 +208,17 @@ try {
   await browser.send('Input.insertText', {text: ' '});
   await browser.waitFor("document.querySelector('#source').value.includes('COMMON-LISP-USER')");
   const defaultCommand = await browser.evaluate("document.querySelector('#source').value");
-  let commandJob = await accept(defaultCommand);
+  let commandJob = await accept(defaultCommand, true);
   await releaseAccepted(commandJob);
-  console.log('PASS browser SPACE/COMPLETE, argument prompt, HELP, and explicit default');
+  await fill('#source', 'Set P');
+  await key('F11', 'F11', 122);
+  await browser.waitFor("document.querySelector('#source').value === 'Set Package ' && !busy");
+  await fill('#source', 'Compile File ');
+  await key('?', 'Slash', 191, 10);
+  await waitText('#listener-assistance', 'Compile a guest Lisp file');
+  await waitText('#listener-assistance', 'Binary File');
+  assert.equal(await browser.evaluate("document.querySelector('#source').value"), 'Compile File ');
+  console.log('PASS browser SPACE/Tab/F11 completion, F12/Control-? help, Shift-F11 submission, and explicit default');
 
   await browser.evaluate(`(() => {
     const original = window.fetch;
@@ -308,8 +316,9 @@ try {
   console.log('PASS browser command dispatch, package state, known variable, and forced Lisp');
 
   const leaf = 'browser-listener-' + marker.toLowerCase() + '-🚀';
-  commandJob = await accept(`(let ((base (translate-logical-pathname "SYS:HOME;"))) (values (namestring (merge-pathnames ${JSON.stringify(leaf + '.lisp')} base)) (namestring (merge-pathnames ${JSON.stringify(leaf + '-second.lisp')} base)) (namestring (merge-pathnames ${JSON.stringify(leaf + '*.lisp')} base))))`);
-  const [pathname, secondPathname, wildcard] = (await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .returned-values')}).textContent`)).split('\n').map(value => JSON.parse(value));
+  const binaryLeaf = leaf + '-explicit.llf';
+  commandJob = await accept(`(let ((base (translate-logical-pathname "SYS:HOME;"))) (values (namestring (merge-pathnames ${JSON.stringify(leaf + '.lisp')} base)) (namestring (merge-pathnames ${JSON.stringify(leaf + '-second.lisp')} base)) (namestring (merge-pathnames ${JSON.stringify(leaf + '*.lisp')} base)) (namestring (merge-pathnames ${JSON.stringify(binaryLeaf)} base)) (namestring base)))`);
+  const [pathname, secondPathname, wildcard, binaryPathname, directoryPathname] = (await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .returned-values')}).textContent`)).split('\n').map(value => JSON.parse(value));
   assert(pathname.includes('🚀'));
   await releaseAccepted(commandJob);
   const variableName = '*' + marker + '-FILE*';
@@ -338,11 +347,52 @@ try {
   await waitText(commandJob.selector, '🚀 browser file');
   await releaseAccepted(commandJob);
   commandJob = await accept('Compile File ' + pathname + ' :Load Yes');
+  const defaultBinaryPathname = await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .presentation')}).textContent`);
   await releaseAccepted(commandJob);
-  commandJob = await accept(`(delete-file ${JSON.stringify(pathname)}) (delete-file (compile-file-pathname ${JSON.stringify(pathname)})) (delete-file ${JSON.stringify(secondPathname)}) (makunbound '${variableName}) (values)`);
+  for (const command of ['Show Directory', 'Show Directory ' + directoryPathname]) {
+    commandJob = await accept(command);
+    const entries = await browser.evaluate(`[...document.querySelectorAll(${text(commandJob.selector + ' .presentation')})].map(element => element.textContent)`);
+    assert(entries.includes(pathname));
+    assert(entries.includes(secondPathname));
+    await releaseAccepted(commandJob);
+  }
+  commandJob = await accept(`(setf ${variableName} :not-loaded)`);
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Compile File ' + leaf + '.lisp');
+  assert.equal(await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .presentation')}).textContent`), defaultBinaryPathname);
+  await releaseAccepted(commandJob);
+  commandJob = await accept(variableName);
+  assert.equal(await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .returned-values')}).textContent`), ':NOT-LOADED');
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Compile File :Binary File ' + binaryLeaf + ' :Load No');
+  assert.equal(await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .presentation')}).textContent`), binaryPathname);
+  await releaseAccepted(commandJob);
+  commandJob = await accept(`(values ${variableName} (not (null (probe-file ${JSON.stringify(binaryPathname)}))))`);
+  assert.equal(await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .returned-values')}).textContent`), ':NOT-LOADED\nT');
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Load File ' + binaryLeaf);
+  await releaseAccepted(commandJob);
+  commandJob = await accept(variableName);
+  await waitText(commandJob.selector + ' .returned-values', '🚀 browser file');
+  await releaseAccepted(commandJob);
+  commandJob = await accept(`(setf ${variableName} :not-loaded)`);
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Load File');
+  await releaseAccepted(commandJob);
+  commandJob = await accept(variableName);
+  await waitText(commandJob.selector + ' .returned-values', '🚀 browser file');
+  await releaseAccepted(commandJob);
+  commandJob = await accept(`(setf ${variableName} :not-loaded)`);
+  await releaseAccepted(commandJob);
+  commandJob = await accept('Compile File ' + leaf + '.lisp :Load');
+  await releaseAccepted(commandJob);
+  commandJob = await accept(variableName);
+  await waitText(commandJob.selector + ' .returned-values', '🚀 browser file');
+  await releaseAccepted(commandJob);
+  commandJob = await accept(`(delete-file ${JSON.stringify(binaryPathname)}) (delete-file ${JSON.stringify(pathname)}) (delete-file (compile-file-pathname ${JSON.stringify(pathname)})) (delete-file ${JSON.stringify(secondPathname)}) (makunbound '${variableName}) (values)`);
   assert.equal(await browser.evaluate(`document.querySelector(${text(commandJob.selector + ' .returned-values')}).textContent`), '(No values)');
   await releaseAccepted(commandJob);
-  console.log('PASS browser Unicode physical pathname presentation/insertion/default, contents, Show/Load/Compile File, and file cleanup');
+  console.log('PASS browser Unicode physical pathname presentation/insertion/default, contents, relative/default file arguments, directory defaults, :Binary File, omitted/No/implicit-Yes :Load, and file cleanup');
 
   const historySource = `(progn "${marker}-HISTORY" (values :history))`;
   const firstHistory = await accept(historySource);

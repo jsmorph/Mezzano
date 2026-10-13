@@ -24,7 +24,7 @@ try {
       switch(request.operation){
         case 'open-session':case 'resume-session':case 'release-session':value={};break;
         case 'jobs':case 'stops':value=[];break;
-        case 'monitor-state': value={listener:{package:'COMMON-LISP-USER',mode:':command-preferred',prompt:'Command: ','busy-p':false,'default-pathname':'SYS:HOME;'},jobs:[],stops:[]};break;
+        case 'monitor-state': value={listener:{package:'COMMON-LISP-USER',mode:':command-preferred',prompt:'Command: ','busy-p':false,'default-pathname':'SYS:HOME;'},jobs:[],stops:window.peekFixture.stops || []};break;
         case 'listener-information':value={package:'COMMON-LISP-USER',mode:':command-preferred',prompt:'Command: ','busy-p':false,'default-pathname':'SYS:HOME;'};break;
         case 'processes':{
           const f=window.peekFixture;f.count++;f.active++;f.maximum=Math.max(f.maximum,f.active);
@@ -67,7 +67,50 @@ try {
   await browser.waitFor('document.querySelector("#peek-process-menu").open');
   assert(await browser.evaluate('[...document.querySelectorAll("#peek-process-actions button")].find(item=>item.textContent.startsWith("Debugger")).disabled'));
   await browser.evaluate('document.querySelector("#peek-process-menu").close()');
+  await browser.evaluate(`(() => {
+    const parent=[':stop',state.session,18],child=[':stop',state.session,19];
+    peekFixture.sample.threads[2].stops.push(parent,child);
+    peekFixture.stops=[
+      {token:parent,information:{id:18,thread:'same <img src=x>',state:':stopped',parent:null,child,'next-command-id':0}},
+      {token:child,information:{id:19,thread:'same <img src=x>',state:':stopped',parent,child:null,'next-command-id':0}}
+    ];
+  })()`);
+  await key(' ','Space',32);
+  await browser.waitFor('peekFixture.active === 0 && !busy');
+  for (const id of [19,18]) {
+    await browser.click('#process-rows tr:nth-child(3) .process-name');
+    await browser.waitFor('document.querySelector("#peek-process-menu").open');
+    assert.deepEqual(await browser.evaluate('[...document.querySelectorAll("#peek-process-actions button")].filter(button=>button.textContent.startsWith("Debugger") && !button.disabled).map(button=>button.textContent)'),['Debugger: stop 18','Debugger: stop 19']);
+    await browser.evaluate(`document.querySelectorAll('#peek-process-actions button').forEach(button=>{
+      if(button.textContent === 'Debugger: stop ${id}')button.dataset.fixtureStop='target';
+    })`);
+    await browser.click('[data-fixture-stop=target]');
+    await browser.waitFor(`activity === 'debugger' && !busy && selectedStop?.[2] === ${id}`);
+    assert.deepEqual(await browser.evaluate('selectedStop'),[':stop',await browser.evaluate('state.session'),id]);
+    assert(await browser.evaluate(`document.querySelector('#window-label').textContent.includes('Stop ${id}')`));
+    const relation=id===19?'Parent Stop':'Child Stop';
+    assert(await browser.evaluate(`[...document.querySelectorAll('#stop-detail button')].some(button=>button.textContent === '${relation}')`));
+    await key('F9','F9',120);await key('p','KeyP',80);
+    await browser.waitFor('activity === "peek" && !busy');
+  }
+  await key('F9','F9',120);await key('l','KeyL',76);
+  await browser.waitFor('activity === "listener" && !busy');
+  await key('F9','F9',120);await key('p','KeyP',80);
+  await browser.waitFor('activity === "peek" && !busy');
+  for(const digit of '86400')await key(digit,'Digit'+digit,48+Number(digit));
+  await key('z','KeyZ',90);
+  assert(await browser.evaluate('document.querySelector("#peek-sample-status").textContent.includes("Update interval: 86400 seconds.")'));
+  const maximumIntervalCount=await browser.evaluate('peekFixture.count');
+  for(const digits of ['', '0', '86401', '9007199254740992']){
+    for(const digit of digits)await key(digit,'Digit'+digit,48+Number(digit));
+    await key('z','KeyZ',90);
+    assert.equal(await browser.evaluate('document.querySelector("#message").textContent'),'Update interval must be an integer from 1 to 86400 seconds.');
+    assert(await browser.evaluate('document.querySelector("#peek-sample-status").textContent.includes("Update interval: 86400 seconds.")'));
+  }
+  await new Promise(resolve=>setTimeout(resolve,1250));
+  assert.equal(await browser.evaluate('peekFixture.count'),maximumIntervalCount);
   await key('1','Digit1',49);await key('z','KeyZ',90);
+  assert(await browser.evaluate('document.querySelector("#peek-sample-status").textContent.includes("Update interval: 1 seconds.")'));
   const before=await browser.evaluate('peekFixture.count');
   await browser.waitFor(`peekFixture.count >= ${before+2}`);
   await key('F12','F12',123);
@@ -114,7 +157,7 @@ try {
   assert.deepEqual(browser.errors,[]);
   const result={fixtureOnly:true,guestRequests:0,count:otherCount,maximum:await browser.evaluate('peekFixture.maximum'),errors:browser.errors};
   await writeFile(join(output,'result.json'),JSON.stringify(result,null,2));
-  console.log('PASS fixture Peek rows, fonts, safe text, Describe, expired-session links, timed/manual refresh, hidden mode/activity/tab, nonoverlap, stale409 retry, transport reconnect, narrow horizontal scrolling, and Quit');
+  console.log('PASS fixture Peek rows, clipped state text, safe text, Describe, expired-session links, exact nested-stop selection, interval bounds/rejection, timed/manual refresh, hidden mode/activity/tab, nonoverlap, stale409 retry, transport reconnect, narrow horizontal scrolling, and Quit');
   console.log(JSON.stringify(result));
 }catch(error){await browser.screenshot(join(output,'failure.png'));throw error}
 finally{await browser.close()}
