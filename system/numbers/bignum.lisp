@@ -108,11 +108,8 @@
        (if (fixnump positive-b) (%make-bignum-from-fixnum positive-b) positive-b)
        v n shift)
       (%%bignum-divide-digits u v q)
-      (let ((quotient (%%bignum-denormalize-digits
-                       (%make-bignum-of-length (1+ (ceiling quotient-count 2)))
-                       q quotient-count 0))
-            (remainder (%%bignum-denormalize-digits
-                        (%make-bignum-of-length (1+ (ceiling n 2))) u n shift)))
+      (let ((quotient (%%bignum-digits-integer q quotient-count 0))
+            (remainder (%%bignum-digits-integer u n shift)))
         (values (if (eq (minusp a) (minusp b)) quotient (- quotient))
                 (if (minusp a) (- remainder) remainder))))))
 
