@@ -1843,3 +1843,13 @@ Reloaded the guest documentation catalog and displayed the updated Web guide thr
 Live Clear All and VM restart tests were omitted to preserve the user's stopped evaluation.  Other architectures were not tested.
 
 Saved the compiled Command Processor and reloaded catalog in the guest image.  The save script checked that the user's original stop 165 was still active before saving.  Snapshot completion passed.  Restoration was not tested.  Evidence: save-listener-ui.log.  The manual browser session was released after its owned evaluations and stops were removed.
+
+## Symbolics debugger specification and implementation: 2026-10-13
+
+The user approved the reviewed debugger agenda and requested its specification in doc/debugger.md, careful review, an updated plan, and implementation of the entire agenda.  Expanded the existing debugger reference with execution requirements, a complete chapter-5 command inventory grouped by area, staged acceptance criteria, and product-documentation requirements.  Current operations and planned behavior are distinguished.  Hardware, editor/mail, and instance-model mappings remain explicit decisions.  No capability is marked complete by this specification.
+
+Review found two dependencies for the first increment: a debugger operation needs an ABORT restart outside its execution and cleanup, and Listener information must identify the innermost stop belonging to its own active evaluation.  The browser should use that descriptor for input context, retain separate drafts, and dispatch the same guest operations from commands and buttons.  The existing retained command IDs and stopped-thread execution remain in use.  The Web agent owns browser changes and focused Chromium tests.  Guest service, Command Processor, SWANK changes, and this specification remain with the primary agent.
+
+Default proceed needs a Common Lisp mapping because restart objects carry no Genera proceed/exit classification.  Proposed CONTINUE when present and an explicit restart choice otherwise.  Asked the user before implementing this additional behavior.  Per-command abort, Help, ownership, and interactive restart invocation can proceed independently under the approved agenda.
+
+Required first tests: original stop, child error during a debugger operation, typed child Abort, intact parent, original continuation/result; top-level typed Abort with one cleanup; returning restart; interactive restart input; same Listener reuse; ownership and input recovery through reload.  Existing user stop 165 and the HTTP trace must remain untouched.  Tests compile and execute in Mezzano.  SBCL is unnecessary for these changes.

@@ -1,10 +1,83 @@
-# Debugger and evaluation reference
+# Debugger specification and evaluation reference
 
 The retained debugger keeps a stopped Lisp computation in the guest while a remote client inspects its condition, frames, and local variables or invokes a restart.  Evaluation jobs retain input, output, and results across connection loss.  The guest owns both services.
 
 The [remote client guide](../tools/swank/README.md) provides executable examples.  The [SWANK API reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines remote request and result formats.  The [Web Listener and Debugger](../tools/swank/web/README.md) provides a browser interface.  [Installation and operation](installation.md) describes startup, networking, and snapshots.
 
-The guarantees below apply to x86-64 compiled Lisp functions that enter the retained service through condition handling or evaluation-job interruption.  They do not establish support for other architectures, supervisor traps, or arbitrary suspension points.
+The implemented-service guarantees apply to x86-64 compiled Lisp functions that enter the retained service through condition handling or evaluation-job interruption.  They do not establish support for other architectures, supervisor traps, or arbitrary suspension points.
+
+## Compatibility specification
+
+The target is the user-visible debugger behavior in Symbolics' [Program Development Utilities, chapter 5](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf#page=191).  The [command summary](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf#page=246) supplies the command inventory.  Mezzano and browser differences require explicit documentation and tests.  The target includes command syntax, argument defaults, prompts, completion, help, state changes, control transfers, and equivalent keyboard and mouse operations.
+
+This section specifies the approved development agenda.  The reference sections below describe the implemented service.  A planned command acquires supported status only after its guest implementation, transport, browser interaction, documentation, and stated tests pass.
+
+### Execution and interaction requirements
+
+Guest Lisp owns debugger entry, nesting, current frame, command parsing, evaluation, restart selection, and execution.  Python transports requests.  The browser renders guest state and translates input.  Command names, completion, and help come from the guest command definitions.
+
+The owning Listener enters debugger interaction when its evaluation stops.  It displays the nesting level and directs input to the innermost stop in that evaluation.  Other Listeners retain their own input contexts.  The standalone Debugger displays the same guest operations.  Ordinary Listener input and each debugger level retain their drafts and cursor positions.  Returning from a level restores the preceding interaction.
+
+Each debugger operation establishes an abort boundary.  An error during that operation can enter a child debugger.  The command's ABORT restart abandons that operation and returns to the enclosing debugger.  The original computation remains stopped.  The original stop retains its captured restart objects, so a subsequent abort of that stop can leave the evaluation.  Cleanup follows Lisp control-transfer rules and can itself signal another condition.
+
+Restart invocation supports explicit Lisp arguments and the restart's interactive argument reader.  See the Common Lisp definitions of [INVOKE-RESTART](https://www.lispworks.com/documentation/HyperSpec/Body/f_invo_1.htm) and [INVOKE-RESTART-INTERACTIVELY](https://www.lispworks.com/documentation/HyperSpec/Body/f_invo_2.htm).  A restart can return values while its stop remains active or transfer control out of the stop.  Command results and evaluation state must distinguish those outcomes.  The exact default-proceed mapping between Common Lisp restarts and Genera proceed handlers is pending a decision.  The proposed mapping uses CONTINUE when available and otherwise requests an explicit restart choice.
+
+Evaluation in a frame must use its live lexical bindings, including shadowing, local functions, symbol macros, and shared closure cells.  Assignment changes the binding used by resumed computation.  Compiler metadata must describe scope, representation, locations, and unavailable values.  Code compiled under a reduced debugging policy must report its supported operations.  The supported debug policy must preserve the information promised by this reference.
+
+Object inspection retains object identity and permits navigation and mutation with explicit lifetimes.  Source and compiled-code views identify the executing function version.  Redefining a function preserves the identity of an older active definition.  Argument inspection distinguishes original arguments from current argument values where the command requires them.
+
+Frame return, reinvocation, and THROW must preserve multiple values, dynamic bindings, cleanup, and the caller's continuation.  Reinvocation uses the selected function's current definition and the specified argument policy.  Breakpoint and stepping operations require defined behavior under redefinition, GC, concurrent execution, and removal.  Monitoring must identify which accesses it observes.
+
+A debugger operation that prints, evaluates, reads input, or invokes application code can fail or block.  The user must be able to interrupt a running debugger operation and recover through nested debugging.  The supported interruption points and deferred-delivery cases require tests.  A stopped thread retains application locks.  Shared objects can change in other threads.
+
+Accepted operations retain their identity across transport loss.  Reconnection discovers their results and the current stop without repeating accepted effects.  Stop exit, release, and image restoration validate frame and object references before access.  Process interruption, background-thread failure, and headless startup failure need defined debugger entry and recovery.  Bare-metal FEP work remains deferred.
+
+### Command inventory
+
+Each row groups commands from the manual for tracking.  Partial means that the current Web service implements a narrower operation.  Planned means that the complete guest-to-browser operation remains work.  Existing internal primitives require separate integration and tests.
+
+| Area | Commands | Current status |
+|---|---|---|
+| Recovery | Abort; Proceed; Disable Aborts; Enable Aborts | Planned.  Indexed zero-argument restart calls exist. |
+| Help and display | Help; Display Debugger | Planned command compatibility.  Separate Web Debugger view exists. |
+| Frame movement | Top Of Stack; Bottom Of Stack; Next Frame; Previous Frame; Find Frame; Set Current Frame | Set Current Frame is partial.  Remaining commands planned. |
+| Frame inspection | Show Backtrace; Show Frame; Show Function; Show Arglist; Show Argument; Show Rest Argument; Show Local; Show Stack; Show Value | Backtrace, frame, and local inspection are partial.  Remaining commands planned. |
+| Environment | Show Bindings; Show Catch Blocks; Show Condition Handlers; Show Lexical Environment; Show Special; Show Standard Value Warnings; Use Dynamic Environment; Use Lexical Environment | Planned. |
+| Recovery choices | Show Proceed Options | Partial: lists captured restart names and reports. |
+| Objects | Describe Last; Symeval In Last Instance | Planned.  CLOS adaptation of instance access requires a specified mapping. |
+| Source and code | Analyze Frame; Show Source Code; Show Compiled Code; Show Instruction | Planned. |
+| Frame execution | Reinvoke; Return; Throw | Planned. |
+| Call and exit traps | Set Trap On Call; Clear Trap On Call; Proceed Trap On Call; Restart Trap On Call; Set Trap On Exit; Clear Trap On Exit | Planned. |
+| Conditions and monitoring | Enable Condition Tracing; Disable Condition Tracing; Monitor Variable; Unmonitor Variable; Show Monitored Locations | Planned. |
+| Breakpoints and stepping | Set Breakpoint; Clear Breakpoint; Clear All Breakpoints; Show Breakpoints; Single Step | Planned.  TRACE :BREAK demonstrates a separate function-entry stop. |
+| System integration | Edit Function; Mail Bug Report; Set Stack Size | Pending explicit Mezzano mappings. |
+
+The command reference must expand each entry with its supported arguments, omitted and mentioned defaults, selection rules, prompts, confirmation behavior, errors, and tests.  Genera keyboard accelerators need a documented browser mapping.  Editor, mail, instance-model, and stack-layout differences remain open scope decisions.  They remain in this inventory until implemented or explicitly excluded.
+
+### Delivery plan and acceptance
+
+Implementation proceeds in bounded increments, with compilation and tests in Mezzano, headless Chromium interaction, documentation updates, review, commits, and pushes.  The sequence below orders dependencies and preserves the full remaining scope.
+
+- [ ] Establish per-command abort boundaries.  Add typed Abort and Help, exact Listener ownership/nesting, completion, prompt restoration, and equivalent button actions.
+- [ ] Complete restart invocation, interactive input, explicit arguments, default proceed selection, restart reports, and normal-return versus nonlocal-exit results.
+- [ ] Add guest-owned frame selection and navigation, live frame evaluation and writes, evaluation history, object inspection, and the required compiler metadata.
+- [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
+- [ ] Integrate background failures, process interruption, startup recovery, debugger-operation interruption, and the remaining system commands.
+- [ ] Complete the command inventory, product guide, compatibility reference, Document Examiner topics, and architecture-specific acceptance results.
+
+The first required browser sequence is: stop an evaluation, cause an error in a debugger operation, type :Abort in the child, inspect the still-stopped parent, proceed the original evaluation, and verify its result and cleanup.  The previous nested-printer test continued the child and aborted the parent.  It does not establish this sequence.
+
+Additional acceptance cases include interactive replacement values, arguments with required parameters, normally returning restarts, mutations observed after continuation, shared closure bindings, nested scopes, local functions, multiple values, cleanup conditions and superseding transfers, redefinition, GC, and supported optimization policies.  Breakpoint tests cover repeated hits, concurrent callers, conditions/actions, removal, and continuation.  Interruption tests cover computation, input waits, printers, and pending delivery.
+
+Browser tests must exercise command entry, completion, contextual help, mouse actions, draft/focus restoration, multiple Listeners, recursive errors, and successful ordinary input after recovery.  Lost replies, reloads, disconnection, stale references, and supported image-restoration states must preserve the stated execution rules.  Tests use owned fixtures and preserve unrelated user evaluations.
+
+A completed capability requires its specified semantics and tests to pass on the stated architecture, compilation policy, and stopping states.  Source inspection, compiled implementation, guest tests, browser tests, and restore tests are distinct evidence.  The development journal records failures, results, and revisions.  Remaining items retain their unchecked status.
+
+### Product documentation
+
+The user guide will contain executable sessions for finding an error, inspecting and changing state, continuing, aborting nested operations, redefining and reinvoking a function, using breakpoints, and recovering after connection loss.  The command reference will give exact syntax and behavior.  The implementation reference will specify compiler guarantees, stopping states, ownership, object lifetimes, and transport behavior.
+
+Document Examiner will display these checked-in documents.  Interactive help will use guest command definitions.  Product documentation will describe supported behavior and explicit differences.  Research notes and chronological evidence belong in the development journal.
 
 ## Architecture and ownership
 
