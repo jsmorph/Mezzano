@@ -38,7 +38,7 @@ Show Processes uses `mezzano.debug:process-summary`, the same guest query as Pee
 
 Clear All deletes retained evaluation data across all Listeners.  Running evaluations terminate through the supervisor's thread termination operation, which runs their unwind cleanup.  The command waits for those threads to exit before releasing their output, values, and closed debugger records.  It also clears this tab's transcript, input history, and prior request and debugger-command records.  Document Examiner viewers and bookmarks retain their documentation state.
 
-The command captures its target jobs when it starts.  Later submissions survive.  Clear All can run while the same Listener has an active evaluation.  Active debugger stops in threads outside the evaluation service remain under debugger control, and the result reports their count.
+Clear All captures its targets after any earlier clearing operation has finished.  Later submissions survive that clearing.  A waiting Clear All already included in another clear's targets is cancelled with those evaluations.  Clear All can run while the same Listener has an active evaluation and preserves package and pathname changes published during that evaluation's cleanup.  Active debugger stops in threads outside the evaluation service remain under debugger control, and the result reports their count.
 
 The clearing command retains its own result for recovery after a lost reply.  The Web interface hides that result from the transcript and labels it Command result in Evaluations.  Repeating its original request recovers the same operation and preserves later work.
 

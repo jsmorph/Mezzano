@@ -430,7 +430,25 @@
     (release-evaluation-record (check-evaluation-handle handle)))
   (values))
 
+(defvar *clear-evaluation-lock* (mezzano.supervisor:make-mutex 'clear-evaluations))
+
+(defun request-evaluation-termination (job thread)
+  (loop
+    (case (with-service-lock
+            (cond ((not (eq (evaluation-job-state job) :running)) :complete)
+                  ((evaluation-job-interrupt-ready-p job) :ready)))
+      (:complete (return nil))
+      (:ready
+       (mezzano.supervisor:terminate-thread thread)
+       (return t)))
+    (sleep 0.01)))
+
 (defun clear-evaluation-history (current-job)
+  (mezzano.supervisor:with-mutex (*clear-evaluation-lock*)
+    (clear-evaluation-history-locked current-job)))
+
+(defun clear-evaluation-history-locked (current-job)
+  (assert (mezzano.supervisor:mutex-held-p *clear-evaluation-lock*))
   (let ((jobs nil)
         (threads nil)
         (stops nil)
@@ -446,15 +464,16 @@
                              (eq (evaluation-job-state job) :released))
                    (push job jobs)
                    (when (eq (evaluation-job-state job) :running)
-                     (push (evaluation-job-thread job) threads))))
+                     (push (cons job (evaluation-job-thread job)) threads))))
                *evaluation-jobs*)
       (setf stops (loop for stop being the hash-values of *service-stops*
                         collect stop)))
-    (dolist (thread threads)
-      (mezzano.supervisor:terminate-thread thread)
-      (incf terminated))
-    (dolist (thread threads)
-      (mezzano.supervisor:thread-join thread))
+    (dolist (entry threads)
+      (request-evaluation-termination (car entry) (cdr entry)))
+    (dolist (entry threads)
+      (when (eq (mezzano.supervisor:thread-join (cdr entry))
+                'mezzano.supervisor:terminate-thread)
+        (incf terminated)))
     (with-service-lock
       (dolist (job jobs)
         (unless (eq (evaluation-job-state job) :released)
@@ -462,7 +481,7 @@
           (incf released-jobs)))
       (dolist (stop (loop for stop being the hash-values of *service-stops*
                          when (or (member stop stops)
-                                  (member (service-stop-thread stop) threads))
+                                  (member (service-stop-thread stop) threads :key #'cdr))
                            collect stop))
         (if (eq (service-stop-state stop) :closed)
             (progn

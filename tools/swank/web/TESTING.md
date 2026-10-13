@@ -101,7 +101,7 @@ Compile and load the guest test, then invoke it from a retained evaluation:
 (lispm-clear-all-test:run :allow-global-clear t)
 ```
 
-The test checks returned jobs, running evaluations, interactive input waits, debugger stops, unwind cleanup, and preservation of a submission created after target capture.  Its invoking evaluation survives.
+The test checks returned jobs, running evaluations, interactive input waits, debugger stops, cancellation before evaluation entry, a waiting concurrent clear, unwind cleanup, Listener package/pathname preservation, and preservation of a submission created after target capture.  Its invoking evaluation survives.
 
 The browser driver tests same-Listener input waiting, guest release, this-tab histories, retained command receipts, document-viewer preservation, reload, and replay after a lost reply:
 
@@ -135,3 +135,14 @@ The focused inline-reference test checks that a wrapped topic reference and its 
 node tools/swank/web/test-document-inline.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-inline-reference-test
 ```
+
+## Documentation commands and private-file errors
+
+The focused command driver submits Show Documentation, Show Table of Contents, and Show Overview through the Examiner command input.  It selects Exact, Initial, and Substring searches through the right-click options menu and checks all-term matching, word order, and adjacency.  It tests empty-pathname parsing and second-SPACE acceptance without accessing the default private file.
+
+```sh
+node tools/swank/web/test-document-commands.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-document-commands-test
+```
+
+The driver saves and reads one unique private file through a relative logical pathname.  It then replaces that owned file with malformed records, improper and circular lists, truncated input, and reader-evaluation syntax.  It checks distinct errors for invalid contents, a missing topic, and a missing file, with unchanged viewer state and successful subsequent queries.  Its cleanup removes the owned file and releases its jobs and session, including after failed assertions.  Expected HTTP 409 responses are counted separately from unexpected browser errors.

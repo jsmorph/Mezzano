@@ -19,7 +19,7 @@
     (:name "Show Processes" :id :show-processes
      :help "Display Mezzano thread states, priorities, wait reasons, recorded run time, and retained debugger stops.")
     (:name "Clear All" :id :clear-all
-     :help "Terminate retained evaluations and delete their output, debugger records, and Listener histories.")
+     :help "Terminate retained evaluations, release their data and closed debugger records, and clear this tab's evaluation histories.")
     (:name "Clear Output History" :id :clear-output-history
      :help "Clear the displayed transcript. Retain input history and guest jobs.")
     (:name "Show Directory" :id :show-directory :type :directory
@@ -152,7 +152,12 @@
             ((not (eq type :local)) (input-error "Invalid argument ~S. Expected ~{~A~^ or ~}." text choices))))
     (case type
       (:package (or (find-package text) (input-error "No package named ~S." text)))
-      ((:pathname :directory) (merge-pathnames (pathname text) (listener-pathname listener)))
+      ((:pathname :directory)
+       (let ((pathname (pathname text)))
+         (when (and (eq type :directory)
+                    (null (pathname-name pathname)) (null (pathname-type pathname)))
+           (setf pathname (make-pathname :name :wild :type :wild :version :wild :defaults pathname)))
+         (merge-pathnames pathname (listener-pathname listener))))
       (:boolean (string-equal text "Yes"))
       (:format (if (string-equal text "Detailed") :detailed :brief))
       ((:frame :local)
@@ -314,9 +319,10 @@
                    (setf (getf metadata :error) (input-error-text condition)))
                  (format t "~A~%" condition)
                  nil)))
-      (mezzano.debug::with-service-lock
-        (setf (listener-package listener) *package*
-              (listener-pathname listener) *default-pathname-defaults*)))))
+      (unless (eq (getf metadata :command) :clear-all)
+        (mezzano.debug::with-service-lock
+          (setf (listener-package listener) *package*
+                (listener-pathname listener) *default-pathname-defaults*))))))
 
 (defun present-pathname (pathname job metadata)
   (let* ((text (namestring pathname))
@@ -369,10 +375,8 @@
        (mezzano.debug::with-service-lock
          (setf (getf metadata :effects) (list (list :operation :clear-output-history)))))
       (:show-directory
-       (let ((path (if (and (null (pathname-name argument)) (null (pathname-type argument)))
-                       (make-pathname :name :wild :type :wild :version :wild :defaults argument) argument)))
-         (dolist (entry (sort (copy-list (directory path)) #'string-lessp :key #'namestring))
-           (present-pathname entry job metadata))))
+       (dolist (entry (sort (copy-list (directory argument)) #'string-lessp :key #'namestring))
+         (present-pathname entry job metadata)))
       (:show-file
        (with-open-file (stream argument :direction :input)
          (loop with buffer = (make-string 4096) for count = (read-sequence buffer stream)
