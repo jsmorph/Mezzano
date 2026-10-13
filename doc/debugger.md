@@ -146,6 +146,25 @@ Any attached session can request interruption or read its history.  Stop command
 
 A queued interrupt selected after restore expires without delivery.  A running interrupt stop can continue through a fresh session.  Its interrupt record keeps its original acceptance boot.  Other instruction positions and external I/O have no restore guarantee.
 
+## Function-entry stops
+
+Mezzano's TRACE accepts a :BREAK condition before a function name.  When that condition evaluates true, the trace wrapper calls BREAK before entering the function body.  Calls from Web Listener evaluations enter the retained debugger.  CONTINUE enters the function body.  The evaluation's ABORT restart aborts the evaluation.
+
+For example, after loading the HTTPS libraries:
+
+```lisp
+(trace :break t drakma::default-port)
+(complete "Say hello." :timeout 600)
+```
+
+This stops in Drakma's HTTP request path before it opens the connection.  The Web evaluation's Debugger action opens the stop.  `:Show Backtrace` lists its frames, `:Set Current Frame N` displays a frame's available locals, and `:Show Proceed Options` lists its restarts.  Clicking CONTINUE resumes the call.  The request deadline includes time spent in the debugger.
+
+Tracing applies to calls through the named function's reference in every thread.  Each call prints its arguments and return values.  DEFAULT-PORT takes the URI as its argument.  The trace remains active until removed:
+
+```lisp
+(untrace drakma::default-port)
+```
+
 ## Compiler guarantees
 
 The image bootstrap policy is `(safety 3 debug 1 speed 1)`.  The running compiler defaults to `(safety 3 debug 3 speed 1)`.  Code already in an image retains the policy used when it was compiled.

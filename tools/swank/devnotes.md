@@ -1784,3 +1784,26 @@ The initial installation check incorrectly expected FDEFINITION to return the tr
 A headless Chromium evaluation of DEFAULT-PORT reached the retained debugger.  An inspection request then returned HTTP 409 with :CLOSED-CONNECTION.  SWANK's MAKE-CONNECTION queues :ADD-CONNECTION to its sentinel and returns before that message must be handled.  The caller can start request workers while the connection is absent from SWANK::*CONNECTIONS*.  The retained service's CHECK-CONNECTION tests membership in that list and rejects an absent connection as closed.  This ordering permits the observed rejection.  Recommendation: complete connection registration before starting request workers, preserving the sentinel's ownership of the connection list.  This correction requires user approval and remains unimplemented.
 
 Inspected the owned test stop through SWANK, confirmed the trace-break condition, invoked CONTINUE, and checked the returned value 443.  Released its stop, job, and session.  The breakpoint remains armed for the user's call.  Evidence: /tmp/http-breakpoint-web.log and the retained-stop inspection result.  The Web debugger test failed.  No source implementation changed in this increment.
+
+## Connection registration correction: 2026-10-13
+
+The user approved completing SWANK connection registration before starting request handling.  Keep the sentinel as the owner of SWANK::*CONNECTIONS*.  MAKE-CONNECTION will send its registration request and wait for a matching acknowledgment.  The sentinel adds the connection before acknowledging it.  Calls with no sentinel or from the sentinel register through SENTINEL-SERVE on the calling thread.  Use the existing SEND and RECEIVE-IF interfaces.  The change adds no dependency or retry behavior.
+
+Test delayed registration with an isolated sentinel, direct registration, and registration from the sentinel thread.  Compile and load the changed functions in Mezzano.  Exercise repeated fresh SWANK connections and headless Chromium inspection and CONTINUE at the armed HTTP trace breakpoint.  Preserve the breakpoint for the user's COMPLETE call.  Inspect the resulting test state and remove only owned test jobs and stops.
+
+The isolated test reproduced the old ordering: MAKE-CONNECTION returned while its registration message waited in the test sentinel.  The initial test source had a missing parenthesis and then passed NIL where the connection structure requires a stream.  Corrected the source and supplied a string stream.  Inspected, aborted, and released both failed test jobs.  The compiled test then confirmed the old behavior.  Evidence: test-registration-before.log.
+
+Loaded the three changed definitions from compiled forms read from swank.lisp, in SENTINEL-SERVE, REGISTER-CONNECTION, MAKE-CONNECTION order.  Loading the receiver before the sender preserves request compatibility during this live update.  The delayed-registration, direct-registration, and sentinel-thread tests passed.  Compiled the full swank.lisp file: 662 functions, warnings NIL, failure NIL.  Evidence: install-registration.log.
+
+Two hundred fresh connections from four concurrent callers passed with OPEN-SESSION as each connection's first RPC.  Every test session was released.  The host driver used the existing Python transport and standard library.  Evidence: test-registration-connections.py and test-registration-connections.log.
+
+Headless Chromium displayed the DEFAULT-PORT trace condition and restart list, and CONTINUE returned 443.  A full COMPLETE request then reached the same stop, displayed HTTP-REQUEST and COMPLETE frames, continued, and returned the requested text.  The first full-request browser test incorrectly read an information field from the browser's stop record and raised a JavaScript TypeError after continuing the first stop.  Its cleanup script then tried to iterate a NIL stop list.  Corrected both test assumptions, confirmed that request's completion, and released its owned stops, job, and session.  The corrected browser test passed with one trace stop and zero browser errors.  It released all its owned records.  Evidence: /tmp/http-breakpoint-web-fixed.log, /tmp/complete-breakpoint-web.log, and /tmp/complete-breakpoint-web-fixed.log.
+
+Documented the registration guarantee, test command, and existing TRACE :BREAK operation.  All execution tests used the x86-64 Mezzano guest.  Other Lisp backends and architectures remain untested.  The HTTP trace breakpoint stays armed for the user's COMPLETE call.
+
+- [x] Test registration ordering and connection startup in Mezzano.
+- [x] Test the HTTP trace breakpoint and restarts in the Web UI.
+- [x] Save the loaded correction and updated documentation in the guest image.
+- [x] Review the implementation and documentation.
+
+Reloaded the documentation catalog and queried the new function-entry topic.  Saved the compiled correction, catalog, and armed HTTP breakpoint in the guest image.  Snapshot restoration was not tested in this increment.  Evidence: save-registration.log.  The Slime correction and test are committed and pushed on debugging as c0df1722.
