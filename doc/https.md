@@ -16,20 +16,121 @@ The loader gives the separate HTTPS dependency directory precedence over MBuild'
 
 ## Listener functions
 
-The loader defines COMPLETE and CURL in CL-USER, the Listener's default package:
+The loader defines COMPLETE and CURL in CL-USER, the Listener's default package.
+
+### COMPLETE
+
+COMPLETE sends one synchronous request to the OpenAI Responses endpoint.  It reads the configured private key and sets store to false.
 
 ```lisp
 (complete "Explain dynamic binding in Common Lisp.")
-(complete "Explain dynamic binding in Common Lisp." "gpt-4.1-nano")
 
+(complete '((:role :developer :content "Use Common Lisp examples.")
+            (:role :user :content "Explain dynamic binding."))
+          :model "gpt-4.1-nano"
+          :max-output-tokens 500
+          :temperature 0.3)
+```
+
+INPUT accepts a prompt string, a nonempty proper list of message property lists, or a vector of Responses input objects.  Each message property list contains exactly :ROLE and :CONTENT.  Roles are :SYSTEM, :DEVELOPER, :USER, or :ASSISTANT.  Content is a string.  Either property order is accepted.  Native Responses objects use [Jzon's representation](json.md): hash tables with string keys and vectors for arrays.  They support structured content, previous response items, and function-call results.  COMPLETE preserves caller-owned input and schema data.
+
+```lisp
+(complete input
+          &key (model "gpt-4.1-nano") instructions max-output-tokens
+               temperature top-p reasoning-effort verbosity text-format
+               tools (tool-choice :auto) (parallel-tool-calls nil)
+               (timeout 60))
+```
+
+| Keyword | Accepted value and effect |
+|---|---|
+| :MODEL | Nonempty model name string.  Defaults to gpt-4.1-nano. |
+| :INSTRUCTIONS | Instruction string for this request. |
+| :MAX-OUTPUT-TOKENS | Integer of at least 16.  Limits generated output, including reasoning tokens. |
+| :TEMPERATURE | Finite real number from 0 through 2. |
+| :TOP-P | Finite real number from 0 through 1. |
+| :REASONING-EFFORT | :NONE, :MINIMAL, :LOW, :MEDIUM, :HIGH, :XHIGH, or :MAX.  Maps to reasoning.effort. |
+| :VERBOSITY | :LOW, :MEDIUM, or :HIGH.  Maps to text.verbosity. |
+| :TEXT-FORMAT | Jzon object for text.format, including JSON Schema configuration. |
+| :TOOLS | List or vector of Jzon tool-definition objects. |
+| :TOOL-CHOICE | :AUTO, :NONE, :REQUIRED, or a nonempty string naming a required function tool. |
+| :PARALLEL-TOOL-CALLS | T permits multiple function calls.  NIL sends JSON false. |
+| :TIMEOUT | Finite positive duration in seconds.  Defaults to 60.  Uses the cancellation semantics below. |
+
+The [Responses request reference](https://developers.openai.com/api/reference/python/resources/responses/methods/create) specifies these API fields.  Individual models accept different settings.  The service validates model support and native JSON schemas.  Optional generation settings default to omission, and NIL omits them.  Numeric zero is sent.  Rational sampling values such as 1/2 are converted to double floats.  Tool-choice and parallel-call controls are sent with their stated defaults.
+
+The model argument uses :MODEL.  The former second positional model argument must be changed to that keyword form.
+
+COMPLETE returns four values:
+
+| Value | Representation |
+|---|---|
+| Text | Output-text parts concatenated in response order, or NIL when absent.  JSON output remains a string. |
+| Response | Complete parsed response hash table, including output items, model, status, and usage. |
+| Request ID | HTTP x-request-id string, or NIL when absent. |
+| Function calls | Ordered list of property lists containing :CALL-ID, :NAME, and :ARGUMENTS, or NIL.  Arguments are parsed JSON objects. |
+
+An empty output-text part produces an empty string.  A response can contain both text and function calls.  The response object preserves the original argument strings and all other output items.
+
+```lisp
+(multiple-value-bind (text response request-id calls)
+    (complete "Explain dynamic binding." :max-output-tokens 500)
+  (values text (gethash "usage" response) request-id calls))
+```
+
+### Function calls
+
+Tool definitions contain JSON data.  The caller supplies functions and decides which requests to execute.  This definition asks the model for a symbol name:
+
+```lisp
+(let ((tools
+        (com.inuoe.jzon:parse
+         "[{\"type\":\"function\",\"name\":\"lookup_symbol\",
+            \"description\":\"Look up documentation for a Lisp symbol.\",
+            \"strict\":true,
+            \"parameters\":{\"type\":\"object\",
+              \"properties\":{\"name\":{\"type\":\"string\"}},
+              \"required\":[\"name\"],\"additionalProperties\":false}}]")))
+  (complete "Look up CONDITION-WAIT."
+            :tools tools :tool-choice "lookup_symbol"))
+```
+
+A returned call has this shape:
+
+```lisp
+(:call-id "call_123" :name "lookup_symbol" :arguments arguments-hash-table)
+```
+
+The caller obtains the symbol name with `(gethash "name" (getf call :arguments))`.  Strict function schemas require all properties to be required and additionalProperties to be false on each object.  Optional values use nullable types.  The [function-calling guide](https://developers.openai.com/api/docs/guides/function-calling) specifies tool definitions, selection, and result messages.
+
+For another request, the caller appends the response's full output vector to its previous input vector, followed by function_call_output objects.  Each result object contains the matching call_id and an output string.  Preserve output order and reasoning items, including encrypted reasoning content.  Supply the desired instructions, tools, and generation options on the next COMPLETE call.  The [reasoning guide](https://developers.openai.com/api/docs/guides/reasoning#preserve-reasoning-without-stored-responses) describes continuation with store false.
+
+COMPLETE returns function calls to the caller.  Tool execution and subsequent requests belong to the calling Lisp program.
+
+### Completion errors
+
+Invalid Lisp argument types, ranges, and message structure signal before sending the request.  An HTTP rejection signals LISPM-OPENAI:HTTP-ERROR, preserving the service's response body.  TLS, transport, cancellation, and JSON response-decoding conditions propagate.
+
+An incomplete response, refusal, malformed response or function call, or missing text and function calls signals LISPM-OPENAI:COMPLETION-ERROR.  Duplicate function-call IDs and arguments that fail to decode as a JSON object constitute malformed calls.
+
+| Reader | Value |
+|---|---|
+| COMPLETION-ERROR-REASON | :INCOMPLETE, :STATUS, :REFUSAL, :MALFORMED-RESPONSE, :MALFORMED-TOOL-CALL, or :MISSING-OUTPUT. |
+| COMPLETION-ERROR-RESPONSE | Parsed response, including any partial output. |
+| COMPLETION-ERROR-REQUEST-ID | HTTP request ID, or NIL. |
+| COMPLETION-ERROR-CAUSE | Original argument-decoding condition, or NIL. |
+
+These readers belong to LISPM-OPENAI.  The condition's report includes its reason and request ID.  :STATUS denotes a response whose status differs from completed and incomplete.  Inspect the response for the service's status, error, and incomplete_details fields.
+
+Each call reads the first line of `openai-api.key` in USER-HOMEDIR-PATHNAME.  The file stays outside the repository and uses mode 0600 on the host.  COMPLETE overwrites its key string on exit, subject to the persistence limits below.
+
+### CURL
+
+```lisp
 (curl "https://example.org/")
 ```
 
-COMPLETE accepts a prompt string and an optional model string, defaulting to gpt-4.1-nano.  It returns the response's output text as one string.  It sets store to false and signals an error if the response is incomplete or contains no output text.
-
-Each call reads the key from `openai-api.key` in USER-HOMEDIR-PATHNAME.  That private file contains the key on its first line and stays outside the repository.  A host file served through MBuild uses mode 0600.  The caller supplies only the prompt and optional model.  The function overwrites its key string on exit, subject to the persistence limits below.
-
-CURL performs GET and returns three values: the body, integer HTTP status, and header alist.  Drakma decodes `text/*` bodies as strings using the response's charset.  Other content types, including `application/json`, return octet vectors.  CURL decompresses encoded content and follows at most five redirects.  A 404 or another HTTP error status is returned with its body and headers.  Transport and TLS errors signal conditions.
+CURL performs GET and returns three values: the body, integer HTTP status, and header alist.  Drakma decodes text/* bodies as strings using the response's charset.  Other content types, including application/json, return octet vectors.  CURL decompresses encoded content and follows at most five redirects.  A 404 or another HTTP error status is returned with its body and headers.  Transport and TLS errors signal conditions.
 
 ```lisp
 (multiple-value-bind (body status headers)
@@ -37,7 +138,7 @@ CURL performs GET and returns three values: the body, integer HTTP status, and h
   (values (com.inuoe.jzon:parse body) status headers))
 ```
 
-Both functions use the guest CA bundle and a 60-second cancellation context.  CURL limits connection establishment to 15 seconds.  Cancellation closes blocked TLS I/O.  Plain HTTP socket reads do not observe that context, so a plain HTTP request can continue until a socket operation returns.
+CURL uses the guest CA bundle, a 60-second cancellation context, and a 15-second connection limit.  Cancellation closes blocked TLS I/O.  Plain HTTP socket reads do not observe that context, so a plain HTTP request can continue until a socket operation returns.
 
 ## Responses API
 

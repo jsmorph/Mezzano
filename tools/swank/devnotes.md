@@ -1746,3 +1746,31 @@ Tests required before claiming support:
 - [ ] Expiration during a tool or debugger stop: retain completed work and check cancellation before another operation.
 - [ ] Continuation carries instructions, call IDs, output order, reasoning items, and schema definitions without mutating caller data.
 - [ ] Guest and headless Chromium execution with final values and intermediate usage/history inspection.
+
+## Approved single-request COMPLETE implementation: 2026-10-13
+
+The user restricted this work to COMPLETE and approved the single-request design.  That scope supersedes the execution-loop and recovery proposals above.  COMPLETE sends one synchronous Responses request, accepts tool definitions as JSON data, and returns requested function calls for the caller to handle.
+
+Implemented the keyword interface in tools/https/listener.lisp, with the existing model default, key-file loading, transport, and store false.  Request construction accepts prompt strings, text-message property lists, and native Jzon input vectors.  Generation controls map to the documented request fields.  Tool selection accepts :AUTO, :NONE, :REQUIRED, or a function name.  Parallel calls default to JSON false.  The four values are text, parsed response, HTTP request ID, and ordered function-call property lists with decoded argument objects.  Tool-only output returns NIL text.  The model argument now uses :MODEL.  Updated its existing test caller and product examples.
+
+COMPLETION-ERROR retains a reason, full response, request ID, and an argument-decoding cause when present.  Incomplete output, refusal, malformed output/calls, and absent text/calls signal this condition.  HTTP and transport conditions retain their existing behavior.  Request construction and response decoding have in-memory tests.  The implementation uses already loaded Alexandria, float-features, and Jzon.
+
+The client, Listener functions, and tests compiled in Mezzano with no warnings or compilation failures.  In-memory tests passed optional-field omission, explicit zero and false, rational sampling values, Unicode messages, argument validation, native input vectors, ordered mixed text/calls, empty text, tool-only output, retained response identity, malformed arguments, duplicate IDs, refusal, and incomplete output.  Evidence: compile-complete-final.log and complete-final-check-pass.log.
+
+Authenticated guest tests passed the default and explicit gpt-4.1-nano model, message input, strict JSON output, a forced function call, and a separate caller-written continuation supplying that call's result.  An invalid model produced HTTP 404 with its request ID and JSON error body available.  Evidence: complete-live.log.
+
+Headless Chromium passed seven Web Listener evaluations: basic completion, message/schema completion, a forced function call, an explicit two-request continuation, the HTTP error, and both existing CURL cases.  It checked four COMPLETE values, decoded arguments, displayed results, and zero browser errors.  All seven jobs and the test session were released.  Evidence: /tmp/complete-browser.log and /tmp/complete-browser/*.json.
+
+The token-limit test returned COMPLETION-ERROR with reason :INCOMPLETE and incomplete_details.reason max_output_tokens.  The first timeout assertion expected only CL-CANCEL:DEADLINE-EXCEEDED.  Inspection showed USOCKET:TIMEOUT-ERROR during connection establishment, which is an allowed transport failure under the documented interface.  The corrected test accepts those two timeout conditions.  Moving that test into its package first left two calls to COMPLETE unqualified and caused an undefined-function error.  Qualified those calls as CL-USER::COMPLETE, recompiled, and passed both limit tests.  Test stops were inspected and aborted, and their jobs and sessions released.  Evidence: complete-errors.log, complete-final-check.log, and complete-final-check-pass.log.
+
+The HTTPS reference now specifies all arguments, return values, function-call data, continuation, and condition readers.  Reloaded the guest documentation catalog and queried the COMPLETE, Function calls, and Completion errors topics successfully.  Code inspection confirms one CREATE-RESPONSE call per COMPLETE invocation.  Live model coverage is gpt-4.1-nano and its 2025-04-14 snapshot.  Reasoning-effort and verbosity field encoding passed fixtures; live reasoning-model inference and reasoning continuation remain untested in this increment.  SBCL was not used.
+
+Headless Chromium displayed the COMPLETE, Function calls, and Completion errors topics in the Document Examiner.  The guest snapshot completed with the compiled COMPLETE definition and updated catalog loaded.  Snapshot restoration was not tested in this increment.  Evidence: /tmp/complete-docs-browser.log, /tmp/complete-browser/document-*.png, and complete-save.log.
+
+- [x] Compile and load the implementation and tests in Mezzano.
+- [x] Test argument encoding, validation, response decoding, and typed errors.
+- [x] Test authenticated requests and caller-managed function-call continuation.
+- [x] Test the four return values through the Web Listener in headless Chromium.
+- [x] Update product documentation and reload the Document Examiner catalog.
+- [x] Save the compiled definitions and documentation catalog in the guest image.
+- [x] Review the implementation and documentation.

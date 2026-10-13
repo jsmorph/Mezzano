@@ -68,7 +68,7 @@
     (handler-case
         (dolist (arguments '(("Reply with exactly: Listener completion works.")
                              ("Reply with exactly: Explicit model works."
-                              "gpt-4.1-nano-2025-04-14")))
+                              :model "gpt-4.1-nano-2025-04-14")))
           (let ((text (apply #'cl-user::complete arguments)))
             (assert (and (stringp text) (plusp (length text))))
             (format t "PASS COMPLETE (~A): ~S~%"

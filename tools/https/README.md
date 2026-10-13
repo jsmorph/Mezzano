@@ -214,14 +214,18 @@ The test procedure preserves a complete disk image before credential ingestion, 
 
 The loader also defines [COMPLETE and CURL](../../doc/https.md#listener-functions) in CL-USER.  COMPLETE reads `openai-api.key` from the guest home directory.  The installed key file contains only the key on its first line, uses mode 0600, and stays outside the checkout.
 
-The GET tests exercise a chunked HTTP text response and a verified HTTPS response from example.org, plus an HTTPS request to OpenAI returning HTTP 401 JSON as octets.  The in-memory tests decode raw and already chunked streams and a complete chunked HTTP response.  The completion tests call the default model and an explicit model:
+The GET tests exercise a chunked HTTP text response and a verified HTTPS response from example.org, plus an HTTPS request to OpenAI returning HTTP 401 JSON as octets.  The in-memory tests decode raw and already chunked streams and a complete chunked HTTP response.  The original completion tests call the default model and an explicit :MODEL.  The keyword-interface tests cover request encoding, argument validation, text and function-call decoding, retained response data, and completion conditions:
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-LISTENER.LISP")
     (lispm-https-listener-test:run-chunked-tests)
     (lispm-https-listener-test:run-get-tests)
     (lispm-https-listener-test:run-completion-tests)
+    (load "SYS:SOURCE;TOOLS;HTTPS;TEST-COMPLETE.LISP")
+    (lispm-complete-test:run)
+    (lispm-complete-test:run-live)
+    (lispm-complete-test:run-live-limits)
 
-The completion test requires the private key file.  It reports a failed call's condition type after unwinding its credential-bearing frames.
+RUN-LIVE tests the default and explicit models, message input, structured JSON output, a forced function call, a caller-supplied result in a second COMPLETE call, and an invalid-model HTTP error.  RUN-LIVE-LIMITS checks a truncated response and a connection or cancellation timeout.  Each live test requires the private key file.  RUN uses in-memory fixtures.  The original completion test requires the private key file.  It reports a failed call's condition type after unwinding its credential-bearing frames.
 
 The guest passed the in-memory chunk tests and live chunked HTTP GET after correcting CLOS method ordering.  The portable method-order test checks both method-definition orders, explicit argument precedence, CALL-NEXT-METHOD, nonmatching EQL arguments, and repeated dispatch:
 
@@ -232,11 +236,11 @@ Under SBCL, load `tools/test-clos-method-order.lisp` and call the same function.
 
 The verified HTTPS GET to example.org now passes with the x86-64 arithmetic improvements.  The GET test retains both the HTTP chunked-response assertion and the HTTPS request.  The OpenAI request tests verified HTTPS and an HTTP error response.
 
-The browser HTTPS test requires Node, headless Chromium, the running Web service, and the installed guest key file.  It submits COMPLETE and two CURL expressions through one Listener session.  It checks the completion text, the HTTPS text response with status 200, and an OpenAI octet response with status 401.  Each CURL result must display all three values, including headers.  The test saves each result and screenshot:
+The browser HTTPS test requires Node, headless Chromium, the running Web service, and the installed guest key file.  It submits prompt and message completions, structured JSON output, a forced function call, an explicit caller-managed continuation, an HTTP error, and two CURL expressions through one Listener session.  It checks all four COMPLETE values, decoded function arguments, schema output, the HTTPS text response with status 200, and an OpenAI octet response with status 401.  Each CURL result must display all three values, including headers.  The test saves each result and screenshot:
 
     node tools/swank/web/test-browser-https.mjs http://lispm.example.net:8765/ browser-https-results
 
-This test sends one authenticated inference request and two GET requests.  All three cases passed against the x86-64 guest.
+This test sends six authenticated Responses POST requests, including one invalid-model request, and two GET requests.  All seven browser evaluations passed against the x86-64 guest.
 
 ## Certificate-cache tests
 

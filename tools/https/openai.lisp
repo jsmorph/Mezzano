@@ -1,7 +1,10 @@
 (defpackage #:lispm-openai
   (:use #:cl)
   (:export #:create-response #:http-error
-           #:http-error-status #:http-error-request-id #:http-error-body))
+           #:http-error-status #:http-error-request-id #:http-error-body
+           #:completion-error #:completion-error-reason
+           #:completion-error-response #:completion-error-request-id
+           #:completion-error-cause))
 
 (in-package #:lispm-openai)
 
