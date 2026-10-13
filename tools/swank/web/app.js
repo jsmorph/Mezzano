@@ -23,6 +23,7 @@ let activity = "listener";
 let selectedStop = null;
 let selectedFrame = null;
 let stops = [];
+let activeListenerJob = null;
 let historyIndex = null;
 let selectingActivity = false;
 let selectHelpFocus = null;
@@ -83,7 +84,9 @@ function button(text, action, help) {
   return element;
 }
 function report(error) {
-  message(error.message || String(error));
+  message(error.reason === ":listener-busy"
+    ? "Input was rejected because this Listener already had an active evaluation. Your input is preserved."
+    : error.message || String(error));
   if (error.reason === ":expired-session") connected = false;
   $("process-state").textContent = connected ? "Request Error" : "Disconnected";
 }
@@ -663,6 +666,7 @@ async function refresh() {
   const offsets = [...views.entries()].map(([name, view]) => ({name, start: view.end}));
   const sample = await api("monitor-state", {offsets});
   const listenerInfo = sample.listener;
+  activeListenerJob = listenerInfo["active-job"] ?? null;
   if (state.initialHerald?.session !== state.session) state.initialHerald = {session: state.session, hidden: false};
   if ($("herald").dataset.session !== state.session && listenerInfo.herald) {
     $("herald").replaceChildren(renderHerald(listenerInfo.herald));
@@ -706,10 +710,41 @@ async function refresh() {
   placeHeraldOnPixels();
   renderJobs();
   renderInputHistory();
+  await inspectSelectedStop();
   renderStops();
+  renderListenerState();
   renderPending();
   updateStatus();
   updateTracks();
+}
+function renderListenerState() {
+  const panel = $("listener-state");
+  const info = views.get(activeListenerJob)?.info;
+  panel.replaceChildren();
+  panel.hidden = !info;
+  if (!info) return;
+  const stop = info.stops?.[0];
+  panel.append(node("span", stop
+    ? "This Listener is stopped in the debugger. "
+    : info["input-waiting-p"] ? "This Listener is waiting for evaluation input. "
+      : "This Listener is evaluating. "));
+  if (stop) panel.append(button("Debugger", () => selectStop(stop)));
+}
+function stopCommandPending(stop) {
+  return state.pending.some(record => record.operation === "submit" && same(record.arguments.stop, stop))
+    || state.commands.some(command => {
+      if (!same(command.stop, stop)) return false;
+      const result = commandResults.get(commandKey(command));
+      return !result || result.state === ":pending" || result.state === ":running";
+    });
+}
+async function inspectSelectedStop() {
+  const selected = stops.find(stop => same(stop.token, selectedStop));
+  if (activity !== "debugger" || !selected || selected.info.state !== ":stopped"
+      || selected.info.child || stopCommandPending(selectedStop)) return;
+  const command = ["frames", "restarts", "condition"].find(name => !latestCommand(name));
+  if (command) await mutate("submit", {stop: selectedStop,
+    id: selected.info["next-command-id"], command, argument: null});
 }
 function renderJobs() {
   $("jobs").replaceChildren();
@@ -742,6 +777,7 @@ async function selectStop(stop) {
   selectedFrame = null;
   showActivity("debugger");
   await refresh();
+  $("debugger-command").focus();
 }
 function latestCommand(commandName) {
   return state.commands.findLast(command => same(command.stop, selectedStop) && command.command === commandName);
@@ -804,9 +840,16 @@ function renderStops() {
   if (!stops.length) list.textContent = "No retained debugger stops.";
   $("stop-detail").replaceChildren();
   $("debug-command").hidden = !selected;
-  if (!selected) return;
+  if (!selected) {
+    if (activity === "debugger") {
+      $("window-label").textContent = "Debugger";
+      $("window-label").title = "";
+    }
+    return;
+  }
   const detail = $("stop-detail");
   const info = selected.info;
+  const available = info.state === ":stopped" && !info.child && !stopCommandPending(selectedStop);
   $("debugger-command").disabled = info.state !== ":stopped";
   if (activity === "debugger") {
     $("window-label").textContent = "Lisp Debugger: Stop " + info.id + "  " + label(info.state);
@@ -820,9 +863,13 @@ function renderStops() {
       await refresh();
     })));
   } else {
-    menu.append(button("Inspect Condition", debuggerAction(() => submit(selectedStop, "condition"))));
+    const inspect = button("Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
+    inspect.disabled = !available;
+    menu.append(inspect);
     for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All"]) {
-      menu.append(button(name, debuggerAction(() => debuggerCommand(name))));
+      const command = button(name, debuggerAction(() => debuggerCommand(name)));
+      command.disabled = !available;
+      menu.append(command);
     }
   }
   const condition = returnedResult("condition");
@@ -854,7 +901,7 @@ function renderStops() {
       const action = button(restart.name + ": " + restart.description,
         () => submit(selectedStop, "invoke-restart", restart.index),
         "Mouse-Left: Invoke this restart with zero arguments.");
-      action.disabled = info.state !== ":stopped";
+      action.disabled = !available;
       panel.append(action);
     }
     detail.append(panel);
@@ -866,7 +913,7 @@ function renderStops() {
       const item = button(index + "  " + frame.function, () => debuggerCommand(":Set Current Frame " + index),
         "Mouse-Left: Select this frame and show its locals.");
       item.className = "frame" + (same(frame.frame, selectedFrame?.token) ? " selected" : "");
-      item.disabled = info.state !== ":stopped";
+      item.disabled = !available;
       detail.append(item);
     }
   }
@@ -919,11 +966,10 @@ function updateStatus() {
   $("package-label").textContent = "CL " + state.package + ":";
   if (selectingActivity) $("process-state").textContent = "Select:";
   else if (!connected) $("process-state").textContent = "Disconnected";
-  else if (busy) $("process-state").textContent = "Run";
-  else if (stops.some(stop => stop.info.state === ":stopped")) $("process-state").textContent = "Debugger";
-  else if ([...views.values()].some(view => view.info?.state === ":running" && !view.info["input-waiting-p"])) {
-    $("process-state").textContent = "Run";
-  } else $("process-state").textContent = "User Input";
+  else if ((activity === "debugger" && stops.some(stop => same(stop.token, selectedStop) && stop.info.state === ":stopped"))
+      || views.get(activeListenerJob)?.info.stops?.length) $("process-state").textContent = "Debugger";
+  else if (activeListenerJob && !views.get(activeListenerJob)?.info["input-waiting-p"]) $("process-state").textContent = "Run";
+  else $("process-state").textContent = "User Input";
   for (const element of $("who-line").children) placeTextOnPixels(element);
 }
 function openMenu() {

@@ -110,7 +110,7 @@ try {
   await clickText('#examiner-command-menu','Reselect Candidates');
   await browser.waitFor("document.querySelector('#examiner-menu').open");
   await clickText('#examiner-menu', (await browser.evaluate(`${current}.candidates[0].title`)) + ' (1)');
-  assert.equal(await browser.evaluate(`${current}.candidateIndex`),0);
+  await browser.waitFor(`${current}.candidateIndex === 0 && !document.querySelector('#examiner-menu').open`);
   await fill('Show Candidates debugger');
   await key('F11','F11',122,1);
   await browser.waitFor("document.querySelector('#examiner-menu').open");

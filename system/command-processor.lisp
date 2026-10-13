@@ -278,12 +278,15 @@
 (defun listener-information (listener)
   (let ((herald (herald-information t)))
     (mezzano.debug::with-service-lock
-      (list :package (package-name (listener-package listener))
-            :mode :command-preferred :prompt "Command: "
-            :default-pathname (namestring (listener-pathname listener))
-            :busy-p (and (listener-job listener)
-                         (eq (mezzano.debug::evaluation-job-state (listener-job listener)) :running))
-            :herald herald))))
+      (let ((active (listener-job listener)))
+        (unless (and active (eq (mezzano.debug::evaluation-job-state active) :running))
+          (setf active nil))
+        (list :package (package-name (listener-package listener))
+              :mode :command-preferred :prompt "Command: "
+              :default-pathname (namestring (listener-pathname listener))
+              :busy-p (not (null active))
+              :active-job (when active (mezzano.debug::evaluation-job-name active))
+              :herald herald)))))
 
 (defun start-listener (listener name source &key interactive)
   (let ((clear-all-p

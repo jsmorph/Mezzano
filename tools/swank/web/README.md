@@ -47,7 +47,7 @@ Command: Help :Format Detailed
 
 SPACE completes a command word, Tab completes a name, and F12 requests contextual help.  Another SPACE accepts a displayed argument default.  Pathnames in command output are mouse-sensitive: clicking one inserts it into the expected pathname argument.  The [Command Processor guide](../../../doc/command-processor.md) describes commands, arguments, pathname rules, and input history.
 
-Mouse-Right or the lower activity label opens the System Menu.  The menu selects an activity, package, interactive-input mode, or connection operation.  The Listener displays program output and each returned value.  A form returning zero values displays `(No values)`.  Ordinary Listener submissions run one at a time in a session.
+Mouse-Right or the lower activity label opens the System Menu.  The menu selects an activity, package, interactive-input mode, or connection operation.  The Listener displays program output and each returned value.  A form returning zero values displays `(No values)`.  Ordinary Listener submissions run one at a time in a session.  While a submission is running, the status beside the input identifies whether that Listener is evaluating, waiting for evaluation input, or stopped in the debugger.  A stopped Listener provides a Debugger button there.  Submitting another ordinary form reports that the Listener is busy and preserves the typed input.  Continue or abort the active evaluation before submitting that form again.  Other Listener sessions remain independent.
 
 Large output arrives across successive refreshes.  The job status displays `receiving output` with received and total character counts until the browser has received the captured output.  Evaluation completion and output transfer are separate states.  Pathname and herald presentations become active when their complete text range has arrived.
 
@@ -55,7 +55,7 @@ Interactive evaluations accept text and EOF through their input controls.  Inter
 
 ## Debugger
 
-An evaluation's Debugger action opens its retained stop.  The Debugger activity also lists stops.  Condition inspection is available from the System Menu.  The debugger prompt accepts these commands:
+An evaluation's Debugger action opens its retained stop and loads the stack, restart choices, and condition.  Each inspection runs once on initial selection.  Reload reuses retained results.  Inspection and restart buttons are disabled while a debugger command is outstanding or a child stop is active.  The command input remains editable while stopped.  The Debugger activity also lists stops.  Condition inspection is also available from the System Menu.  The debugger prompt accepts these commands:
 
 | Command | Behavior |
 |---|---|

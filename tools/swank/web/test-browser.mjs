@@ -551,6 +551,42 @@ try {
   await clickText(job, 'Debugger');
   await browser.waitFor('!busy');
   const debugStop = await browser.evaluate('selectedStop');
+  await waitText('#stop-detail .condition', marker + ' debugger');
+  await waitText('.restarts', 'Continue browser test.');
+  await waitText('#stop-detail', functionName);
+  assert.equal(await browser.evaluate("document.activeElement === document.querySelector('#debugger-command')"), true);
+  const activeJob = await browser.evaluate('activeListenerJob');
+  assert(activeJob);
+  const initialInspections = await browser.evaluate(`state.commands.filter(command => same(command.stop, ${text(debugStop)}))`);
+  const stoppedSession = await browser.evaluate('state.session');
+  await browser.send('Page.reload');
+  await browser.waitFor('typeof connected !== "undefined" && connected && !busy');
+  assert.equal(await browser.evaluate('state.session'), stoppedSession);
+  assert.equal(await browser.evaluate('activeListenerJob'), activeJob);
+  await waitText('#listener-state', 'stopped in the debugger');
+  await clickText('#listener-state', 'Debugger');
+  await waitText('#stop-detail .condition', marker + ' debugger');
+  assert.deepEqual(await browser.evaluate(`state.commands.filter(command => same(command.stop, ${text(debugStop)}))`), initialInspections);
+  console.log('PASS reload preserves Listener ownership and reuses completed debugger inspections');
+  await listener();
+  await waitText('#listener-state', 'stopped in the debugger');
+  const jobCount = await browser.evaluate('Object.keys(state.jobs).length');
+  await enter('#source', '(+ 20 22)');
+  await waitText('#message', 'Your input is preserved.');
+  assert.equal(await browser.evaluate("document.querySelector('#source').value"), '(+ 20 22)');
+  assert.equal(await browser.evaluate('Object.keys(state.jobs).length'), jobCount);
+  assert.equal(await browser.evaluate('activeListenerJob'), activeJob);
+  assert.equal(await browser.evaluate('connected'), true);
+  assert.equal(await browser.evaluate("document.querySelector('#process-state').textContent"), 'Debugger');
+  await openMenu();
+  await browser.click('[data-activity="requests"]');
+  await clickText('#pending', 'Keep in History');
+  await browser.waitFor('state.pending.length === 0');
+  await listener();
+  await clickText('#listener-state', 'Debugger');
+  await browser.waitFor(`same(selectedStop, ${text(debugStop)}) && !busy`);
+  assert.equal(await browser.evaluate("document.querySelector('#source').value"), '(+ 20 22)');
+  console.log('PASS same-Listener busy rejection preserves input, ownership, and debugger access');
   await discardNextReply('submit');
   await debuggerAction('Inspect Condition');
   const conditionReplay = await repeatUnknown('submit');
@@ -607,6 +643,17 @@ try {
   job = await selectJob('DEBUG');
   await waitText(job, '333');
   console.log('PASS browser restart and returned evaluation');
+  await browser.waitFor("document.querySelector('#listener-state').hidden && !activeListenerJob && !busy");
+  assert.equal(await browser.evaluate("document.querySelector('#process-state').textContent"), 'User Input');
+  assert.equal(await browser.evaluate("document.querySelector('#source').value"), '(+ 20 22)');
+  await browser.click('#source');
+  await key('Enter', 'Enter', 13);
+  await browser.waitFor("state.inputHistory.at(-1)?.source === '(+ 20 22)'");
+  const resumedName = await browser.evaluate('state.inputHistory.at(-1).name');
+  const resumedSelector = '[data-job="' + resumedName + '"]';
+  await waitText(resumedSelector + ' .returned-values', '42');
+  await releaseAccepted({selector: resumedSelector});
+  console.log('PASS preserved input evaluates after CONTINUE');
 
   await releaseJob('DEBUG');
 
@@ -617,7 +664,6 @@ try {
   await clickText(job, 'Debugger');
   await browser.waitFor('!busy');
   const parentStop = await browser.evaluate('({token: selectedStop, id: stops.find(stop => same(stop.token, selectedStop)).info.id})');
-  await debuggerAction('Inspect Condition');
   await waitText('#stop-detail', 'condition: running');
   await clickText('#stop-detail', 'Child Stop');
   await browser.waitFor('!busy');
@@ -629,7 +675,6 @@ try {
   await waitText('#stop-detail', 'condition: running');
   await clickText('#stop-detail', 'Child Stop');
   await browser.waitFor(`same(selectedStop, ${text(childStop.token)}) && !busy`);
-  await debuggerAction('Inspect Condition');
   await waitText('#stop-detail .condition', marker + ' child printer');
   await debuggerAction(':Show Proceed Options');
   await clickText('.restarts', 'Resume browser printer.');
@@ -755,9 +800,9 @@ try {
   console.log('PASS browser release of test jobs, stop, and session');
   const expectedConflicts = browser.errors.filter(error => error.source === 'network'
     && error.url === new URL('/api', url).href && error.text.includes('status of 409'));
-  assert.equal(expectedConflicts.length, 2, 'Expected released-job and expired-session HTTP responses');
+  assert.equal(expectedConflicts.length, 3, 'Expected listener-busy, released-job, and expired-session HTTP responses');
   assert.deepEqual(browser.errors.filter(error => !expectedConflicts.includes(error)), []);
-  console.log('PASS no unexpected browser errors (two expected HTTP 409 responses)');
+  console.log('PASS no unexpected browser errors (three expected HTTP 409 responses)');
   console.log('Screenshots:', output);
 } catch (error) {
   await screenshot('failure');

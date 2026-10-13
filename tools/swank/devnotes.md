@@ -1807,3 +1807,39 @@ Documented the registration guarantee, test command, and existing TRACE :BREAK o
 - [x] Review the implementation and documentation.
 
 Reloaded the documentation catalog and queried the new function-entry topic.  Saved the compiled correction, catalog, and armed HTTP breakpoint in the guest image.  Snapshot restoration was not tested in this increment.  Evidence: save-registration.log.  The Slime correction and test are committed and pushed on debugging as c0df1722.
+
+## Listener and debugger interaction review: 2026-10-13
+
+The user reported that the Listener was broken and requested browser testing of the debugger.  A fresh browser evaluated `(values 42 :listener-test)`.  The user's existing COMPLETE job remained at the installed DEFAULT-PORT trace stop.  Browser clicks and typed debugger commands displayed that stop's condition, stack, trace-wrapper locals, and CONTINUE/ABORT restarts.  The existing full browser suite passed its Listener, interruption, debugger, child-stop, restart, and recovery tests.
+
+Reproduced a missing case: started COMPLETE in the test Listener, waited for its trace stop, and submitted `(+ 20 22)` in the same Listener.  The guest rejected the second submission with :LISTENER-BUSY.  The browser preserved the typed form but displayed only the protocol error and recorded a rejected request.  LISTENER-INFORMATION already reports :BUSY-P, but the browser does not use it to explain the blocked submission.  UPDATESTATUS also labels a Listener Debugger when any guest evaluation has a stop, including work belonging to another Listener.  Selecting a stop opens an empty debugger until separate inspection commands are requested.
+
+Recommendation for approval: expose the current Listener's active job name with its busy flag, show that job's running/stopped state and debugger action beside the input, preserve typed input when that Listener cannot accept another ordinary submission, and open a selected debugger stop with its condition, stack, and restart choices loaded.  Keep the guest's one-active-evaluation rule and Clear All control operation.  Test same-Listener submission while stopped, continuing and aborting, return to ordinary evaluation, other Listener independence, reload, and child stops through browser controls.
+
+The user approved the Listener state display and initial debugger inspection.  Use the guest Listener's active job name for ownership.  Preserve the existing submission guard and typed source, and explain its rejection beside the input.  Reuse the existing debugger command records and refresh to request each missing initial inspection once.  A pending command or child stop prevents another automatic request.  This uses the existing retained-command protocol and adds no dependency.
+
+A run with the new reload test observed Run in a stopped Listener during the browser's background refresh.  UPDATESTATUS gave the HTTP busy flag precedence over the guest evaluation state.  Removed that override.  Initial inspection also disabled the debugger editor while its command ran, which removed keyboard focus.  Keep the editor editable while stopped and disable the inspection/restart buttons while commands are outstanding.  Releasing the selected stop also left its title displayed after selection disappeared.  Render the unselected Debugger title in that case.  These changes correct the displayed state and keyboard focus using the existing state fields.
+
+The first Examiner browser run checked candidate selection before the queued click action had completed.  Its failure state still had the menu open and the browser action busy.  Added a wait for the selected index and closed menu.  The full Examiner driver then passed candidate history, topics, bookmarks, search, viewer persistence, help, print dispatch, and narrow layout.  No Examiner implementation changed.
+
+The guest compiled all 64 Command Processor functions without warnings or failure and loaded the result.  The updated Listener driver passed busy rejection, preserved input, continuation, frame/local inspection, nested printer stops, aborted evaluation cleanup, and retained-request recovery.  A subsequent reload run caught the background-poll status precedence error described above.  The manual browser driver also made selector mistakes during cleanup after Release Stop moved the remaining stops from the menu to the main debugger list.  Those injected JavaScript exceptions were test-driver errors.  Cleanup used the displayed list afterward.
+
+An authenticated COMPLETE submitted through the Web Listener stopped in DEFAULT-PORT.  Selecting its new adjacent Debugger button loaded the condition, restart choices, and stack without inspection commands.  Clicking CONTINUE returned "Web debugger works.", the parsed response, request ID, and NIL calls.  The Listener returned to User Input.  A separate request resumed after its one-second deadline signalled MEZZANO.NETWORK.TCP:CONNECTION-ABORTED.  The cancellation monitor closes the TCP stream on expiry.  Inspected that condition and invoked ABORT through the UI, then evaluated `(+ 6 7)` and received 13 in the same Listener.
+
+The live Peek and private-document browser drivers passed with their own fixtures removed.  The HTTP suite passed 14 isolated tests and the live evaluation, debugger, and monitor-state tests against Mezzano.  Evidence: /tmp/ui-debugger-review/fixed-listener.log, fixed-examiner.log, fixed-peek.log, fixed-private.log, fixed-http-debugger.png, and fixed-complete-result.png on the browser host.  Host-side compile and HTTP evidence: install-listener-state.log and web-review-server.log in the build directory.  These tests did not run SBCL or restart the VM.
+
+The final checked-in Listener driver passed, including reload ownership, reused inspection command records, editor focus, stopped-state display, rejection with preserved input, continuation, local inspection, nested stops, and recovery tests.  It recorded only its three expected HTTP 409 responses.  A separate browser interaction typed :Show Backtrace after selecting a stop without clicking the editor, received the new frame result, invoked ABORT, and released the stop.  The unselected activity then displayed Debugger.  Released the manual test jobs and stops and the failed runs' owned sessions.  The user's original stop remained stopped.  Final driver evidence: /tmp/ui-debugger-review/reviewed-listener.log and reviewed-listener/ screenshots.
+
+Reloaded the guest documentation catalog and displayed the updated Web guide through the Document Examiner command input.  The guide describes Listener ownership, busy submission, initial inspection, and pending-command controls.  The SWANK reference specifies :ACTIVE-JOB.  No protocol operation was added.  The new field is sampled with :BUSY-P under the existing service lock.
+
+- [x] Reproduce stopped-Listener submission through browser controls.
+- [x] Expose Listener ownership and correct the browser state display.
+- [x] Load initial debugger inspection with the existing retained commands.
+- [x] Test CONTINUE, ABORT, frame/local inspection, child stops, reload, and return to ordinary evaluation.
+- [x] Test an authenticated COMPLETE through the armed HTTP breakpoint in the Web UI.
+- [x] Test Document Examiner, private documents, Peek, and HTTP/SWANK behavior.
+- [x] Reload product documentation and release owned test records.
+
+Live Clear All and VM restart tests were omitted to preserve the user's stopped evaluation.  Other architectures were not tested.
+
+Saved the compiled Command Processor and reloaded catalog in the guest image.  The save script checked that the user's original stop 165 was still active before saving.  Snapshot completion passed.  Restoration was not tested.  Evidence: save-listener-ui.log.  The manual browser session was released after its owned evaluations and stops were removed.
