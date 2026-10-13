@@ -770,6 +770,16 @@
   (nth-value 1 (sys.int::generic-truncate number divisor)))
 
 (defun mod (number divisor)
+  #+x86-64
+  (when (and (integerp number) (integerp divisor)
+             (not (eql divisor 0))
+             (or (sys.int::bignump number) (sys.int::bignump divisor)))
+    (let ((remainder (nth-value 1 (sys.int::%%bignum-truncate number divisor nil))))
+      (return-from mod
+        (if (and (not (zerop remainder))
+                 (not (eq (minusp remainder) (minusp divisor))))
+            (+ remainder divisor)
+            remainder))))
   (nth-value 1 (floor number divisor)))
 
 (defun sys.int::binary-/ (x y)

@@ -81,7 +81,7 @@
   (bignum-to-float bignum 0.0d0 53))
 
 #+x86-64
-(defun %%bignum-truncate (a b)
+(defun %%bignum-truncate (a b &optional (quotientp t))
   (declare (optimize (speed 3) (safety 3) (debug 1)))
   (when (zerop b)
     (error 'division-by-zero :operands (list a b) :operation 'truncate))
@@ -99,7 +99,8 @@
            (quotient-count (1+ (- m n)))
            (u (make-array (1+ m) :element-type '(unsigned-byte 32)))
            (v (make-array n :element-type '(unsigned-byte 32)))
-           (q (make-array quotient-count :element-type '(unsigned-byte 32))))
+           (q (and quotientp
+                   (make-array quotient-count :element-type '(unsigned-byte 32)))))
       (declare (type fixnum a-bits b-bits m n shift quotient-count))
       (%%bignum-normalize-digits
        (if (fixnump positive-a) (%make-bignum-from-fixnum positive-a) positive-a)
@@ -108,9 +109,10 @@
        (if (fixnump positive-b) (%make-bignum-from-fixnum positive-b) positive-b)
        v n shift)
       (%%bignum-divide-digits u v q)
-      (let ((quotient (%%bignum-digits-integer q quotient-count 0))
+      (let ((quotient (and quotientp (%%bignum-digits-integer q quotient-count 0)))
             (remainder (%%bignum-digits-integer u n shift)))
-        (values (if (eq (minusp a) (minusp b)) quotient (- quotient))
+        (values (and quotientp
+                     (if (eq (minusp a) (minusp b)) quotient (- quotient)))
                 (if (minusp a) (- remainder) remainder))))))
 
 #-x86-64

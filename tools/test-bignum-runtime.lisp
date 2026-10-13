@@ -1,6 +1,7 @@
 (defpackage :mezzano-bignum-test
   (:use :cl)
-  (:export :write-shift-cases :run-shifts :write-binary-cases :run-binary-cases))
+  (:export :write-shift-cases :run-shifts :write-binary-cases :run-binary-cases
+           :run-mod-compatibility))
 (in-package :mezzano-bignum-test)
 
 (defun write-shift-cases (pathname)
@@ -51,14 +52,14 @@
       (with-open-file (out pathname :direction :output :if-exists :supersede)
         (with-standard-io-syntax
           (flet ((emit (a b)
-                   (unless (and (eq operation 'truncate) (zerop b))
+                   (unless (and (member operation '(truncate mod)) (zerop b))
                      (dolist (a-sign '(1 -1))
                        (dolist (b-sign '(1 -1))
                          (let ((a (* a-sign a)) (b (* b-sign b)))
                            (write (list a b (multiple-value-list (funcall operation a b)) a b)
                                   :stream out)
                            (terpri out)))))))
-            (when (eq operation 'truncate)
+            (when (member operation '(truncate mod))
               (let* ((base (ash 1 32))
                      (half (ash base -1))
                      (two-digits (+ (* half base) (1- base)))
@@ -95,6 +96,19 @@
               (incf count))))))
     (format t "PASS ~D binary cases, input immutability, and canonical results.~%" count)
     count))
+
+(defun run-mod-compatibility (&optional (operation #'mod))
+  (dolist (a '(7/3 -7/3 7.25f0 -7.25f0 7.25d0 -7.25d0))
+    (dolist (b '(2 -2 3/2 -3/2 2.0f0 -2.0d0))
+      (assert (eql (funcall operation a b) (nth-value 1 (floor a b))))))
+  (dolist (args (list (list 7 0) (list (ash 1 80) 0)
+                     (list "bad" 3) (list 3 "bad") (list #c(1 2) 3)))
+    (flet ((condition-type (fn)
+             (handler-case (progn (apply fn args) :no-error)
+               (error (condition) (type-of condition)))))
+      (assert (eq (condition-type operation) (condition-type #'floor)))))
+  (format t "PASS MOD rational, float, and error comparisons.~%")
+  t)
 
 #+mezzano
 (defun check-allocation-gc (operation &rest arguments)

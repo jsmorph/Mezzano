@@ -400,7 +400,7 @@ The array has COUNT or COUNT+1 elements.  SHIFT is between zero and 31."
 
 (define-lap-function %%bignum-divide-digits ()
   "Divide normalized unsigned-32 arrays U and V, writing Q and remainder U.
-U includes one leading work digit.  Q has LENGTH(U)-LENGTH(V) elements."
+U includes one leading work digit.  Q is NIL or has LENGTH(U)-LENGTH(V) elements."
   (:gc :no-frame :layout #*0)
   (sys.lap-x86:push :rbp)
   (:gc :no-frame :layout #*00)
@@ -493,8 +493,11 @@ U includes one leading work digit.  Q has LENGTH(U)-LENGTH(V) elements."
   (sys.lap-x86:lea64 :rcx (:r12 :r11))
   (sys.lap-x86:add32 (:r8 #.(+ 8 (- +tag-object+)) :rcx) :esi)
   quotient-ready
+  (sys.lap-x86:cmp64 :r10 :r14)
+  (sys.lap-x86:je next-quotient)
   (sys.lap-x86:mov64 :rax (:stack 0))
   (sys.lap-x86:mov32 (:r10 #.(+ 8 (- +tag-object+)) :r12) :eax)
+  next-quotient
   (sys.lap-x86:sub64 :r12 4)
   (sys.lap-x86:jns quotient-loop)
   (sys.lap-x86:mov32 :ecx #.(ash 1 +n-fixnum-bits+))
