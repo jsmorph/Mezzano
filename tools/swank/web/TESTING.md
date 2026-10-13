@@ -126,3 +126,12 @@ node tools/swank/web/test-output-fixtures.mjs \
 ```
 
 The second driver supplies API replies locally and makes no guest requests.  It splits Unicode output across pathname and herald presentation boundaries, checks transfer status and exact accumulation, and rejects invalid ranges and unknown presentation types.
+
+## Inline topic references
+
+The focused inline-reference test checks that a wrapped topic reference and its following punctuation share the final text baseline.  It exercises focus, Enter and SPACE activation, mouse reading, overview, and the topic menu against a live catalog.  It creates no guest jobs or files and releases its session.
+
+```sh
+node tools/swank/web/test-document-inline.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-inline-reference-test
+```

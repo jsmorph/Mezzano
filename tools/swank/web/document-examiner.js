@@ -48,12 +48,26 @@ const examiner = (() => {
     if (!$("examiner-menu").open) $("examiner-menu").showModal();
     placeDialogOnPixels($("examiner-menu"));
   }
-  function topicButton(topic, role = "topic", text = topic.title) {
+  function topicButton(topic, role = "topic", text = topic.title, inline = false) {
     topicSummary(topic);
-    const result = button(text, () => readTopic(topic.id),
-      role === "bookmark"
-        ? "Mouse-L: Read. Mouse-M: Overview. Mouse-R: Menu. Shift-M: Discard topic."
-        : "Mouse-L: Read. Mouse-M: Overview. Mouse-R: Menu. Shift-M: Insert bookmark.");
+    const action = () => readTopic(topic.id);
+    const help = role === "bookmark"
+      ? "Mouse-L: Read. Mouse-M: Overview. Mouse-R: Menu. Shift-M: Discard topic."
+      : "Mouse-L: Read. Mouse-M: Overview. Mouse-R: Menu. Shift-M: Insert bookmark.";
+    const result = inline ? node("span", text) : button(text, action, help);
+    if (inline) {
+      result.setAttribute("role", "button");
+      result.tabIndex = 0;
+      result.dataset.help = help;
+      result.onclick = () => run(action);
+      result.onkeydown = event => {
+        if (event.key === "Enter" || event.key === " ") event.preventDefault();
+        if (event.key === "Enter") result.click();
+      };
+      result.onkeyup = event => {
+        if (event.key === " ") { event.preventDefault(); result.click(); }
+      };
+    }
     result.className = "document-topic";
     result.dataset.topic = topic.id;
     result.title = [topic.title, topic.book, topic.type].filter(Boolean).join(" — ");
@@ -91,7 +105,7 @@ const examiner = (() => {
         case ":emphasis": element = node("em", item.text); break;
         case ":strong": element = node("strong", item.text); break;
         case ":link":
-          if (item.topic) element = topicButton({id: item.topic, title: item.title || item.text, book: item.book}, "topic", item.text);
+          if (item.topic) element = topicButton({id: item.topic, title: item.title || item.text, book: item.book}, "topic", item.text, true);
           else {
             const url = new URL(item.url, location.href);
             if (!["http:", "https:"].includes(url.protocol)) throw new Error("Unsupported documentation link protocol.");
@@ -204,7 +218,7 @@ const examiner = (() => {
     for (const topic of result.topics || []) topicSummary(topic);
     const current = viewer();
     if (result["search-options"] && !current.search) {
-      current.search = {mode: result["search-options"].mode, adjacent: result["search-options"].adjacent};
+      current.search = {mode: result["search-options"].mode, adjacent: result["search-options"].adjacent ?? false};
     }
     current.candidates.push({...result, action});
     current.candidateIndex = current.candidates.length - 1;
@@ -340,7 +354,7 @@ const examiner = (() => {
       if (current.candidates.length) current.candidates[0]["search-options"] = options;
       persist();
     }
-    current.search ??= {mode: options.mode, adjacent: options.adjacent};
+    current.search ??= {mode: options.mode, adjacent: options.adjacent ?? false};
     menu("Show Candidates options", [
       ...options.modes.map(item => [(current.search.mode === item.value ? "● " : "○ ") + item.label, async () => {
         current.search.mode = item.value; persist(); await searchOptions();
@@ -404,7 +418,7 @@ const examiner = (() => {
           ...(plan.adjacent === undefined ? {} : {adjacent: plan.adjacent})};
         await candidates("search", {query: argument,
           ...(options.mode ? {mode: options.mode.replace(/^:/, "")} : {}),
-          ...(options.adjacent === undefined ? {} : {adjacent: options.adjacent})});
+          ...(options.adjacent === undefined ? {} : {adjacent: options.adjacent ?? false})});
         break;
       }
       case "contents": await candidates("contents", {topic: argument}); break;
