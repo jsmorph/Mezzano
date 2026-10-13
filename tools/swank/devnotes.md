@@ -1685,3 +1685,34 @@ Current execution coverage is the documented Web interface on x86-64 QEMU with t
 The final cleanup audit initially counted all entries in the evaluation-name table and rejected its zero-count assertion before taking a snapshot.  Release retains a used name in state :RELEASED to reject resubmission, as specified by the evaluation API.  The corrected audit counted unreleased evaluations and checked every released record's source, Listener, results, package, input/output streams, thread, values, presentation data, and interrupt records.  It found zero retained evaluations, zero debugger stops, 705 released names, and cleared payloads for every released record.
 
 The cleaned running state then completed its snapshot, confirmed by the reply and serial End snapshot marker.  Evidence: ui-clean-snapshot-final.log.  Production definitions were unchanged after the two successful restoration tests.  The final cleanup snapshot was saved without another restart.  The Web service and development VM remain running.
+
+## Proposed COMPLETE keyword interface: 2026-10-13
+
+Status: proposed for user review.  The implementation remains unchanged.
+
+Source review: tools/https/listener.lisp accepts a prompt string and an optional positional model.  LISPM-OPENAI:CREATE-RESPONSE already accepts a Jzon request hash table and returns parsed JSON plus the HTTP request ID.  Reuse that transport and the private key file.  Keep the default model gpt-4.1-nano, store false, and one synchronous POST.
+
+Recommendation:
+
+    (complete input &key (model "gpt-4.1-nano")
+                         instructions max-output-tokens temperature top-p
+                         reasoning-effort verbosity text-format
+                         (timeout 60))
+
+INPUT accepts a prompt string or a nonempty proper list of message property lists, each containing exactly :ROLE and :CONTENT.  Roles are :SYSTEM, :DEVELOPER, :USER, or :ASSISTANT.  Content is a string.  Preserve message order and caller-owned data.  A native vector of Jzon input-item objects also permits caller-managed Responses history and structured content without another recursive conversion format.  Validate the vector and object types locally.  The service validates the item schemas.
+
+MODEL is a nonempty string.  INSTRUCTIONS is a string.  MAX-OUTPUT-TOKENS maps to max_output_tokens, including reasoning tokens, with the documented integer minimum of 16.  TEMPERATURE accepts finite numbers from 0 through 2.  TOP-P accepts finite numbers from 0 through 1.  REASONING-EFFORT maps a documented keyword to reasoning.effort.  VERBOSITY accepts :LOW, :MEDIUM, or :HIGH and maps to text.verbosity.  TEXT-FORMAT is a Jzon hash table for text.format, including JSON Schema configuration.  TIMEOUT is a finite positive duration in seconds using the existing cancellation semantics.
+
+NIL omits an optional API field.  Explicit numeric zero is sent.  Validate arguments before reading the credential or sending a request.  Model-specific API rejections propagate with the existing HTTP condition.  Keep the selected model and requested options on errors.  Replacing the positional model with :MODEL is a proposed source incompatibility.  Update repository callers, tests, and documentation after approval.
+
+Return three values on success: concatenated output text, the parsed response hash table, and the HTTP request ID.  Structured JSON output remains a string in the first value.  The caller can parse it with Jzon.  Retain completed-status checking.  Add a completion condition for incomplete generation, refusal, and missing output text, retaining the response, request ID, reason, and any partial text.  Preserve existing transport and HTTP conditions.  The existing lower-level API continues to serve callers needing arbitrary request fields.  Streaming and tool execution require separate interfaces.
+
+References: [Responses request reference](https://developers.openai.com/api/reference/python/resources/responses/methods/create), [text generation and message roles](https://developers.openai.com/api/docs/guides/text), and [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).  The direct documentation fetch returned a placeholder for the generic request reference.  The Python reference and its linked text/reasoning schemas supplied the field definitions.
+
+Required tests after approval:
+
+- [ ] Compile and load the implementation and tests in Mezzano.
+- [ ] Test message normalization, field encoding, NIL omission, numeric zero, validation, and preservation of caller-owned data.
+- [ ] Test ordered text extraction, response/request-ID values, incomplete output, refusal, and missing text with response fixtures.
+- [ ] Test prompt and message-history requests, sampling and output limits, schema output, and model rejection through the Web Listener with headless Chromium.
+- [ ] Update the HTTPS reference and Document Examiner documentation, then commit and push the tested implementation.
