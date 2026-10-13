@@ -80,6 +80,43 @@
 (defun mezzano.runtime::%%coerce-bignum-to-double-float (bignum)
   (bignum-to-float bignum 0.0d0 53))
 
+#+x86-64
+(defun %%bignum-truncate (a b)
+  (declare (optimize (speed 3) (safety 3) (debug 1)))
+  (when (zerop b)
+    (error 'division-by-zero :operands (list a b) :operation 'truncate))
+  (when (= b 1) (return-from %%bignum-truncate (values a 0)))
+  (when (= b -1) (return-from %%bignum-truncate (values (- a) 0)))
+  (let* ((positive-a (abs a))
+         (positive-b (abs b)))
+    (when (< positive-a positive-b)
+      (return-from %%bignum-truncate (values 0 a)))
+    (let* ((a-bits (integer-length positive-a))
+           (b-bits (integer-length positive-b))
+           (m (ceiling a-bits 32))
+           (n (ceiling b-bits 32))
+           (shift (logand (- b-bits) 31))
+           (quotient-count (1+ (- m n)))
+           (u (make-array (1+ m) :element-type '(unsigned-byte 32)))
+           (v (make-array n :element-type '(unsigned-byte 32)))
+           (q (make-array quotient-count :element-type '(unsigned-byte 32))))
+      (declare (type fixnum a-bits b-bits m n shift quotient-count))
+      (%%bignum-normalize-digits
+       (if (fixnump positive-a) (%make-bignum-from-fixnum positive-a) positive-a)
+       u m shift)
+      (%%bignum-normalize-digits
+       (if (fixnump positive-b) (%make-bignum-from-fixnum positive-b) positive-b)
+       v n shift)
+      (%%bignum-divide-digits u v q)
+      (let ((quotient (%%bignum-denormalize-digits
+                       (%make-bignum-of-length (1+ (ceiling quotient-count 2)))
+                       q quotient-count 0))
+            (remainder (%%bignum-denormalize-digits
+                        (%make-bignum-of-length (1+ (ceiling n 2))) u n shift)))
+        (values (if (eq (minusp a) (minusp b)) quotient (- quotient))
+                (if (minusp a) (- remainder) remainder))))))
+
+#-x86-64
 (defun %%bignum-truncate (a b)
   "Divide two integers.
 Implements the dumb mp_div algorithm from BigNum Math."

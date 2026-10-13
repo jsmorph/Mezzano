@@ -280,3 +280,13 @@ The x86-64 unsigned multiplication loop now uses MUL and ADD/ADC on raw words an
 The candidate and installed function passed 1,824 SBCL-generated cases through 8,192-bit by 4,096-bit operands, including word boundaries, mixed digit patterns, both signs, input immutability, and canonical representation.  Two tests forced full collection at multiplication's allocation call.  The 7,276 division cases also passed.
 
 Three certificate checks after installation took 7.38, 7.21, and 7.21 seconds, allocating approximately 6.992 GB per call.  Division still uses the bit-at-a-time routine.  Evidence is in `bignum-multiply-sbcl.log`, `bignum-multiply-candidate.log`, and `bignum-multiply-installed.log`.
+
+### Word division
+
+The x86-64 runtime now uses normalized Algorithm D with 32-bit digits and 64-bit machine arithmetic.  Lisp handles signs and allocation.  Assembly copies and normalizes operands, performs quotient estimation and correction, and converts the result digits back to integers.  The digit loop allocates no objects.  ARM64 retains its previous division implementation.
+
+The candidate passed 1,824 SBCL-generated cases, twelve signed estimate-correction/add-back cases, and division-by-zero condition checks.  The installed runtime passed the 1,824 cases, full collection at result allocation, and all 7,276 comparisons with the standalone implementation.  The generated division fixture now includes the twelve additional cases.
+
+Five certificate checks took 140, 100, 220, 100, and 110 milliseconds and allocated approximately 66.9 MB each.  These checks include collection and scheduling during the call.  The target remains below 100 milliseconds.  A follow-up profile identifies allocation and result canonicalization as remaining costs.
+
+Evidence is in `bignum-divide-{sbcl,candidate,installed}.log`, `bignum-native-profile.log`, and `home/bignum-native-certificate-profile.txt`.  Fresh-image boot and snapshot restoration remain pending.
