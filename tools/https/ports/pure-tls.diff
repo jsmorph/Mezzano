@@ -5,7 +5,7 @@ index 693f56a..579f360 100644
 @@ -1615,6 +1615,25 @@
      (when (asn1-sequence-p parsed)
        (asn1-node-value (second (asn1-children parsed))))))
-
+ 
 +(defun verify-client-peer-certificate (hs)
 +  (when (member (client-handshake-verify-mode hs)
 +                (list +verify-peer+ +verify-required+))
@@ -66,7 +66,7 @@ index 693f56a..579f360 100644
 -                                    :purpose :server-auth))))
 +    (verify-client-peer-certificate hs)
      (setf (client-handshake-state hs) :wait-finished)))
-
+ 
  ;;;; Finished Processing
 @@ -2071,6 +2068,12 @@
                      ;; warm-cache resumptions working.
@@ -92,12 +92,12 @@ index 34634f4..f62bcb0 100644
 -  (verified-hostname nil :type (or null string)))
 +  (verified-hostname nil :type (or null string))
 +  (peer-certificate-chain nil :type list))
-
+ 
  ;;;; Session Ticket Cache
-
+ 
 @@ -134,13 +135,14 @@ Expiry eviction is atomic with the lookup."
  ;;;; NewSessionTicket Handling
-
+ 
  (defun process-new-session-ticket (nst resumption-master-secret cipher-suite hostname
 -                                   &optional verified-hostname)
 +                                   &optional verified-hostname peer-certificate-chain)
@@ -121,6 +121,18 @@ index 34634f4..f62bcb0 100644
      ;; Check for early_data extension
      ;; RFC 8446 Section 4.6.1: early_data in NewSessionTicket contains
      ;; uint32 max_early_data_size
+diff --git a/src/package.lisp b/src/package.lisp
+index de334df..9a5ec2b 100644
+--- a/src/package.lisp
++++ b/src/package.lisp
+@@ -46,6 +46,7 @@
+    #:certificate-not-after
+    #:certificate-free
+    #:verify-hostname
++   #:clear-certificate-signature-cache
+ 
+    ;; Hostname-verification policy
+    #:hostname-policy
 diff --git a/src/streams.lisp b/src/streams.lisp
 index 8fa115c..85a2c50 100644
 --- a/src/streams.lisp
@@ -136,7 +148,7 @@ index 8fa115c..85a2c50 100644
      :initform 0
      :accessor tls-stream-warning-alert-count
 @@ -89,27 +92,25 @@
-
+ 
  (defmethod close ((stream tls-stream) &key abort)
    (unless (tls-stream-closed-p stream)
 -    ;; Flush pending output unless aborting
@@ -180,7 +192,7 @@ index 8fa115c..85a2c50 100644
 +            (when (tls-stream-close-callback stream)
 +              (funcall (tls-stream-close-callback stream) stream)))))))
    t)
-
+ 
  ;;;; Input Methods
 @@ -142,7 +143,8 @@
              (hostname (client-handshake-hostname hs)))
@@ -189,7 +201,7 @@ index 8fa115c..85a2c50 100644
 -                                      (client-handshake-verified-hostname hs)))))))
 +                                      (client-handshake-verified-hostname hs)
 +                                      (client-handshake-peer-certificate-chain hs)))))))
-
+ 
  (defun tls-stream-process-key-update (stream key-update)
    "Process a KeyUpdate message, updating read keys and responding if requested."
 @@ -582,8 +584,7 @@ flat no matter how many records arrive."
@@ -255,7 +267,7 @@ index 8fa115c..85a2c50 100644
 +            stream)
 +      (setf completed t)))
 +      (unless completed (close stream :abort t)))))
-
+ 
  (defun make-tls-server-stream (socket &key
                                          context
 @@ -719,8 +716,7 @@ flat no matter how many records arrive."
@@ -292,9 +304,9 @@ index 8fa115c..85a2c50 100644
 +            stream)
 +      (setf completed t)))
 +      (unless completed (close stream :abort t)))))
-
+ 
  ;;;; Convenience Macros
-
+ 
 diff --git a/src/utils.lisp b/src/utils.lisp
 index 7670bbf..65ac03d 100644
 --- a/src/utils.lisp
@@ -307,5 +319,143 @@ index 7670bbf..65ac03d 100644
 +  #+mezzano (uiop:getenv name)
 +  #-(or sbcl ccl ecl clisp allegro lispworks abcl cmucl clasp mezzano)
    (error "get-environment-variable not implemented for this Lisp"))
-
+ 
  ;;;; XOR Operations
+diff --git a/src/x509/verify.lisp b/src/x509/verify.lisp
+index 749e94b..404fc52 100644
+--- a/src/x509/verify.lisp
++++ b/src/x509/verify.lisp
+@@ -610,15 +610,105 @@ a full list lives at https://publicsuffix.org/.")
+           (replace expected computed-hash :start1 (length prefix))
+           (ironclad:constant-time-equal digest-info expected))))))
+ 
++(defstruct (certificate-signature-cache
++             (:constructor make-certificate-signature-cache ()))
++  (entries (make-hash-table :test 'equalp))
++  (lock (bt:make-lock "Certificate signature cache"))
++  boot-id
++  (generation 0))
++
++(defvar *certificate-signature-cache* (make-certificate-signature-cache))
++(defconstant +certificate-signature-cache-ttl+ 86400)
++(defconstant +certificate-signature-cache-limit+ 1024)
++
++(defun signature-cache-current-boot-id ()
++  #+mezzano (mezzano.supervisor:current-boot-id)
++  #-mezzano nil)
++
++(defun reset-certificate-signature-cache (cache boot-id)
++  (clrhash (certificate-signature-cache-entries cache))
++  (setf (certificate-signature-cache-boot-id cache) boot-id)
++  (incf (certificate-signature-cache-generation cache)))
++
++(defun clear-certificate-signature-cache ()
++  "Discard cached successful certificate signatures, including pending insertions."
++  (let ((cache *certificate-signature-cache*))
++    (bt:with-lock-held ((certificate-signature-cache-lock cache))
++      (reset-certificate-signature-cache cache (signature-cache-current-boot-id))))
++  (values))
++
++(defun check-signature-cache-boot (cache)
++  (let ((boot-id (signature-cache-current-boot-id)))
++    (unless (eql boot-id (certificate-signature-cache-boot-id cache))
++      (reset-certificate-signature-cache cache boot-id))))
++
++(defun certificate-signature-cache-key (tbs signature algorithm params
++                                       key-algorithm public-key-bytes)
++  (let ((digest (ironclad:make-digest :sha256))
++        (metadata
++          (with-standard-io-syntax
++            (let ((*package* (find-package :keyword)))
++              (string-to-octets
++               (write-to-string (list algorithm params key-algorithm)))))))
++    (dolist (field (list metadata tbs signature public-key-bytes))
++      (ironclad:update-digest digest (integer-to-octets (length field) 8))
++      (ironclad:update-digest digest field))
++    (ironclad:produce-digest digest)))
++
++(defun certificate-signature-cache-lookup (cache key)
++  (bt:with-lock-held ((certificate-signature-cache-lock cache))
++    (check-signature-cache-boot cache)
++    (let* ((entries (certificate-signature-cache-entries cache))
++           (verified-at (gethash key entries))
++           (age (and verified-at (- (get-internal-real-time) verified-at))))
++      (values
++       (when verified-at
++         (if (and (<= 0 age)
++                  (< age (* +certificate-signature-cache-ttl+
++                            internal-time-units-per-second)))
++             t
++             (progn (remhash key entries) nil)))
++       (certificate-signature-cache-generation cache)))))
++
++(defun certificate-signature-cache-insert (cache key generation)
++  (bt:with-lock-held ((certificate-signature-cache-lock cache))
++    (check-signature-cache-boot cache)
++    (when (= generation (certificate-signature-cache-generation cache))
++      (let ((entries (certificate-signature-cache-entries cache)))
++        (unless (gethash key entries)
++          (when (>= (hash-table-count entries) +certificate-signature-cache-limit+)
++            (let ((oldest-key nil)
++                  (oldest-time nil))
++              (maphash (lambda (key time)
++                         (when (or (null oldest-time) (< time oldest-time))
++                           (setf oldest-key key oldest-time time)))
++                       entries)
++              (remhash oldest-key entries)))
++          (setf (gethash key entries) (get-internal-real-time)))))))
++
+ (defun verify-certificate-signature (cert issuer-cert)
+-  "Verify that CERT's signature was made by ISSUER-CERT's key.
+-   Returns T on success, signals TLS-CERTIFICATE-ERROR on failure."
+-  (let* ((tbs (x509-certificate-tbs-raw cert))
+-         (signature (x509-certificate-signature cert))
+-         (algorithm (x509-certificate-signature-algorithm cert))
++  "Verify CERT's signature with ISSUER-CERT's key, caching only success."
++  (let* ((tbs (copy-seq (x509-certificate-tbs-raw cert)))
++         (signature (copy-seq (x509-certificate-signature cert)))
++         (algorithm (copy-tree (x509-certificate-signature-algorithm cert)))
++         (params (copy-tree (x509-certificate-signature-algorithm-params cert)))
+          (public-key-info (x509-certificate-subject-public-key-info issuer-cert))
+-         (key-algorithm (getf public-key-info :algorithm))
+-         (public-key-bytes (getf public-key-info :public-key)))
++         (key-algorithm (copy-tree (getf public-key-info :algorithm)))
++         (public-key-bytes (copy-seq (getf public-key-info :public-key)))
++         (key (certificate-signature-cache-key
++               tbs signature algorithm params key-algorithm public-key-bytes))
++         (cache *certificate-signature-cache*))
++    (multiple-value-bind (hit generation)
++        (certificate-signature-cache-lookup cache key)
++      (or hit
++          (let ((result (%verify-certificate-signature
++                         tbs signature algorithm params key-algorithm public-key-bytes)))
++            (when result
++              (certificate-signature-cache-insert cache key generation))
++            result)))))
++
++(defun %verify-certificate-signature (tbs signature algorithm params
++                                      key-algorithm public-key-bytes)
+     (handler-case
+         (cond
+           ;; Reject SHA-1 signatures - cryptographically broken
+@@ -641,8 +731,7 @@ a full list lives at https://publicsuffix.org/.")
+              (verify-rsa-pkcs1v15-signature public-key tbs signature hash-algo)))
+           ;; RSA-PSS - use parameters from certificate
+           ((member algorithm '(:rsa-pss :rsassa-pss))
+-           (let* ((params (x509-certificate-signature-algorithm-params cert))
+-                  (hash-algo (or (getf params :hash) :sha256)))
++           (let ((hash-algo (or (getf params :hash) :sha256)))
+              ;; Reject SHA-1 for RSA-PSS (cryptographically broken)
+              (when (eql hash-algo :sha1)
+                (error 'tls-certificate-error
+@@ -702,7 +791,9 @@ a full list lives at https://publicsuffix.org/.")
+            nil))
+       (error (e)
+         (error 'tls-certificate-error
+-               :message (format nil "Certificate signature verification failed: ~A" e))))))
++               :message (format nil "Certificate signature verification failed: ~A" e)))))
++
++(clear-certificate-signature-cache)
+ 
+ (defun cert-sig-algorithm-to-hash (algorithm)
+   "Map certificate signature algorithm to hash algorithm keyword.

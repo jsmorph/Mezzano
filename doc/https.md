@@ -58,6 +58,20 @@ The function returns the parsed response hash table and the HTTP x-request-id he
 
 Certificate verification is required.  Session tickets retain the peer certificate chain, which each resumed connection checks against its current trust store, validity time, hostname, purpose, and verification depth.  Redirects and Drakma header logging are disabled.  The function rejects an empty key or a key containing carriage returns or newlines.  The [OpenAI API overview](https://developers.openai.com/api/reference/overview) describes Bearer authentication and request IDs.
 
+## Certificate-signature cache
+
+The TLS verifier caches successful certificate-signature checks in Lisp memory.  Each entry expires 24 hours after verification.  Cache hits preserve that original expiration time.  The cache retains at most 1,024 entries and evicts the oldest verified entry when full.  Failed signature checks enter no cache.
+
+A SHA-256 key covers the signed bytes, signature bytes, signature algorithm and parameters, and issuer public-key algorithm and bytes.  EC curve parameters form part of the parsed public-key algorithm.  The verifier copies those inputs before hashing and verification.  It stores the digest as an octet-vector key.
+
+Each connection still checks the hostname, certificate dates, current trust roots, requested purpose, verification depth, and chain constraints.  Resumed TLS sessions repeat those checks.  The handshake's CertificateVerify signature uses the current handshake transcript.  Configured revocation processing follows its existing path.
+
+The cache clears on verifier load and on first use after a new Mezzano boot or snapshot restoration.  Explicit clearing also prevents pending verifications from inserting into the cleared cache:
+
+```lisp
+(pure-tls:clear-certificate-signature-cache)
+```
+
 ## Deadlines and errors
 
 TIMEOUT is a positive real duration in seconds, defaulting to 60.  Its cancellation context starts after JSON request encoding and inherits an existing caller context.  Connection establishment receives the smaller of 15 seconds and the remaining request time.  The TLS cancellation monitor aborts the socket when the context expires.
@@ -96,6 +110,8 @@ The Listener functions passed a chunked HTTP GET returning text, an HTTPS GET re
 
 The HTTPS GET to example.org returned HTTP 200 after the x86-64 arithmetic improvements.  Headless Chromium submitted COMPLETE and CURL through one Web Listener session.  COMPLETE returned text.  CURL displayed the body, status, and headers for both an HTTPS text response with status 200 and an OpenAI octet response with status 401.  All three evaluations returned without a debugger stop or browser error.
 
-After snapshot restoration, twenty offline checks of the captured three-certificate chain had a 90-millisecond median, a 102.5-millisecond mean, and a range of 90–190 milliseconds on x86-64 QEMU with KVM.  Each call allocated approximately 53.65 MB.  These timings exclude certificate parsing, hostname checking, network traffic, and TLS key exchange.  They include collection and scheduling during the call.  The [arithmetic measurements](../tools/long-division.md#runtime-arithmetic) describe the test and its limits.
+Before signature caching, twenty offline checks of the captured three-certificate chain after restoring the saved image had a 90-millisecond median, a 102.5-millisecond mean, and a range of 90–190 milliseconds on x86-64 QEMU with KVM.  Each call allocated approximately 53.65 MB.  These timings exclude certificate parsing, hostname checking, network traffic, and TLS key exchange.  They include collection and scheduling during the call.  The [arithmetic measurements](../tools/long-division.md#runtime-arithmetic) describe the test and its limits.
+
+With signature caching enabled, the same chain and 150 roots took 70–190 milliseconds per cold-cache call and allocated approximately 31.31 MB.  Five batches of 100 warm-cache calls averaged 11.3 milliseconds per call and allocated approximately 64.3 KB per call.  These timings include current chain-policy checks, collection, and scheduling.  Snapshot restoration required fresh signature verification before reuse.  The cache's expiration, input-change, capacity, eviction, concurrency, and policy tests passed in Mezzano.
 
 These tests cover the stated endpoints and error cases.  Streaming responses, certificate revocation, the upstream TLS test suite, ARM64 execution, and bare-metal entropy remain untested.

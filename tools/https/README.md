@@ -148,7 +148,7 @@ The files in ports/ contain source edits against the revisions and releases list
 
     git -C "$TLS_SOURCES/pure-tls" apply /path/to/Mezzano/tools/https/ports/pure-tls.diff
 
-The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, USOCKET listener addresses, a Bordeaux-Threads declaration error, precise-time's Mezzano clock, cl-cancel clock units and monitor cleanup, TLS stream cleanup, certificate-chain verification on resumption, and propagation of HTTP close errors.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.
+The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, USOCKET listener addresses, a Bordeaux-Threads declaration error, precise-time's Mezzano clock, cl-cancel clock units and monitor cleanup, TLS stream cleanup, certificate-chain verification on resumption, bounded certificate-signature caching, and propagation of HTTP close errors.  Bordeaux-Threads uses Mezzano's native CAS and fixnum arithmetic macros, with its existing mutex implementation for full-width ATOMIC-INTEGER values.  Trivial-garbage maps Mezzano's existing weak hash tables.  Its source revision is d3e470cb2385f7564147367452cb6237d3bd9818 from MBuild.  The guest atomic tests passed.
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-ATOMICS.LISP")
     (lispm-atomics-test:run)
@@ -237,3 +237,36 @@ The browser HTTPS test requires Node, headless Chromium, the running Web service
     node tools/swank/web/test-browser-https.mjs http://lispm.example.net:8765/ browser-https-results
 
 This test sends one authenticated inference request and two GET requests.  All three cases passed against the x86-64 guest.
+
+## Certificate-cache tests
+
+After loading the HTTPS libraries, compile and run the cache tests in Mezzano:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;HTTPS;TEST-CERTIFICATE-CACHE.LISP"))
+(lispm-certificate-cache-test:run)
+```
+
+The checked-in fixture contains a public three-certificate chain, two matching public trust roots, and the captured verification time.  Its tests count cryptographic verifier calls and cover cache hits, fixed expiration, each signature input, uncached failures, capacity, oldest-entry eviction, clearing, concurrent insertion, and boot invalidation.  A populated cache must still reject invalid dates, hostnames, trust roots, purposes, depth, and chain constraints.
+
+For a saved-image test, populate the cache before saving:
+
+```lisp
+(lispm-certificate-cache-test:prepare-restore-test)
+(mezzano.supervisor:snapshot)
+(mezzano.supervisor:wait-for-snapshot-completion)
+```
+
+After restarting that saved image, call (LISPM-CERTIFICATE-CACHE-TEST:FINISH-RESTORE-TEST).  It requires a new cryptographic check after restoration and a cache hit on the following call.
+
+The certificate benchmark can measure cold checks and batches of warm checks:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;HTTPS;BENCH-CERTIFICATES.LISP"))
+(multiple-value-bind (chain roots now)
+    (lispm-certificate-bench:read-data
+     "SYS:SOURCE;TOOLS;HTTPS;CERTIFICATE-CACHE-DATA.SEXP")
+  (lispm-certificate-bench:run-cached chain roots :now now))
+```
+
+RUN-CACHED clears the cache before each cold sample.  Warm samples average 100 calls by default, so the guest's ten-millisecond clock can measure shorter per-call times.  Report the chain and trust-root counts when comparing results.
