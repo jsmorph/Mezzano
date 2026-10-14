@@ -292,6 +292,17 @@ To include selected-frame persistence in a snapshot test, load the restoration f
 
 After restoration, call (lispm-service-test::finish-restore-test).  It requires expired old handles, the same selected frame and local values after full GC, restart completion, and one cleanup, then releases the stop.
 
+## CLOS method replacement tests
+
+The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-METHOD-REPLACEMENT.LISP"))
+(lispm-method-replacement-test:run)
+```
+
+The overlap tests arrange a cache miss during a removal notification and a replacement during cache construction.  They require the competing thread to wait on the generic function's mutex.  A separate running method waits for another thread to replace it, testing that dispatch releases the lookup mutex before invocation.  Run the fixture again after image restoration to test the saved implementation.
+
 ## Snapshot tests
 
 Run the following forms in Mezzano with the source tree available as `SYS:SOURCE;`.  The synchronization fixture inspects kernel queues with interrupts disabled, so its compiled code requires `:WIRED T`.

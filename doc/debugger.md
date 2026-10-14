@@ -100,6 +100,8 @@ A service mutex protects the registry, ownership, command acceptance, and result
 
 A stopped thread retains any application locks it holds.  Another thread can change shared objects reachable through its locals.  A stop therefore preserves an activation without freezing the heap.  An inspection that depends on another held lock can block.  The service does not resolve application deadlocks.
 
+Method changes and dispatch-cache construction use one mutex per generic function.  A concurrent invocation may finish a method selected before replacement.  A cache miss waits for an in-progress replacement to finish.  Ordinary dispatch releases its lookup mutex before invoking the selected method.  A stop inside a method-update or lookup MOP callback retains its enclosing mutex, so another thread's cache miss on the same generic function can wait for that stop to proceed.  This synchronization covers calls overlapping method changes on one generic function.  Class-layout changes and shared metadata affected by concurrent updates to different generic functions require separate synchronization.
+
 ## Stop and command lifetimes
 
 ### Handles and control

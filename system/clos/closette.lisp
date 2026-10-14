@@ -1508,6 +1508,25 @@ has only has class specializer."
           (values t offset)
           nil))))
 
+(defvar *generic-function-locks*
+  (make-hash-table :test 'eq :weakness :key :synchronized t))
+
+(defun generic-function-lock (gf)
+  (or (gethash gf *generic-function-locks*)
+      (let ((lock (mezzano.supervisor:make-mutex 'generic-function-update)))
+        (or (sys.int::cas (gethash gf *generic-function-locks*) nil lock)
+            lock))))
+
+(defun call-with-generic-function-lock (gf function)
+  (let ((lock (generic-function-lock gf)))
+    (if (mezzano.supervisor:mutex-held-p lock)
+        (funcall function)
+        (mezzano.supervisor:with-mutex (lock)
+          (funcall function)))))
+
+(defmacro with-generic-function-lock ((gf) &body body)
+  `(call-with-generic-function-lock ,gf (lambda () ,@body)))
+
 ;;; finalize-generic-function
 
 ;;; N.B. Same basic idea as finalize-inheritance.  Takes care of recomputing
@@ -1515,10 +1534,11 @@ has only has class specializer."
 ;;; function table.
 
 (defun reset-gf-emf-table (gf)
-  (cond ((single-dispatch-emf-table-p (classes-to-emf-table gf))
-         (clear-single-dispatch-emf-table (classes-to-emf-table gf)))
-        ((classes-to-emf-table gf)
-         (clear-emf-cache (classes-to-emf-table gf)))))
+  (with-generic-function-lock (gf)
+    (cond ((single-dispatch-emf-table-p (classes-to-emf-table gf))
+           (clear-single-dispatch-emf-table (classes-to-emf-table gf)))
+          ((classes-to-emf-table gf)
+           (clear-emf-cache (classes-to-emf-table gf))))))
 
 (defun required-portion (gf args)
   (let ((number-required (length (gf-required-arglist gf))))
@@ -1546,63 +1566,64 @@ has only has class specializer."
         (member '&key ll))))
 
 (defun finalize-generic-function (gf)
-  (let* ((required-args (gf-required-arglist gf))
-         (relevant-args (make-array (length required-args)
-                                    :element-type 'bit
-                                    :initial-element 0))
-         (class-t (find-class 't))
-         (argument-precedence (safe-generic-function-argument-precedence-order gf)))
-    (when (not (eql (length required-args)
-                    (length (remove-duplicates required-args))))
-      (error "Generic function has duplicate required argument in its lambda list ~S."
-             (safe-generic-function-lambda-list gf)))
-    ;; Verify that the argument-precedence order is correct.
-    (when (endp argument-precedence)
-      (setf argument-precedence (copy-list required-args)
-            (safe-generic-function-argument-precedence-order gf) argument-precedence))
-    (when (or (not (eql (length required-args) (length argument-precedence)))
-              (set-difference required-args argument-precedence)
-              (set-difference argument-precedence required-args))
-      (error 'sys.int::simple-program-error
-             :format-control "Argument precedence list ~:S does not match required arguments ~:S"
-             :format-arguments (list argument-precedence required-args)))
-    (cond ((every #'eql required-args argument-precedence)
-           ;; No argument reordering required.
-           (setf (argument-reordering-table gf) nil))
-          (t
-           ;; Build a table that maps from reordered arguments to
-           ;; required argument indices.
-           (let ((table (make-array (length required-args))))
-             (loop
-                for i from 0
-                for arg in argument-precedence
-                  do (setf (aref table i) (position arg required-args)))
-             (setf (argument-reordering-table gf) table))))
-    ;; Examine all methods and compute the relevant argument bit-vector.
-    (dolist (m (safe-generic-function-methods gf))
-      (do ((i 0 (1+ i))
-           (spec (safe-method-specializers m) (rest spec)))
-          ((null spec))
-        (unless (eql (first spec) class-t)
-          (setf (bit relevant-args i) 1))))
-    (setf (safe-generic-function-relevant-arguments gf) relevant-args))
-  (reset-gf-emf-table gf)
-  (let ((tracep (safe-generic-function-trace-p gf)))
-    (setf (classes-to-emf-table gf) (cond ((and (not tracep)
-                                                (generic-function-single-dispatch-p gf))
-                                           (make-single-dispatch-emf-table gf))
-                                          ((and (not tracep)
-                                                (generic-function-unspecialized-dispatch-p gf))
-                                           nil)
-                                          (t
-                                           (make-emf-cache gf)))))
-  (set-funcallable-instance-function
-   gf
-   (funcall (if (standard-generic-function-instance-p gf)
-                #'std-compute-discriminating-function
-                #'compute-discriminating-function)
-            gf))
-  (values))
+  (with-generic-function-lock (gf)
+    (let* ((required-args (gf-required-arglist gf))
+           (relevant-args (make-array (length required-args)
+                                      :element-type 'bit
+                                      :initial-element 0))
+           (class-t (find-class 't))
+           (argument-precedence (safe-generic-function-argument-precedence-order gf)))
+      (when (not (eql (length required-args)
+                      (length (remove-duplicates required-args))))
+        (error "Generic function has duplicate required argument in its lambda list ~S."
+               (safe-generic-function-lambda-list gf)))
+      ;; Verify that the argument-precedence order is correct.
+      (when (endp argument-precedence)
+        (setf argument-precedence (copy-list required-args)
+              (safe-generic-function-argument-precedence-order gf) argument-precedence))
+      (when (or (not (eql (length required-args) (length argument-precedence)))
+                (set-difference required-args argument-precedence)
+                (set-difference argument-precedence required-args))
+        (error 'sys.int::simple-program-error
+               :format-control "Argument precedence list ~:S does not match required arguments ~:S"
+               :format-arguments (list argument-precedence required-args)))
+      (cond ((every #'eql required-args argument-precedence)
+             ;; No argument reordering required.
+             (setf (argument-reordering-table gf) nil))
+            (t
+             ;; Build a table that maps from reordered arguments to
+             ;; required argument indices.
+             (let ((table (make-array (length required-args))))
+               (loop
+                  for i from 0
+                  for arg in argument-precedence
+                    do (setf (aref table i) (position arg required-args)))
+               (setf (argument-reordering-table gf) table))))
+      ;; Examine all methods and compute the relevant argument bit-vector.
+      (dolist (m (safe-generic-function-methods gf))
+        (do ((i 0 (1+ i))
+             (spec (safe-method-specializers m) (rest spec)))
+            ((null spec))
+          (unless (eql (first spec) class-t)
+            (setf (bit relevant-args i) 1))))
+      (setf (safe-generic-function-relevant-arguments gf) relevant-args))
+    (reset-gf-emf-table gf)
+    (let ((tracep (safe-generic-function-trace-p gf)))
+      (setf (classes-to-emf-table gf) (cond ((and (not tracep)
+                                                  (generic-function-single-dispatch-p gf))
+                                             (make-single-dispatch-emf-table gf))
+                                            ((and (not tracep)
+                                                  (generic-function-unspecialized-dispatch-p gf))
+                                             nil)
+                                            (t
+                                             (make-emf-cache gf)))))
+    (set-funcallable-instance-function
+     gf
+     (funcall (if (standard-generic-function-instance-p gf)
+                  #'std-compute-discriminating-function
+                  #'compute-discriminating-function)
+              gf))
+    (values)))
 
 ;;; make-instance-standard-generic-function creates and initializes an
 ;;; instance of standard-generic-function without falling into method lookup.
@@ -1750,36 +1771,38 @@ has only has class specializer."
 ;;; programs without this feature of full CLOS.
 
 (defun std-add-method (gf method)
-  ;; If the GF has no methods and an empty lambda-list, then it may have
-  ;; been implicitly created via defmethod. Fill in the lambda-list.
-  (when (and (endp (safe-generic-function-methods gf))
-             (endp (safe-generic-function-lambda-list gf)))
-    (setf (safe-generic-function-lambda-list gf) (safe-method-lambda-list method)))
-  (check-method-lambda-list-congruence gf method)
-  (assert (not (safe-method-generic-function method)))
-  (let ((old-method
-           (find-method gf (safe-method-qualifiers method)
-                           (safe-method-specializers method) nil)))
-    (when old-method (remove-method gf old-method)))
-  (setf (safe-method-generic-function method) gf)
-  (push method (safe-generic-function-methods gf))
-  (dolist (specializer (safe-method-specializers method))
-    (safe-add-direct-method specializer method))
-  (finalize-generic-function gf)
-  (safe-map-dependents gf (lambda (dep)
-                            (update-dependent gf dep 'add-method method)))
-  gf)
+  (with-generic-function-lock (gf)
+    ;; If the GF has no methods and an empty lambda-list, then it may have
+    ;; been implicitly created via defmethod. Fill in the lambda-list.
+    (when (and (endp (safe-generic-function-methods gf))
+               (endp (safe-generic-function-lambda-list gf)))
+      (setf (safe-generic-function-lambda-list gf) (safe-method-lambda-list method)))
+    (check-method-lambda-list-congruence gf method)
+    (assert (not (safe-method-generic-function method)))
+    (let ((old-method
+             (find-method gf (safe-method-qualifiers method)
+                             (safe-method-specializers method) nil)))
+      (when old-method (remove-method gf old-method)))
+    (setf (safe-method-generic-function method) gf)
+    (push method (safe-generic-function-methods gf))
+    (dolist (specializer (safe-method-specializers method))
+      (safe-add-direct-method specializer method))
+    (finalize-generic-function gf)
+    (safe-map-dependents gf (lambda (dep)
+                              (update-dependent gf dep 'add-method method)))
+    gf))
 
 (defun std-remove-method (gf method)
-  (setf (safe-generic-function-methods gf)
-        (remove method (safe-generic-function-methods gf)))
-  (setf (safe-method-generic-function method) nil)
-  (dolist (specializer (safe-method-specializers method))
-    (safe-remove-direct-method specializer method))
-  (finalize-generic-function gf)
-  (safe-map-dependents gf (lambda (dep)
-                            (update-dependent gf dep 'remove-method method)))
-  gf)
+  (with-generic-function-lock (gf)
+    (setf (safe-generic-function-methods gf)
+          (remove method (safe-generic-function-methods gf)))
+    (setf (safe-method-generic-function method) nil)
+    (dolist (specializer (safe-method-specializers method))
+      (safe-remove-direct-method specializer method))
+    (finalize-generic-function gf)
+    (safe-map-dependents gf (lambda (dep)
+                              (update-dependent gf dep 'remove-method method)))
+    gf))
 
 (defun find-method (gf qualifiers specializers
                     &optional (errorp t))
@@ -1825,7 +1848,7 @@ has only has class specializer."
               (standard-method-instance-p method))
          (std-remove-direct-method specializer method))
         (t
-         (add-direct-method specializer method))))
+         (remove-direct-method specializer method))))
 
 (defun std-specializer-direct-generic-functions (specializer)
   (loop
@@ -1922,7 +1945,7 @@ has only has class specializer."
     (let* ((location (single-dispatch-emf-entry-by-object emf-table object)))
       (if location
           (fast-slot-read object location slot-definition)
-          (slow-single-dispatch-method-lookup* gf argument-offset (list object) :reader)))))
+          (slow-single-dispatch-method-lookup* gf argument-offset (list object) :reader emf-table)))))
 
 (defstruct (writer-discriminator-entry
              :sealed)
@@ -1941,7 +1964,7 @@ has only has class specializer."
                         :expected-type (writer-discriminator-entry-type location))))
              (fast-slot-write new-value object (writer-discriminator-entry-location location) slot-definition))
             (t
-             (slow-single-dispatch-method-lookup* gf argument-offset (list new-value object) :writer))))))
+             (slow-single-dispatch-method-lookup* gf argument-offset (list new-value object) :writer emf-table))))))
 
 (defun compute-1-effective-discriminator (gf emf-table argument-offset)
   ;; TODO: This table should be a weak-alist, but that's not thread-safe.
@@ -1979,10 +2002,7 @@ has only has class specializer."
                                                `(funcall (cdr eql-emfun) ,@req-args))))))
                           (let* ((emfun (single-dispatch-emf-entry-by-object
                                          emf-table ,(nth index req-args))))
-                            ;; Hack around a bug... The table gets corrupted somehow and returns an integer
-                            (when (and emfun (not (functionp emfun)))
-                              (setf emfun nil)
-                              (clear-single-dispatch-emf-table emf-table))
+                            (check-type emfun (or null function))
                             (if emfun
                                 (locally
                                     (declare (optimize speed (safety 0))
@@ -1995,7 +2015,7 @@ has only has class specializer."
                                  ,(if rest-arg
                                       `(list* ,@req-args ,rest-arg)
                                       `(list ,@req-args))
-                                 (class-of ,(nth index req-args))))))))))
+                                 (class-of ,(nth index req-args)) emf-table))))))))
                (gen-all ()
                  `(or
                    ,@(loop
@@ -2017,7 +2037,7 @@ has only has class specializer."
                   (let ((emfun (single-dispatch-emf-entry-by-object emf-table arg)))
                     (if emfun
                         (apply emfun args)
-                        (slow-single-dispatch-method-lookup gf args (class-of arg)))))))))))
+                        (slow-single-dispatch-method-lookup gf args (class-of arg) emf-table))))))))))
 
 (defun compute-n-effective-discriminator (gf emf-table n-required-args)
   (lambda (&rest args sys.int::&count arg-count)
@@ -2030,7 +2050,7 @@ has only has class specializer."
       (if emfun
           (apply emfun args)
           ;; Delay copying the argument list until it really needs to have indefinite-extent.
-          (slow-method-lookup gf (copy-list args))))))
+          (slow-method-lookup gf (copy-list args) emf-table)))))
 
 (defun compute-1-effective-eql-table (gf argument-offset)
   (loop
@@ -2064,7 +2084,7 @@ has only has class specializer."
     (dolist (gf gfs)
       (reset-gf-emf-table gf))))
 
-(defun slow-single-dispatch-method-lookup* (gf argument-offset args state)
+(defun compute-single-dispatch-function (gf argument-offset args state)
   (declare (notinline slot-value (setf slot-value))) ; Bootstrap hack
   (let ((emf-table (classes-to-emf-table gf)))
     (ecase state
@@ -2087,12 +2107,13 @@ has only has class specializer."
                   (cond (effective-slot
                          (let ((location (safe-slot-definition-location effective-slot)))
                            (setf (single-dispatch-emf-entry emf-table class) location)
-                           (fast-slot-read (first args) location slot-def)))
+                           (lambda (object)
+                             (fast-slot-read object location slot-def))))
                         (t
                          ;; Slot not present, fall back on SLOT-VALUE.
-                         (slot-value instance slot-name)))))
+                         (lambda (object) (slot-value object slot-name))))))
                (t ;; Give up and use the full path.
-                (slow-single-dispatch-method-lookup* gf argument-offset args :never-called)))))
+                (compute-single-dispatch-function gf argument-offset args :never-called)))))
       (:writer
        (let* ((classes (mapcar #'class-of (required-portion gf args)))
               (class (nth argument-offset classes))
@@ -2107,8 +2128,7 @@ has only has class specializer."
                 (let* ((instance (second args))
                        (slot-def (accessor-method-slot-definition (first applicable-methods)))
                        (slot-name (slot-definition-name slot-def))
-                       (effective-slot (find-effective-slot instance slot-name))
-                       (new-value (first args)))
+                       (effective-slot (find-effective-slot instance slot-name)))
                   (register-redefinition-flusher gf class)
                   (cond (effective-slot
                          (let* ((location (safe-slot-definition-location effective-slot))
@@ -2119,18 +2139,22 @@ has only has class specializer."
                                         :typecheck typecheck
                                         :type type)))
                            (setf (single-dispatch-emf-entry emf-table class) entry)
-                           (when (and typecheck (not (funcall typecheck new-value)))
-                             (error 'type-error
-                                    :datum new-value
-                                    :expected-type type))
-                           (fast-slot-write new-value instance location slot-def)))
+                           (lambda (new-value object)
+                             (when (and typecheck (not (funcall typecheck new-value)))
+                               (error 'type-error
+                                      :datum new-value
+                                      :expected-type type))
+                             (fast-slot-write new-value object location slot-def))))
                         (t
                          ;; Slot not present, fall back on SLOT-VALUE.
-                         (setf (slot-value instance slot-name) new-value)))))
+                         (lambda (new-value object)
+                           (setf (slot-value object slot-name) new-value))))))
                (t ;; Give up and use the full path.
-                (slow-single-dispatch-method-lookup* gf argument-offset args :never-called)))))
+                (compute-single-dispatch-function gf argument-offset args :never-called)))))
       (:never-called
        (reset-gf-emf-table gf)
+       (setf emf-table (make-single-dispatch-emf-table gf)
+             (classes-to-emf-table gf) emf-table)
        (let* ((classes (mapcar #'class-of (required-portion gf args)))
               (class (nth argument-offset classes))
               (applicable-methods (if (eql (class-of gf) *the-class-standard-gf*)
@@ -2141,26 +2165,36 @@ has only has class specializer."
                      (typep (first applicable-methods) 'standard-reader-method)
                      (std-class-p (class-of class)))
                 ;; Switch to reader-method.
-                (set-funcallable-instance-function
-                 gf
-                 (compute-reader-discriminator gf emf-table argument-offset
-                                               (accessor-method-slot-definition (first applicable-methods))))
-                (apply gf args))
+                (let ((function
+                        (compute-reader-discriminator
+                         gf emf-table argument-offset
+                         (accessor-method-slot-definition (first applicable-methods)))))
+                  (set-funcallable-instance-function gf function)
+                  function))
                ((and (not (null applicable-methods))
                      (every 'primary-method-p applicable-methods)
                      (typep (first applicable-methods) 'standard-writer-method)
                      (std-class-p (class-of class)))
                 ;; Switch to writer-method.
-                (set-funcallable-instance-function
-                 gf
-                 (compute-writer-discriminator gf emf-table argument-offset
-                                               (accessor-method-slot-definition (first applicable-methods))))
-                (apply gf args))
+                (let ((function
+                        (compute-writer-discriminator
+                         gf emf-table argument-offset
+                         (accessor-method-slot-definition (first applicable-methods)))))
+                  (set-funcallable-instance-function gf function)
+                  function))
                (t ;; Switch to 1-effective.
                 (set-funcallable-instance-function
                  gf
                  (compute-1-effective-discriminator gf emf-table argument-offset))
-                (slow-single-dispatch-method-lookup gf args (class-of (nth argument-offset args))))))))))
+                (compute-single-dispatch-effective-method gf args (class-of (nth argument-offset args))))))))))
+
+(defun slow-single-dispatch-method-lookup* (gf argument-offset args state &optional table)
+  (apply (with-generic-function-lock (gf)
+           (cond ((null table) (std-compute-discriminating-function gf))
+                 ((eq table (classes-to-emf-table gf))
+                  (compute-single-dispatch-function gf argument-offset args state))
+                 (t gf)))
+         args))
 
 (defun safe-generic-function-trace-p (generic-function)
   (if (standard-generic-function-instance-p generic-function)
@@ -2169,22 +2203,24 @@ has only has class specializer."
 
 (defun std-compute-discriminating-function (gf)
   (lambda (&rest args)
-    (multiple-value-bind (single-dispatch-p argument-offset)
-        (generic-function-single-dispatch-p gf)
-      (let ((tracep (safe-generic-function-trace-p gf)))
-        ;; Force the n-effective discriminator when tracing, that
-        ;; eliminate special cases for reader/writer methods too.
-        (cond ((and (not tracep) single-dispatch-p)
-               (slow-single-dispatch-method-lookup* gf argument-offset args :never-called))
-              ((and (not tracep) (generic-function-unspecialized-dispatch-p gf))
-               (slow-unspecialized-dispatch-method-lookup gf args))
-              (t
-               (set-funcallable-instance-function
-                gf
-                (compute-n-effective-discriminator gf (classes-to-emf-table gf) (length (gf-required-arglist gf))))
-               (apply gf args)))))))
+    (apply
+     (with-generic-function-lock (gf)
+       (multiple-value-bind (single-dispatch-p argument-offset)
+           (generic-function-single-dispatch-p gf)
+         (let ((tracep (safe-generic-function-trace-p gf)))
+           (cond ((and (not tracep) single-dispatch-p)
+                  (compute-single-dispatch-function gf argument-offset args :never-called))
+                 ((and (not tracep) (generic-function-unspecialized-dispatch-p gf))
+                  (compute-unspecialized-effective-method gf args))
+                 (t
+                  (let ((function
+                          (compute-n-effective-discriminator
+                           gf (classes-to-emf-table gf) (length (gf-required-arglist gf)))))
+                    (set-funcallable-instance-function gf function)
+                    function))))))
+     args)))
 
-(defun slow-method-lookup (gf args)
+(defun compute-effective-method-for-call (gf args)
   (let ((std-gf-p (eq (class-of gf) *the-class-standard-gf*))
         (classes (mapcar #'class-of (required-portion gf args))))
     (multiple-value-bind (applicable-methods validp)
@@ -2196,15 +2232,24 @@ has only has class specializer."
                                      (std-compute-applicable-methods gf args)
                                      (compute-applicable-methods gf args))))
       (when (not applicable-methods)
-        (return-from slow-method-lookup
-          (apply #'no-applicable-method gf args)))
+        (return-from compute-effective-method-for-call
+          (lambda (&rest arguments)
+            (apply #'no-applicable-method gf arguments))))
       (let ((emfun (if std-gf-p
                        (std-compute-effective-method-function gf applicable-methods)
                        (compute-effective-method-function gf applicable-methods))))
         (insert-into-emf-cache (classes-to-emf-table gf) args emfun)
         (dolist (c classes)
           (register-redefinition-flusher gf c))
-        (apply emfun args)))))
+        emfun))))
+
+(defun slow-method-lookup (gf args &optional table)
+  (apply (with-generic-function-lock (gf)
+           (cond ((null table) (std-compute-discriminating-function gf))
+                 ((eq table (classes-to-emf-table gf))
+                  (compute-effective-method-for-call gf args))
+                 (t gf)))
+         args))
 
 (defun reordered-argument (gf arguments index)
   (nth (reordered-method-argument-index gf index)
@@ -2250,7 +2295,7 @@ always match."
      when (method-partial-specializer-match-p gf method specializers-reordered)
      collect method))
 
-(defun slow-single-dispatch-method-lookup (gf args class)
+(defun compute-single-dispatch-effective-method (gf args class)
   (let* ((classes (mapcar #'class-of (required-portion gf args)))
          (standard-gf-p (eql (class-of gf) *the-class-standard-gf*)))
     (multiple-value-bind (applicable-methods validp)
@@ -2318,9 +2363,17 @@ always match."
         (when validp
           (register-redefinition-flusher gf class)
           (setf (single-dispatch-emf-entry (classes-to-emf-table gf) class) emfun))
-        (apply emfun args)))))
+        emfun))))
 
-(defun slow-unspecialized-dispatch-method-lookup (gf args)
+(defun slow-single-dispatch-method-lookup (gf args class &optional table)
+  (apply (with-generic-function-lock (gf)
+           (cond ((null table) (std-compute-discriminating-function gf))
+                 ((eq table (classes-to-emf-table gf))
+                  (compute-single-dispatch-effective-method gf args class))
+                 (t gf)))
+         args))
+
+(defun compute-unspecialized-effective-method (gf args)
   (let* ((classes (loop
                      for req in (required-portion gf args)
                      collect *the-class-t*))
@@ -2328,11 +2381,15 @@ always match."
     (cond (applicable-methods
            (let ((emfun (std-compute-effective-method-function gf applicable-methods)))
              (set-funcallable-instance-function gf emfun)
-             (apply emfun args)))
+             emfun))
           (t
-           (apply #'no-applicable-method gf args)))))
+           (lambda (&rest arguments)
+             (apply #'no-applicable-method gf arguments))))))
 
 ;;; compute-applicable-methods-using-classes
+
+(defun slow-unspecialized-dispatch-method-lookup (gf args)
+  (apply (std-compute-discriminating-function gf) args))
 
 (defun std-compute-applicable-methods-using-classes (gf required-classes)
   (values (sort
