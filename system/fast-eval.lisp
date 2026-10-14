@@ -27,20 +27,27 @@
            ;; Already compiled.
            function)
           (t
-           (setf function :in-progress)
-           (let ((new-function
-                   (let ((*compile-file-pathname*
-                           (lazy-eval-function-pathname lazy-eval-function))
-                         (mezzano.internals::*top-level-form-number*
-                           (lazy-eval-function-tlf lazy-eval-function)))
-                     (eval-compile (lazy-eval-function-form lazy-eval-function)
-                                   (lazy-eval-function-env lazy-eval-function)))))
-             (mezzano.clos:set-funcallable-instance-function
-              lazy-eval-function new-function)
-             (setf function new-function))))))
+           (unwind-protect
+                (progn
+                  (setf function :in-progress)
+                  (let ((new-function
+                          (let ((*compile-file-pathname*
+                                  (lazy-eval-function-pathname lazy-eval-function))
+                                (mezzano.internals::*top-level-form-number*
+                                  (lazy-eval-function-tlf lazy-eval-function)))
+                            (eval-compile (lazy-eval-function-form lazy-eval-function)
+                                          (lazy-eval-function-env lazy-eval-function)))))
+                    (setf function new-function)
+                    (mezzano.clos:set-funcallable-instance-function
+                     lazy-eval-function new-function)
+                    new-function))
+             (when (eq function :in-progress)
+               (setf function nil)))))))
 
 (defmethod make-load-form ((function lazy-eval-function) &optional environment)
   (declare (ignore environment))
+  (when (eq (slot-value function 'function) :in-progress)
+    (error "Cannot save a function during its compilation."))
   (list 'quote (lazy-eval-function-function function)))
 
 (defmethod mezzano.internals::funcallable-instance-lambda-expression ((function lazy-eval-function))
@@ -68,15 +75,9 @@
         (*compile-file-pathname* (or *compile-file-pathname*
                                      *load-pathname*)))
     (funcall
-     (handler-case
-         (mezzano.compiler::compile-lambda
-          `(lambda () (progn ,form))
-          env)
-       (error ()
-         ;; If we fail to compile, then fall back on the interpreter
-         (mezzano.full-eval:eval-in-lexenv
-          `(lambda () (progn ,form))
-          env))))))
+     (mezzano.compiler::compile-lambda
+      `(lambda () (progn ,form))
+      env))))
 
 (defun eval-progn-body (forms env)
   (do ((itr forms (cdr itr)))

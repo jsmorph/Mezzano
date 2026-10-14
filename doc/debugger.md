@@ -263,6 +263,8 @@ Tracing applies to calls through the named function's reference in every thread.
 
 The image bootstrap policy is `(safety 3 debug 1 speed 1)`.  The running compiler defaults to `(safety 3 debug 3 speed 1)`.  Code already in an image retains the policy and debugger metadata from its compilation.
 
+Evaluation propagates errors raised during compilation to the caller's handlers or debugger.  Aborting compilation leaves a lazy function available for retry.  A later call compiles the same function again, and successful calls thereafter use its compiled target.  Recursive compiler entry retains its existing interpreter path.
+
 At debug level 3, the compiler preserves lexical bindings for inspection, including unused bindings.  A binding follows the policy at its introduction.  A local debug-3 declaration preserves a binding inside a function compiled at debug levels 0, 1, or 2.  Entering a lower-debug region afterward does not remove that preservation.  Captured preserved bindings share one environment cell between the defining function and its closures.
 
 At debug level 3, FLET and LABELS bindings retain their function objects, including unused functions.  Local-function names appear as (FUNCTION name), or (FUNCTION (SETF name)) for a SETF function.  A variable and function with the same symbol have separate records.  Function bindings use the policy at their introduction and retain captured cells shared with their closures.  The records permit inspection.  Resolving the innermost lexical scope for frame evaluation remains pending.

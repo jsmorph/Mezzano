@@ -328,6 +328,13 @@ The function-constant fixture saves compiled, lazy, and interpreted functions in
 
 Its stateful assertions require a fresh compiled-file load before each RUN.  Lazy functions save their resolved target.  Interpreted functions retain an interpreter entry and their saved lexical environment.  Recursive function/environment graphs and cross-target loading have not been tested.
 
+The compilation-error fixture checks that evaluation propagates the original compiler condition, expands a failing macro once, and permits retry of the same lazy function after an error or nonlocal exit.  It also checks recursive forcing and rejection of serialization during compilation:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-EVAL-COMPILATION.LISP"))
+(lispm-eval-compilation-test:run)
+```
+
 The parameter fixture compares interpreted and compiled results for special bindings, initializer order and declaration scope, optional and keyword parameters, supplied-p values, rest and auxiliary bindings, keyword precedence, multiple values, closure writes, and dynamic unwinding:
 
 ```lisp
