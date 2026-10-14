@@ -9,6 +9,8 @@ const url = process.argv[2] ?? 'http://127.0.0.1:8765/';
 const output = resolve(process.argv[3] ?? '/tmp/listener-debugger-test');
 const protectedStop = process.env.PROTECTED_STOP === undefined ? null : Number(process.env.PROTECTED_STOP);
 assert(protectedStop === null || Number.isSafeInteger(protectedStop));
+const replayIterations = Number(process.env.REPLAY_ITERATIONS ?? 1);
+assert(Number.isSafeInteger(replayIterations) && replayIterations > 0);
 await mkdir(output, {recursive: true});
 const browser = await openBrowser(url);
 const marker = 'LISTENER-DEBUG-' + randomBytes(6).toString('hex').toUpperCase();
@@ -90,6 +92,21 @@ async function save(name) {
 
 try {
   await browser.waitFor('connected && !busy');
+  const captureFailures = `(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async function(input, options) {
+      const response = await originalFetch.call(this, input, options);
+      if (!response.ok) {
+        const body = await response.clone().text();
+        const failures = JSON.parse(sessionStorage.getItem('focused-test-http-failures') || '[]');
+        failures.push({request: options?.body, status: response.status, response: body});
+        sessionStorage.setItem('focused-test-http-failures', JSON.stringify(failures));
+      }
+      return response;
+    };
+  })()`;
+  await browser.send('Page.addScriptToEvaluateOnNewDocument', {source: captureFailures});
+  await browser.evaluate(captureFailures);
   evidence.session = await browser.evaluate('state.session');
   originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, next: stop.info["next-command-id"]}))');
   if (protectedStop !== null) assert(originalStops.some(stop => stop.id === protectedStop), 'Protected stop was not found');
@@ -522,53 +539,56 @@ try {
   assert.deepEqual((await completed(explicitArguments)).values, ['42']);
   evidence.checks.push('Required argument without interactive reader: Arguments button, reload during read, interrupt and child Abort, expression error and child Abort, then explicit argument exit');
 
-  const argumentEvaluations = marker + '-ARGUMENT-EVALUATIONS';
-  const restartInvocations = marker + '-RESTART-INVOCATIONS';
-  const replayArguments = await start(`(let ((${argumentEvaluations} 0) (${restartInvocations} 0) (replacement 0)) (declare (special ${argumentEvaluations} ${restartInvocations})) (unwind-protect (catch :explicit-arguments-done (restart-bind ((continue (lambda (value) (incf ${restartInvocations}) (setf replacement value) (values replacement ${argumentEvaluations} ${restartInvocations})) :report-function (lambda (stream) (write-string "Return explicit arguments and invocation counts." stream))) (finish (lambda () (throw :explicit-arguments-done (list replacement ${argumentEvaluations} ${restartInvocations}))) :report-function (lambda (stream) (write-string "Finish with the retained argument and counters." stream)))) (error "${marker} argument replay"))) (unintern '${argumentEvaluations}) (unintern '${restartInvocations})))`);
-  const replayParent = await stopped(replayArguments);
-  await fill('#source', ':Proceed :Arg');
-  await key(' ', 'Space', 32);
-  await browser.waitFor('document.querySelector("#source").value === ":Proceed Default :Arguments " && !busy');
-  await browser.evaluate(`(() => {
-    const original = window.fetch;
-    window.fetch = async (...args) => {
-      const response = await original(...args);
-      const request = args[1]?.body && JSON.parse(args[1].body);
-      if (request?.operation === 'submit' && request.arguments.command === 'invoke-restart-with-arguments') {
-        window.fetch = original;
-        await response.arrayBuffer();
-        throw new TypeError('Browser test discarded the accepted argument-command reply');
-      }
-      return response;
-    };
-  })()`);
-  await key('Enter', 'Enter', 13);
-  await browser.waitFor('!connected && !busy && state.pending.some(record => record.arguments.command === "invoke-restart-with-arguments" && record.status === "outcome unknown")');
-  const argumentReceipt = await browser.evaluate('state.pending.find(record => record.arguments.command === "invoke-restart-with-arguments" && record.status === "outcome unknown")');
-  assert.equal(argumentReceipt.arguments.argument, null);
-  await browser.click('#window-label');
-  await browser.click('#resume-session');
-  await browser.waitFor(`connected && !busy && views.get(${text(replayArguments)})?.info['input-waiting-p']`);
-  assert.equal(await browser.evaluate('state.session'), argumentReceipt.session);
-  const replayInput = '[data-job="' + replayArguments + '"] .input-form';
-  await fill(replayInput + ' textarea', `(locally (declare (special ${argumentEvaluations})) (incf ${argumentEvaluations}) (list (* 6 7)))`);
-  await clickText(replayInput, 'Send Input');
-  await browser.waitFor(`!views.get(${text(replayArguments)})?.info['input-waiting-p'] && !busy`);
-  await switchActivity('requests');
-  await browser.evaluate(`[...document.querySelectorAll('#pending .command-row')].find(row => row.textContent.includes(${text(JSON.stringify(argumentReceipt.arguments))})).querySelector('button').dataset.focusedTest = 'argument-replay'`);
-  await browser.click('[data-focused-test="argument-replay"]');
-  await browser.waitFor(`!state.pending.some(record => record.id === ${text(argumentReceipt.id)}) && !busy`);
-  await switchActivity('listener');
-  await browser.waitFor(`document.querySelector('#listener-debugger .restart-values')?.textContent === ${text('Restart returned:\n42\n1\n1')} && !busy`);
-  assert.deepEqual(await browser.evaluate('listenerDebugger.stop'), replayParent.stop);
-  assert.equal(await browser.evaluate(`state.commands.filter(command => same(command.stop, ${text(replayParent.stop)}) && command.id === ${argumentReceipt.arguments.id}).length`), 1);
-  evidence.argumentReplay = argumentReceipt;
-  await browser.evaluate('document.querySelector("#listener-debugger .restart-values").scrollIntoView({block: "center"})');
-  await save('argument-replay-returned');
-  await clickText('#listener-debugger .restarts', 'FINISH:');
-  assert.deepEqual((await completed(replayArguments)).values, ['(42 1 1)']);
-  const afterArguments = await start('(+ 20 22)');
-  assert.deepEqual((await completed(afterArguments)).values, ['42']);
+  evidence.argumentReplays = [];
+  for (let iteration = 0; iteration < replayIterations; iteration++) {
+    const argumentEvaluations = marker + '-ARGUMENT-EVALUATIONS-' + iteration;
+    const restartInvocations = marker + '-RESTART-INVOCATIONS-' + iteration;
+    const replayArguments = await start(`(let ((${argumentEvaluations} 0) (${restartInvocations} 0) (replacement 0)) (declare (special ${argumentEvaluations} ${restartInvocations})) (unwind-protect (catch :explicit-arguments-done (restart-bind ((continue (lambda (value) (incf ${restartInvocations}) (setf replacement value) (values replacement ${argumentEvaluations} ${restartInvocations})) :report-function (lambda (stream) (write-string "Return explicit arguments and invocation counts." stream))) (finish (lambda () (throw :explicit-arguments-done (list replacement ${argumentEvaluations} ${restartInvocations}))) :report-function (lambda (stream) (write-string "Finish with the retained argument and counters." stream)))) (error "${marker} argument replay"))) (unintern '${argumentEvaluations}) (unintern '${restartInvocations})))`);
+    const replayParent = await stopped(replayArguments);
+    await fill('#source', ':Proceed :Arg');
+    await key(' ', 'Space', 32);
+    await browser.waitFor('document.querySelector("#source").value === ":Proceed Default :Arguments " && !busy');
+    await browser.evaluate(`(() => {
+      const original = window.fetch;
+      window.fetch = async (...args) => {
+        const response = await original(...args);
+        const request = args[1]?.body && JSON.parse(args[1].body);
+        if (request?.operation === 'submit' && request.arguments.command === 'invoke-restart-with-arguments') {
+          window.fetch = original;
+          await response.arrayBuffer();
+          throw new TypeError('Browser test discarded the accepted argument-command reply');
+        }
+        return response;
+      };
+    })()`);
+    await key('Enter', 'Enter', 13);
+    await browser.waitFor('!connected && !busy && state.pending.some(record => record.arguments.command === "invoke-restart-with-arguments" && record.status === "outcome unknown")');
+    const argumentReceipt = await browser.evaluate('state.pending.find(record => record.arguments.command === "invoke-restart-with-arguments" && record.status === "outcome unknown")');
+    assert.equal(argumentReceipt.arguments.argument, null);
+    await browser.click('#window-label');
+    await browser.click('#resume-session');
+    await browser.waitFor(`connected && !busy && views.get(${text(replayArguments)})?.info['input-waiting-p']`);
+    assert.equal(await browser.evaluate('state.session'), argumentReceipt.session);
+    const replayInput = '[data-job="' + replayArguments + '"] .input-form';
+    await fill(replayInput + ' textarea', `(locally (declare (special ${argumentEvaluations})) (incf ${argumentEvaluations}) (list (* 6 7)))`);
+    await clickText(replayInput, 'Send Input');
+    await browser.waitFor(`!views.get(${text(replayArguments)})?.info['input-waiting-p'] && !busy`);
+    await switchActivity('requests');
+    await browser.evaluate(`[...document.querySelectorAll('#pending .command-row')].find(row => row.textContent.includes(${text(JSON.stringify(argumentReceipt.arguments))})).querySelector('button').dataset.focusedTest = 'argument-replay'`);
+    await browser.click('[data-focused-test="argument-replay"]');
+    await browser.waitFor(`!state.pending.some(record => record.id === ${text(argumentReceipt.id)}) && !busy`);
+    await switchActivity('listener');
+    await browser.waitFor(`document.querySelector('#listener-debugger .restart-values')?.textContent === ${text('Restart returned:\n42\n1\n1')} && !busy`);
+    assert.deepEqual(await browser.evaluate('listenerDebugger.stop'), replayParent.stop);
+    assert.equal(await browser.evaluate(`state.commands.filter(command => same(command.stop, ${text(replayParent.stop)}) && command.id === ${argumentReceipt.arguments.id}).length`), 1);
+    await browser.evaluate('document.querySelector("#listener-debugger .restart-values").scrollIntoView({block: "center"})');
+    await save('argument-replay-returned-' + iteration);
+    await clickText('#listener-debugger .restarts', 'FINISH:');
+    assert.deepEqual((await completed(replayArguments)).values, ['(42 1 1)']);
+    const afterArguments = await start('(+ 20 22)');
+    assert.deepEqual((await completed(afterArguments)).values, ['42']);
+    evidence.argumentReplays.push({iteration, request: argumentReceipt, job: replayArguments, followingJob: afterArguments});
+  }
   evidence.checks.push('SPACE completes Arguments; default selection evaluates a dynamically bound expression once and invokes once across lost accepted reply and exact-request replay; returned values, exit, and subsequent Listener succeed');
 
   const returning = await start(`(let ((replacement 0) (abort-returned nil) (job-abort (find-restart 'abort))) (restart-bind ((use-value (lambda (value) (setf replacement value)) :report-function (lambda (stream) (write-string "Set the replacement and return to this debugger." stream)) :interactive-function (lambda () (format *query-io* "${marker} returning replacement: ") (list (read *query-io*)))) (no-values (lambda () (values)) :report-function (lambda (stream) (write-string "Return no values to this debugger." stream))) (abort (lambda () (if abort-returned (invoke-restart job-abort) (progn (setf abort-returned t) (values :abort-returned 9)))) :report-function (lambda (stream) (write-string "Return from the captured ABORT restart." stream)))) (cerror "Continue after returning restart." "${marker} returning restart")) replacement)`);
@@ -684,6 +704,8 @@ try {
   } finally {
     evidence.jobs = jobs;
     evidence.stops = [...ownedStops.entries()];
+    evidence.errors = browser.errors;
+    evidence.httpFailures = await browser.evaluate("JSON.parse(sessionStorage.getItem('focused-test-http-failures') || '[]')");
     await writeFile(join(output, 'result.json'), JSON.stringify(evidence, null, 2));
     await browser.close();
   }
