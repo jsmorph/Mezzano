@@ -331,7 +331,7 @@ try {
     }
     const remaining = await browser.evaluate("api('stops', {include_closed: true})");
     const original = [];
-    for (const token of remaining) {
+    for (const token of remaining ?? []) {
       const detail = await browser.evaluate(`api('information', {stop: ${text(token)}})`);
       if (originalStops.some(stop => stop.id === detail.id)) original.push({id: detail.id, state: detail.state, next: detail['next-command-id']});
     }
