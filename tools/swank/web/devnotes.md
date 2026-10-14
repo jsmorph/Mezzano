@@ -10,12 +10,16 @@ The guest retains objects and editable places.  The HTTP adapter validates the n
 
 | Command | Argument and behavior |
 |---|---|
-| inspect | NIL selects the stop's primary evaluation-history value.  An object-reference, start, and count list selects a retained object and component range.  Component and history clicks submit this command. |
-| describe | An object reference or NIL selects the described object.  Printed output uses the existing retained evaluation output. |
-| modify | One editable-part reference identifies the place.  The guest reads a replacement expression through existing QUERY-IO input and evaluates it in the selected frame. |
+| inspect | NIL selects the stop's primary evaluation-history value.  A list (object-reference start count) selects a retained object and component range.  Component and history clicks submit this command. |
+| describe-object | An object reference or NIL selects the described object.  Printed output uses the existing retained evaluation output. |
+| modify | A (part-reference start count) list identifies the place and the page to return after modification.  The guest reads a replacement expression through existing QUERY-IO input and evaluates it in the selected frame. |
 | clear-inspection | NIL.  Releases Inspector references and starts a new displayed inspection history while preserving retained command outcomes. |
 
 An inspect result supplies an object reference, printed title/type, range information, and component rows.  Each row supplies its label, printed value, bound state, value reference when present, and editable-place reference when supported.  A writable unbound slot has an editable place without a value reference.  Pagination uses guest-returned bounds.  The same record shape after a successful modification refreshes that object.  Refresh submits inspect for the pane's object and range.  History selection also requests a fresh observation.  Both actions become ordinary retained commands, so the three panes show command observations rather than independently mutable views.
+
+The concrete schema review recommends fields object, title, type, start, end, count, total, and parts.  Each part supplies label, bound-p, value, object, and part.  End is exclusive.  Count records the requested page size, from 1 through 64, with default 32.  It remains distinct from the number of returned components.  For example, start 64, end 70, and total 70 do not identify whether the request specified 8, 32, or 64 components.  Returning count allows one renderer to construct paging, Refresh, and Modify requests from the result alone, including a default inspection.  Unbound components have NIL value and object fields.  Their part reference can remain present when the place is writable.
+
+Modify's page arguments belong to the request rather than the part reference.  An editable place can appear in multiple observations, so storing viewport fields on that reference duplicates context.  The argument list reuses inspection's range validation and preserves a nonzero page.  Negative starts and counts outside the supported range reject before expression input or mutation.  If a container shrinks during the operation, the returned page clamps a start beyond the new extent to that extent, with start and end equal and no components.  This permits navigation back without turning a completed store into a range failure.  The core agent accepted this schema, including count and clamping.  Client implementation waits for the native operations.
 
 Modify uses the existing retained input control and debugger draft.  It requires no additional editor, source payload, or browser evaluation-history variables.  A child error preserves the last successful inspection.  Typed :Abort returns to the parent, where an explicit retry or Refresh is available.  A store completed before a printer error remains effective.  Replaying that accepted command must not execute the store again.  The browser neither retries failed inspection automatically nor inspects during rendering or polling.
 
@@ -26,12 +30,21 @@ The existing browser command list contains this client's accepted requests.  Cle
 The first integration covers active debugger stops.  It uses fresh history navigation and expression-based modification in the selected frame's lexical environment.  Genera's standalone read-eval-inspect loop, distinct middle/right-button navigation, Return, Set backslash, compiler-function inspection, and locatives remain outside this increment.  The three displayed records can include successive pages or refreshes of the same object.  Shared objects can change in other threads between observations.
 
 - [ ] Test shared and cyclic objects, bound NIL, unbound slots, page bounds, history navigation, and reload without re-execution.
+- [ ] Test a partial last page and an empty page, requested counts 1 and 64, nonzero-page Modify, invalid ranges before input, and a container shrinking during replacement evaluation.
 - [ ] Test lexical replacement expressions, type and reader failures, interrupted input, nested Abort, and successful writes followed by printer failure.
 - [ ] Lose accepted modification and input replies, then replay the original identities and verify one evaluation and one store.
 - [ ] Test Clear, stale places, foreign-stop references, closed-stop recorded text, and saved-stop restoration with old-reference rejection.
 - [ ] Verify Proceed observes the mutation, the next Listener evaluates normally, and owned jobs, stops, definitions, and sessions are released.
 
 This entry records the reviewed recommendation.  Product implementation and native/browser acceptance remain pending.  No guest request was made during the review.
+
+The reference-lifetime foundation passed its native saved-image tests in restored x86-64 QEMU 642985.  Browser acceptance will run the existing eight-group frame-evaluation/description driver, then documentation, Peek, command completion, and Listener arithmetic.  These runs test existing behavior with the restored foundation.  Inspector command and UI acceptance remain pending.
+
+The unchanged frame-evaluation/description driver passed all eight groups in that restored guest.  Lexical reads and writes, histories, reload, nested type/reader/scope errors, exact-request replay, both description printer failures, typed Abort, successful zero-value description, Proceed, and subsequent Listener evaluation passed.  The driver released its three jobs, seven stops, named target, and session.  The checked-in description fixture remains loaded.  No HTTP or browser error occurred.  The slot-printer child and recovered-description captures were inspected.  Evidence is `/tmp/web-inspector-reference-restored-frame/result.json`.
+
+The product checker reloaded the documentation catalog and displayed all thirty-nine required excerpts.  It retained its previous thirty-six assertions and added the reference fixture's internal scope, explicit public-operation limit, and saved-state checks.  Peek listed thirty-one processes, SPACE/Tab completed Set Package, and arithmetic returned 42.  Both jobs and the session were released, with no HTTP or browser errors.  The Peek and Web guide captures were inspected.  Evidence is `/tmp/web-inspector-reference-restored-product/result.json`.
+
+The exact drivers, result records, logs, and captures are preserved in `/tmp/debugger-web-inspector-reference-restored-evidence.tar.gz` (SHA-256 `95bbc706c062dedd62caa8c843fd288828b3b86e5c5b593b5cd5cd1d53895d17`).  The browser tests created fresh stops after boot.  The native fixture separately tested references retained by a saved parked stop.  No Inspector UI or public command was implemented or tested by these runs.  The earlier concurrent monitor timeout and unidentified extra HTTP 409 remain unresolved.
 
 ## Description printer errors in frame evaluation: 2026-10-14
 
