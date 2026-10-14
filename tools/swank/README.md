@@ -287,3 +287,14 @@ To test a restart argument reader across restoration, compile the control fixtur
 ```
 
 After the saved image restarts, call `(lispm-debugger-control-test:finish-argument-restore)`.  It verifies expired control, rejected prior-boot replay, the preserved input wait, completion after full GC, and one argument evaluation, restart invocation, and cleanup.  Successful completion releases its job and stop.
+
+The x86-64 copy-on-write test compiles into wired memory and uses a private page to check protection transitions.  Its save test pauses snapshot writeback, runs a minor collection, and changes an 8192-element vector after capture:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SNAPSHOT-COW.LISP")
+      :wired t)
+(lispm-snapshot-cow-test:run)
+(lispm-snapshot-cow-test:save-with-collection)
+```
+
+Wait for the save call to return, then restart that image and call (lispm-snapshot-cow-test:finish-restore).  The restored test invocation removes its writeback hook without repeating the collection or mutation.  FINISH-RESTORE checks that all 8192 values retain their pre-save value, 1111.  The live values after the completed save are 2222.

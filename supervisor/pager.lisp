@@ -567,7 +567,8 @@ Returns NIL if the entry is missing and ALLOCATE is false."
                    (release-vm-page (ash (pte-physical-address (page-table-entry pte 0)) -12))
                    (setf (page-table-entry pte 0) 0))
                   ((and (block-info-writable-p page-flags)
-                        (not (block-info-track-dirty-p page-flags)))
+                        (not (block-info-track-dirty-p page-flags))
+                        (not (page-copy-on-write-p pte)))
                    ;; Mark writable.
                    (update-pte pte :writable t))
                   (t
