@@ -255,6 +255,20 @@ Commands that print values execute application printers and can block or enter a
 
 Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers and executing debugger commands.  Selected-frame evaluation reads and writes available lexical bindings.  Arbitrary frame return or reinvocation, breakpoints, and integrated stepping remain planned for the remote API.  Local-variable availability depends on compiler debug metadata and the selected frame.  The [debugger guide](../../doc/debugger.md) describes those limits and the supported stopping states.
 
+## Kernel source loading
+
+Runtime and supervisor functions called before paging starts or with interrupts disabled require resident code and constants.  The cold builder loads its supervisor source set with wired allocation.  A runtime hotload uses the same allocation and the bootstrap optimization policy:
+
+```lisp
+(let ((mezzano.compiler::*optimize-policy* '(safety 3 debug 1 speed 1)))
+  (multiple-value-bind (file warnings failure)
+      (compile-file "SYS:SOURCE;RUNTIME;RUNTIME.LISP")
+    (assert (and file (not warnings) (not failure)))
+    (load file :wired t)))
+```
+
+Callees invoked in those states also require resident implementations.  Loading boot-required functions into pageable memory can fault before the pager and console initialize.  Snapshot acceptance includes restarting the saved image.
+
 ## Debugger frame tests
 
 Compile and load the fixtures in Mezzano:
@@ -477,6 +491,15 @@ The captured-control metadata fixture checks compiled-file loading, closure/sour
 ```
 
 The fixture executes x86-64 code at SAFETY 3 and SPEED 1.  Captured-variable availability checks use DEBUG 3.  DEBUG 1 tests control identities while allowing optimized variable values.  ARM64 execution and control-destination lookup remain untested or unavailable as described in the [compiler reference](../../doc/debugger.md#compiler-guarantees).
+
+The parked-control fixture tests live catch destinations across image restoration.  It uses the debugger-service, frame-evaluation, and control-record helpers:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-CONTROL-CONTEXT-RESTORE.LISP"))
+(lispm-control-context-restore-test:prepare-restore-test)
+```
+
+After saving and restarting the image, `(lispm-control-context-restore-test:finish-restore-test)` checks expired old handles, fresh destination lookup before and after GC, multiple-value THROW to the inner repeated-tag catch, cleanup, continuation, and release.  These tests cover an x86-64 parked condition stop.
 
 ## Inspection reference tests
 
