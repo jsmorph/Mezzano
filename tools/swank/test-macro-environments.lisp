@@ -24,7 +24,42 @@
     (assert (equal (multiple-value-list (funcall function)) expected)
             () "Compiled macro result differs for ~S." form)))
 
+(defun check-retained-definitions ()
+  (let* ((symbol-env (mezzano.internals::make-symbol-macrolet-env '((increment 1)) nil))
+         (outer-env (mezzano.internals::make-macrolet-env
+                     '((outer (x) (list '+ x increment))) symbol-env))
+         (env (mezzano.internals::make-macrolet-env '((inner (x) (outer x))) outer-env))
+         (binding (assoc 'inner (slot-value env 'mezzano.compiler::%functions)))
+         (copy (mezzano.compiler::map-environment-bindings #'identity env))
+         (copied (assoc 'inner (slot-value copy 'mezzano.compiler::%functions)))
+         (source (third binding))
+         (definition-env (fourth binding)))
+    (assert (= (length binding) 4))
+    (assert (eq (second binding) (macro-function 'inner env)))
+    (assert (eq (first source) 'lambda))
+    (assert (macro-function 'outer definition-env))
+    (assert (null (macro-function 'inner definition-env)))
+    (assert (typep (mezzano.compiler::lookup-variable-in-environment
+                    'increment definition-env)
+                   'mezzano.compiler::symbol-macro))
+    (assert (not (eq binding copied)))
+    (assert (every #'eq (rest binding) (rest copied)))
+    (assert (= (funcall (second binding) '(inner 41) nil) 42))
+    (assert (= (funcall (mezzano.internals::eval-in-lexenv source definition-env)
+                       '(inner 41) nil)
+               42)))
+  (let* ((mezzano.internals::*eval-hook* 'mezzano.fast-eval:eval-in-lexenv)
+         (env (mezzano.internals::make-macrolet-env
+               '((count-expansions () (incf (car (load-time-value (list 0)))))) nil))
+         (copy (mezzano.compiler::map-environment-bindings #'identity env))
+         (original (macro-function 'count-expansions env))
+         (copied (macro-function 'count-expansions copy)))
+    (assert (eq original copied))
+    (assert (= (funcall original '(count-expansions) nil) 1))
+    (assert (= (funcall copied '(count-expansions) nil) 2))))
+
 (defun run ()
+  (check-retained-definitions)
   (assert (= (compiled-file-macros) 42))
   (assert (= (compiled-file-symbol-macro) 42))
   (check-form
@@ -55,6 +90,14 @@
         (expand (next 41))))
    '(42))
   (check-form
+   '(macrolet ((expand (&whole whole form &environment env)
+                "Expand FORM in its calling environment."
+                (assert (eq (car whole) 'expand))
+                (macroexpand form env)))
+      (macrolet ((next (x) (list '1+ x)))
+        (expand (next 41))))
+   '(42))
+  (check-form
    '(let ((cell (list 1)))
       (symbol-macrolet ((x (car cell)))
         (let ((x 41))
@@ -63,5 +106,5 @@
         (values x
                 (flet ((x () 42)) (x)))))
    '(1 42))
-  (format t "PASS interpreted, compiled, and compiled-file local macros, symbol macros, shadowing, environment arguments, and assignment.~%")
+  (format t "PASS interpreted, compiled, and compiled-file local macros, symbol macros, shadowing, environment arguments, assignment, retained definitions, and expander state.~%")
   (values))

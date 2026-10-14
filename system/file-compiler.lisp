@@ -35,13 +35,19 @@
                                                 (list `(,env-binding ,env)))
                                               :permit-docstring t))))))
 
+(defun make-macrolet-binding (definition macro-env)
+  (let ((source (expand-macrolet-function definition)))
+    (list (first definition)
+          (eval-in-lexenv source macro-env)
+          source
+          macro-env)))
+
 (defun make-macrolet-env (defs env)
   "Return a new environment containing the macro definitions."
   (let* ((macro-env (mezzano.compiler::environment-macro-definitions-only env))
          (macro-bindings
            (loop for def in defs
-                 collect (list (first def)
-                               (eval-in-lexenv (expand-macrolet-function def) macro-env)))))
+                 collect (make-macrolet-binding def macro-env))))
     (mezzano.compiler::extend-environment env :functions macro-bindings)))
 
 (defun make-symbol-macrolet-env (defs env)

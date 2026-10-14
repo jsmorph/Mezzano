@@ -714,34 +714,9 @@
 (defun pass1-locally (form env)
   (pass1-locally-body (cdr form) env))
 
-(defun hack-macrolet-definition (def lexenv)
-  "Turn a MACROLET function definition into a name and expansion function."
-  (destructuring-bind (name lambda-list &body forms) def
-    ;; FIXME: docstring permitted here.
-    (let ((whole (gensym "WHOLE")))
-      (multiple-value-bind (lambda-list env)
-          (sys.int::fix-lambda-list-environment lambda-list)
-        (when (not env)
-          (setf env (gensym "ENV")))
-        (multiple-value-bind (body declares)
-            (sys.int::parse-declares forms)
-          (list name
-                (sys.int::eval-in-lexenv
-                 `(lambda (,whole ,env)
-                    (declare (ignorable ,whole ,env)
-                             (sys.int::lambda-name (macrolet ,name)))
-                    (destructuring-bind ,lambda-list (cdr ,whole)
-                      (declare ,@declares)
-                      (block ,name ,@body)))
-                 (environment-macro-definitions-only lexenv))))))))
-
 (defun pass1-macrolet (form env)
   (destructuring-bind (definitions &body body) (cdr form)
-    (let* ((macro-functions (loop
-                               for def in definitions
-                               collect (hack-macrolet-definition def env)))
-           (env (extend-environment env :functions macro-functions)))
-      (pass1-locally-body body env))))
+    (pass1-locally-body body (sys.int::make-macrolet-env definitions env))))
 
 (defun pass1-multiple-value-call (form env)
   (destructuring-bind (function-form &rest forms) (cdr form)

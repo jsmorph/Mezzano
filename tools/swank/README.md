@@ -312,7 +312,7 @@ The compiled fixture checks type declarations in compiler and interpreter enviro
 
 The evaluation cases run through both the full interpreter and compiled functions.  Environment queries also check symbol-macro shadowing.  Stopped-frame lexical evaluation remains a separate implementation task.
 
-The local-macro fixture exercises enclosing macro and symbol-macro definitions, shadowing, assignment, and macro environment arguments through interpretation, compilation, and compiled-file loading:
+The local-macro fixture exercises enclosing macro and symbol-macro definitions, shadowing, assignment, docstrings, &WHOLE, and &ENVIRONMENT through interpretation, compilation, and compiled-file loading.  It also checks retained macro lambda forms and defining environments, copying, and the identity and state of the original expander:
 
 ```lisp
 (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-MACRO-ENVIRONMENTS.LISP"))
