@@ -4,7 +4,7 @@
                     (#:ir #:mezzano.compiler.backend)
                     (#:ac #:mezzano.compiler.backend.ast-convert)
                     (#:ra #:mezzano.compiler.backend.register-allocator))
-  (:export #:run))
+  (:export #:run #:prepare-restore-test #:finish-restore-test))
 (in-package #:lispm-backend-environment-test)
 
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
@@ -103,6 +103,18 @@
         (push (ir:instruction-source-environment instruction) result)))
     (nreverse result)))
 
+(defun finish-compilation (function environments arguments expected)
+  (let ((target (c::canonicalize-target :x86-64)))
+    (assert (equal (call-environments function) environments))
+    (ir::compile-backend-function-1 function target)
+    (assert (equal (call-environments function) environments))
+    (multiple-value-bind (debug-map spill-locations stack-layout)
+        (ra::allocate-registers function target)
+      (assert (equal (call-environments function) environments))
+      (let ((compiled (ir::compile-backend-function-2
+                       function debug-map spill-locations stack-layout target)))
+        (assert (equal (apply compiled arguments) expected))))))
+
 (defun check-tree (tree arguments expected)
   (let* ((target (c::canonicalize-target :x86-64))
          (lowered (c::compile-lambda-2 tree target))
@@ -119,14 +131,28 @@
     (assert (equal environments expected-environments))
     (assert (every (lambda (environment) (typep environment 'c::lexical-environment))
                    environments))
-    (ir::compile-backend-function-1 function target)
-    (assert (equal (call-environments function) environments))
-    (multiple-value-bind (debug-map spill-locations stack-layout)
-        (ra::allocate-registers function target)
-      (assert (equal (call-environments function) environments))
-      (let ((compiled (ir::compile-backend-function-2
-                       function debug-map spill-locations stack-layout target)))
-        (assert (equal (apply compiled arguments) expected))))))
+    (finish-compilation function environments arguments expected)))
+
+(defvar *restore-function* nil)
+(defvar *restore-environments* nil)
+
+(defun prepare-restore-test ()
+  (assert (null *restore-function*))
+  (let ((c::*optimize-policy* '(debug 3 safety 3 speed 1)))
+    (setf *restore-function*
+          (ac::convert (c::compile-lambda-2 (lispm-ast-environment-test::make-tree)))
+          *restore-environments* (call-environments *restore-function*)))
+  (assert (= (length *restore-environments*) 4))
+  (format t "Prepared backend instruction source environments for snapshot restoration.~%")
+  t)
+
+(defun finish-restore-test ()
+  (assert (typep *restore-function* 'ir:backend-function))
+  (mezzano.extensions:gc :full t)
+  (finish-compilation *restore-function* *restore-environments* '(42) 42)
+  (setf *restore-function* nil *restore-environments* nil)
+  (format t "PASS restored backend instruction scopes, binding identities, lowering, register allocation, and execution after full GC.~%")
+  t)
 
 (defun run ()
   (check-insertion)

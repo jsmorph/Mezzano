@@ -348,6 +348,8 @@ After loading the AST fixture, the backend fixture tests source environments dur
 (lispm-backend-environment-test:run)
 ```
 
+The backend package also provides PREPARE-RESTORE-TEST and FINISH-RESTORE-TEST.  They retain a converted backend function and its source environments, then lower, allocate registers, compile, and execute it after restoration and full GC.
+
 These tests cover compiler metadata.  Encoding source environments in compiled functions and using them for frame evaluation remain work.
 
 ## CLOS method replacement tests
