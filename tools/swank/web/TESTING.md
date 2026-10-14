@@ -53,6 +53,8 @@ node tools/swank/web/test-frame-evaluation.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-frame-evaluation-test
 ```
 
+The driver compiles and loads the checked-in description fixture.  It checks that object and slot-value printer failures in DESCRIBE enter child debuggers, typed :Abort returns to the parent, and a subsequent description prints its slot value and returns zero values.  The reusable native fixture definitions remain loaded.
+
 The driver releases its jobs, stops, session, and named function.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
 ## Listener debugger input

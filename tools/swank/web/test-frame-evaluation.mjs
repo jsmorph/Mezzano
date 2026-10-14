@@ -126,6 +126,8 @@ try {
   evidence.rejections = [];
   originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, next: stop.info["next-command-id"]}))');
   if (protectedStop !== null) assert(originalStops.some(stop => stop.id === protectedStop));
+  const setup = await start('(progn (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DESCRIBE.LISP")) :description-fixture-loaded)');
+  assert.deepEqual((await completed(setup)).values, [':DESCRIPTION-FIXTURE-LOADED']);
   await browser.evaluate('document.querySelector("#interactive").checked = true');
   const target = marker + '-TARGET';
   targetJob = await start(`(unwind-protect (progn (defun ${target} () (declare (optimize (debug 3) (safety 3) (speed 1))) (let ((x 37)) (declare (type fixnum x)) (let ((outer (lambda () x))) (let ((x 38)) (declare (type fixnum x)) (flet ((x () x) (bump () (incf x))) (symbol-macrolet ((alias x)) (macrolet ((twice (value) (list '+ value value))) (break "${marker} lexical evaluation") (values x (x) alias (funcall outer))))))))) (assert (compiled-function-p (symbol-function '${target}))) (${target})) (when (fboundp '${target}) (fmakunbound '${target})) (unintern '${target}))`);
@@ -203,6 +205,16 @@ try {
   evidence.replay = receipt;
   await evaluation('x', ['42']);
   evidence.checks.push('Lost accepted reply replays the same source and ID once, preserving the connection identity and one binding increment');
+
+  await rejected(`(describe (make-instance 'lispm-describe-test:probe :failure (make-condition 'simple-error :format-control "${marker} top description")))`, new RegExp(marker + ' top description'));
+  await rejected(`(describe (make-instance 'lispm-describe-test:probe :value (make-instance 'lispm-describe-test:probe :failure (make-condition 'simple-error :format-control "${marker} slot description"))))`, new RegExp(marker + ' slot description'));
+  await evaluation("(describe (make-instance 'lispm-describe-test:probe :value 42))", []);
+  await browser.waitFor(`views.get(${text(targetJob)}).text.includes('VALUE <- 42') && !busy`);
+  evidence.descriptionOutput = await browser.evaluate(`views.get(${text(targetJob)}).text`);
+  assert(evidence.descriptionOutput.includes('DESCRIPTION-PROBE'));
+  assert(!evidence.descriptionOutput.includes('<<error printing object>>'));
+  await save('description-recovered');
+  evidence.checks.push('DESCRIBE top-object and slot-value printer errors enter children; typed Abort restores the parent and successful description prints the slot and returns zero values');
 
   await clickText('[data-job="' + targetJob + '"]', 'Debugger');
   await browser.waitFor('activity === "debugger" && !busy');
