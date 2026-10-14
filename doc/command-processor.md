@@ -68,12 +68,17 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 |---|---|
 | :Abort | Invokes the innermost CL:ABORT restart captured by this stop.  At a child caused by a debugger command, its command abort returns to the parent debugger. |
 | :Help | Lists the implemented guest debugger commands and descriptions. |
+| :Proceed | Invokes the first captured CL:CONTINUE restart interactively.  Omitting the argument selects Default. |
+| :Proceed Default | Uses the same default selection as :Proceed. |
+| :Proceed index | Invokes the captured restart at that zero-based decimal index interactively. |
 | :Show Backtrace | Lists retained call frames. |
 | :Set Current Frame index | Selects a frame by its zero-based decimal index and displays its available locals. |
 | :Show Frame | Displays the selected function and available locals.  Original argument values remain unavailable. |
 | :Show Local All | Displays all available local records for the selected frame.  All is the default. |
 | :Show Local index | Displays one local by its zero-based decimal index. |
-| :Show Proceed Options | Displays retained restart choices.  The browser invokes the chosen restart's interactive function to obtain any arguments. |
+| :Show Proceed Options | Displays retained restart choices and marks the default CONTINUE.  Selecting a choice invokes its interactive function in the guest to obtain any arguments. |
+
+Proceed without an available CONTINUE reports an error while leaving the computation stopped.  An explicit index selects another restart.  A restart can return values and leave the debugger active, or transfer control out of it.  The browser displays returning values.  Explicit Lisp argument expressions remain unsupported.
 
 Show Backtrace lists call frames.  Raw stack-slot inspection is unavailable through the retained API.
 
@@ -91,7 +96,7 @@ Listener state survives connection closure.  Session release or a new boot retir
 | start-listener | name, source, and optional interactive.  Returns an ordinary retained job token. |
 | listener-assistance | source, cursor, action, optional context and presentation.  Returns input classification, replacement text and cursor, prompt, default, expected-type, help, candidates, complete-p, and error. |
 
-Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and display fields, and where applicable needs-frame, local-index, or select-frame.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
+Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display, needs-frame, local-index, or select-frame.  The Proceed plan uses a NIL argument for the default operation or an integer for explicit interactive invocation.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
 
 Job information adds :listener-result.  It is NIL for ordinary evaluation jobs.  A Listener result records :kind (:command or :form), optional :command, :effects, :presentations, and any command input :error.  An input error is printed and recorded.  Runtime conditions, including file and compiler errors, enter the retained debugger.
 

@@ -250,6 +250,10 @@
       (case operation
         ((:frames :restarts :condition :abort :help)
          (when argument (service-error :unexpected-argument)))
+        (:proceed
+         (when argument (service-error :unexpected-argument))
+         (unless (find 'continue (service-stop-restarts stop) :key #'restart-name)
+           (service-error :no-continue-restart)))
         (:locals (check-service-frame argument stop))
         ((:invoke-restart :invoke-restart-interactively)
          (unless (and (integerp argument)
@@ -299,12 +303,19 @@
      (let ((restart (find 'abort (service-stop-restarts stop) :key #'restart-name)))
        (unless restart (service-error :no-abort-restart))
        (mapcar #'service-print (multiple-value-list (invoke-restart restart)))))
+    (:proceed
+     (mapcar #'service-print
+             (multiple-value-list
+              (invoke-restart-interactively
+               (find 'continue (service-stop-restarts stop) :key #'restart-name)))))
     (:restarts
-     (loop for restart in (service-stop-restarts stop)
+     (loop with default = (find 'continue (service-stop-restarts stop) :key #'restart-name)
+           for restart in (service-stop-restarts stop)
            for index from 0
            collect (list :index index
                          :name (service-print (restart-name restart))
-                         :description (service-print restart t))))
+                         :description (service-print restart t)
+                         :default-p (eq restart default))))
     (:frames
      (loop for frame across (service-stop-frames stop)
            for index from 0

@@ -20,7 +20,7 @@ The owning Listener enters debugger interaction when its evaluation stops.  It d
 
 Each debugger operation establishes an abort boundary.  An error during that operation can enter a child debugger.  The command's ABORT restart abandons that operation and returns to the enclosing debugger.  The original computation remains stopped.  The original stop retains its captured restart objects, so a subsequent abort of that stop can leave the evaluation.  Cleanup follows Lisp control-transfer rules and can itself signal another condition.
 
-Restart invocation supports explicit Lisp arguments and the restart's interactive argument reader.  See the Common Lisp definitions of [INVOKE-RESTART](https://www.lispworks.com/documentation/HyperSpec/Body/f_invo_1.htm) and [INVOKE-RESTART-INTERACTIVELY](https://www.lispworks.com/documentation/HyperSpec/Body/f_invo_2.htm).  A restart can return values while its stop remains active or transfer control out of the stop.  Command results and evaluation state must distinguish those outcomes.  The exact default-proceed mapping between Common Lisp restarts and Genera proceed handlers is pending a decision.  The proposed mapping uses CONTINUE when available and otherwise requests an explicit restart choice.
+Interactive restart invocation is implemented.  Explicit Lisp argument expressions remain planned.  See the Common Lisp definitions of [INVOKE-RESTART](https://www.lispworks.com/documentation/HyperSpec/Body/f_invo_1.htm) and [INVOKE-RESTART-INTERACTIVELY](https://www.lispworks.com/documentation/HyperSpec/Body/f_invo_2.htm).  A restart can return values while its stop remains active or transfer control out of the stop.  Command results and evaluation state must distinguish those outcomes.  Mezzano's default Proceed selects the first captured restart named CL:CONTINUE and invokes it interactively.  When no CONTINUE exists, the command requires an explicit restart choice.  Genera distinguishes proceed handlers from restart handlers.  Common Lisp restart objects have no corresponding classification, so this mapping differs from Genera's default-selection rule.
 
 Evaluation in a frame must use its live lexical bindings, including shadowing, local functions, symbol macros, and shared closure cells.  Assignment changes the binding used by resumed computation.  Compiler metadata must describe scope, representation, locations, and unavailable values.  Code compiled under a reduced debugging policy must report its supported operations.  The supported debug policy must preserve the information promised by this reference.
 
@@ -38,12 +38,12 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 
 | Area | Commands | Current status |
 |---|---|---|
-| Recovery | Abort; Proceed; Disable Aborts; Enable Aborts | Abort is implemented.  Proceed selection and abort disabling remain planned. |
+| Recovery | Abort; Proceed; Disable Aborts; Enable Aborts | Abort and Proceed are implemented.  Abort disabling remains planned. |
 | Help and display | Help; Display Debugger | Help lists implemented commands.  Display Debugger command remains planned.  Separate Web view exists. |
 | Frame movement | Top Of Stack; Bottom Of Stack; Next Frame; Previous Frame; Find Frame; Set Current Frame | Set Current Frame is partial.  Remaining commands planned. |
 | Frame inspection | Show Backtrace; Show Frame; Show Function; Show Arglist; Show Argument; Show Rest Argument; Show Local; Show Stack; Show Value | Backtrace, frame, and local inspection are partial.  Remaining commands planned. |
 | Environment | Show Bindings; Show Catch Blocks; Show Condition Handlers; Show Lexical Environment; Show Special; Show Standard Value Warnings; Use Dynamic Environment; Use Lexical Environment | Planned. |
-| Recovery choices | Show Proceed Options | Partial: lists captured restart names and reports. |
+| Recovery choices | Show Proceed Options | Partial: lists captured restart names and reports, marking the default CONTINUE. |
 | Objects | Describe Last; Symeval In Last Instance | Planned.  CLOS adaptation of instance access requires a specified mapping. |
 | Source and code | Analyze Frame; Show Source Code; Show Compiled Code; Show Instruction | Planned. |
 | Frame execution | Reinvoke; Return; Throw | Planned. |
@@ -59,14 +59,15 @@ The command reference must expand each entry with its supported arguments, omitt
 Implementation proceeds in bounded increments, with compilation and tests in Mezzano, headless Chromium interaction, documentation updates, review, commits, and pushes.  The sequence below orders dependencies and preserves the full remaining scope.
 
 - [x] Establish per-command abort boundaries.  Add typed Abort and Help, exact Listener ownership/nesting, completion, prompt restoration, and equivalent button actions.
-- [ ] Complete restart invocation, interactive input, explicit arguments, default proceed selection, restart reports, and normal-return versus nonlocal-exit results.
+- [x] Implement interactive restart invocation, default Proceed selection, restart reports, and normal-return versus nonlocal-exit results.
+- [ ] Add explicit Lisp argument expressions for restart invocation.
 - [x] Complete interruption of debugger operations and correct frame capture for interrupted frameless functions.  Validate caller locals, moving GC, nested interruption, and input recovery in the browser before extending frame evaluation.  Register-local inspection remains separate work.
 - [ ] Add guest-owned frame selection and navigation, live frame evaluation and writes, evaluation history, object inspection, and the required compiler metadata.
 - [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
 - [ ] Complete the command inventory, product guide, compatibility reference, Document Examiner topics, and architecture-specific acceptance results.
 
-The first browser sequence passes: stop an evaluation, cause an error in a debugger operation, type :Abort in the child, inspect the still-stopped parent, continue the original evaluation, and verify its result and cleanup.  Tests also cover parent draft restoration across reload and normally returning interactive restarts.
+The first browser sequence passes: stop an evaluation, cause an error in a debugger operation, type :Abort in the child, inspect the still-stopped parent, continue the original evaluation, and verify its result and cleanup.  Tests also cover parent draft restoration across reload, default and indexed Proceed, missing-default rejection followed by explicit selection, interactive argument input, and normally returning restarts.
 
 Additional acceptance cases include interactive replacement values, arguments with required parameters, normally returning restarts, mutations observed after continuation, shared closure bindings, nested scopes, local functions, multiple values, cleanup conditions and superseding transfers, redefinition, GC, and supported optimization policies.  Breakpoint tests cover repeated hits, concurrent callers, conditions/actions, removal, and continuation.  Interruption tests cover computation, input waits, printers, and pending delivery.
 
@@ -151,7 +152,7 @@ A stop accepts one outstanding command.  A pending command, running command, or 
 
 A failure during command execution can enter a child stop.  The parent command remains running, and new parent commands are rejected until the child resolves.  Each command establishes an ABORT restart with report "Abort this debugger command."  Invoking that captured restart in a child unwinds the parent command, records :unwound, and resumes the parent's command loop.  Its original computation stays stopped.  Client polling needs a deadline and a way to inspect child stops.  The API provides no remote command-cancellation operation.
 
-The operation set is `:condition`, `:restarts`, `:frames`, `:locals`, `:abort`, `:help`, `:invoke-restart`, and `:invoke-restart-interactively`.  Abort invokes the innermost captured restart named CL:ABORT.  Help returns the guest command descriptions.  INVOKE-RESTART supplies zero arguments.  INVOKE-RESTART-INTERACTIVELY uses the selected restart's interactive function to obtain arguments.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#command-results) specifies result fields.
+The operation set is `:condition`, `:restarts`, `:frames`, `:locals`, `:abort`, `:proceed`, `:help`, `:invoke-restart`, and `:invoke-restart-interactively`.  Abort invokes the innermost captured restart named CL:ABORT.  Proceed invokes the innermost captured CL:CONTINUE restart interactively.  If none exists, acceptance rejects :NO-CONTINUE-RESTART without consuming a command ID or entering a child debugger.  The restart listing marks its selected default with :DEFAULT-P.  Help returns the guest command descriptions.  INVOKE-RESTART supplies zero arguments.  INVOKE-RESTART-INTERACTIVELY uses the selected restart's interactive function to obtain arguments.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#command-results) specifies result fields.
 
 Values are printed on the stopped thread with `*print-readably* NIL`, `*print-circle* T`, `*print-level* 5`, and `*print-length* 20`.  User printers can allocate, block, signal conditions, or enter another stop.  Those bindings do not bound a custom printer's runtime or output.  The returned strings contain representations of objects.  The API provides no retained object references for browsing or editing.
 

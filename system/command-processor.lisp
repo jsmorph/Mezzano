@@ -35,6 +35,8 @@
 (defparameter *debugger-commands*
   '((:name "Abort" :id :abort :help "Invoke this stop's innermost ABORT restart.")
     (:name "Help" :id :help :help "List the supported debugger commands.")
+    (:name "Proceed" :id :proceed :type :restart
+     :help "Invoke the default CONTINUE restart or a zero-based restart index, requesting interactive arguments.")
     (:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
     (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
     (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
@@ -129,7 +131,8 @@
     (:pathname (namestring (listener-pathname listener)))
     (:directory (namestring (make-pathname :name :wild :type :wild :version :wild
                                           :defaults (listener-pathname listener))))
-    (:local "All")))
+    (:local "All")
+    (:restart "Default")))
 
 (defun argument-choices (type)
   (case type
@@ -139,13 +142,15 @@
                     :test #'string-equal) #'string-lessp))
     (:format '("Brief" "Detailed"))
     (:boolean '("Yes" "No"))
-    (:local '("All"))))
+    (:local '("All"))
+    (:restart '("Default"))))
 
 (defun argument-prompt (type default)
   (format nil "(~A~@[ [default ~A]~])"
           (case type (:package "A package") ((:pathname :directory) "pathname")
                 (:format "Brief or Detailed") (:boolean "Yes or No")
-                (:local "local index or All") (:frame "frame index"))
+                (:local "local index or All") (:frame "frame index")
+                (:restart "restart index or Default"))
           default))
 
 (defun parse-argument (text type listener)
@@ -156,7 +161,7 @@
       (cond (exact (setf text exact))
             ((= (length matches) 1) (setf text (first matches)))
             ((> (length matches) 1) (input-error "Ambiguous argument ~S: ~{~A~^, ~}." text matches))
-            ((not (eq type :local)) (input-error "Invalid argument ~S. Expected ~{~A~^ or ~}." text choices))))
+            ((not (member type '(:local :restart))) (input-error "Invalid argument ~S. Expected ~{~A~^ or ~}." text choices))))
     (case type
       (:package (or (find-package text) (input-error "No package named ~S." text)))
       ((:pathname :directory)
@@ -167,10 +172,11 @@
          (merge-pathnames pathname (listener-pathname listener))))
       (:boolean (string-equal text "Yes"))
       (:format (if (string-equal text "Detailed") :detailed :brief))
-      ((:frame :local)
-       (if (and (eq type :local) (string-equal text "All")) :all
-           (or (and (plusp (length text)) (every #'digit-char-p text) (parse-integer text))
-               (input-error "Expected a nonnegative decimal index, received ~S." text)))))))
+      ((:frame :local :restart)
+       (cond ((and (eq type :local) (string-equal text "All")) :all)
+             ((and (eq type :restart) (string-equal text "Default")) :default)
+             (t (or (and (plusp (length text)) (every #'digit-char-p text) (parse-integer text))
+                    (input-error "Expected a nonnegative decimal index, received ~S." text))))))))
 
 (defun command-tokens (source)
   (let* ((text (trim-input source))
@@ -408,6 +414,10 @@
 (defun debugger-plan (command argument)
   (case (getf command :id)
     (:abort (list :operation "abort"))
+    (:proceed
+     (if (eq argument :default)
+         (list :operation "proceed" :argument nil)
+         (list :operation "invoke-restart-interactively" :argument argument)))
     (:help (list :operation "help"))
     (:show-backtrace (list :operation "frames"))
     (:show-proceed-options (list :operation "restarts"))
@@ -505,8 +515,10 @@
                         (getf response :command) (getf command :id)
                         (getf response :argument) (if (packagep argument) (package-name argument)
                                                      (if (pathnamep argument) (namestring argument) argument)))
-                  (return-from assistance
-                    (append response (when (eq context :debugger) (debugger-plan command argument)))))))
+                  (when (eq context :debugger)
+                    (loop for (key value) on (debugger-plan command argument) by #'cddr
+                          do (setf (getf response key) value)))
+                  (return-from assistance response))))
             (let* ((commands (if (eq context :debugger) *debugger-commands* *commands*))
                    (tokens (command-tokens prefix))
                    (trailing (- (length prefix) (length (string-right-trim '(#\Space #\Tab #\Newline #\Return) prefix))))
