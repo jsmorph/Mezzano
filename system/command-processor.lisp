@@ -503,10 +503,10 @@
          (suffix (subseq source cursor))
          (text (trim-input prefix))
          (colonp (and (plusp (length text)) (char= (char text 0) #\:))))
-    (labels ((reply (&rest fields)
-               (append (list :kind :command :text source :cursor cursor :prompt ""
-                             :default nil :expected-type nil :help "" :candidates nil
-                             :complete-p nil :error nil) fields))
+    (labels ((reply ()
+               (list :kind :command :text source :cursor cursor :prompt ""
+                     :default nil :expected-type nil :help "" :candidates nil
+                     :complete-p nil :error nil))
              (replacement (response text)
                (setf (getf response :text) (concatenate 'string text suffix)
                      (getf response :cursor) (length text))
@@ -517,7 +517,14 @@
       (handler-case
           (progn
             (when (and (eq context :debugger) (not colonp) (plusp (length text)))
-              (input-error "Begin a debugger command with a colon."))
+              (when (eq action :insert) (input-error "A pathname argument is not expected here."))
+              (let ((response (reply)))
+                (setf (getf response :kind) :form
+                      (getf response :complete-p) t
+                      (getf response :operation) "evaluate"
+                      (getf response :argument) prefix
+                      (getf response :display) :values)
+                (return-from assistance response)))
             (when (and (eq context :listener) (form-input-p prefix listener context))
               (when (eq action :insert) (input-error "A pathname argument is not expected here."))
               (let ((response (reply)))

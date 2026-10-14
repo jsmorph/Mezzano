@@ -17,7 +17,8 @@
   (commands (make-hash-table))
   pending active
   (event (mezzano.supervisor:make-event :name 'debugger-command))
-  (current-frame 0))
+  (current-frame 0)
+  (evaluation-history (make-list 9)))
 
 (defstruct (service-handle (:constructor %make-service-handle (boot stop)))
   (boot nil :read-only t)
@@ -91,6 +92,125 @@
                (eq (service-stop-state stop) :stopped))
     (service-error :expired-frame))
   (aref (service-stop-frames stop) (service-frame-index reference)))
+
+(defclass service-frame-variable (mezzano.full-eval::lexical-variable)
+  ((reference :initarg :reference :reader service-variable-reference)
+   (binding :initarg :binding :reader service-variable-binding)
+   (type :initarg :type :reader service-variable-type)))
+
+(defun service-frame-for-access (reference)
+  (with-service-lock
+    (let* ((stop (check-service-handle (service-frame-handle reference)))
+           (frame (check-service-frame reference stop)))
+      (unless (eq (mezzano.supervisor:current-thread) (service-stop-thread stop))
+        (service-error :foreign-frame-thread))
+      frame)))
+
+(defun service-variable-location (variable)
+  (let* ((frame (service-frame-for-access (service-variable-reference variable)))
+         (raw (mezzano.internals::frame-raw-data frame))
+         (local (find (service-variable-binding variable)
+                      (mezzano.internals::frame-locals raw) :key #'fifth)))
+    (unless local (service-error :unavailable-binding))
+    (values raw local)))
+
+(defmethod mezzano.full-eval::variable-value ((variable service-frame-variable))
+  (multiple-value-bind (raw local) (service-variable-location variable)
+    (multiple-value-bind (value available-p)
+        (mezzano.internals::read-frame-slot raw (third local) (fourth local))
+      (unless available-p (service-error :unavailable-binding))
+      value)))
+
+(defmethod (setf mezzano.full-eval::variable-value) (value (variable service-frame-variable))
+  (multiple-value-bind (raw local) (service-variable-location variable)
+    (unless (typep value (service-variable-type variable))
+      (error 'type-error :datum value :expected-type (service-variable-type variable)))
+    (mezzano.internals::write-frame-slot raw (third local) value (fourth local))
+    value))
+
+(defmethod make-load-form ((variable service-frame-variable) &optional environment)
+  (declare (ignore environment))
+  (service-error :live-frame-binding))
+
+(defun service-frame-environment (reference)
+  (let ((frame (service-frame-for-access reference)))
+    (multiple-value-bind (function offset)
+        (mezzano.internals::function-from-frame (mezzano.internals::frame-raw-data frame))
+      (let ((scope (mezzano.internals::source-scope-at-offset function offset))
+            (environment (make-instance 'mezzano.compiler::lexical-environment))
+            (variables nil)
+            (types nil))
+        (when (eq scope :unknown) (service-error :unavailable-lexical-scope))
+        (labels ((live (name binding type)
+                   (make-instance 'service-frame-variable :name name :reference reference
+                                  :binding binding :type type))
+                 (control-target (entry)
+                   (list (first entry)
+                         (lambda (&rest arguments)
+                           (declare (ignore arguments))
+                           (service-frame-for-access reference)
+                           (service-error :unavailable-control-target)))))
+          (dolist (entry (getf scope :variables))
+            (destructuring-bind (name kind data type) entry
+              (let ((binding
+                      (ecase kind
+                        (:lexical (live name data type))
+                        (:special
+                         (make-instance 'mezzano.compiler::special-variable
+                                        :name name :implicitly-declared data))
+                        (:symbol-macro
+                         (make-instance 'mezzano.compiler::symbol-macro
+                                        :name name :expansion data)))))
+                (push (list name binding) variables)
+                (push (list binding type) types))))
+          (setf (slot-value environment 'mezzano.compiler::%variables) (nreverse variables)
+                (slot-value environment 'mezzano.compiler::%variable-type-decls) (nreverse types)
+                (slot-value environment 'mezzano.compiler::%functions)
+                (loop for (name kind data) in (getf scope :functions)
+                      collect
+                      (list name
+                            (ecase kind
+                              (:lexical (live name data 'function))
+                              (:macro (check-type data function) data)
+                              (:global
+                               (make-instance 'mezzano.compiler::top-level-function :name name)))))
+                (slot-value environment 'mezzano.compiler::%blocks)
+                (mapcar #'control-target (getf scope :blocks))
+                (slot-value environment 'mezzano.compiler::%go-tags)
+                (mapcar #'control-target (getf scope :go-tags))
+                (slot-value environment 'mezzano.compiler::%inline-decls)
+                (copy-tree (getf scope :inline-declarations))
+                (slot-value environment 'mezzano.compiler::%optimize)
+                (copy-list (getf scope :optimize)))
+          environment)))))
+
+(defun service-evaluate (stop source)
+  (let* ((reference (%make-service-frame (service-handle stop)
+                                        (service-stop-generation stop)
+                                        (service-stop-current-frame stop)))
+         (environment (service-frame-environment reference))
+         (history-symbols '(+ ++ +++ * ** *** / // ///))
+         (mezzano.internals::*eval-hook* 'mezzano.full-eval:eval-in-lexenv))
+    (progv history-symbols (service-stop-evaluation-history stop)
+      (unwind-protect
+           (with-input-from-string (stream source)
+             (let* ((form
+                      (let* ((*read-eval* nil)
+                             (end (list :end))
+                             (form (read stream nil end)))
+                        (when (or (eq form end) (not (eq (read stream nil end) end)))
+                          (service-error :expected-one-form))
+                        form))
+                    (- form)
+                    (values (multiple-value-list
+                             (mezzano.full-eval:eval-in-lexenv form environment))))
+               (declare (special -))
+               (setf +++ ++ ++ + + form
+                     *** ** ** * * (first values)
+                     /// // // / / values)
+               (mapcar #'service-print values)))
+        (setf (service-stop-evaluation-history stop)
+              (mapcar #'symbol-value history-symbols))))))
 
 (defun make-debugger-controller ()
   (%make-service-controller :boot (mezzano.supervisor:current-boot-id)))
@@ -265,7 +385,9 @@
            (previous (gethash id (service-stop-commands stop))))
       (when previous
         (unless (and (eq operation (service-command-operation previous))
-                     (eql argument (service-command-argument previous))
+                     (if (eq operation :evaluate)
+                         (equal argument (service-command-argument previous))
+                         (eql argument (service-command-argument previous)))
                      (eq (service-command-boot previous)
                          (mezzano.supervisor:current-boot-id)))
           (service-error :request-conflict))
@@ -285,6 +407,8 @@
          (service-restart stop nil))
         (:invoke-restart-with-arguments (service-restart stop argument))
         (:locals (check-service-frame argument stop))
+        (:evaluate
+         (unless (stringp argument) (service-error :invalid-source)))
         ((:current-frame :select-frame :next-frame :previous-frame :top-frame :bottom-frame)
          (service-frame-target stop operation argument))
         ((:invoke-restart :invoke-restart-interactively)
@@ -295,7 +419,9 @@
         (otherwise (service-error :unknown-operation)))
       (let ((command (%make-service-command
                       :boot (mezzano.supervisor:current-boot-id)
-                      :operation operation :argument argument)))
+                      :operation operation :argument (if (eq operation :evaluate)
+                                                        (copy-seq argument)
+                                                        argument))))
         (setf (gethash id (service-stop-commands stop)) command
               (service-stop-pending stop) command
               (mezzano.supervisor:event-state (service-stop-event stop)) t)
@@ -340,6 +466,7 @@
 (defun execute-service-command (stop command)
   (ecase (service-command-operation command)
     (:condition (service-print (service-stop-condition stop) t))
+    (:evaluate (service-evaluate stop (service-command-argument command)))
     (:help (mezzano.command-processor::debugger-help))
     (:abort
      (let ((restart (find 'abort (service-stop-restarts stop) :key #'restart-name)))
@@ -446,6 +573,7 @@
           (service-stop-restarts stop) nil
           (service-stop-frames stop) nil
           (service-stop-current-frame stop) nil
+          (service-stop-evaluation-history stop) nil
           (service-stop-active stop) nil
           (service-stop-pending stop) nil)))
 

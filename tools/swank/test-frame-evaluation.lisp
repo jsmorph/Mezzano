@@ -1,0 +1,326 @@
+(defpackage #:lispm-frame-evaluation-test
+  (:use #:cl #:mezzano.debug)
+  (:local-nicknames (#:c #:mezzano.compiler) (#:i #:mezzano.internals)
+                    (#:f #:mezzano.full-eval) (#:d #:mezzano.debug)
+                    (#:test #:lispm-service-test))
+  (:export #:run #:prepare-restore-test #:finish-restore-test))
+(in-package #:lispm-frame-evaluation-test)
+
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+(defvar *special-probe* 1)
+
+(defun target (state)
+  (let ((x 37))
+    (declare (type fixnum x))
+    (setf (aref state 0) (lambda () x))
+    (let ((x 38) (*special-probe* 9))
+      (declare (type fixnum x))
+      (flet ((x () x) (bump () (incf x)))
+        (symbol-macrolet ((alias x))
+          (macrolet ((twice (value) (list '+ value value)))
+            (setf (aref state 1) #'x
+                  (aref state 2) #'bump)
+            (tagbody checkpoint (break "Owned frame evaluation."))
+            (setf (aref state 3) (list x (x) alias))))))
+    (setf (aref state 4) x))
+  :done)
+
+(defun select-function (handle lease function)
+  (let* ((frames (test::command handle lease :frames))
+         (stop (d::service-handle-stop handle))
+         (index (position function (d::service-stop-frames stop)
+                          :key (lambda (frame) (nth-value 1 (frame-function frame))))))
+    (assert (= (length frames) (length (d::service-stop-frames stop))))
+    (assert index () "Missing compiled frame for ~S." function)
+    (test::command handle lease :select-frame index)
+    (getf (nth index frames) :frame)))
+
+(defun evaluate-source (handle lease source expected)
+  (let ((result (test::command handle lease :evaluate source)))
+    (assert (equal result expected) () "~S returned ~S, expected ~S." source result expected)
+    result))
+
+(defun release-test-stop (handle controller)
+  (let* ((child (getf (debugger-stop-information handle) :child))
+         (stop (d::service-handle-stop handle))
+         (lease (or (d::service-stop-owner stop)
+                    (attach-debugger-stop handle controller))))
+    (when child (release-test-stop child controller))
+    (when (eq (getf (debugger-stop-information handle) :state) :stopped)
+      (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+        (submit-debugger-command lease id :abort)
+        (test::completed-command handle id)
+        (test::await (lambda () (eq (getf (debugger-stop-information handle) :state) :closed)))))
+    (release-debugger-stop lease)))
+
+(defun rejected-source (handle lease controller source type &optional reason child-history)
+  (let ((id (getf (debugger-stop-information handle) :next-command-id))
+        (child nil))
+    (unwind-protect
+         (progn
+           (submit-debugger-command lease id :evaluate source)
+           (setf child (test::await (lambda () (getf (debugger-stop-information handle) :child))))
+           (let* ((child-lease (attach-debugger-stop child controller))
+                  (condition (d::service-stop-condition (d::service-handle-stop child))))
+             (assert (typep condition type) () "~S produced ~S." source condition)
+             (when reason
+               (assert (eq (debugger-service-error-reason condition) reason)))
+             (test::command child child-lease :condition)
+             (when child-history
+               (select-function child child-lease #'target)
+               (evaluate-source child child-lease "(values * /)" '("NIL" "NIL")))))
+      (when child (release-test-stop child controller)))
+    (assert (eq (getf (test::completed-command handle id) :state) :unwound))))
+
+(defun check-representation-rejections (closure)
+  (let* ((environment (f::interpreted-function-environment closure))
+         (variable (c::lookup-variable-in-environment 'state environment)))
+    (multiple-value-bind (raw local) (d::service-variable-location variable)
+      (let* ((location (third local))
+             (before (i::read-frame-slot raw location :value)))
+        (assert (integerp location))
+        (dolist (case (list (list 'fixnum "wrong")
+                           (list 'fixnum (1+ most-positive-fixnum))
+                           (list :unsigned-byte-64 -1)
+                           (list :unsigned-byte-64 (ash 1 64))
+                           (list :signed-byte-64 (ash 1 63))
+                           (list :signed-byte-64 (- (1+ (ash 1 63))))
+                           (list 'short-float "wrong")
+                           (list 'single-float "wrong")
+                           (list 'double-float "wrong")))
+          (assert (handler-case
+                      (progn (i::write-frame-slot raw location (second case) (first case)) nil)
+                    (type-error () t)))
+          (assert (eq before (i::read-frame-slot raw location :value))))))))
+
+(defun run-target-test ()
+  (let* ((controller (make-debugger-controller))
+         (name (symbol-name (gensym "Frame evaluation test ")))
+         (state (make-array 6 :initial-element nil))
+         (thread
+           (mezzano.supervisor:make-thread
+            (lambda ()
+              (let ((*package* (find-package :lispm-frame-evaluation-test)))
+                (call-with-debugger-service
+                 (lambda ()
+                   (with-simple-restart (abort "Abort the owned frame test.")
+                     (target state))))))
+            :name name))
+         (handle nil)
+         (lease nil))
+    (unwind-protect
+         (progn
+           (setf handle (test::await (lambda () (test::stop-for-thread name)))
+                 lease (attach-debugger-stop handle controller))
+           (select-function handle lease #'target)
+           (evaluate-source handle lease "(values x (x) alias *special-probe* (twice 21) *read-eval*)"
+                            '("38" "38" "38" "9" "42" "T"))
+           (evaluate-source handle lease "(setq alias 40)" '("40"))
+           (evaluate-source handle lease "(funcall (aref state 2))" '("41"))
+           (test::command handle lease :evaluate "(setf (aref state 5) (lambda () x))")
+           (assert (functionp (aref state 5)))
+           (test::command handle lease :evaluate "(check-representation-rejections (aref state 5))")
+           (test::expect-error :foreign-frame-thread (aref state 5))
+           (let* ((environment (f::interpreted-function-environment (aref state 5)))
+                  (variable (c::lookup-variable-in-environment 'x environment)))
+             (test::expect-error :live-frame-binding (lambda () (make-load-form variable))))
+           (evaluate-source handle lease
+                            "(progn (mezzano.extensions:gc :full t) (funcall (aref state 5)))" '("41"))
+           (evaluate-source handle lease "(let ((x 8)) (declare (fixnum x)) (incf x))" '("9"))
+           (evaluate-source handle lease "(macrolet ((outer (v) (twice v))) (outer 21))" '("42"))
+           (evaluate-source handle lease "(block inner (return-from inner (values 7 8)))" '("7" "8"))
+           (evaluate-source handle lease "(values 10 20)" '("10" "20"))
+           (evaluate-source handle lease "(values * / + -)"
+                            '("10" "(10 20)" "(VALUES 10 20)" "(VALUES * / + -)"))
+           (let* ((source (copy-seq "(incf alias)"))
+                  (id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :evaluate source)
+             (let ((result (test::completed-command handle id)))
+               (assert (eq (getf result :state) :returned))
+               (assert (equal (getf result :result) '("42"))))
+             (fill source #\Space)
+             (submit-debugger-command lease id :evaluate (copy-seq "(incf alias)"))
+             (test::expect-error :request-conflict
+                                 (lambda () (submit-debugger-command lease id :evaluate "(incf alias 2)"))))
+           (rejected-source handle lease controller "(setq x \"wrong\")" 'type-error)
+           (evaluate-source handle lease "*" '("42"))
+           (rejected-source handle lease controller "(setq x 99) 42"
+                            'debugger-service-error :expected-one-form)
+           (rejected-source handle lease controller "#.(setq x 99)" 'error)
+           (rejected-source handle lease controller "(return-from target 99)"
+                            'debugger-service-error :unavailable-control-target)
+           (rejected-source handle lease controller "(go checkpoint)"
+                            'debugger-service-error :unavailable-control-target)
+           (rejected-source handle lease controller "(error \"Owned frame expression error.\")"
+                            'simple-error nil t)
+           (evaluate-source handle lease "(values * x)" '("42" "42"))
+           (select-function handle lease #'break)
+           (rejected-source handle lease controller "42"
+                            'debugger-service-error :unavailable-lexical-scope)
+           (select-function handle lease #'target)
+           (test::expect-error :invalid-source
+                               (lambda ()
+                                 (submit-debugger-command
+                                  lease (getf (debugger-stop-information handle) :next-command-id)
+                                  :evaluate 42)))
+           (evaluate-source handle lease "(values)" nil)
+           (evaluate-source handle lease "(values * /)" '("NIL" "NIL"))
+           (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :proceed)
+             (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
+           (test::await (lambda () (nth-value 1 (mezzano.supervisor:thread-join thread nil))))
+           (assert (equal (aref state 3) '(42 42 42)))
+           (assert (= (aref state 4) (funcall (aref state 0)) 37))
+           (assert (= (funcall (aref state 1)) 42))
+           (test::expect-error :expired-frame (aref state 5))
+           (release-debugger-stop lease)
+           (setf handle nil)
+           (test::expect-error :released-stop (aref state 5)))
+      (when handle (release-test-stop handle controller))
+      (close-debugger-controller controller))))
+
+(defun run-unavailable-test ()
+  (let* ((controller (make-debugger-controller))
+         (name (symbol-name (gensym "Unavailable frame evaluation ")))
+         (function
+           (compile nil '(lambda ()
+                           (declare (optimize (debug 0) (safety 3) (speed 1)))
+                           (let ((x 17))
+                             (declare (ignore x))
+                             (break "Owned unavailable binding.")))))
+         (thread
+           (mezzano.supervisor:make-thread
+            (lambda ()
+              (let ((*package* (find-package :lispm-frame-evaluation-test)))
+                (call-with-debugger-service
+                 (lambda ()
+                   (with-simple-restart (abort "Abort the owned unavailable-binding test.")
+                     (funcall function))))))
+            :name name))
+         (handle nil))
+    (unwind-protect
+         (progn
+           (setf handle (test::await (lambda () (test::stop-for-thread name))))
+           (let* ((lease (attach-debugger-stop handle controller))
+                  (frames (test::command handle lease :frames))
+                  (stop (d::service-handle-stop handle))
+                  (index (position function (d::service-stop-frames stop)
+                                   :key (lambda (frame) (nth-value 1 (frame-function frame))))))
+             (assert (= (length frames) (length (d::service-stop-frames stop))))
+             (assert index)
+             (test::command handle lease :select-frame index)
+             (evaluate-source handle lease "42" '("42"))
+             (rejected-source handle lease controller "x" 'debugger-service-error :unavailable-binding)))
+      (when handle (release-test-stop handle controller))
+      (test::await (lambda () (nth-value 1 (mezzano.supervisor:thread-join thread nil))))
+      (close-debugger-controller controller))))
+
+(defun check-form-assistance ()
+  (let ((listener (mezzano.command-processor:make-listener)))
+    (dolist (source '("x" "(values 1 2)" "*"))
+      (let ((plan (mezzano.command-processor:assistance
+                   listener source (length source) :parse :context :debugger)))
+        (assert (null (getf plan :error)))
+        (assert (eq (getf plan :kind) :form))
+        (assert (equal (getf plan :operation) "evaluate"))
+        (assert (equal (getf plan :argument) source))))
+    (let ((plan (mezzano.command-processor:assistance
+                 listener ":Abort" 6 :parse :context :debugger)))
+      (assert (null (getf plan :error)))
+      (assert (equal (getf plan :operation) "abort")))))
+
+(defun run ()
+  (check-form-assistance)
+  (run-target-test)
+  (run-unavailable-test)
+  (format t "PASS live frame evaluation, immediate and shared-cell writes, lexical namespaces, declarations, macro environments, histories, source replay, nested Abort, GC, continuation, unavailable bindings, and expired references.~%")
+  t)
+
+(defvar *restore-state* nil)
+(defvar *restore-thread* nil)
+(defvar *restore-handle* nil)
+(defvar *restore-frame* nil)
+(defvar *restore-index* nil)
+(defvar *restore-command* nil)
+
+(defun prepare-restore-test ()
+  (assert (null *restore-state*))
+  (assert (null (test::stop-for-thread "Frame evaluation restore test")))
+  (setf *restore-state* (make-array 6 :initial-element nil)
+        *restore-thread*
+        (mezzano.supervisor:make-thread
+         (lambda ()
+           (let ((*package* (find-package :lispm-frame-evaluation-test)))
+             (call-with-debugger-service
+              (lambda ()
+                (with-simple-restart (abort "Abort the owned restoration test.")
+                  (target *restore-state*))))))
+         :name "Frame evaluation restore test")
+        *restore-handle*
+        (test::await (lambda () (test::stop-for-thread "Frame evaluation restore test"))))
+  (let* ((controller (make-debugger-controller))
+         (lease (attach-debugger-stop *restore-handle* controller)))
+    (unwind-protect
+         (progn
+           (setf *restore-frame* (select-function *restore-handle* lease #'target)
+                 *restore-index* (getf (debugger-stop-information *restore-handle*) :current-frame))
+           (evaluate-source *restore-handle* lease "(setq alias 40)" '("40"))
+           (test::command *restore-handle* lease :evaluate
+                          "(setf (aref state 5) (lambda () x))")
+           (setf *restore-command*
+                 (getf (debugger-stop-information *restore-handle*) :next-command-id))
+           (evaluate-source *restore-handle* lease "(values 17 23)" '("17" "23")))
+      (close-debugger-controller controller)))
+  (format t "Prepared selected-frame evaluation state for image restoration.~%")
+  t)
+
+(defun finish-restore-test ()
+  (test::expect-error :expired-stop
+                      (lambda () (debugger-stop-information *restore-handle*)))
+  (let* ((controller (make-debugger-controller))
+         (handle (test::stop-for-thread "Frame evaluation restore test"))
+         (lease nil))
+    (assert handle)
+    (assert (= (getf (debugger-stop-information handle) :id)
+               (d::service-stop-id (d::service-handle-stop *restore-handle*))))
+    (setf lease (attach-debugger-stop handle controller))
+    (unwind-protect
+         (progn
+           (test::expect-error
+            :expired-stop
+            (lambda ()
+              (submit-debugger-command lease
+                                       (getf (debugger-stop-information handle) :next-command-id)
+                                       :locals *restore-frame*)))
+           (let ((result (debugger-command-result handle *restore-command*)))
+             (assert (eq (getf result :state) :returned))
+             (assert (null (getf result :current-boot-p)))
+             (assert (equal (getf result :result) '("17" "23"))))
+           (assert (= (getf (debugger-stop-information handle) :current-frame) *restore-index*))
+           (evaluate-source handle lease "(values * /)" '("17" "(17 23)"))
+           (evaluate-source handle lease "(values x (x) alias (funcall (aref state 0)))"
+                            '("40" "40" "40" "37"))
+           (rejected-source handle lease controller "(funcall (aref state 5))"
+                            'debugger-service-error :expired-stop)
+           (evaluate-source handle lease
+                            "(progn (mezzano.extensions:gc :full t) (setq alias 42))" '("42"))
+           (test::command handle lease :evaluate "(setf (aref state 5) (lambda () x))")
+           (evaluate-source handle lease "(funcall (aref state 5))" '("42"))
+           (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :proceed)
+             (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
+           (test::await
+            (lambda () (nth-value 1 (mezzano.supervisor:thread-join *restore-thread* nil))))
+           (assert (equal (aref *restore-state* 3) '(42 42 42)))
+           (assert (= (aref *restore-state* 4) (funcall (aref *restore-state* 0)) 37))
+           (assert (= (funcall (aref *restore-state* 1)) 42))
+           (test::expect-error :expired-frame (aref *restore-state* 5))
+           (release-debugger-stop lease)
+           (setf handle nil)
+           (test::expect-error :released-stop (aref *restore-state* 5))
+           (setf *restore-state* nil *restore-thread* nil *restore-handle* nil
+                 *restore-frame* nil *restore-index* nil *restore-command* nil)
+           (format t "PASS restored frame evaluation, history, expired references, fresh access after GC, shared writes, Proceed, and cleanup.~%")
+           t)
+      (when handle (release-test-stop handle controller))
+      (close-debugger-controller controller))))

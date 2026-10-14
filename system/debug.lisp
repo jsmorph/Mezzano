@@ -246,6 +246,15 @@ Returns NIL if the function captures no variables."
     (integer
      (unless (frame-stack-available-p frame)
        (error "This activation has no established stack frame."))
+     (let ((type (case repr
+                   (:value t)
+                   (:unsigned-byte-64 '(unsigned-byte 64))
+                   (:signed-byte-64 '(signed-byte 64))
+                   ((fixnum short-float single-float double-float) repr)
+                   (otherwise
+                    (error "Cannot write to this variable. Unknown representation ~S." repr)))))
+       (unless (typep value type)
+         (error 'type-error :datum value :expected-type type)))
      (let ((address (+ (memref-unsigned-byte-64 (second frame) 0)
                        (* (- (1+ slot)) 8))))
        (case repr

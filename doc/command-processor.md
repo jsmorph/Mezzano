@@ -62,7 +62,7 @@ The current editor displays the argument prompt and contextual help above the co
 
 ### Debugger commands
 
-A stopped Listener uses its guest-reported innermost debugger stop and nesting prompt.  Debugger commands require a leading colon.  Lisp parses the command and selects the retained operation.  The guest retains the current frame independently for each stop, and the browser renders that selection and its inspection result.  It preserves ordinary Listener input and each debugger level's draft and cursor across entry, exit, and reload.  Frame evaluation remains planned.
+A stopped Listener uses its guest-reported innermost debugger stop and nesting prompt.  Debugger commands require a leading colon.  Lisp parses the command and selects the retained operation.  The guest retains the current frame independently for each stop, and the browser renders that selection and its inspection result.  It preserves ordinary Listener input and each debugger level's draft and cursor across entry, exit, and reload.  Input without a leading colon evaluates one Lisp form in the selected frame.  Lexical assignment takes effect immediately.  Each stop retains its own expression and value histories.  Reader, evaluation, and printing errors enter a child debugger, where :Abort abandons the evaluation and returns to its parent.  The [frame-evaluation reference](debugger.md#frame-evaluation) describes binding availability and lifetime limits.
 
 | Command | Supported behavior |
 |---|---|

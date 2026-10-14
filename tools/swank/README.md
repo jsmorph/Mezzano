@@ -253,7 +253,7 @@ Within the callback, `request` sends one synchronous debugger RPC.  `send-reques
 
 Commands that print values execute application printers and can block or enter a child stop.  A client timeout closes its connection while an accepted command can continue in the guest.  Query the recorded outcome before deciding what to submit next.
 
-Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers and executing debugger commands.  Local-variable mutation, lexical frame evaluation, arbitrary frame return or reinvocation, breakpoints, and integrated stepping remain planned for the remote API.  Local-variable availability depends on compiler debug metadata and the selected frame.  The [debugger guide](../../doc/debugger.md) describes those limits and the supported stopping states.
+Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers and executing debugger commands.  Selected-frame evaluation reads and writes available lexical bindings.  Arbitrary frame return or reinvocation, breakpoints, and integrated stepping remain planned for the remote API.  Local-variable availability depends on compiler debug metadata and the selected frame.  The [debugger guide](../../doc/debugger.md) describes those limits and the supported stopping states.
 
 ## Debugger frame tests
 
@@ -310,7 +310,7 @@ The compiled fixture checks type declarations in compiler and interpreter enviro
 (lispm-environment-test:run)
 ```
 
-The evaluation cases run through both the full interpreter and compiled functions.  Environment queries also check symbol-macro shadowing.  Stopped-frame lexical evaluation remains a separate implementation task.
+The evaluation cases run through both the full interpreter and compiled functions.  Environment queries also check symbol-macro shadowing.  The [frame-evaluation fixture](#frame-evaluation-tests) tests the selected-frame environment.
 
 The local-macro fixture exercises enclosing macro and symbol-macro definitions, shadowing, assignment, docstrings, &WHOLE, and &ENVIRONMENT through interpretation, compilation, and compiled-file loading.  It also checks retained macro lambda forms and defining environments, copying, and the identity and state of the original expander:
 
@@ -353,7 +353,7 @@ The AST fixture checks source environments after first-pass expansion and tree c
 (lispm-ast-environment-test:run)
 ```
 
-Each variable or local-function read has its own AST reference and source environment.  References to the same binding share its binding object.  A known null environment differs from an unknown environment.  The fixture checks distinct occurrence scopes and copied binding identities, then tests execution with DEBUG 0/3, COMPILATION-SPEED 1/3, SAFETY 3, SPEED 1, and type checking enabled.  Cases include constant assignment, closure writes, multiple values, dynamic-extent rest arguments, and nonlocal GO and RETURN-FROM through a non-inlined helper.  Propagation tests check the replaced occurrence's scope while retaining a copied lambda body's definition scope.  Source-marker tests cover AST optimization and lowering, closure binding identity, and separate inlined function scope.  Complete compiler scope coverage and runtime frame evaluation remain work.
+Each variable or local-function read has its own AST reference and source environment.  References to the same binding share its binding object.  A known null environment differs from an unknown environment.  The fixture checks distinct occurrence scopes and copied binding identities, then tests execution with DEBUG 0/3, COMPILATION-SPEED 1/3, SAFETY 3, SPEED 1, and type checking enabled.  Cases include constant assignment, closure writes, multiple values, dynamic-extent rest arguments, and nonlocal GO and RETURN-FROM through a non-inlined helper.  Propagation tests check the replaced occurrence's scope while retaining a copied lambda body's definition scope.  Source-marker tests cover AST optimization and lowering, closure binding identity, and separate inlined function scope.  Complete compiler scope coverage remains work.  The frame-evaluation fixture below tests runtime use of the emitted scopes.
 
 For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains the first-pass tree, then checks its environments, macro functions, binding identities, copying, and compiled execution after full GC.
 
@@ -411,7 +411,20 @@ The emitted-scope fixture resolves compiled source scopes from live call address
 (lispm-emitted-scope-test:run)
 ```
 
-It checks nested and disjoint same-name bindings, variable/function namespaces, symbol macros and local macros, scope exits, mutation, compiled-file loading, full GC, and both emitters.  Execution uses x86-64 with DEBUG 0/3 and COMPILATION-SPEED 1/3, SAFETY 3, and SPEED 1.  Value checks use DEBUG 3.  Prologue instructions retain unavailable scope information.  ARM64 execution and runtime frame evaluation remain untested or unimplemented, respectively.
+It checks nested and disjoint same-name bindings, variable/function namespaces, symbol macros and local macros, scope exits, mutation, compiled-file loading, full GC, and both emitters.  Execution uses x86-64 with DEBUG 0/3 and COMPILATION-SPEED 1/3, SAFETY 3, and SPEED 1.  Value checks use DEBUG 3.  Prologue instructions retain unavailable scope information.  ARM64 execution remains untested.
+
+## Frame evaluation tests
+
+The frame-evaluation fixture tests the retained service against compiled stopped functions:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-FRAME-EVALUATION.LISP"))
+(lispm-frame-evaluation-test:run)
+```
+
+Load the debugger-service fixture first for its test helpers.  The test checks selected binding identity, live and shared-cell writes, namespaces and macros, declarations and storage types, expression/value histories, source replay, nested Abort, full GC, continuation, unavailable scope/storage, and expired or foreign-thread access.  It also checks the guest form-input plan.  Runtime cases use x86-64 with DEBUG 3, SAFETY 3, and SPEED 1, plus a DEBUG 0 unavailable-binding case.  The [frame-evaluation reference](../../doc/debugger.md#frame-evaluation) describes the operation and its limits.
+
+For a saved-stop test, call `(lispm-frame-evaluation-test:prepare-restore-test)` before saving the image and `(lispm-frame-evaluation-test:finish-restore-test)` after restoration.  This checks preserved selection, value history, and changed bindings, expired old stop/frame references and frame-backed closures, fresh evaluation after full GC, Proceed, and shared compiled closures.  The fixture releases its stop and retained test objects.
 
 ## CLOS method replacement tests
 
