@@ -63,6 +63,8 @@ A separate named target stops inside an application HANDLER-CASE and UNWIND-PROT
 
 A handler-display target stops first inside nested handler bindings and then inside the invoked inner handler.  :Show Condition Handlers tests completion, menu entry, :All defaults, actual runtime owner-frame selection, active and inactive status, empty-frame output, unchanged selection/history, and retained strings across reload.  Proceed must invoke the remaining outer handler once and return the expected values after one cleanup.
 
+A catch-display target nests two catches with the same tag and an outer catch with a printable object tag.  :Show Catch Blocks tests completion, menu entry, :All defaults, selected runtime owners, repeated tags, destination function names and byte offsets, empty-frame output, unchanged selection/history, and retained strings across reload.  A tag-printer failure must enter a child.  Typed :Abort and repair must permit another inspection.  Proceed must return two values through the inner repeated tag, with one cleanup and one execution after that catch.
+
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
 ## Object Inspector

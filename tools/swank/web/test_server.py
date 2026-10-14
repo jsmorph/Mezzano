@@ -132,19 +132,20 @@ class ProtocolTests(unittest.TestCase):
             server.integer(True)
 
 
-    def test_handler_arguments(self):
+    def test_control_record_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]
-        for argument in (None, False, True):
-            with self.subTest(argument=argument):
-                result = server.operation_arguments("submit",
-                    {"stop": stop, "id": 2, "command": "handlers", "argument": argument}, session)
-                self.assertEqual(result[2:], [server.Symbol(":handlers"), bool(argument)])
-                self.assertEqual(server.lisp(result[3]), "t" if argument else "nil")
-        for argument in (0, 1, "Yes", [], [True], {}):
-            with self.subTest(argument=argument), self.assertRaises(ValueError):
-                server.operation_arguments("submit",
-                    {"stop": stop, "id": 2, "command": "handlers", "argument": argument}, session)
+        for command in ("handlers", "catches"):
+            for argument in (None, False, True):
+                with self.subTest(command=command, argument=argument):
+                    result = server.operation_arguments("submit",
+                        {"stop": stop, "id": 2, "command": command, "argument": argument}, session)
+                    self.assertEqual(result[2:], [server.Symbol(":" + command), bool(argument)])
+                    self.assertEqual(server.lisp(result[3]), "t" if argument else "nil")
+            for argument in (0, 1, "Yes", [], [True], {}):
+                with self.subTest(command=command, argument=argument), self.assertRaises(ValueError):
+                    server.operation_arguments("submit",
+                        {"stop": stop, "id": 2, "command": command, "argument": argument}, session)
 
     def test_binding_arguments(self):
         session = "a" * 64

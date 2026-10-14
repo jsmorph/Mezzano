@@ -520,7 +520,120 @@ try {
   evidence.handlerDisplay.continued = await completed(targetJob);
   assert.deepEqual(evidence.handlerDisplay.continued.values, ['42', '1', '1']);
   evidence.checks.push('Inside an invoked handler, its cluster is inactive and the outer handler remains active; Proceed invokes the outer handler once and returns 42 after one cleanup');
-  const next = await start(`(progn (dolist (name '(${[...symbols, handlerTarget, ...controlSymbols].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
+  const catchTarget = marker + '-CATCH-TARGET', catchTag = marker + '-REPEATED-TAG';
+  targetJob = await start(`(unwind-protect (progn
+    (defun ${catchTarget} ()
+      (declare (optimize (debug 3) (safety 3) (speed 1)))
+      (let ((printer-tag (make-instance 'lispm-describe-test:probe))
+            (catch-cleanups 0) (after-inner 0))
+        (let ((answer
+                (multiple-value-list
+                  (catch printer-tag
+                    (catch '${catchTag}
+                      (multiple-value-prog1
+                          (catch '${catchTag}
+                            (unwind-protect
+                                 (progn
+                                   (break "${marker} catch display")
+                                   (throw '${catchTag} (values 42 43)))
+                              (incf catch-cleanups)))
+                        (incf after-inner)))))))
+          (values (first answer) (second answer) catch-cleanups after-inner))))
+    (assert (compiled-function-p (symbol-function '${catchTarget})))
+    (${catchTarget}))
+    (when (fboundp '${catchTarget}) (fmakunbound '${catchTarget}))
+    (unintern '${catchTarget})
+    (unintern '${catchTag}))`);
+  const catchParent = await stopped(targetJob);
+  const catchFrame = await selectTarget('#source', catchTarget);
+  evidence.catchDisplay = {stop:catchParent.stop, frame:catchFrame};
+  await evaluation('(values 90 91)', ['90', '91']);
+  async function catchesAfter(previous, expectedFrame) {
+    await browser.waitFor(`latestCommand('catches')?.id > ${previous} && commandResults.get(commandKey(latestCommand('catches')))?.state === ':returned' && !busy`);
+    const value = await browser.evaluate("commandResults.get(commandKey(latestCommand('catches'))).result");
+    assert.equal(await browser.evaluate("[...document.querySelectorAll('.catches-result')].at(-1).textContent"), value);
+    assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), expectedFrame);
+    return value;
+  }
+  async function showCatches(source, expectedFrame) {
+    const previous = await browser.evaluate("latestCommand('catches')?.id ?? -1");
+    await command(source);
+    return catchesAfter(previous, expectedFrame);
+  }
+  function ownCatches(value) {
+    return value.split(/(?=^Frame \d+ )/m).flatMap(block => {
+      const heading = /^Frame (\d+) (.*):\n/.exec(block);
+      return block.split('\n').filter(line => line.startsWith('  Throwing to tag ')
+        && (line.includes(catchTag) || line.includes('#<DESCRIPTION-PROBE>')))
+        .map(line => {
+          assert(heading, 'Catch row has no frame heading');
+          assert(line.includes('returns to MEZZANO.INTERNALS::%CATCH '), 'Catch destination must identify the runtime exit target');
+          assert.match(line, / at byte offset #x[0-9A-Fa-f]+$/);
+          assert(block.includes('    with the values supplied to THROW.\n'));
+          return {index:Number(heading[1]), owner:heading[2], line};
+        });
+    });
+  }
+  await fill('#source', ':Show Catch Blo');
+  await key(' ', 'Space', 32);
+  await browser.waitFor("document.querySelector('#source').value.startsWith(':Show Catch Blocks') && !busy");
+  await key('Enter', 'Enter', 13);
+  evidence.catchDisplay.selected = await catchesAfter(-1, catchFrame);
+  assert.equal(await browser.evaluate("latestCommand('catches').argument"), null);
+  assert(evidence.catchDisplay.selected.endsWith('  No catch blocks.\n'));
+  evidence.catchDisplay.all = await showCatches(':Show Catch Blocks :All', catchFrame);
+  assert.equal(await browser.evaluate("latestCommand('catches').argument"), true);
+  const catchRows = ownCatches(evidence.catchDisplay.all);
+  evidence.catchDisplay.rows = catchRows;
+  assert.equal(catchRows.length, 3);
+  assert.equal(catchRows.filter(row => row.line.includes(catchTag)).length, 2);
+  assert(catchRows.every(row => row.owner.includes('%CATCH')));
+  assert(catchRows[0].index < catchRows[1].index && catchRows[1].index < catchRows[2].index);
+  assert.equal(await showCatches(':Show Catch Blocks :All Yes', catchFrame), evidence.catchDisplay.all);
+  assert.equal(await showCatches(':Show Catch Blocks :All No', catchFrame), evidence.catchDisplay.selected);
+  for (const row of catchRows) {
+    await command(':Set Current Frame ' + row.index);
+    await frame(row.index);
+    assert.deepEqual(ownCatches(await showCatches(':Show Catch Blocks', row.index)), [row]);
+  }
+  const catchMenuPrevious = await browser.evaluate("latestCommand('catches').id");
+  await browser.click('#window-label');
+  await clickText('#debugger-menu', ':Show Catch Blocks');
+  assert.deepEqual(ownCatches(await catchesAfter(catchMenuPrevious, catchRows[2].index)), [catchRows[2]]);
+  evidence.checks.push('Show Catch Blocks completion/menu and All defaults preserve repeated tags and display destination names and byte offsets under the runtime owner frames');
+  await command(':Set Current Frame ' + catchFrame);
+  await frame(catchFrame);
+  await evaluation('(values * / + -)', ['90', '(90 91)', '(VALUES 90 91)', '(VALUES * / + -)']);
+  const catchStrings = await browser.evaluate("[...document.querySelectorAll('.catches-result')].map(element => element.textContent)");
+  const catchCommands = await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)");
+  const catchOrigin = await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin !== ${catchOrigin} && document.readyState === 'complete' && connected && !busy`);
+  await stopped(targetJob);
+  await frame(catchFrame);
+  assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.catches-result')].map(element => element.textContent)"), catchStrings);
+  assert.deepEqual(await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)"), catchCommands);
+  await browser.evaluate("[...document.querySelectorAll('.catches-result')].find(element => element.textContent.includes('with the values supplied to THROW.')).scrollIntoView({block:'center'})");
+  await save('catch-blocks');
+  evidence.checks.push('Catch inspection preserves selected frame and evaluation history; reload retains its strings without another inspection command');
+  const catchPrinterError = marker + ' catch tag printer error';
+  await evaluation(`(progn (setf (slot-value printer-tag 'lispm-describe-test::failure)
+    (make-condition 'simple-error :format-control "${catchPrinterError}")) (values))`, []);
+  await command(':Show Catch Blocks :All');
+  await stopped(targetJob, 2);
+  evidence.catchDisplay.printerCondition = await browser.evaluate("returnedResult('condition')");
+  assert.match(evidence.catchDisplay.printerCondition, new RegExp(catchPrinterError));
+  await save('catch-printer-error');
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(catchParent.stop)}) && !busy`);
+  assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('catches'))).state"), ':unwound');
+  await evaluation("(progn (setf (slot-value printer-tag 'lispm-describe-test::failure) nil) (values))", []);
+  assert.equal(await showCatches(':Show Catch Blocks :All', catchFrame), evidence.catchDisplay.all);
+  await command(':Proceed');
+  evidence.catchDisplay.continued = await completed(targetJob);
+  assert.deepEqual(evidence.catchDisplay.continued.values, ['42', '43', '1', '1']);
+  evidence.checks.push('Catch-tag printer error enters a child and typed Abort permits repair; Proceed throws 42 and 43 through the inner repeated tag with one cleanup and one post-catch execution');
+  const next = await start(`(progn (dolist (name '(${[...symbols, handlerTarget, ...controlSymbols, catchTarget, catchTag].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
   assert.deepEqual((await completed(next)).values, ['42']);
   evidence.checks.push('Standalone debugger evaluates forms; Proceed observes immediate writes and distinct outer cell, closed stop retains printed history, definition cleanup and next Listener succeed');
 
