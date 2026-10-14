@@ -75,6 +75,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Inspect | Inspects the primary value from this debugger level's evaluation history. |
 | :Describe Last | Describes that value without changing the history. |
 | :Clear Inspector | Releases this stop's retained Inspector object and place references. |
+| :Show Arglist | Prints the selected compiled function's stored lambda list, preserving selection and evaluation history.  Missing metadata reports unavailable. |
 | :Show Backtrace | Lists retained call frames. |
 | :Set Current Frame index | Selects a frame by its zero-based decimal index and displays its available locals. |
 | :Top Of Stack | Selects frame zero, the newest retained frame, and displays its available locals. |

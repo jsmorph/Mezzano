@@ -433,6 +433,15 @@ The description fixture checks propagation of the original printer condition fro
 (lispm-describe-test:run)
 ```
 
+The argument-list fixture uses the debugger-service and frame-evaluation helpers:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-ARGLIST.LISP"))
+(lispm-arglist-test:run)
+```
+
+It checks parameter syntax, empty and unavailable metadata, active function redefinition, full GC, unchanged history and selection, command replay, parser completion, continuation, and cleanup.  The fixture uses native x86-64 compiled condition stops at DEBUG 3, SAFETY 3, SPEED 1.
+
 ## Inspection reference tests
 
 The reference fixture tests the internal object-retention layer.  Load the debugger-service and frame-evaluation fixtures first:

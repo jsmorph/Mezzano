@@ -423,7 +423,7 @@
                 (service-stop-child stop))
         (service-error :stop-busy))
       (case operation
-        ((:frames :restarts :condition :abort :help :clear-inspection)
+        ((:frames :restarts :condition :abort :help :clear-inspection :arglist)
          (when argument (service-error :unexpected-argument)))
         (:proceed
          (when argument (service-error :unexpected-argument))
@@ -531,6 +531,16 @@
                                  (service-handle stop)
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
+    (:arglist
+     (multiple-value-bind (called function)
+         (frame-function (aref (service-stop-frames stop) (service-stop-current-frame stop)))
+       (let ((info (when (functionp function)
+                     (mezzano.internals::function-debug-info function))))
+         (if (nthcdr 7 info)
+             (format nil "The argument list for ~A is ~A."
+                     (service-print (mezzano.internals::function-name function))
+                     (service-print (mezzano.internals::debug-info-lambda-list info)))
+             (format nil "Argument list unavailable for ~A." (service-print called))))))
     (:locals
      (service-frame-locals
       (with-service-lock
