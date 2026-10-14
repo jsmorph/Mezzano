@@ -197,6 +197,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-gc-restart.lisp` | Raw instruction-address rewriting and resumption for an x86-64 GC restart region, in full-save state and beneath a foothold. |
 | `test-cons-allocation-gc.lisp` | The observed instruction addresses on the x86-64 DO-CONS success path in both saved states, with restart-address checks and relocated CAR/CDR values after resumption. |
 | `test-frame-locals.lisp` | Distinct SWANK local IDs and lookup. |
+| `test-frameless-backtrace.lisp` | Deterministic x86-64 frameless interruption, adjacent debug-3 caller, unavailable callee stack slots, caller locals, moving GC, continuation, and cleanup.  Load the control fixture first, compile/load this file, and call LISPM-FRAMELESS-TEST:RUN. |
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |
 | `test-spill-interference.lisp` | Spill graph edges, ascending register order, scalar and SIMD slot assignments, and bit-vector reuse. |
 | `test-live-ranges.lisp` | Live/debug/dead transitions, aliased debug values, empty inputs, and 800 preserved variables in register allocation. |
@@ -207,6 +208,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-debug-policy.lisp` | Local debug declarations, preserved heap roots, writes, and GC. |
 | `test-keyword-lowering.lisp` | Keyword semantics and allocation at debug levels 1 and 3. |
 | `test-jump-table-bindings.lisp` | Branch binding cleanup and invalid selectors. |
+| `test-debugger-interrupt.lisp` | Computing-printer and restart-reader interruption, continuation, command abort, nested request restoration, nested input wait accounting, inhibited delivery, replay, busy rejection, and cleanup.  Load the control fixture first, then compile/load this file and call LISPM-DEBUGGER-INTERRUPT-TEST:RUN. |
 | `test-debugger-control.lisp` | Nested command abort, parent recovery, typed command parsing, returning and interactive restarts, replay, cleanup, and Listener reuse.  Compile and load the file, then call LISPM-DEBUGGER-CONTROL-TEST:RUN. |
 | `test-debugger-service.lisp` | Ownership, frames, GC, duplicate commands, child stops, repair, values, release, and cleanup. |
 | `test-debugger-service-restore.lisp` | Guest handles, completed-command history, queued-command expiration, and a running restart blocked on a Lisp event across restore. |

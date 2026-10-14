@@ -51,10 +51,20 @@ Returns NIL if the function captures no variables."
 
 (defvar *default-frames-to-print* 15)
 
+(defun frame-code-address (frame)
+  (if (fifth frame)
+      (memref-unsigned-byte-64 (fifth frame))
+      (memref-unsigned-byte-64 (second frame) 1)))
+
+(defun frame-stack-available-p (frame)
+  (or (null (fifth frame))
+      (multiple-value-bind (function offset)
+          (return-address-to-function (frame-code-address frame))
+        (nth-value 0 (gc-info-for-function-offset function offset)))))
+
 (defun function-from-frame (frame)
-  ;; Decrement the return address by one to point at the calls
-  ;; instead of the following instruction.
-  (let ((return-address (1- (memref-signed-byte-64 (second frame) 1))))
+  (let ((return-address (- (frame-code-address frame)
+                           (if (sixth frame) 0 1))))
     (multiple-value-bind (fn offset)
         (return-address-to-function return-address)
       ;; HACK, replace RAISE-INVALID-ARGUMENT-ERROR with the real caller.
@@ -174,7 +184,8 @@ Returns NIL if the function captures no variables."
 (defun read-frame-slot (frame slot &optional (repr :value))
   (typecase slot
     (integer
-     ;; Stack frame index.
+     (unless (frame-stack-available-p frame)
+       (return-from read-frame-slot :$inaccessible-value$))
      (let ((address (+ (memref-unsigned-byte-64 (second frame) 0)
                        (* (- (1+ slot)) 8))))
        (case repr
@@ -222,7 +233,8 @@ Returns NIL if the function captures no variables."
 (defun write-frame-slot (frame slot value &optional (repr :value))
   (typecase slot
     (integer
-     ;; Stack frame index.
+     (unless (frame-stack-available-p frame)
+       (error "This activation has no established stack frame."))
      (let ((address (+ (memref-unsigned-byte-64 (second frame) 0)
                        (* (- (1+ slot)) 8))))
        (case repr
@@ -377,12 +389,14 @@ Returns NIL if the function captures no variables."
            (n-frames 0)
            (*current-debug-frame*))
       (let ((prev-fp nil))
-        (%map-backtrace
-         (lambda (i fp callee-save-regs)
-           (declare (ignore callee-save-regs))
+        (map-backtrace
+         (lambda (frame)
            (incf n-frames)
-           (push (list (1- i) fp prev-fp) frames)
-           (setf prev-fp fp))))
+           (let ((raw (frame-raw-data frame)))
+             (setf (first raw) (1- (frame-depth frame))
+                   (third raw) prev-fp)
+             (push raw frames))
+           (setf prev-fp (frame-fp frame)))))
       (setf frames (nreverse frames))
       ;; Can't deal with the top-most frame.
       (decf n-frames)
@@ -580,7 +594,14 @@ Returns NIL if the function captures no variables."
 (defstruct frame
   (depth 0 :read-only t)
   (fp 0 :read-only t)
-  (callee-save-regs '() :read-only t))
+  (callee-save-regs '() :read-only t)
+  (pc-slot nil :read-only t)
+  (interrupted-p nil :read-only t))
+
+(defun frame-raw-data (frame)
+  (list (frame-depth frame) (frame-fp frame) nil
+        (frame-callee-save-regs frame)
+        (frame-pc-slot frame) (frame-interrupted-p frame)))
 
 (defstruct local-variable
   (name nil :read-only t)
@@ -589,12 +610,12 @@ Returns NIL if the function captures no variables."
 
 (defun frame-local-variables (frame &key show-hidden)
   (loop
-     for (name id location repr) in (frame-locals (list 0 (frame-fp frame) nil)
+     for (name id location repr) in (frame-locals (frame-raw-data frame)
                                                   :show-hidden show-hidden)
      collect (make-local-variable :name name :location location :representation repr)))
 
 (defun local-variable-value (frame local-variable)
-  (let ((value (read-frame-slot (list 0 (frame-fp frame) nil (frame-callee-save-regs frame))
+  (let ((value (read-frame-slot (frame-raw-data frame)
                                 (local-variable-location local-variable)
                                 (local-variable-representation local-variable))))
     (if (eql value :$inaccessible-value$)
@@ -606,7 +627,7 @@ Returns NIL if the function captures no variables."
 Returns the function that was called, the actual function object being
 executed, and the offset into it."
   (multiple-value-bind (actual-function offset)
-      (function-from-frame (list nil (frame-fp frame) nil))
+      (function-from-frame (frame-raw-data frame))
     (when (function-reference-p actual-function)
       (return-from frame-function
         (values actual-function actual-function offset)))
@@ -653,6 +674,28 @@ executed, and the offset into it."
       (function-source-location fn))))
 
 (defun map-backtrace (fn)
+  #+x86-64
+  (let* ((anchor (read-frame-pointer))
+         (stack-pointer (+ anchor 16))
+         (frame-pointer (memref-unsigned-byte-64 anchor))
+         (pc-slot (+ anchor 8))
+         (interrupted-p nil))
+    (loop for depth from 0
+          until (zerop (memref-unsigned-byte-64 pc-slot))
+          do (funcall fn (make-frame :depth depth :fp anchor
+                                     :pc-slot pc-slot :interrupted-p interrupted-p))
+             (multiple-value-bind (next-sp next-fp next-pc next-slot link interruptp)
+                 (backtrace-next-frame
+                  (mezzano.supervisor:current-thread)
+                  stack-pointer frame-pointer
+                  (memref-unsigned-byte-64 pc-slot))
+               (when (or (zerop next-fp) (zerop next-pc)) (return))
+               (setf stack-pointer next-sp
+                     frame-pointer next-fp
+                     pc-slot next-slot
+                     interrupted-p interruptp)
+               (when link (setf anchor link)))))
+  #-x86-64
   (%map-backtrace
    (lambda (depth fp callee-save-regs)
      (funcall fn (make-frame :depth depth :fp fp :callee-save-regs callee-save-regs)))))
@@ -664,14 +707,14 @@ executed, and the offset into it."
 
 (defun backtrace (&key (stream *debug-io*) limit)
   "Print a backtrace on STREAM."
-  (%map-backtrace
-   (lambda (i fp callee-save-regs)
-     (when (and limit (> i limit))
+  (map-backtrace
+   (lambda (frame)
+     (when (and limit (> (frame-depth frame) limit))
        (return-from backtrace))
-     (let* ((return-address (memref-unsigned-byte-64 fp 1))
-            (fn (frame-function (make-frame :depth i :fp fp :callee-save-regs callee-save-regs)))
+     (let* ((fn (frame-function frame))
             (name (or (if (functionp fn) (function-name fn)) fn)))
-       (format stream "~&~X ~X ~S" fp return-address name)))))
+       (format stream "~&~X ~X ~S" (frame-fp frame)
+               (frame-code-address (frame-raw-data frame)) name)))))
 
 (defvar *traced-functions* '())
 (defvar *trace-depth* 0)

@@ -40,6 +40,7 @@
 (defvar *service-stops* (make-hash-table))
 (defvar *service-next-stop-id* 0)
 (defvar *service-current-stop* nil)
+(defvar *service-current-command* nil)
 
 (defmacro with-service-lock (&body body)
   `(handler-case
@@ -167,14 +168,19 @@
                             :initial-element (code-char #x2192))
                " "))
 
-(defun service-thread-debugger-information (thread)
+(defun service-thread-current-stop (thread)
   (loop for stop being the hash-values of *service-stops*
         when (and (eq (service-stop-thread stop) thread)
                   (eq (service-stop-state stop) :stopped)
                   (null (service-stop-child stop)))
-          return (list :stop (service-handle stop)
-                       :depth (service-stop-depth stop)
-                       :prompt (service-stop-prompt stop))))
+          return stop))
+
+(defun service-thread-debugger-information (thread)
+  (let ((stop (service-thread-current-stop thread)))
+    (when stop
+      (list :stop (service-handle stop)
+            :depth (service-stop-depth stop)
+            :prompt (service-stop-prompt stop)))))
 
 (defun debugger-stop-information (handle)
   (with-service-lock
@@ -329,7 +335,8 @@
 (defun run-service-command (stop command)
   (with-simple-restart (abort "Abort this debugger command.")
     (unwind-protect
-         (let ((result (execute-service-command stop command)))
+         (let ((result (let ((*service-current-command* command))
+                         (execute-service-command stop command))))
            (with-service-lock
              (setf (service-command-result command) result
                    (service-command-state command) :returned

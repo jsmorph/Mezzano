@@ -58,14 +58,15 @@ The command reference must expand each entry with its supported arguments, omitt
 
 Implementation proceeds in bounded increments, with compilation and tests in Mezzano, headless Chromium interaction, documentation updates, review, commits, and pushes.  The sequence below orders dependencies and preserves the full remaining scope.
 
-- [ ] Establish per-command abort boundaries.  Add typed Abort and Help, exact Listener ownership/nesting, completion, prompt restoration, and equivalent button actions.
+- [x] Establish per-command abort boundaries.  Add typed Abort and Help, exact Listener ownership/nesting, completion, prompt restoration, and equivalent button actions.
 - [ ] Complete restart invocation, interactive input, explicit arguments, default proceed selection, restart reports, and normal-return versus nonlocal-exit results.
+- [ ] Complete interruption of debugger operations and correct frame capture for interrupted frameless functions.  Validate caller locals, moving GC, nested interruption, and input recovery in the browser before extending frame evaluation.  Register-local inspection remains separate work.
 - [ ] Add guest-owned frame selection and navigation, live frame evaluation and writes, evaluation history, object inspection, and the required compiler metadata.
 - [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
-- [ ] Integrate background failures, process interruption, startup recovery, debugger-operation interruption, and the remaining system commands.
+- [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
 - [ ] Complete the command inventory, product guide, compatibility reference, Document Examiner topics, and architecture-specific acceptance results.
 
-The first required browser sequence is: stop an evaluation, cause an error in a debugger operation, type :Abort in the child, inspect the still-stopped parent, proceed the original evaluation, and verify its result and cleanup.  The previous nested-printer test continued the child and aborted the parent.  It does not establish this sequence.
+The first browser sequence passes: stop an evaluation, cause an error in a debugger operation, type :Abort in the child, inspect the still-stopped parent, continue the original evaluation, and verify its result and cleanup.  Tests also cover parent draft restoration across reload and normally returning interactive restarts.
 
 Additional acceptance cases include interactive replacement values, arguments with required parameters, normally returning restarts, mutations observed after continuation, shared closure bindings, nested scopes, local functions, multiple values, cleanup conditions and superseding transfers, redefinition, GC, and supported optimization policies.  Breakpoint tests cover repeated hits, concurrent callers, conditions/actions, removal, and continuation.  Interruption tests cover computation, input waits, printers, and pending delivery.
 
@@ -113,7 +114,7 @@ Guest handles are opaque Lisp objects.  Stop handles and controllers carry the b
 | Command record | Retains acceptance, state, operation, boot identity, and result until explicit stop release. |
 | Remote session | Associates a client name and token table with one guest boot.  Reconnection creates a new controller. |
 
-Frame capture begins at the retained service-debugger activation and continues toward older callers.  Temporary stack-walking activations are excluded.  Closing a stop increments its generation and clears live condition, frame, and restart references.  A child retains its parent's descriptive ID after parent release, but information returns a parent handle only while the parent remains registered.
+Frame capture excludes the retained service's command loop and stack-walking calls, beginning with the caller of SERVICE-DEBUGGER and continuing toward older callers.  Closing a stop increments its generation and clears live condition, frame, and restart references.  A child retains its parent's descriptive ID after parent release, but information returns a parent handle only while the parent remains registered.
 
 The public functions are exported from `MEZZANO.DEBUG`:
 
@@ -198,11 +199,13 @@ Job information associates stops by their target thread.  Stop ownership and rel
 
 Snapshot restore preserves retained job records and character-stream positions.  The supported restore states are a completed batch job, a condition-stopped batch job after partial input consumption, and an interactive job waiting within a partially read line.  A fresh session obtains current-boot handles for those jobs.  Replaying the original creation request from an earlier boot is rejected.
 
+Interactive input counts active waiting reads.  A debugger's interactive restart reader can wait within an interrupted application read on the same stream.  Aborting that nested reader preserves the application's input-wait state.
+
 ### Interruption
 
 A numbered interrupt request uses the supervisor's existing thread foothold mechanism.  Delivery respects `without-footholds` and enters the retained debugger on the evaluation worker.  CONTINUE resumes the interrupted computation.  The job's ABORT restart follows normal Common Lisp unwinding and cleanup rules.
 
-Interrupt IDs start at zero and increase per job.  The job retains their records until release.  Repeating an accepted ID in the same boot returns that ID without another delivery.  Prior-boot requests reject replay.  One request may be pending or running per job.  Job information reports `:next-interrupt-id` and the current `:interrupt-id`, or NIL.
+Interrupt IDs start at zero and increase per job.  The job retains their records until release.  Repeating an accepted ID in the same boot returns that ID without another delivery.  Prior-boot requests reject replay.  One request may be pending per job.  A running request permits a nested request while its debugger executes a command.  Job information reports `:next-interrupt-id`, the innermost outstanding `:interrupt-id`, and `:interruptible-p`.  The availability flag describes the sampled state.  Delivery validates that state again on the target thread.
 
 | Interrupt state | Meaning |
 |---|---|
@@ -210,14 +213,14 @@ Interrupt IDs start at zero and increase per job.  The job retains their records
 | `:running` | The worker entered interruption handling.  Job information reports its stop once debugger entry registers it. |
 | `:returned` | Control returned through CONTINUE. |
 | `:unwound` | Control left interruption handling through a nonlocal exit.  The job outcome is separate. |
-| `:cancelled` | Delivery found an existing retained stop or a completed job.  The result is `:already-stopped` or `:job-complete`. |
+| `:cancelled` | Delivery found a debugger waiting for a command or a completed job.  The result is `:already-stopped` or `:job-complete`. |
 | `:expired` | Delivery selected a request accepted before the current boot. |
 
-The worker arms delivery inside its stream bindings and ABORT restart, and disarms before leaving that restart's scope.  Early requests wait until it arms.  Completion cancels an undelivered request.  A target already inside a retained stop receives cancellation without another stop, including while it executes a debugger command.  The API cannot interrupt a running debugger command.
+The worker arms delivery inside its stream bindings and ABORT restart, and disarms before leaving that restart's scope.  Early requests wait until it arms.  Completion cancels an undelivered request.  A target waiting in a retained debugger records `:already-stopped`.  During command execution, delivery enters a child stop only inside the command's established ABORT boundary.  CONTINUE resumes that operation.  The child stop's command ABORT abandons it and returns to the original debugger.  If the original stop came from an interruption, its interrupt record remains running and becomes the reported `:interrupt-id` again when the child request finishes.
 
 Any attached session can request interruption or read its history.  Stop commands retain exclusive controller ownership.  Request publication and scheduling use the service mutex with caller footholds inhibited.  A new request targeting its calling thread reports `:self-interrupt`.
 
-A queued interrupt selected after restore expires without delivery.  A running interrupt stop can continue through a fresh session.  Its interrupt record keeps its original acceptance boot.  Other instruction positions and external I/O have no restore guarantee.
+A queued interrupt selected after restore expires without delivery.  A running interrupt stop can continue through a fresh session.  Its interrupt record keeps its original acceptance boot.  Nested debugger-command interruptions have no restore test yet.  Other instruction positions and external I/O have no restore guarantee.
 
 ## Function-entry stops
 
@@ -247,6 +250,10 @@ At debug level 3, the compiler preserves lexical bindings for inspection, includ
 Local records describe names, locations, and representations.  An unavailable value is distinguished from the Lisp value `NIL`.  The service does not reconstruct every source-level activation lost to inlining or tail calls, and it does not provide separate original and current argument records.  The remote API exposes inspection, with no local-write or lexical-evaluation operation.
 
 ## Operation limits
+
+The x86-64 frame walker uses existing GC metadata to traverse framed calls, frameless calls, and framed interrupt saves.  Captured frames retain saved-PC locations, so later inspection reads GC-updated code references.  Interrupted instructions retain their exact offsets.  Call return addresses identify the preceding call instruction.  A deterministic interruption test verifies a frameless callee, its caller's debug-3 stack locals, moving GC, and continuation.
+
+An activation without an established frame reports stack-slot values unavailable and rejects stack-slot writes.  Saved-register local inspection and traversal through frameless interrupt-return phases remain unsupported.  The changed traversal has no ARM64 or image-restoration test.
 
 The retained service lists applicable restarts, supports zero-argument calls, and invokes their interactive argument readers.  The Web restart buttons use interactive invocation.  An interactive evaluation supplies QUERY-IO through its retained input and output streams.  An application restart with required arguments needs an interactive function for that operation.  Explicit argument submission remains planned.  A nonlocal restart exit follows Common Lisp unwinding rules.  It does not provide arbitrary frame return, frame reinvocation, or a selected-frame THROW operation.
 
