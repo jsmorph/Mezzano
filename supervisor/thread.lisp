@@ -576,6 +576,8 @@ Interrupts must be off and the global thread lock must be held."
         (setf (thread-global-next (thread-global-prev self)) (thread-global-next self)))
       (when (eql self *all-threads*)
         (setf *all-threads* (thread-global-next self)))
+      (setf (thread-global-next self) nil
+            (thread-global-prev self) nil)
       (%reschedule-via-wired-stack sp fp))))
 
 (defun thread-join (thread &optional (wait-p t))
@@ -793,11 +795,18 @@ not and WAIT-P is false."
     (panic "Initial thread woken??")))
 
 (defun all-threads ()
-  (do ((list '())
-       (current *all-threads* (thread-global-next current)))
-      ((null current)
-       list)
-    (push current list)))
+  (loop with buffer = (make-array 64 :area :wired)
+        for count = (safe-without-interrupts ()
+                      (with-global-thread-lock ()
+                        (do ((thread *all-threads* (thread-global-next thread))
+                             (index 0 (1+ index)))
+                            ((null thread) index)
+                          (when (= index (length buffer))
+                            (return nil))
+                          (setf (svref buffer index) thread))))
+        when count
+          return (loop for index downfrom (1- count) to 0 collect (svref buffer index))
+        do (setf buffer (make-array (* 2 (length buffer)) :area :wired))))
 
 (defun terminate-thread (thread)
   (establish-thread-foothold
