@@ -59,6 +59,8 @@ The target and its caller establish special bindings with repeated shadowed valu
 
 The driver compiles and loads the checked-in description fixture.  It checks that object and slot-value printer failures in DESCRIBE enter child debuggers, typed :Abort returns to the parent, and a subsequent description prints its slot value and returns zero values.  The reusable native fixture definitions remain loaded.
 
+A separate named target stops inside an application HANDLER-CASE and UNWIND-PROTECT.  Errors from debugger evaluation and description printing must enter children, and typed :Abort must leave the application handler and cleanup counters at zero.  A handler established inside an evaluated form must remain effective.  Proceed raises an application error, which must invoke the restored handler once after one cleanup.
+
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
 ## Object Inspector

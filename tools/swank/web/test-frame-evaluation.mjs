@@ -92,8 +92,8 @@ async function evaluation(source, expected, selector = '#source') {
   assert.equal(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation .debugger-transcript')].at(-1)?.textContent"), '→ ' + source);
   return result;
 }
-async function selectTarget(selector = '#source') {
-  const index = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(marker + '-TARGET ')}))`);
+async function selectTarget(selector = '#source', name = marker + '-TARGET') {
+  const index = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(name + ' ')}))`);
   assert(index >= 0, 'Compiled target frame was not found');
   await command(':Set Current Frame ' + index, selector);
   await frame(index);
@@ -360,7 +360,42 @@ try {
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)"), beforeProceed);
   await save('closed-history');
   await switchActivity('listener');
-  const next = await start(`(progn (dolist (name '(${symbols.map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
+  const handlerTarget = marker + '-HANDLER-TARGET';
+  const applicationError = marker + ' application error';
+  targetJob = await start(`(unwind-protect (progn
+    (defun ${handlerTarget} ()
+      (declare (optimize (debug 3) (safety 3) (speed 1)))
+      (let ((application-handler-calls 0) (application-cleanups 0))
+        (handler-case
+            (unwind-protect
+                (progn (break "${marker} application handler") (error "${applicationError}"))
+              (incf application-cleanups))
+          (error (condition)
+            (incf application-handler-calls)
+            (values :application-handler application-handler-calls application-cleanups
+                    (princ-to-string condition))))))
+    (assert (compiled-function-p (symbol-function '${handlerTarget})))
+    (${handlerTarget}))
+    (when (fboundp '${handlerTarget}) (fmakunbound '${handlerTarget}))
+    (unintern '${handlerTarget}))`);
+  evidence.handlerParent = await stopped(targetJob);
+  await selectTarget('#source', handlerTarget);
+  await evaluation('(values application-handler-calls application-cleanups)', ['0', '0']);
+  const debuggerError = marker + ' debugger error';
+  await rejected('(error "' + debuggerError + '")', new RegExp(debuggerError));
+  await evaluation('(values application-handler-calls application-cleanups)', ['0', '0']);
+  await evaluation('(handler-case (error "Handled inside the debugger.") (error () (values :inner-handler application-handler-calls application-cleanups)))', [':INNER-HANDLER', '0', '0']);
+  await save('application-handler-preserved');
+  evidence.checks.push('Debugger ERROR enters a child and typed Abort preserves the application handler and cleanup counters; handlers established inside evaluated expressions still work');
+  const handlerPrinterError = marker + ' protected printer error';
+  await rejected(`(describe (make-instance 'lispm-describe-test:probe :failure (make-condition 'simple-error :format-control "${handlerPrinterError}")))`, new RegExp(handlerPrinterError));
+  await evaluation('(values application-handler-calls application-cleanups)', ['0', '0']);
+  await command(':Proceed');
+  evidence.handlerContinued = await completed(targetJob);
+  assert.deepEqual(evidence.handlerContinued.values, [':APPLICATION-HANDLER', '1', '1', text(applicationError)]);
+  await save('application-handler-restored');
+  evidence.checks.push('Debugger printer failure also preserves the application handler; Proceed restores it and application ERROR returns through that handler after one unwind cleanup');
+  const next = await start(`(progn (dolist (name '(${[...symbols, handlerTarget].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
   assert.deepEqual((await completed(next)).values, ['42']);
   evidence.checks.push('Standalone debugger evaluates forms; Proceed observes immediate writes and distinct outer cell, closed stop retains printed history, definition cleanup and next Listener succeed');
 
