@@ -1,5 +1,38 @@
 # Web UI development journal
 
+## Retained Inspector design: 2026-10-14
+
+Reviewed Genera's [Inspector, sections 6.6.1–6.6.7](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf#page=274), including Figure 7, and the Web client's submission, retained-result, nested-stop, expiry, and rendering code.  Genera displays an interaction pane, history beside a menu, and three inspection panes by default.  Component selection navigates objects.  Modify evaluates replacement input.  Its history cache requires explicit invalidation to reflect external changes.
+
+The selected Web design attaches an Inspector to the existing debugger stop.  A history list and command menu precede three inspection panes, with the newest result at the bottom.  One component renderer displays the three latest successful inspection records after the latest successful clear-inspection command.  It preserves the existing fonts, monochrome rules, and mouse-help treatment.  Three panes require an iteration and layout rules beyond a single pane, but no additional state model.  History and pane contents derive from the existing command records and results.  Repeated inspections of one object remain separate observations.  Reload renders retained results without invoking printers again.
+
+The guest retains objects and editable places.  The HTTP adapter validates the new command arguments, and the browser passes opaque references without interpreting their contents.  The proposed commands use the existing submit operation, command ID, result polling, and uncertain-request recovery:
+
+| Command | Argument and behavior |
+|---|---|
+| inspect | NIL selects the stop's primary evaluation-history value.  An object-reference, start, and count list selects a retained object and component range.  Component and history clicks submit this command. |
+| describe | An object reference or NIL selects the described object.  Printed output uses the existing retained evaluation output. |
+| modify | One editable-part reference identifies the place.  The guest reads a replacement expression through existing QUERY-IO input and evaluates it in the selected frame. |
+| clear-inspection | NIL.  Releases Inspector references and starts a new displayed inspection history while preserving retained command outcomes. |
+
+An inspect result supplies an object reference, printed title/type, range information, and component rows.  Each row supplies its label, printed value, bound state, value reference when present, and editable-place reference when supported.  A writable unbound slot has an editable place without a value reference.  Pagination uses guest-returned bounds.  The same record shape after a successful modification refreshes that object.  Refresh submits inspect for the pane's object and range.  History selection also requests a fresh observation.  Both actions become ordinary retained commands, so the three panes show command observations rather than independently mutable views.
+
+Modify uses the existing retained input control and debugger draft.  It requires no additional editor, source payload, or browser evaluation-history variables.  A child error preserves the last successful inspection.  Typed :Abort returns to the parent, where an explicit retry or Refresh is available.  A store completed before a printer error remains effective.  Replaying that accepted command must not execute the store again.  The browser neither retries failed inspection automatically nor inspects during rendering or polling.
+
+Clear keeps the old command results available for replay but removes their live navigation from the Inspector display.  Closing a stop leaves recorded text visible with its actions disabled.  A cleared reference must produce a typed rejection without replacing a valid connected session or continuing the computation.  Boot expiry follows existing session recovery, and fresh inspection obtains current references.  Parent and child stops have separate histories.  Guest tables and retained command results must not keep Inspector-owned objects alive after Clear or stop closure.  Frame locals and evaluation histories can independently retain those objects.  A stale editable place must reject a removed hash key, slot, or out-of-range array position.
+
+The existing browser command list contains this client's accepted requests.  Clear from another client can therefore leave printed history and controls until a use returns the stale-reference rejection.  Immediate cross-client visual invalidation would need a guest clear boundary in stop-information.  The recommendation retains typed rejection for this increment and adds no Inspector polling state.
+
+The first integration covers active debugger stops.  It uses fresh history navigation and expression-based modification in the selected frame's lexical environment.  Genera's standalone read-eval-inspect loop, distinct middle/right-button navigation, Return, Set backslash, compiler-function inspection, and locatives remain outside this increment.  The three displayed records can include successive pages or refreshes of the same object.  Shared objects can change in other threads between observations.
+
+- [ ] Test shared and cyclic objects, bound NIL, unbound slots, page bounds, history navigation, and reload without re-execution.
+- [ ] Test lexical replacement expressions, type and reader failures, interrupted input, nested Abort, and successful writes followed by printer failure.
+- [ ] Lose accepted modification and input replies, then replay the original identities and verify one evaluation and one store.
+- [ ] Test Clear, stale places, foreign-stop references, closed-stop recorded text, and saved-stop restoration with old-reference rejection.
+- [ ] Verify Proceed observes the mutation, the next Listener evaluates normally, and owned jobs, stops, definitions, and sessions are released.
+
+This entry records the reviewed recommendation.  Product implementation and native/browser acceptance remain pending.  No guest request was made during the review.
+
 ## Description printer errors in frame evaluation: 2026-10-14
 
 The core DESCRIBE correction propagates errors from an object's printer and from a slot value's printer.  The browser test will add one group to the existing frame-evaluation driver, reusing its compiled stopped frame, form-input helper, child-Abort assertions, and owned-record cleanup.  Its setup will compile and load the checked-in description fixture.  Describing one failing object and one object containing a failing slot value must enter separate child stops with the expected condition text.  Typed :Abort must restore the parent after each failure.  A subsequent successful description must print the value 42, return zero values, and permit :Proceed and the next Listener evaluation.  The reusable native fixture definitions remain loaded.  The browser releases its jobs, stops, session, and named target.  No Web product change or new dependency is required.
