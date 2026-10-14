@@ -753,7 +753,8 @@
 (defun break-critical-edge (backend-function terminator target)
   "Break the first edge from terminator to target."
   (assert (endp (ir:label-phis target)))
-  (let ((l (make-instance 'ir:label :name :broken-critical-edge)))
+  (let ((l (make-instance 'ir:label :name :broken-critical-edge
+                         :source-environment (ir:instruction-source-environment terminator))))
     (etypecase terminator
       (ir:branch-instruction
        (cond ((eql (ir:branch-true-target terminator) target)

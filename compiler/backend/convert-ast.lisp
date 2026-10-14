@@ -6,9 +6,12 @@
 (defvar *variable-registers*)
 (defvar *go-tag-and-block-labels*)
 (defvar *dynamic-stack*)
+(defvar *source-environment*)
 
 (defun emit (&rest instructions)
   (dolist (i instructions)
+    (mezzano.compiler.backend::initialize-instruction-source-environment
+     i *source-environment*)
     (append-instruction *backend-function* i)))
 
 (defun convert (lambda)
@@ -19,7 +22,8 @@
   (let ((*backend-function* (make-instance 'backend-function :ast-lambda lambda))
         (*variable-registers* (make-hash-table :test 'eq))
         (*go-tag-and-block-labels* (make-hash-table :test 'eq))
-        (*dynamic-stack* '()))
+        (*dynamic-stack* '())
+        (*source-environment* :unknown))
     (check-lambda-arguments-are-simple lambda)
     (emit-argument-setup-code lambda)
     (let ((value (cg-form (lambda-information-body lambda) :tail)))
@@ -178,6 +182,10 @@
 ;;;   virtual-register - When the form produces a single value.
 ;;;   :MULTIPLE - When the form has produced multiple values. Only valid when RESULT-MODE is :MULTIPLE or :TAIL.
 (defgeneric cg-form (form result-mode))
+
+(defmethod cg-form :around (form result-mode)
+  (let ((*source-environment* (mezzano.compiler::ast-source-environment form)))
+    (call-next-method)))
 
 (defmethod cg-form ((form ast-block) result-mode)
   (let* ((info (ast-info form))

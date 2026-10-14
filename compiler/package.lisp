@@ -787,6 +787,7 @@
            #:do-reversed-instructions
 
            #:backend-instruction
+           #:instruction-source-environment
            #:terminator-instruction
 
            #:print-instruction

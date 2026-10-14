@@ -163,6 +163,8 @@ does not visit unreachable blocks."
                (new-label (next-instruction backend-function target-branch))
                (new-branch (insert-before backend-function inst
                                           (make-instance 'branch-instruction
+                                                         :source-environment
+                                                         (instruction-source-environment target-branch)
                                                          :value branch-value
                                                          :true-target (branch-true-target target-branch)
                                                          :false-target (branch-false-target target-branch)))))
@@ -249,10 +251,14 @@ Successors of jumps and branches must be labels."
   (multiple-value-bind (basic-blocks bb-preds bb-succs)
       (build-cfg backend-function)
     (declare (ignore basic-blocks bb-succs))
-    (flet ((split-edge (bb)
-             (let ((new-bb (make-instance 'label :phis () :name nil)))
+    (flet ((split-edge (bb predecessor)
+             (let* ((environment (instruction-source-environment predecessor))
+                    (new-bb (make-instance 'label :phis () :name nil
+                                           :source-environment environment)))
                (insert-before backend-function bb new-bb)
-               (insert-before backend-function bb (make-instance 'jump-instruction :target bb :values '()))
+               (insert-before backend-function bb
+                              (make-instance 'jump-instruction :target bb :values '()
+                                             :source-environment environment))
                new-bb)))
       (do-instructions (inst backend-function)
         ;; TODO: Support switches too.
@@ -260,8 +266,8 @@ Successors of jumps and branches must be labels."
           (when (not (endp (rest (gethash (branch-true-target inst) bb-preds))))
             (when (not *shut-up*)
               (format t "Split edge ~S -> ~S~%" inst (branch-true-target inst)))
-            (setf (branch-true-target inst) (split-edge (branch-true-target inst))))
+            (setf (branch-true-target inst) (split-edge (branch-true-target inst) inst)))
           (when (not (endp (rest (gethash (branch-false-target inst) bb-preds))))
             (when (not *shut-up*)
               (format t "Split edge ~S -> ~S~%" inst (branch-false-target inst)))
-            (setf (branch-false-target inst) (split-edge (branch-false-target inst)))))))))
+            (setf (branch-false-target inst) (split-edge (branch-false-target inst) inst))))))))

@@ -341,6 +341,15 @@ Each variable or local-function read has its own AST reference and source enviro
 
 For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains the first-pass tree, then checks its environments, macro functions, binding identities, copying, and compiled execution after full GC.
 
+After loading the AST fixture, the backend fixture tests source environments during instruction insertion and movement, class changes, branch rewriting, control-flow edge splitting, lowering, and register allocation.  It compares selected call scopes with their AST sources and executes the compiled functions under DEBUG 0/3 and COMPILATION-SPEED 1/3:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-BACKEND-ENVIRONMENTS.LISP"))
+(lispm-backend-environment-test:run)
+```
+
+These tests cover compiler metadata.  Encoding source environments in compiled functions and using them for frame evaluation remain work.
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:

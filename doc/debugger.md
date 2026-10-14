@@ -70,7 +70,7 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
 - [ ] Complete the command inventory, product guide, compatibility reference, Document Examiner topics, and architecture-specific acceptance results.
 
-Compiler preparation preserves lexical environments through first-pass expansion and AST copying.  Each variable or local-function read has an individual reference, and copying remaps its binding identity.  Tests cover propagated values and selected source scopes through AST optimization, inlining, and closure lowering.  Complete compiler scope coverage, instruction-specific storage, and runtime frame evaluation remain work.
+Compiler preparation preserves lexical environments through first-pass expansion and AST copying.  Each variable or local-function read has an individual reference, and copying remaps its binding identity.  Tests cover propagated values and selected source scopes through AST optimization, inlining, and closure lowering.  Backend instructions carry source environments through conversion and tested instruction rewrites and register allocation.  Complete compiler scope coverage, PC encoding, binding storage identities, and runtime frame evaluation remain work.
 
 The first browser sequence passes: stop an evaluation, cause an error in a debugger operation, type :Abort in the child, inspect the still-stopped parent, continue the original evaluation, and verify its result and cleanup.  Tests also cover parent draft restoration across reload, default and indexed Proceed, missing-default rejection followed by explicit selection, interactive argument input, and normally returning restarts.
 

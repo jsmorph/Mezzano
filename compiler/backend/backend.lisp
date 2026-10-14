@@ -25,7 +25,14 @@
 
 (defclass backend-instruction ()
   ((%next-instruction)
-   (%prev-instruction)))
+   (%prev-instruction)
+   (%source-environment :initarg :source-environment
+                        :accessor instruction-source-environment)))
+
+(defun initialize-instruction-source-environment (instruction environment)
+  (unless (slot-boundp instruction '%source-environment)
+    (setf (instruction-source-environment instruction) environment))
+  instruction)
 
 (defun first-instruction (function)
   (slot-value function '%first-instruction))
@@ -42,6 +49,8 @@
   (slot-value instruction '%prev-instruction))
 
 (defun insert-before (function instruction new-instruction)
+  (initialize-instruction-source-environment
+   new-instruction (instruction-source-environment instruction))
   (setf (slot-value new-instruction '%prev-instruction) (slot-value instruction '%prev-instruction)
         (slot-value new-instruction '%next-instruction) instruction)
   (cond ((null (slot-value instruction '%prev-instruction))
@@ -54,6 +63,8 @@
   new-instruction)
 
 (defun insert-after (function instruction new-instruction)
+  (initialize-instruction-source-environment
+   new-instruction (instruction-source-environment instruction))
   (setf (slot-value new-instruction '%next-instruction) (slot-value instruction '%next-instruction)
         (slot-value new-instruction '%prev-instruction) instruction)
   (cond ((null (slot-value instruction '%next-instruction))
@@ -66,6 +77,7 @@
   new-instruction)
 
 (defun append-instruction (function new-instruction)
+  (initialize-instruction-source-environment new-instruction :unknown)
   (cond ((null (slot-value function '%last-instruction))
          (setf (slot-value new-instruction '%next-instruction) nil
                (slot-value new-instruction '%prev-instruction) nil)
