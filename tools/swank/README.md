@@ -442,6 +442,15 @@ The argument-list fixture uses the debugger-service and frame-evaluation helpers
 
 It checks parameter syntax, empty and unavailable metadata, active function redefinition, full GC, unchanged history and selection, command replay, parser completion, continuation, and cleanup.  The fixture uses native x86-64 compiled condition stops at DEBUG 3, SAFETY 3, SPEED 1.
 
+The dynamic-binding fixture uses the same helpers:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DYNAMIC-BINDINGS.LISP"))
+(lispm-dynamic-bindings-test:run)
+```
+
+It checks per-frame ownership, shadowed values, bound NIL and unbound cells, selected/all-frame output, case-sensitive name filtering, parser defaults, invalid options, copied request strings, replay, unchanged history and selection, printer failure with nested Abort, full GC, continuation, and cleanup.  Its compiled condition-stop scope is x86-64 at DEBUG 3, SAFETY 3, SPEED 1.  See [special bindings](../../doc/debugger.md#special-bindings).
+
 ## Inspection reference tests
 
 The reference fixture tests the internal object-retention layer.  Load the debugger-service and frame-evaluation fixtures first:

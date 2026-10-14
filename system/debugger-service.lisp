@@ -408,7 +408,7 @@
            (previous (gethash id (service-stop-commands stop))))
       (when previous
         (unless (and (eq operation (service-command-operation previous))
-                     (if (member operation '(:evaluate :inspect :modify))
+                     (if (member operation '(:evaluate :inspect :modify :bindings))
                          (equal argument (service-command-argument previous))
                          (eql argument (service-command-argument previous)))
                      (eq (service-command-boot previous)
@@ -432,6 +432,10 @@
         (:locals (check-service-frame argument stop))
         ((:inspect :modify :describe-object)
          (check-service-inspection-argument stop operation argument))
+        (:bindings
+         (unless (or (null argument)
+                     (typep argument '(cons (member nil t) (cons string null))))
+           (service-error :invalid-binding-options)))
         (:evaluate
          (unless (stringp argument) (service-error :invalid-source)))
         ((:current-frame :select-frame :next-frame :previous-frame :top-frame :bottom-frame)
@@ -447,6 +451,9 @@
                       :operation operation :argument (case operation
                                                        (:evaluate (copy-seq argument))
                                                        ((:inspect :modify) (copy-list argument))
+                                                       (:bindings (when argument
+                                                                    (list (first argument)
+                                                                          (copy-seq (second argument)))))
                                                        (otherwise argument)))))
         (setf (gethash id (service-stop-commands stop)) command
               (service-stop-pending stop) command
@@ -488,6 +495,58 @@
                         :name (service-print (local-variable-name local))
                         :available-p available-p
                         :value (when available-p (service-print value))))))
+
+(defun service-frame-bindings (frame)
+  (declare (ignorable frame))
+  #+x86-64
+  (let ((raw (mezzano.internals::frame-raw-data frame)))
+    (unless (and (mezzano.internals::frame-stack-available-p raw)
+                 (not (mezzano.internals::frame-interrupted-p frame)))
+      (return-from service-frame-bindings (values nil nil)))
+    (let* ((lower (mezzano.internals::frame-fp frame))
+           (upper (mezzano.internals::memref-unsigned-byte-64 lower)))
+      (values
+       (loop for cell = (mezzano.internals::%%special-stack-pointer)
+               then (mezzano.internals::%object-ref-t cell 0)
+             while cell
+             when (and (mezzano.runtime::symbol-value-cell-p cell)
+                       (< lower
+                          (- (mezzano.internals::lisp-object-address cell)
+                             mezzano.internals::+tag-object+)
+                          upper))
+               collect
+               (let ((bound-p (mezzano.runtime::symbol-value-cell-boundp cell)))
+                 (list (mezzano.runtime::symbol-value-cell-symbol cell) bound-p
+                       (when bound-p (mezzano.runtime::symbol-value-cell-value cell)))))
+       t)))
+  #-x86-64
+  (values nil nil))
+
+(defun service-show-bindings (stop argument)
+  (let ((all-p (first argument))
+        (matching (if argument (second argument) ""))
+        (found nil))
+    (with-output-to-string (stream)
+      (loop for frame across (service-stop-frames stop)
+            for index from 0
+            when (or all-p (= index (service-stop-current-frame stop)))
+              do (multiple-value-bind (bindings available-p) (service-frame-bindings frame)
+                   (setf bindings
+                         (remove-if-not (lambda (binding)
+                                          (search matching (symbol-name (first binding))))
+                                        bindings))
+                   (when (or bindings (not available-p) (not all-p))
+                     (setf found t)
+                     (format stream "Frame ~D ~A:~%" index (service-print (frame-function frame)))
+                     (cond ((not available-p) (write-line "  Binding locations unavailable." stream))
+                           ((null bindings) (write-line "  No matching bindings." stream))
+                           (t (dolist (binding bindings)
+                                (format stream "  ~A: ~A~%"
+                                        (service-print (first binding))
+                                        (if (second binding)
+                                            (service-print (third binding))
+                                            "[unbound]"))))))))
+      (unless found (write-line "No matching bindings." stream)))))
 
 (defun execute-service-command (stop command)
   (ecase (service-command-operation command)
@@ -531,6 +590,7 @@
                                  (service-handle stop)
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
+    (:bindings (service-show-bindings stop (service-command-argument command)))
     (:arglist
      (multiple-value-bind (called function)
          (frame-function (aref (service-stop-frames stop) (service-stop-current-frame stop)))

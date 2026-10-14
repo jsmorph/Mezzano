@@ -76,6 +76,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Describe Last | Describes that value without changing the history. |
 | :Clear Inspector | Releases this stop's retained Inspector object and place references. |
 | :Show Arglist | Prints the selected compiled function's stored lambda list, preserving selection and evaluation history.  Missing metadata reports unavailable. |
+| :Show Bindings | Prints the special bindings established by the selected frame.  :All includes all frames.  :Matching takes a case-sensitive symbol-name substring.  Bound NIL and unbound are distinct. |
 | :Show Backtrace | Lists retained call frames. |
 | :Set Current Frame index | Selects a frame by its zero-based decimal index and displays its available locals. |
 | :Top Of Stack | Selects frame zero, the newest retained frame, and displays its available locals. |
@@ -92,6 +93,8 @@ Proceed without an available CONTINUE reports an error while leaving the computa
 :Arguments is a Boolean keyword.  Omitted, it defaults to No.  Mentioned without a value, it defaults to Yes.  :Arguments No uses the restart's interactive reader.  :Arguments Yes reads one expression, evaluates it in the stopped thread's current dynamic environment and a null lexical environment, and passes the elements of its primary value to the restart.  The value must be a finite proper list.  For example, entering (list 20 22) supplies two arguments, while NIL supplies none.  Reading disables read-time evaluation.  Aborting an unfinished read clears input already buffered on QUERY-IO while preserving the retained input record for replay.  Reader, evaluation, and argument errors enter a child debugger.  :Abort there abandons the command and returns to the original stop.
 
 Selection starts at frame zero and persists across reconnects and image restoration.  Each nested debugger has its own selection.  A mentioned :Nframes requires a value.  Zero displays the current frame.  Movement beyond the retained stack reports an error and preserves selection.  Mouse selection and :Set Current Frame use the same guest operation.
+
+Show Bindings supports established x86-64 condition-stop frames and preserves selection and evaluation history.  Its :All keyword defaults to No when omitted and Yes when mentioned without a value.  :Matching requires a string when mentioned, for example `:Show Bindings :All :Matching "*PACKAGE*"`.  The empty string matches every symbol name.  Repeated bindings appear from inner to outer, and bindings established by runtime functions appear under their runtime frames.  Unsupported frame layouts report unavailable binding locations.  Frame-visibility filtering and switching evaluation's dynamic environment remain unavailable.
 
 Show Backtrace lists call frames.  Find Frame, internal/invisible-frame filtering, detailed argument/disassembly options, and raw stack-slot inspection remain unavailable through these commands.
 
