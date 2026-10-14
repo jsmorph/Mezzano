@@ -95,6 +95,11 @@
   (or (getf (lexical-variable-plist variable) 'debug-name)
       (lexical-variable-name variable)))
 
+(defun debug-variable-identity (variable)
+  (or (getf (lexical-variable-plist variable) 'debug-binding)
+      (setf (getf (lexical-variable-plist variable) 'debug-binding)
+            (vector :binding (debug-variable-name variable)))))
+
 (defmethod print-object ((object lexical-variable) stream)
   (print-unreadable-object (object stream :type t :identity t)
     (format stream "~S" (lexical-variable-name object))))

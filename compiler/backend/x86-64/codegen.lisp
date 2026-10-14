@@ -38,7 +38,7 @@
     (unless presentp
       (setf layout
             (loop for (variable location repr) in info
-                  collect (list* (c::debug-variable-name variable)
+                  collect (list* (c::debug-variable-identity variable)
                                  (if (typep location 'ir:virtual-register)
                                      (or (gethash location spill-locations)
                                          (error "Missing stack slot for spilled virtual ~S" location))
@@ -75,7 +75,7 @@
   (let ((environment-slot nil))
     (when (c:lambda-information-environment-layout
            (ir::ast backend-function))
-      (setf environment-slot (c:lexical-variable-name
+      (setf environment-slot (c::debug-variable-identity
                               (first (c:lambda-information-environment-layout
                                       (ir::ast backend-function))))))
     (values stack-layout

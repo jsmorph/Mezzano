@@ -671,7 +671,7 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
                                             (block-information-p variable)
                                             (and debug-zero-p
                                                  (not (preserve-variable-for-debugger-p variable))))
-                                  (debug-variable-name variable)))
+                                  (debug-variable-identity variable)))
                               layout))
                     layouts)))))
 

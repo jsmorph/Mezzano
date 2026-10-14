@@ -20,10 +20,17 @@ Returns NIL if the function captures no variables."
       (values (fourth info) (fifth info))
       nil))
 
+(defun debug-binding-p (object)
+  (and (typep object 'simple-vector)
+       (= (length object) 2)
+       (eq (aref object 0) :binding)))
+
+(defun debug-binding-name (object)
+  (if (debug-binding-p object) (aref object 1) object))
+
 (defun debug-info-precise-closure-layout (info)
-  "Returns two values, the name of the variable containing the closure vector and the layout of the vector.
-Returns NIL if the function captures no variables."
-  (if (symbolp (fourth info))
+  "Return the closure pointer's binding or legacy name and the vector layout."
+  (if (or (symbolp (fourth info)) (debug-binding-p (fourth info)))
       (values (fourth info) (fifth info))
       nil))
 
@@ -138,7 +145,9 @@ Returns NIL if the function captures no variables."
                          (hiddenp (eql op +debug-add-hidden-var-op+)))
                      (multiple-value-bind (location repr)
                          (read-location)
-                       (push `(:add ,var ,location ,repr :hidden ,hiddenp)
+                       (push `(:add ,(debug-binding-name var) ,location ,repr
+                                    :hidden ,hiddenp
+                                    :binding ,(when (debug-binding-p var) var))
                              compressed-layout))))
                   (#.+debug-drop-n-op+
                    (push `(:drop ,(logand op #x0F)) compressed-layout))
@@ -311,10 +320,10 @@ Returns NIL if the function captures no variables."
            (locals (local-variables-at-offset fn offset)))
       (loop
          for (name location repr . plist) in locals
-         do (destructuring-bind (&key hidden)
+         do (destructuring-bind (&key hidden binding)
                 plist
               (when (or show-hidden (not hidden))
-                (push (list name (incf var-id) location repr) result))))
+                (push (list name (incf var-id) location repr binding) result))))
       (multiple-value-bind (env-slot env-layout)
           (sys.int::debug-info-closure-layout info)
         (when env-slot
@@ -324,12 +333,19 @@ Returns NIL if the function captures no variables."
                  for i from 1
                  for name in level
                  when name
-                 do (push (list name (incf var-id) (reverse (list* i base-path)) :value) result))
+                 do (push (list (debug-binding-name name) (incf var-id)
+                                (reverse (list* i base-path)) :value
+                                (when (debug-binding-p name) name))
+                          result))
               (push 0 base-path)))))
       (multiple-value-bind (env-var env-layout)
           (sys.int::debug-info-precise-closure-layout info)
         (when env-var
-          (let ((env-slot (second (find env-var locals :key #'first))))
+          (let ((env-slot
+                  (second (find env-var locals
+                                :key (lambda (entry)
+                                       (or (getf (cdddr entry) :binding)
+                                           (first entry)))))))
             (when env-slot
               (let ((base-path (list env-slot)))
                 (dolist (level env-layout)
@@ -337,7 +353,10 @@ Returns NIL if the function captures no variables."
                      for i from 1
                      for name in level
                      when name
-                     do (push (list name (incf var-id) (reverse (list* i base-path)) :value) result))
+                     do (push (list (debug-binding-name name) (incf var-id)
+                                    (reverse (list* i base-path)) :value
+                                    (when (debug-binding-p name) name))
+                              result))
                   (push 0 base-path)))))))
       (reverse result))))
 
@@ -354,9 +373,9 @@ Returns NIL if the function captures no variables."
 (defun debugger-read-variable (frame id)
   (let ((info (find id (frame-locals frame) :key #'second)))
     (cond (info
-           (destructuring-bind (name id location repr)
+           (destructuring-bind (name id location repr &optional binding)
                info
-             (declare (ignore id))
+             (declare (ignore id binding))
              (multiple-value-bind (value available-p)
                  (read-frame-slot frame location repr)
                (unless available-p
@@ -368,9 +387,9 @@ Returns NIL if the function captures no variables."
 (defun debugger-write-variable (frame id value)
   (let ((info (find id (frame-locals frame) :key #'second)))
     (cond (info
-           (destructuring-bind (name id location repr)
+           (destructuring-bind (name id location repr &optional binding)
                info
-             (declare (ignore id))
+             (declare (ignore id binding))
              (write-frame-slot frame location value repr)
              name))
           (t

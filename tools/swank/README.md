@@ -350,6 +350,17 @@ After loading the AST fixture, the backend fixture tests source environments dur
 
 The backend package also provides PREPARE-RESTORE-TEST and FINISH-RESTORE-TEST.  They retain a converted backend function and its source environments, then lower, allocate registers, compile, and execute it after restoration and full GC.
 
+The binding-identity fixture checks distinct same-name bindings, shared closure cells, function names, copying, inlining, location changes, and full GC.  Compile and load it in Mezzano so its closure tests also check compiled-file sharing:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-BINDING-IDENTITIES.LISP"))
+(lispm-binding-identity-test:run)
+```
+
+Its PREPARE-RESTORE-TEST retains three closures and a binding descriptor.  FINISH-RESTORE-TEST checks their shared and shadowed identities and mutations after restoration and full GC.
+
+Compiled locations and closure layouts retain a descriptor for each binding.  Distinct bindings can have the same display name.  Copied bindings receive new descriptors, while closures sharing a binding retain the same descriptor.  Existing debug records remain readable with absent descriptor identity.  The public local-variable API retains its existing names, locations, and values.
+
 These tests cover compiler metadata.  Encoding source environments in compiled functions and using them for frame evaluation remain work.
 
 ## CLOS method replacement tests

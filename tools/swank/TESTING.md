@@ -54,6 +54,8 @@ done
 
 The debug-metadata fixture checks binding order, locations, representations, aliases, scope changes, inserted instructions, and shared records.  It checks both target emitters and their encoded metadata while running on the host architecture.  ARM64 metadata checks do not execute ARM64 machine code.  Its RUN function can also receive the previous rebuild and emitter functions for comparison during compiler replacement.
 
+The [binding-identity fixture](README.md#compiler-lexical-environment-tests) checks same-name stack and captured bindings, shared cells, function namespaces, copying, inlining, location deltas, native compiled-file loading, and full GC.  Its restore helpers retain closures and their descriptor through a saved-image restart.  Legacy-record acceptance requires retaining a function compiled before the descriptor change and passing it and its binding name to LISPM-BINDING-IDENTITY-TEST::CHECK-LEGACY.
+
 The spill-interference fixture checks overlapping, adjacent, disjoint, repeated, and unused ranges, edges from every range of a spilled register, and scalar and SIMD slot assignment.  It compares with supplied previous implementations when requested and checks that dense bit-vector rows retain their identity across insertions.
 
 ## Pager reservation tests
