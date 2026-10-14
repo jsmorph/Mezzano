@@ -38,6 +38,8 @@
 ;; Sorted from longest prefix to shortest.
 ;; Default route has a prefix of 0.
 (defvar *routing-table* nil)
+(defvar *routing-table-changed*
+  (mezzano.supervisor:make-condition-variable "IPv4 routes"))
 
 (defclass ipv4-route ()
   ;; No netmask, just the network address & length of the prefix.
@@ -67,6 +69,7 @@
                    (list route)
                    #'>
                    :key #'route-prefix-length))
+      (mezzano.supervisor:condition-notify *routing-table-changed* t)
       route)))
 
 (defun remove-route (network prefix-length &optional tag)
@@ -107,6 +110,21 @@
               (t ;; Local host on this network
                (values destination
                        (route-gateway route))))))))
+
+(defun wait-for-ipv4-route (destination deadline)
+  (mezzano.supervisor:with-mutex (*routing-table-lock*)
+    (let ((host nil) (interface nil))
+      (unless (mezzano.supervisor:condition-wait-for
+                  (*routing-table-changed* *routing-table-lock*
+                   (net::deadline-remaining deadline))
+                (handler-case
+                    (progn
+                      (setf (values host interface) (ipv4-route destination))
+                      t)
+                  (no-route-to-host () nil)))
+        (error 'net:network-timeout))
+      (net::deadline-remaining deadline)
+      (values host interface))))
 
 ;;; Interfaces.
 

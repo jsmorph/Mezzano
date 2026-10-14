@@ -199,7 +199,8 @@ the server instead of reconnecting for each operation.")
                (setf (remote-host-connection host)
                      (mezzano.network.tcp:tcp-stream-connect
                       (host-address host) (host-port host)
-                      :timeout *connection-idle-timeout*)))
+                      :timeout *connection-idle-timeout*
+                      :wait-for-route t)))
              (restart-bind
                  ((retry (lambda ()
                            (when (remote-host-connection host)
@@ -234,8 +235,10 @@ the server instead of reconnecting for each operation.")
       (loop
          (restart-case
              (return
-               (mezzano.network::with-open-network-stream (connection (host-address host)
-                                                              (host-port host))
+               (with-open-stream
+                   (connection (mezzano.network.tcp:tcp-stream-connect
+                                (host-address host) (host-port host)
+                                :wait-for-route t))
                  (funcall fn connection)))
            ((retry ()
              :report "Retry connecting to the file server"

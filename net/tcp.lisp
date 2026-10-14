@@ -864,10 +864,14 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
     (when condition
       (error condition))))
 
-(defun tcp-connect (ip port &key persist timeout deadline)
+(defun tcp-connect (ip port &key persist timeout deadline wait-for-route)
+  "WAIT-FOR-ROUTE includes route availability in the connection deadline."
   (setf deadline (or deadline (net::deadline-after *tcp-connect-timeout*)))
   (net::deadline-remaining deadline)
-  (let* ((interface (nth-value 1 (mezzano.network.ip:ipv4-route ip)))
+  (let* ((interface (nth-value 1
+                     (if wait-for-route
+                         (mezzano.network.ip::wait-for-ipv4-route ip deadline)
+                         (mezzano.network.ip:ipv4-route ip))))
          (source-address (mezzano.network.ip:ipv4-interface-address interface))
          (source-port (allocate-local-tcp-port source-address ip port))
          (iss (or *netmangler-iss*
@@ -1169,7 +1173,7 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
   '(unsigned-byte 8))
 
 (defun tcp-stream-connect (address port &key element-type external-format persist timeout
-                                             connect-timeout)
+                                             connect-timeout wait-for-route)
   (let* ((deadline (net::deadline-after (or connect-timeout *tcp-connect-timeout*)))
          (ip (net:resolve-address address t :deadline deadline)))
     (cond ((or (not element-type)
@@ -1177,7 +1181,8 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
            (make-instance 'tcp-stream
                           :connection (tcp-connect ip port :persist persist
                                                            :timeout timeout
-                                                           :deadline deadline)
+                                                           :deadline deadline
+                                                           :wait-for-route wait-for-route)
                           :external-format (sys.int::make-external-format
                                             (or element-type 'character)
                                             (or external-format :default)
@@ -1188,6 +1193,7 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
            (make-instance 'tcp-octet-stream
                           :connection (tcp-connect ip port :persist persist
                                                            :timeout timeout
-                                                           :deadline deadline)))
+                                                           :deadline deadline
+                                                           :wait-for-route wait-for-route)))
           (t
            (error "Unsupported element type ~S" element-type)))))

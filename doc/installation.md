@@ -85,7 +85,7 @@ sbcl --non-interactive --load ../../quicklisp/setup.lisp \
   --load ../../run-file-server.lisp
 ```
 
-Under SBCL, the file server listens on `127.0.0.1:2599`.  It serves host files without a per-checkout access restriction.  Keep it available during startup compilation and later guest file access.  The server handles one connected client at a time.  Multiple guests that use it can delay each other's file requests until the current client disconnects or its idle timeout expires.
+Under SBCL, the file server listens on `127.0.0.1:2599`.  It serves host files without a per-checkout access restriction.  Keep it available during startup compilation and later guest file access.  A REMOTE connection waits for an IPv4 route within the TCP connection deadline, which defaults to ten seconds.  If no route arrives, it signals MEZZANO.NETWORK:NETWORK-TIMEOUT.  This permits file access during DHCP startup and image restoration.  The server handles one connected client at a time.  Multiple guests that use it can delay each other's file requests until the current client disconnects or its idle timeout expires.
 
 In another terminal, start QEMU from the build directory:
 
