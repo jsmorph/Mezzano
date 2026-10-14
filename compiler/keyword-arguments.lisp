@@ -16,7 +16,7 @@
     `(if (call eq (call %fast-fixnum-logand
                         ,(etypecase count
                            (special-variable
-                            `(call symbol-value (quote ,count)))
+                            `(call symbol-value (quote ,(name count))))
                            (lexical-variable
                             count))
                         '1)
@@ -154,7 +154,7 @@
       (ast `(let (,@(mapcar (lambda (x) (list x '(quote nil))) values)
                   ,@(mapcar (lambda (x) (list x '(quote nil))) suppliedp)
                   ,@(unless (lexical-variable-p original-rest)
-                      (list (list rest `(call symbol-value (quote ,original-rest))))))
+                      (list (list rest `(call symbol-value (quote ,(name original-rest)))))))
               (progn
                 ;; No processing at all if the list is empty.
                 ;; This is needed to get the list length evenness check

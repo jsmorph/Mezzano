@@ -103,50 +103,47 @@
       (multiple-value-bind (required optional rest enable-keys keys allow-other-keys aux)
           (sys.int::parse-ordinary-lambda-list lambda-list)
         (flet ((interpret-function (&rest args)
-                 (let ((env outer-env))
-                   (flet ((bind-one (name value)
-                            (setf env
-                                  (c::extend-environment
-                                   env
-                                   :variables (list (list name (make-instance 'lexical-variable :name name :value value)))))))
+                 (let ((bindings '()))
+                   (flet ((bind-one (name form)
+                            (push (list name form) bindings)))
                      (dolist (arg required)
                        (when (null args)
                          (error "Too few arguments to function ~S lambda-list ~S" name lambda-list))
-                       (bind-one arg (pop args)))
+                       (bind-one arg (list 'quote (pop args))))
                      (dolist (arg optional)
-                       (cond (args
-                              (bind-one (first arg) (pop args))
-                              (when (third arg)
-                                (bind-one (third arg) t)))
-                             (t
-                              (bind-one (first arg) (eval-in-lexenv (second arg) env))
-                              (when (third arg)
-                                (bind-one (third arg) nil)))))
+                       (let ((supplied-p (not (null args))))
+                         (bind-one (first arg)
+                                   (if supplied-p (list 'quote (pop args)) (second arg)))
+                         (when (third arg)
+                           (bind-one (third arg) supplied-p))))
                      (if rest
-                         (bind-one rest args)
+                         (bind-one rest (list 'quote args))
                          (when (and (not enable-keys) args)
                            (error "Too many arguments to function ~S lambda-list ~S" name lambda-list)))
                      (when enable-keys
                        (when (oddp (length args))
                          (error "Odd number of &KEY arguments."))
-                       (unless allow-other-keys
-                         (do ((i args (cddr i)))
-                             ((null i))
-                           (unless (member (car i) keys :key 'caar)
-                             (error "Unknown &KEY argument ~S." (car i)))))
+                       (unless (or allow-other-keys (getf args :allow-other-keys))
+                         (loop for tail on args by #'cddr
+                               for keyword = (first tail)
+                               unless (or (eq keyword :allow-other-keys)
+                                          (member keyword keys :key #'caar))
+                                 do (error "Unknown &KEY argument ~S." keyword)))
                        (dolist (key keys)
-                         (let ((arg (getf args (caar key) args)))
-                           (cond ((eql arg args)
-                                  (bind-one (cadar key) (eval-in-lexenv (second key) env))
-                                  (when (third key)
-                                    (bind-one (third key) nil)))
-                                 (t
-                                  (bind-one (cadar key) arg)
-                                  (when (third key)
-                                    (bind-one (third key) t)))))))
+                         (let ((pair (loop for tail on args by #'cddr
+                                           when (eq (first tail) (caar key))
+                                             return tail)))
+                           (bind-one (cadar key)
+                                     (if pair (list 'quote (second pair)) (second key)))
+                           (when (third key)
+                             (bind-one (third key) (not (null pair)))))))
                      (dolist (arg aux)
-                       (bind-one (first arg) (eval-in-lexenv (second arg) env)))
-                     (eval-locally-body declares body env)))))
+                       (bind-one (first arg) (second arg)))
+                     (eval-in-lexenv
+                      `(let* ,(nreverse bindings)
+                         (declare ,@declares)
+                         ,@body)
+                      outer-env)))))
           (let ((x (make-instance 'interpreted-function
                                   :name name
                                   :lambda lambda
@@ -294,23 +291,21 @@
                (if bindings
                    (multiple-value-bind (name init-form)
                        (sys.int::parse-let-binding (first bindings))
-                     (let ((value (eval-in-lexenv init-form env)))
-                       (ecase (sys.int::symbol-mode name)
-                         ((nil :symbol-macro)
-                          (cond ((c::declared-as-p 'special name declares)
-                                 (progv (list name) (list value)
-                                   (bind-one (rest bindings)
-                                             (c::extend-environment env :variables (list (list name (make-instance 'c::special-variable :name name)))))))
-                                (t
-                                 (let ((var (make-instance 'lexical-variable :name name :value value)))
-                                   (bind-one (rest bindings)
-                                             (c::extend-environment env :variables (list (list name var))))))))
-                         (:special
+                     (when (eql (sys.int::symbol-mode name) :constant)
+                       (error "Cannot bind over constant ~S." name))
+                     (let* ((value (eval-in-lexenv init-form env))
+                            (var (make-variable name declares))
+                            (env (c::extend-environment
+                                  env :variables (list (list name var))
+                                  :declarations (c::fake-type-declarations-for declares name))))
+                       (etypecase var
+                         (c::special-variable
                           (progv (list name) (list value)
-                            (bind-one (rest bindings)
-                                      (c::extend-environment env :variables (list (list name (make-instance 'c::special-variable :name name)))))))
-                         (:constant (error "Cannot bind over constant ~S." name)))))
-                   (eval-progn-body body (c::extend-environment env :declarations declares)))))
+                            (bind-one (rest bindings) env)))
+                         (lexical-variable
+                          (setf (variable-value var) value)
+                          (bind-one (rest bindings) env)))))
+                   (eval-locally-body declares body env))))
       (bind-one bindings env))))
 
 (defspecial multiple-value-call (&environment env function-form &rest forms)

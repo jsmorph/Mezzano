@@ -121,7 +121,9 @@
         (labels ((add-var (name)
                    (let ((var (make-variable name declares optimize-env)))
                      (check-variable-bindable var)
-                     (setf env (extend-environment env :variables (list (list name var))))
+                     (setf env (extend-environment
+                                env :variables (list (list name var))
+                                :declarations (fake-type-declarations-for declares name)))
                      var)))
           (setf (lambda-information-required-args info) (mapcar #'add-var required))
           (setf (lambda-information-optional-args info)
@@ -612,13 +614,13 @@
        (sys.int::type-specifier-p declaration)))
 
 (defun fake-type-declarations-for (declares name)
-  (dolist (dec declares '())
-    (cond ((and (eql (first dec) 'type)
-               (member name (cddr dec)))
-           (return `((type ,(second dec) ,name))))
-          ((and (non-type-type-declaration-p (first dec))
-                (member name (rest dec)))
-           (return `((type ,(first dec) ,name)))))))
+  (loop for declaration in declares
+        when (and (eql (first declaration) 'type)
+                  (member name (cddr declaration)))
+          collect (list 'type (second declaration) name)
+        when (and (non-type-type-declaration-p (first declaration))
+                  (member name (rest declaration)))
+          collect (list 'type (first declaration) name)))
 
 (defun pass1-let* (form env)
   (destructuring-bind (bindings &body forms) (cdr form)

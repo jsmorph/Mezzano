@@ -319,6 +319,15 @@ The local-macro fixture exercises enclosing macro and symbol-macro definitions, 
 (lispm-macro-environment-test:run)
 ```
 
+The parameter fixture compares interpreted and compiled results for special bindings, initializer order and declaration scope, optional and keyword parameters, supplied-p values, rest and auxiliary bindings, keyword precedence, multiple values, closure writes, and dynamic unwinding:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-EVALUATOR-PARAMETERS.LISP"))
+(lispm-evaluator-parameters-test:run)
+```
+
+For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains interpreted closures containing a local macro and a shared typed binding, then checks reads and writes after full GC.
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:
