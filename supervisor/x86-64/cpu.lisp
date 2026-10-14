@@ -481,6 +481,7 @@ TLB shootdown must be protected by the VM lock."
 
 (defun initialize-boot-cpu ()
   "Generate GDT, IDT and TSS for the boot CPU."
+  (initialize-early-cpu)
   (when (not (boundp '*cpus*))
     ;; For panics early in the first boot.
     (setf *cpus* '()))

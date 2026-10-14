@@ -269,6 +269,31 @@ Runtime and supervisor functions called before paging starts or with interrupts 
 
 Callees invoked in those states also require resident implementations.  Loading boot-required functions into pageable memory can fault before the pager and console initialize.  Snapshot acceptance includes restarting the saved image.
 
+## Early panic tests
+
+The early-console panic fixture must compile and load wired before installation:
+
+```lisp
+(let ((mezzano.compiler::*optimize-policy* '(safety 3 debug 1 speed 1)))
+  (multiple-value-bind (file warnings failure)
+      (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-EARLY-PANIC.LISP")
+    (assert (and file (not warnings) (not failure)))
+    (load file :wired t)))
+(lispm-early-panic-test:install)
+(mezzano.supervisor:snapshot)
+(mezzano.supervisor:wait-for-snapshot-completion)
+```
+
+After the save completes, copy the private disk image for a separate QEMU instance.  Before restarting the normal VM, uninstall the fixture and save its normal state:
+
+```lisp
+(lispm-early-panic-test:uninstall)
+(mezzano.supervisor:snapshot)
+(mezzano.supervisor:wait-for-snapshot-completion)
+```
+
+The copied image deliberately halts during early-console initialization, before threads and paging initialize.  Its serial output must contain one panic report with "Owned early-console panic test."  The halt must reach the terminal panic stop without recursive APIC accesses or fatal page faults.  Saved pageable thread data can produce truncated diagnostic entries at this stage.  The normal saved image must boot, initialize both CPUs and its current-boot framebuffer, accept SWANK evaluation, and retain the debugger's tested behavior.  The fixture captures the original resident console function as a load-time constant because test symbols created in a running image can reside in pageable memory.  Acceptance covers x86-64 QEMU.  The shared video-reset ordering change has no ARM64 execution result.
+
 ## Debugger frame tests
 
 Compile and load the fixtures in Mezzano:
