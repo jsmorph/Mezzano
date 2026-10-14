@@ -20,7 +20,7 @@ ssh -N -L 4005:127.0.0.1:4005 user@vm-host
 
 ## Browser interface
 
-The [Web Listener and Debugger](web/README.md) provides the [Lisp Command Processor](../../doc/command-processor.md), source evaluation, interactive input, interruption, backtraces, local values, and interactive restart invocation.  Its Python server serves the interface and forwards HTTP requests to the guest's SWANK API.  The guest owns evaluations, output, stops, and command results.  The browser retains its session identity across reloads.
+The [Web Listener and Debugger](web/README.md) provides the [Lisp Command Processor](../../doc/command-processor.md), source evaluation, interactive input, interruption, backtraces, local values, and restart invocation with interactive or explicit arguments.  Its Python server serves the interface and forwards HTTP requests to the guest's SWANK API.  The guest owns evaluations, output, stops, and command results.  The browser retains its session identity across reloads.
 
 The [Document Examiner](../../doc/document-examiner.md) displays the documentation through guest Lisp topic lookup and search.
 
@@ -277,3 +277,13 @@ The reservation test checks transient mappings and runs three full collections w
 ```
 
 The synchronization test checks notification, timer expiration, mutex reacquisition, and cleanup of its own waiters.  The reservation test requires a writable hosted image.  [Backing-store reservations](../../doc/internals/memory-layout.md#backing-store-reservations) defines the counted states.
+
+To test a restart argument reader across restoration, compile the control fixture and prepare its waiting evaluation before saving:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-CONTROL.LISP"))
+(lispm-debugger-control-test:prepare-argument-restore)
+(lispm-page-reservation-test:run :snapshot t)
+```
+
+After the saved image restarts, call `(lispm-debugger-control-test:finish-argument-restore)`.  It verifies expired control, rejected prior-boot replay, the preserved input wait, completion after full GC, and one argument evaluation, restart invocation, and cleanup.  Successful completion releases its job and stop.

@@ -71,6 +71,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Proceed | Invokes the first captured CL:CONTINUE restart interactively.  Omitting the argument selects Default. |
 | :Proceed Default | Uses the same default selection as :Proceed. |
 | :Proceed index | Invokes the captured restart at that zero-based decimal index interactively. |
+| :Proceed index :Arguments | Prompts for a Lisp expression returning the argument list, then invokes that restart.  An omitted index selects Default. |
 | :Show Backtrace | Lists retained call frames. |
 | :Set Current Frame index | Selects a frame by its zero-based decimal index and displays its available locals. |
 | :Show Frame | Displays the selected function and available locals.  Original argument values remain unavailable. |
@@ -78,7 +79,9 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Show Local index | Displays one local by its zero-based decimal index. |
 | :Show Proceed Options | Displays retained restart choices and marks the default CONTINUE.  Selecting a choice invokes its interactive function in the guest to obtain any arguments. |
 
-Proceed without an available CONTINUE reports an error while leaving the computation stopped.  An explicit index selects another restart.  A restart can return values and leave the debugger active, or transfer control out of it.  The browser displays returning values.  Explicit Lisp argument expressions remain unsupported.
+Proceed without an available CONTINUE reports an error while leaving the computation stopped.  An explicit index selects another restart.  A restart can return values and leave the debugger active, or transfer control out of it.  The browser displays returning values.
+
+:Arguments is a Boolean keyword.  Omitted, it defaults to No.  Mentioned without a value, it defaults to Yes.  :Arguments No uses the restart's interactive reader.  :Arguments Yes reads one expression, evaluates it in the stopped thread's current dynamic environment and a null lexical environment, and passes the elements of its primary value to the restart.  The value must be a finite proper list.  For example, entering (list 20 22) supplies two arguments, while NIL supplies none.  Reading disables read-time evaluation.  Reader, evaluation, and argument errors enter a child debugger.  :Abort there abandons the command and returns to the original stop.
 
 Show Backtrace lists call frames.  Raw stack-slot inspection is unavailable through the retained API.
 
@@ -96,7 +99,7 @@ Listener state survives connection closure.  Session release or a new boot retir
 | start-listener | name, source, and optional interactive.  Returns an ordinary retained job token. |
 | listener-assistance | source, cursor, action, optional context and presentation.  Returns input classification, replacement text and cursor, prompt, default, expected-type, help, candidates, complete-p, and error. |
 
-Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display, needs-frame, local-index, or select-frame.  The Proceed plan uses a NIL argument for the default operation or an integer for explicit interactive invocation.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
+Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display, needs-frame, local-index, or select-frame.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
 
 Job information adds :listener-result.  It is NIL for ordinary evaluation jobs.  A Listener result records :kind (:command or :form), optional :command, :effects, :presentations, and any command input :error.  An input error is printed and recorded.  Runtime conditions, including file and compiler errors, enter the retained debugger.
 

@@ -229,6 +229,15 @@
     (release-service-stop (check-service-lease lease)))
   (values))
 
+(defun service-restart (stop index)
+  (if (null index)
+      (or (find 'continue (service-stop-restarts stop) :key #'restart-name)
+          (service-error :no-continue-restart))
+      (if (and (integerp index) (<= 0 index)
+               (< index (length (service-stop-restarts stop))))
+          (nth index (service-stop-restarts stop))
+          (service-error :invalid-restart))))
+
 (defun submit-debugger-command (lease id operation &optional argument)
   (with-service-lock
     (let* ((stop (check-service-lease lease))
@@ -252,8 +261,8 @@
          (when argument (service-error :unexpected-argument)))
         (:proceed
          (when argument (service-error :unexpected-argument))
-         (unless (find 'continue (service-stop-restarts stop) :key #'restart-name)
-           (service-error :no-continue-restart)))
+         (service-restart stop nil))
+        (:invoke-restart-with-arguments (service-restart stop argument))
         (:locals (check-service-frame argument stop))
         ((:invoke-restart :invoke-restart-interactively)
          (unless (and (integerp argument)
@@ -306,8 +315,17 @@
     (:proceed
      (mapcar #'service-print
              (multiple-value-list
-              (invoke-restart-interactively
-               (find 'continue (service-stop-restarts stop) :key #'restart-name)))))
+              (invoke-restart-interactively (service-restart stop nil)))))
+    (:invoke-restart-with-arguments
+     (let ((restart (service-restart stop (service-command-argument command))))
+       (write-string "Restart arguments (Lisp expression returning a list): " *query-io*)
+       (finish-output *query-io*)
+       (let* ((form (let ((*read-eval* nil)) (read *query-io*)))
+              (arguments (eval form)))
+         (unless (list-length arguments)
+           (error "Restart arguments must be a finite proper list."))
+         (mapcar #'service-print
+                 (multiple-value-list (apply #'invoke-restart restart arguments))))))
     (:restarts
      (loop with default = (find 'continue (service-stop-restarts stop) :key #'restart-name)
            for restart in (service-stop-restarts stop)

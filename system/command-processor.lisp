@@ -36,7 +36,8 @@
   '((:name "Abort" :id :abort :help "Invoke this stop's innermost ABORT restart.")
     (:name "Help" :id :help :help "List the supported debugger commands.")
     (:name "Proceed" :id :proceed :type :restart
-     :help "Invoke the default CONTINUE restart or a zero-based restart index, requesting interactive arguments.")
+     :help "Invoke the default CONTINUE restart or a zero-based restart index. :Arguments requests a Lisp expression returning the argument list."
+     :keywords (("Arguments" :boolean "No" "Yes")))
     (:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
     (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
     (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
@@ -411,13 +412,15 @@
          (when (and output (option "Load")) (load output :verbose t)))
        (setf *default-pathname-defaults* argument)))))
 
-(defun debugger-plan (command argument)
+(defun debugger-plan (command argument keywords)
   (case (getf command :id)
     (:abort (list :operation "abort"))
     (:proceed
-     (if (eq argument :default)
-         (list :operation "proceed" :argument nil)
-         (list :operation "invoke-restart-interactively" :argument argument)))
+     (cond ((cdr (assoc "Arguments" keywords :test #'equal))
+            (list :operation "invoke-restart-with-arguments"
+                  :argument (unless (eq argument :default) argument)))
+           ((eq argument :default) (list :operation "proceed" :argument nil))
+           (t (list :operation "invoke-restart-interactively" :argument argument))))
     (:help (list :operation "help"))
     (:show-backtrace (list :operation "frames"))
     (:show-proceed-options (list :operation "restarts"))
@@ -509,14 +512,13 @@
                 (return-from assistance response)))
             (when (eq action :parse)
               (multiple-value-bind (command argument keywords) (parse-command prefix listener context)
-                (declare (ignore keywords))
                 (let ((response (reply)))
                   (setf (getf response :complete-p) t
                         (getf response :command) (getf command :id)
                         (getf response :argument) (if (packagep argument) (package-name argument)
                                                      (if (pathnamep argument) (namestring argument) argument)))
                   (when (eq context :debugger)
-                    (loop for (key value) on (debugger-plan command argument) by #'cddr
+                    (loop for (key value) on (debugger-plan command argument keywords) by #'cddr
                           do (setf (getf response key) value)))
                   (return-from assistance response))))
             (let* ((commands (if (eq context :debugger) *debugger-commands* *commands*))
