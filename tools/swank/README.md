@@ -267,6 +267,13 @@ Compile and load the fixtures in Mezzano:
 
 The service fixture runs its existing tests when loaded.  The frame fixture checks selection, movement boundaries, parser completion, command replay, controller replacement, local values after full GC, child-debugger independence, Abort, and cleanup.  For a live structure-redefinition test, call PREPARE-FRAME-TEST before loading the changed debugger service, then call RUN-FRAME-TESTS.  A failed test retains its fixture for inspection.
 
+The local-value fixture checks NIL and keyword values in compiled arguments, copied bindings, constants, captured bindings, and register records.  It also checks missing storage and errors in accessible closure paths:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-AVAILABILITY.LISP"))
+(lispm-local-availability-test:run)
+```
+
 To include selected-frame persistence in a snapshot test, load the restoration fixture and prepare its stopped thread before saving:
 
 ```lisp

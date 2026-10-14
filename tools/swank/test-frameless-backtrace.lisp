@@ -80,8 +80,9 @@
              (address (mezzano.internals::lisp-object-address *root*)))
         (assert (mezzano.internals::frame-interrupted-p leaf-frame))
         (assert (null (mezzano.internals::frame-stack-available-p leaf-data)))
-        (assert (eq (mezzano.internals::read-frame-slot leaf-data 0)
-                    :$inaccessible-value$))
+        (assert (equal (multiple-value-list
+                        (mezzano.internals::read-frame-slot leaf-data 0))
+                       '(nil nil)))
         (assert (handler-case
                     (progn (mezzano.internals::write-frame-slot leaf-data 0 nil) nil)
                   (error () t)))

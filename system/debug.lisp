@@ -67,14 +67,15 @@ Returns NIL if the function captures no variables."
                            (if (sixth frame) 0 1))))
     (multiple-value-bind (fn offset)
         (return-address-to-function return-address)
-      ;; HACK, replace RAISE-INVALID-ARGUMENT-ERROR with the real caller.
       (when (eql fn #'raise-invalid-argument-error)
         (loop
            for (name location repr . plist) in (local-variables-at-offset fn offset)
            when (eql name 'function)
            do
-             (setf fn (read-frame-slot frame location repr)
-                   offset 0)
+             (multiple-value-bind (value available-p)
+                 (read-frame-slot frame location repr)
+               (when available-p
+                 (setf fn value offset 0)))
              (return)))
       (values fn offset))))
 
@@ -185,50 +186,41 @@ Returns NIL if the function captures no variables."
   (typecase slot
     (integer
      (unless (frame-stack-available-p frame)
-       (return-from read-frame-slot :$inaccessible-value$))
+       (return-from read-frame-slot (values nil nil)))
      (let ((address (+ (memref-unsigned-byte-64 (second frame) 0)
                        (* (- (1+ slot)) 8))))
-       (case repr
-         ((:value fixnum)
-          (memref-t address))
-         (:unsigned-byte-64
-          (memref-unsigned-byte-64 address))
-         (:signed-byte-64
-          (memref-signed-byte-64 address))
-         (short-float
-          (%integer-as-short-float (memref-unsigned-byte-16 address)))
-         (single-float
-          (%integer-as-single-float (memref-unsigned-byte-32 address)))
-         (double-float
-          (%integer-as-double-float (memref-unsigned-byte-64 address)))
-         (t
-          :$inaccessible-value$))))
+       (values
+        (case repr
+          ((:value fixnum)
+           (memref-t address))
+          (:unsigned-byte-64
+           (memref-unsigned-byte-64 address))
+          (:signed-byte-64
+           (memref-signed-byte-64 address))
+          (short-float
+           (%integer-as-short-float (memref-unsigned-byte-16 address)))
+          (single-float
+           (%integer-as-single-float (memref-unsigned-byte-32 address)))
+          (double-float
+           (%integer-as-double-float (memref-unsigned-byte-64 address)))
+          (t
+           (return-from read-frame-slot (values nil nil))))
+        t)))
     ((cons (eql quote))
-     ;; Constant.
-     (second slot))
+     (values (second slot) t))
     (cons
-     ;; Environment vector path.
-     (case repr
-       (:value
-        (multiple-value-bind (value failurep)
-            (ignore-errors
-              (let ((value (read-frame-slot frame (first slot))))
-                (dolist (index (rest slot))
-                  (setf value (elt value index)))
-                value))
-          ;; HACK: Work around a compiler bug. Sometimes the environment gets overwritten.
-          (if failurep
-              :$inaccessible-value$
-              value)))
-       (t
-        :$inaccessible-value$)))
+     (if (eq repr :value)
+         (multiple-value-bind (value available-p)
+             (read-frame-slot frame (first slot))
+           (unless available-p
+             (return-from read-frame-slot (values nil nil)))
+           (dolist (index (rest slot))
+             (setf value (elt value index)))
+           (values value t))
+         (values nil nil)))
     (t
-     ;; A register
-     (let* ((registers (fourth frame))
-            (cell (assoc slot registers)))
-       (if cell
-           (cdr cell)
-           :$inaccessible-value$)))))
+     (let ((cell (assoc slot (fourth frame))))
+       (values (cdr cell) (not (null cell)))))))
 
 (defun write-frame-slot (frame slot value &optional (repr :value))
   (typecase slot
@@ -259,13 +251,14 @@ Returns NIL if the function captures no variables."
      ;; Looks like: (environment-slot [parent-indices...] value-index)
      (case repr
        (:value
-        (loop
-           for (x . xs) on slot
-           for vec = (read-frame-slot frame x) then (if xs (elt vec x) vec)
-           when (null xs) do
-             (setf (elt vec x) value)
-             (loop-finish))
-        value)
+        (multiple-value-bind (vec available-p)
+            (read-frame-slot frame (first slot))
+          (unless available-p
+            (error "The closure environment is unavailable."))
+          (loop for (index . tail) on (rest slot)
+                if tail do (setf vec (elt vec index))
+                else do (setf (elt vec index) value))
+          value))
        (t
         (error "Cannot write to this variable. Unsupported representation ~S for environment access" repr))))
     (t
@@ -351,7 +344,12 @@ Returns NIL if the function captures no variables."
 (defun debugger-show-variables (frame)
   (loop
      for (name id location repr) in (frame-locals frame)
-     do (format t "  ~D ~S: ~S~%" id name (read-frame-slot frame location repr))))
+     do (multiple-value-bind (value available-p)
+            (read-frame-slot frame location repr)
+          (format t "  ~D ~S: " id name)
+          (if available-p
+              (format t "~S~%" value)
+              (format t "[unavailable]~%")))))
 
 (defun debugger-read-variable (frame id)
   (let ((info (find id (frame-locals frame) :key #'second)))
@@ -359,7 +357,11 @@ Returns NIL if the function captures no variables."
            (destructuring-bind (name id location repr)
                info
              (declare (ignore id))
-             (values (read-frame-slot frame location repr) name)))
+             (multiple-value-bind (value available-p)
+                 (read-frame-slot frame location repr)
+               (unless available-p
+                 (error "Variable ~S is unavailable." name))
+               (values value name))))
           (t
            (format t "Unknown variable id ~S." id)))))
 
@@ -573,10 +575,15 @@ Returns NIL if the function captures no variables."
            (entry (first debug-info))
            (layout (cdr (getf (cdr entry) :layout)))
            (frame (list nil fp)))
-      (loop for pair in regs
-            for location = (assoc (car pair) layout)
-            when location
-              do (setf (cdr pair) (read-frame-slot frame (second location) (third location))))))
+      (setf regs
+            (loop for pair in regs
+                  for location = (assoc (car pair) layout)
+                  when (or (null location)
+                           (multiple-value-bind (value available-p)
+                               (read-frame-slot frame (second location) (third location))
+                             (when available-p (setf (cdr pair) value))
+                             available-p))
+                    collect pair))))
   regs)
 
 (defun %map-backtrace (fn)
@@ -615,12 +622,9 @@ Returns NIL if the function captures no variables."
      collect (make-local-variable :name name :location location :representation repr)))
 
 (defun local-variable-value (frame local-variable)
-  (let ((value (read-frame-slot (frame-raw-data frame)
-                                (local-variable-location local-variable)
-                                (local-variable-representation local-variable))))
-    (if (eql value :$inaccessible-value$)
-        (values nil nil)
-        (values value t))))
+  (read-frame-slot (frame-raw-data frame)
+                   (local-variable-location local-variable)
+                   (local-variable-representation local-variable)))
 
 (defun frame-function (frame)
   "Return the function associated with frame.
@@ -645,7 +649,9 @@ executed, and the offset into it."
            for var in (frame-local-variables frame)
            when (eql (local-variable-name var) 'mezzano.clos::gf)
            do
-             (setf function (local-variable-value frame var))
+             (multiple-value-bind (value available-p)
+                 (local-variable-value frame var)
+               (when available-p (setf function value)))
              (return)))
       (values function actual-function offset))))
 
