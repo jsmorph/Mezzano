@@ -63,6 +63,8 @@ A compiled debug-3 fixture captures NIL and :$INACCESSIBLE-VALUE$ arguments in a
 
 A second named debug-3 fixture contains an unused FLET function HELPER that captures an argument and an ordinary variable HELPER holding 41.  Mouse selection checks separate `(FUNCTION HELPER)` and `HELPER` records, true availability flags, and the displayed closure and integer.  Continuation and another Listener form both return 42.
 
+A named, no-argument debug-3 target calls a NOTINLINE helper inside and after separate LET scopes for X=37 and Y=41.  Four condition stops and mouse frame selections check that each binding appears only inside its scope.  Proceed continues each stop, and both the target and the next Listener evaluation return 42.
+
 The driver tests both typed Proceed and the CONTINUE button for continuation.  `PROTECTED_STOP` optionally names a numeric stop ID whose state and next command ID must remain unchanged.  The result records browser errors and failed HTTP requests and response bodies, including across page reloads.  The driver records its session and releases its owned evaluations, stops, and session.
 
 ## Expired sessions

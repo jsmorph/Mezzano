@@ -1,5 +1,16 @@
 # Web UI development journal
 
+## Lexical scope boundaries in the browser: 2026-10-14
+
+The compiler correction records an empty local layout after a lexical scope ends.  The recommended browser case uses a named, compiled, no-argument debug-3 target with sequential LET bindings X=37 and Y=41.  Direct calls to a named helper declared NOTINLINE enter a condition stop inside and after each LET.  At each stop, mouse selection will identify the target frame and check the expected binding or its absence.  Four Proceed commands must finish with 42, followed by another Listener result 42.  The fixture will remove its named functions and release its records.  The direct calls follow the root agent's reproduced failure, avoiding extra inline-runtime bindings from an indirect observer call.  No product Web change is expected.
+
+- [x] Wait for the compiled scope correction, then run the focused browser suite.
+- [x] Inspect inside/outside scope captures and document exact results and cleanup.
+
+The focused Chromium suite passed all nineteen groups on the restored x86-64 compiler.  Its freshly compiled named target used debug 3, safety 3, and speed 1.  All four stops selected target frame 8: X was available as 37 inside its LET, neither X nor Y appeared after that LET, Y was available as 41 inside its LET, and neither appeared afterward.  The displayed rows matched the guest records.  All four scope captures were inspected.  Proceed completed each stop, and both the target and next Listener evaluation returned 42.  The driver released nineteen jobs, twenty-four stops, and its session.  Captured HTTP failures were the five deliberate validation errors, two frame-bound errors, and missing-default error.  No unexpected response occurred.  Evidence is `/tmp/listener-debugger-scopes-restored/result.json` and its adjacent log and captures.  These are new post-boot functions and stops.  Previously compiled functions retain their original debugger metadata.
+
+The separate browser check reloaded the catalog and verified the empty-layout and availability sentences, the stated pending lexical-scope work, and three frame-command excerpts in Document Examiner.  Peek listed 31 processes, and the Listener returned 42.  The check reported zero browser errors, released both owned jobs and its session, and closed Chromium.  All four product captures were inspected.  Evidence is `/tmp/debugger-scopes-postrestore-ui/result.json`.  Both runs and the separate checker source are preserved in `/tmp/debugger-web-scopes-evidence.tar.gz`.  The earlier CLOS acceptance run's extra HTTP 409 remains unexplained.
+
 ## Browser acceptance after CLOS changes: 2026-10-14
 
 The guest CLOS increment serializes method changes and dispatch-cache construction per generic function.  The recommended Web acceptance uses the existing focused and broad Chromium suites after guest restoration, followed by a catalog reload and Examiner, Peek, and Listener checks.  The Examiner check will verify the method-update mutex paragraph and its stated synchronization limits.  These tests create their own post-boot fixtures and release their records.  They check existing browser behavior under the changed guest implementation.  The root agent owns the concurrent CLOS and retained-stop restoration tests.  No product Web change is planned.

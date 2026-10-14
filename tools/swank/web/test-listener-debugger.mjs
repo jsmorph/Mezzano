@@ -318,6 +318,33 @@ try {
   assert.deepEqual((await completed(afterFunction)).values, ['42']);
   evidence.checks.push('Compiled debug-3 frame preserves an unused captured FLET HELPER and a separate variable HELPER as available values, then continuation and Listener reuse return 42');
 
+  const scopeTarget = marker + '-SCOPE-TARGET';
+  const scopeHelper = marker + '-SCOPE-STOP';
+  const scopeJob = await start(`(unwind-protect (progn (defun ${scopeHelper} (point) (declare (optimize (debug 3) (safety 3) (speed 1))) (cerror "Continue lexical-scope test." "${marker} ~A" point)) (defun ${scopeTarget} () (declare (optimize (debug 3) (safety 3) (speed 1)) (notinline ${scopeHelper})) (let ((x 37)) (declare (ignorable x)) (${scopeHelper} :inside-x)) (${scopeHelper} :after-x) (let ((y 41)) (declare (ignorable y)) (${scopeHelper} :inside-y)) (${scopeHelper} :after-y) 42) (assert (compiled-function-p (symbol-function '${scopeHelper}))) (assert (compiled-function-p (symbol-function '${scopeTarget}))) (${scopeTarget})) (dolist (name '(${scopeTarget} ${scopeHelper})) (when (fboundp name) (fmakunbound name)) (unintern name)))`);
+  evidence.lexicalScopes = [];
+  for (const [point, expected] of [['INSIDE-X', [['X', '37']]], ['AFTER-X', []], ['INSIDE-Y', [['Y', '41']]], ['AFTER-Y', []]]) {
+    const scopeStop = await stopped(scopeJob);
+    await browser.waitFor(`returnedResult('condition')?.includes(${text(marker + ' ' + point)}) && !stopCommandPending(selectedStop) && !busy`);
+    const targetFrame = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.startsWith(${text('#<Compiled-Function ' + scopeTarget + ' ')}))`);
+    assert(targetFrame > 0);
+    await clickText('#stop-detail', scopeTarget);
+    await frame(targetFrame);
+    const bindings = await browser.evaluate("(returnedFrameInspection().result.locals || []).filter(local => ['X', 'Y'].includes(local.name))");
+    assert.deepEqual(bindings.map(local => [local.name, local.value]), expected);
+    assert(bindings.every(local => local['available-p'] === true));
+    const displayed = await browser.evaluate("[...document.querySelectorAll('#stop-detail .locals tr')].map(row => row.textContent)");
+    for (const name of ['X', 'Y']) assert.equal(displayed.some(row => row.includes('(' + name + '):')), expected.some(binding => binding[0] === name));
+    evidence.lexicalScopes.push({point, stop: scopeStop.stop, frame: targetFrame, bindings});
+    await browser.evaluate('document.querySelector("#stop-detail .current-function").scrollIntoView({block: "center"})');
+    await save('lexical-scope-' + point.toLowerCase());
+    await command(':Proceed');
+    await browser.waitFor(`!same(listenerDebugger?.stop, ${text(scopeStop.stop)}) && !busy`);
+  }
+  assert.deepEqual((await completed(scopeJob)).values, ['42']);
+  const afterScopes = await start('(+ 20 22)');
+  assert.deepEqual((await completed(afterScopes)).values, ['42']);
+  evidence.checks.push('Direct NOTINLINE helper stops show X and Y only inside their separate LET scopes; four continuations and subsequent Listener evaluation return 42');
+
   const abort = await start(`(unwind-protect (cerror "Continue owned test." "${marker} abort") (write-string "${marker} abort cleanup"))`);
   await stopped(abort);
   const abortButton = await browser.evaluate(`(() => {
