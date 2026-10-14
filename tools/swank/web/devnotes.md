@@ -27,7 +27,17 @@ The revised focused run passed sixteen groups on the running x86-64 guest.  It r
 | Final broad Listener | `/tmp/listener-debugger-frames-broad-final.log` and `/tmp/listener-debugger-frames-broad-final/debugger-closed.png` |
 | Clear All rendering | `/tmp/clear-all-frame-fixtures/result.json` |
 
-The final closed-stop display change was tested by the broad suite after the focused run.  The attempted image restoration failed before SWANK became available, so the post-restore focused, Document Examiner, Peek, and Listener checks did not run.  The core investigation reported an index 19221225 access into a zero-length array in `%WEAK-FIND-HASH-TABLE-SLOT-1-STANDARD-EQL`, through GETHASH and CHECK-UPDATE-INSTANCE-FOR-DIFFERENT-CLASS-INITARGS, followed by a native-debugger serial-input panic.  The tested Web increment is committed independently.  Restoration and the post-restore checks remain unresolved.
+The final closed-stop display change was tested by the broad suite after the focused run.  The first attempted image restoration failed before SWANK became available, so the post-restore focused, Document Examiner, Peek, and Listener checks did not run then.  The core investigation reported an index 19221225 access into a zero-length array in `%WEAK-FIND-HASH-TABLE-SLOT-1-STANDARD-EQL`, through GETHASH and CHECK-UPDATE-INSTANCE-FOR-DIFFERENT-CLASS-INITARGS, followed by a native-debugger serial-input panic.  Commit 8506001b records the tested Web increment independently of that failed restoration.
+
+Acceptance review found that the existing focused driver covers frame navigation, nested Abort, and Listener reuse, while the broad driver covers recorded locals after closure.  The recommendation was to run both drivers after recovery, then the prepared Document Examiner, Peek, and Listener check.  This reuses the existing fixtures without duplicating the closed-stop case.  Browser requests remained paused until the core recovery reported readiness.
+
+After the pager correction in cc29387d and successful guest restoration, all three browser checks passed.  The focused driver passed sixteen groups and released its thirteen evaluations, eighteen stops, and session.  The broad driver passed twenty-nine groups, including labelled closed-stop locals and Listener reuse, and released its fixtures.  The separate UI check displayed six current frame-selection excerpts in Document Examiner, sampled thirty-one processes in Peek, and evaluated (+ 20 22) to 42 in the Listener.  That check reported zero browser errors and released its evaluation and session.  The focused and broad runs reported only their expected HTTP errors.  No product or test-source changes were required for these runs.  The guest save/restore assertions are recorded separately in the main development journal.
+
+| Post-restore test | Evidence |
+|---|---|
+| Focused debugger | `/tmp/listener-debugger-frames-restored/result.json` |
+| Broad Listener | `/tmp/listener-debugger-frames-broad-restored.log` |
+| Document Examiner, Peek, Listener | `/tmp/debugger-frames-postrestore-ui/result.json` |
 
 ## Scope and approved design: 2026-10-12
 
