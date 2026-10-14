@@ -10,6 +10,9 @@
 (define-condition probe-condition (condition) ())
 (define-condition probe-subcondition (probe-condition) ())
 (defvar *outer-handler-count* 0)
+(defvar *cleanup-count* 0)
+(defvar *after-body-count* 0)
+(defvar *after-inner-count* 0)
 
 (defun outer-handler (condition)
   (declare (ignore condition))
@@ -21,16 +24,23 @@
 
 (defun body-target (mode)
   (ecase mode
-    (:body (break "Owned control-record inspection."))
+    ((:body :throw :duplicate) (break "Owned control-record inspection."))
     (:handler (signal 'probe-subcondition)))
-  (values 42 43))
+  (if (member mode '(:throw :duplicate))
+      (throw 'inner-tag (values 42 43))
+      (values 42 43)))
 
 (defun application (mode)
   (handler-bind ((probe-condition #'outer-handler))
-    (catch 'outer-tag
-      (handler-bind ((probe-subcondition #'inner-handler))
-        (catch 'inner-tag
-          (body-target mode))))))
+    (catch (if (eq mode :duplicate) 'inner-tag 'outer-tag)
+      (multiple-value-prog1
+          (unwind-protect
+               (handler-bind ((probe-subcondition #'inner-handler))
+                 (catch 'inner-tag
+                   (multiple-value-prog1 (body-target mode)
+                     (incf *after-body-count*))))
+            (incf *cleanup-count*))
+        (incf *after-inner-count*)))))
 
 (defun observe ()
   (loop for frame across (d::service-stop-frames d::*service-current-stop*)
@@ -51,14 +61,14 @@
                   collect (list index (i::function-name (nth-value 1 (frame-function frame)))
                                 symbol value)))))
 
-(defun check-records (handler-p)
+(defun check-records (handler-p &optional duplicate-p)
   (let* ((rows (observe))
          (catches (remove 'r::*active-catch-handlers* rows :key #'third :test-not #'eq))
          (handlers (remove 'i::*active-handlers* rows :key #'third :test-not #'eq))
          (active (fourth (first handlers)))
          (types (mapcar (lambda (cluster) (mapcar #'car cluster)) active)))
     (assert (equal (mapcar (lambda (row) (svref (fourth row) 0)) catches)
-                   '(inner-tag outer-tag)))
+                   (if duplicate-p '(inner-tag inner-tag) '(inner-tag outer-tag))))
     (assert (every (lambda (row) (functionp (svref (fourth row) 1))) catches))
     (assert (every (lambda (row) (eq (second row) 'i::%catch)) catches))
     (let* ((introductions (if handler-p (rest handlers) handlers))
@@ -85,7 +95,8 @@
             rows)))
 
 (defun run-case (mode)
-  (setf *outer-handler-count* 0)
+  (setf *outer-handler-count* 0 *cleanup-count* 0
+        *after-body-count* 0 *after-inner-count* 0)
   (let* ((controller (make-debugger-controller))
          (job (start-evaluation-job
                (string-downcase (format nil "~32,'0X~32,'0X" (get-universal-time)
@@ -97,7 +108,7 @@
            (setf handle (test::await (lambda () (first (getf (evaluation-job-information job) :stops))))
                  lease (attach-debugger-stop handle controller))
            (frame::select-function handle lease (if (eq mode :handler) #'inner-handler #'body-target))
-           (let* ((source (format nil "(check-records ~S)" (eq mode :handler)))
+           (let* ((source (format nil "(check-records ~S ~S)" (eq mode :handler) (eq mode :duplicate)))
                   (before (test::command handle lease :evaluate source)))
              (format t "~S records: ~A~%" mode (first before))
              (mezzano.extensions:gc :full t)
@@ -112,6 +123,9 @@
              (assert (eq (getf info :state) :returned))
              (assert (equal (getf info :values) '("42" "43")) () "~S" info))
            (assert (= *outer-handler-count* (if (eq mode :handler) 1 0)))
+           (assert (= *cleanup-count* 1))
+           (assert (= *after-inner-count* 1))
+           (assert (= *after-body-count* (if (member mode '(:throw :duplicate)) 0 1)))
            (release-debugger-stop lease)
            (setf handle nil)
            (release-evaluation-job job)
@@ -125,5 +139,7 @@
 (defun run ()
   (run-case :body)
   (run-case :handler)
-  (format t "PASS control-record ownership, active handler contours, catch tags, GC, multiple values, and cleanup.~%")
+  (run-case :throw)
+  (run-case :duplicate)
+  (format t "PASS control-record ownership, active handler tails, repeated catch tags, GC, multiple-value THROW, unwind cleanup, and release.~%")
   t)

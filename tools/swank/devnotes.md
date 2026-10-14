@@ -2761,3 +2761,20 @@ Public catch and handler display remain unfinished.  Their next implementation m
 Review strengthened the observation fixture with direct EQ checks for shared handler-chain tails and assertions for the %CATCH, %HANDLER-BIND, and SIGNAL owning functions.  Repeat that strengthened fixture before committing it.
 
 The strengthened identity and ownership assertions passed, including full GC and both stopping contexts.  Evidence: debugger-control-records-identity.log, ending :CONTROL-RECORDS-OBSERVED.  The fixture released all owned records.
+
+
+## Captured control-target metadata: 2026-10-14
+
+Live inspection confirmed the omission: each %CATCH exit closure retained an environment vector with a control-context value, but its debug environment layout was ((NIL)).  The compiler's COMPUTE-ENVIRONMENT-LAYOUT-DEBUG-INFO writes NIL for BLOCK-INFORMATION and TAGBODY-INFORMATION.  Source scopes already retain each control binding's identity.  Evidence: debugger-catch-layout.log, ending :CATCH-LAYOUT-INSPECTED.  The owned stop/job/controller were released.
+
+Recommendation: retain captured block and tagbody identities in their existing closure-layout positions as two-element vectors: #(:block binding-descriptor) and #(:tagbody binding-descriptor).  Preserve variable entries and the surrounding metadata fields.  FRAME-LOCALS must skip control entries; a separate reader will resolve the captured context by binding identity and environment-vector path.  Old NIL entries continue to mean unavailable.  This changes debug metadata only, preserving closure allocation, calling conventions, GC layout, and unwind behavior.  Use the context's existing jump table to identify the target function and instruction offset.  This prepares catch destination display and captured lexical control transfer.  Locally optimized control targets still require their own compiler work.
+
+Expose Show Catch Blocks and Show Condition Handlers through the existing retained string-result commands, with the documented :All Boolean defaults.  Condition-handler inspection must report cluster introduction separately from SIGNAL's temporary tail binding and preserve active-at-entry status.  The Web client needs allowed operations, menu entries, typed Boolean validation, and its existing transcript renderer.
+
+Required tests: metadata serialization and compiled-file loading; variable-layout compatibility; nested/same-name captured blocks and tagbodies; DEBUG 0/1/3 availability; correct function/PC after GC and redefinition; catch display and nonlocal multiple values; handler introduction and inactivity during handler execution; command replay; unchanged history/selection; nested printer Abort; Chromium invocation and cleanup.  Ask for approval of the metadata extension before editing the compiler, under the current design-decision instruction.
+
+While metadata approval is pending, extend the existing control-record fixture to test repeated catch tags, nonlocal multiple-value THROW, and unwind cleanup using the current runtime.  A duplicate tag must select the inner catch.  The throw must bypass the body-return counter, preserve both values, run cleanup once, and reach the continuation after the inner catch.  These checks exercise existing semantics required by the approved control-transfer agenda and require no representation change.
+
+The existing-runtime tests passed with nested and repeated tags, both multiple values, one cleanup, a skipped body-return counter on THROW, and continuation after the inner catch.  Existing handler identity and full-GC cases also passed.  Evidence: debugger-control-transfer.log, ending :CONTROL-RECORDS-OBSERVED.  The test released its owned jobs, stops, and controllers.  The compiler metadata proposal still awaits approval.
+
+The prior work ended after completed increments while the authorized agenda remained unfinished.  Record the user's continuing instruction in both checkout AGENTS files: proceed from each tested and committed increment to the next unfinished item across commits, restarts, and compactions.  Completion requires the agenda's stated requirements and tests.

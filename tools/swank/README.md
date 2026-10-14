@@ -467,7 +467,7 @@ The control-record fixture observes internal catch and handler records through t
 (lispm-control-records-test:run)
 ```
 
-It checks nested catch tags and exit functions, handler-cluster identity and frame ownership, an ordinary BREAK, a BREAK within a selected handler, full GC, multiple-value continuation, and release of owned jobs and stops.  It uses the same test helpers and native x86-64 DEBUG 3 policy.  Public catch and handler display commands remain planned.  The fixture establishes evidence for their implementation.
+It checks nested and repeated catch tags, exit functions, handler-cluster identity and frame ownership, an ordinary BREAK, a BREAK within a selected handler, full GC, multiple-value THROW, unwind cleanup, continuation after the inner catch, and release of owned jobs and stops.  It uses the same test helpers and native x86-64 DEBUG 3 policy.  Public catch and handler display commands remain planned.  The fixture establishes evidence for their implementation.
 
 ## Inspection reference tests
 
