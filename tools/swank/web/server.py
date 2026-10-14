@@ -392,13 +392,26 @@ def operation_arguments(operation, args, session):
         command = string(args["command"])
         if command not in ("condition", "restarts", "frames", "locals", "current-frame", "select-frame",
                            "next-frame", "previous-frame", "top-frame", "bottom-frame", "proceed", "invoke-restart",
-                           "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "help"):
+                           "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "help",
+                           "inspect", "modify", "describe-object", "clear-inspection"):
             raise ValueError("Unsupported debugger command.")
         argument = args.get("argument")
         if command == "evaluate":
             argument = string(argument)
         elif command == "locals":
             argument = token(argument, "frame", session)
+        elif command in ("inspect", "modify"):
+            if argument is not None or command == "modify":
+                if not isinstance(argument, list) or len(argument) != 3:
+                    raise ValueError("Expected an Inspector reference, start, and count.")
+                reference = token(argument[0], "object" if command == "inspect" else "part", session)
+                start, count = integer(argument[1]), integer(argument[2])
+                if not 1 <= count <= 64:
+                    raise ValueError("Inspector count must be from 1 through 64.")
+                argument = [reference, start, count]
+        elif command == "describe-object":
+            if argument is not None:
+                argument = token(argument, "object", session)
         elif command in ("invoke-restart", "invoke-restart-interactively", "select-frame", "next-frame", "previous-frame"):
             argument = integer(argument)
         elif command == "invoke-restart-with-arguments":

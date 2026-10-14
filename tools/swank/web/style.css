@@ -65,6 +65,25 @@ textarea { display: block; border: 0; outline: none; padding: 0; resize: none; f
 .selected { outline: 1px solid #000; }
 .locals { border-collapse: collapse; margin: 8px 0 12px 16px; }
 .locals td { vertical-align: top; padding: 0 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.locals td:first-child { white-space: nowrap; }
+.inspector { border: 1px solid #000; margin: 12px 0; }
+.inspector > h3 { margin: 2px 4px; }
+.inspector-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-top: 1px solid #000; }
+.inspector-history { max-height: 120px; overflow: auto; padding: 2px 4px; }
+.inspector-history h3 { text-align: center; }
+.inspector-history button, .inspector-menu button { display: block; }
+.inspector-menu { border-left: 1px solid #000; padding: 2px; }
+.inspection-pane { border-top: 1px solid #000; padding: 2px 4px; }
+.inspection-title { font-weight: bold; }
+.inspection-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+.inspection-contents { max-height: 120px; overflow: auto; }
+.inspection-pane:last-child .inspection-contents { max-height: 240px; }
+.inspection-parts { width: 100%; border-collapse: collapse; }
+.inspection-parts th, .inspection-parts td { text-align: left; vertical-align: top; padding: 0 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.inspection-parts th { font-weight: normal; white-space: nowrap; }
+.inspection-parts td:last-child { width: 1%; white-space: nowrap; }
+.inspection-parts button { padding: 0; }
+.inspection-parts td:nth-child(2) button:disabled, .inspector-history button:disabled { text-decoration: none; }
 #mouse-documentation { margin-top: 3px; background: #000; color: #fff; min-height: 24px; padding: 0 2px; }
 #mouse-documentation div { min-height: 12px; overflow-wrap: anywhere; }
 #who-line { display: flex; justify-content: space-between; gap: 12px; min-height: 14px; align-items: start; flex-wrap: wrap; }

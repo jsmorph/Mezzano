@@ -132,6 +132,34 @@ class ProtocolTests(unittest.TestCase):
             server.integer(True)
 
 
+    def test_inspection_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        def submit(command, argument):
+            return server.operation_arguments("submit",
+                {"stop": stop, "id": 2, "command": command, "argument": argument}, session)[3]
+        for command in ("inspect", "describe-object", "clear-inspection"):
+            self.assertIsNone(submit(command, None))
+        self.assertEqual(submit("describe-object", [":object", session, 3]),
+                         [server.Symbol(":object"), session, 3])
+        for command, kind in (("inspect", "object"), ("modify", "part")):
+            reference = [":" + kind, session, 3]
+            for start, count in ((0, 1), (64, 32), (70, 64)):
+                argument = [reference, start, count]
+                self.assertEqual(submit(command, argument), argument)
+            for argument in (True, 3, [], [reference], [reference, 0, 1, 2],
+                             [reference, -1, 32], [reference, True, 32],
+                             [reference, 0, 0], [reference, 0, 65], [reference, 0, True],
+                             [[":frame", session, 3], 0, 32],
+                             [[":" + kind, "b" * 64, 3], 0, 32]):
+                with self.subTest(command=command, argument=argument), self.assertRaises(ValueError):
+                    submit(command, argument)
+        for command, argument in (("modify", None), ("clear-inspection", 0),
+                                  ("describe-object", [":part", session, 3]),
+                                  ("describe-object", 3)):
+            with self.subTest(command=command, argument=argument), self.assertRaises(ValueError):
+                submit(command, argument)
+
     def test_optional_argument_types(self):
         name = "a" * 64
         job = [":job", name, 1]

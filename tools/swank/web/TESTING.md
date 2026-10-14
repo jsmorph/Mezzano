@@ -57,6 +57,17 @@ The driver compiles and loads the checked-in description fixture.  It checks tha
 
 The driver releases its jobs, stops, session, and named function.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
+## Object Inspector
+
+The Inspector driver compiles a named DEBUG 3 target and navigates its arrays, cyclic cons cells, and instance slots through the browser.  It tests command completion, three retained panes, pagination and partial pages, history, reload, lexical replacement expressions, unbound slots, type and reader errors, interrupted input, and typed Abort.  Lost submission and input replies must replay once.  A completed store followed by a printer failure must remain effective without repeating its expression.  Refresh after an array shrinks must permit backward navigation.  Clear must expire old references while preserving the session and command ID, and a closed stop must retain disabled recorded panes.  Proceed and the following Listener expression must return the expected values.  Layout assertions require full local and component labels to fit on one line while long values wrap.  Disabled recorded values retain their readable text without action-button strike-through.
+
+```sh
+node tools/swank/web/test-inspector.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-inspector-test
+```
+
+The driver releases its named function and class, jobs, stops, and session.  It loads the checked-in description fixture for its failing printer.  Those shared fixture definitions remain loaded.  It creates fresh stops.  Saved-stop reference expiry requires the native restoration tests.
+
 ## Listener debugger input
 
 The focused debugger driver tests inline and standalone Help, completion and contextual help, guest nesting prompts, ordinary and nested Abort, and interactive restart arguments through retained evaluation input.  It tests SPACE completion of :Proceed, omitted and explicit Default selection, the Proceed button, restart indices and the default marker, and missing-default rejection followed by explicit interactive selection in the same session.  It distinguishes a restart that exits the stop from one that returns a command result while the stop remains active, including visible values, zero values, and normally returning Proceed and typed Abort operations.  Native mouse clicks spanning a monitor refresh check that unchanged Debugger and restart actions retain their DOM elements and receive the click.  The restart test also renders a pending replacement query and changes an unrelated stop row while the mouse button is pressed.  A held action queue tests immediate debugger-menu dismissal.  Its nested operation-error case reloads at the child stop, aborts that command, verifies the restored outer draft and selection, and continues the original computation.  It interrupts blocked restart argument readers from a condition stop and from an earlier interruption stop, aborts each child, and completes the original computation.  It checks that invalid no-argument and restart-index requests return HTTP 400 without advancing the stop's command ID.

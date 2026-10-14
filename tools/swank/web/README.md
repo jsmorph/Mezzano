@@ -76,6 +76,9 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Show Local All` | Displays the selected frame's local records. |
 | `:Show Local N` | Displays one local by its zero-based index. |
 | `:Show Proceed Options` | Lists restart choices. |
+| `:Inspect` | Inspects the primary value in this stop's evaluation history. |
+| `:Describe Last` | Describes that primary value. |
+| `:Clear Inspector` | Releases this stop's Inspector references and clears its displayed inspection history. |
 
 Input without an initial colon evaluates one Lisp form in the selected frame's lexical environment.  For example, `x` reads a binding, `(setq x 42)` writes it, and `(values x (helper))` returns multiple values.  Writes take effect immediately and must satisfy the binding's declared type and storage representation.  :Show Frame refreshes previously printed locals.  Evaluation sources and their printed results remain in command order, including across reload and stop closure.  Zero values display `(No values)`.
 
@@ -89,7 +92,17 @@ Each restart also has a :Proceed N :Arguments button.  It requests one Lisp expr
 
 Printing a condition or value can enter a child stop.  Interrupting a running debugger command also creates a child stop, including when its parent came from an earlier interruption.  The owning Listener follows that child, and :Abort returns to its parent without continuing the original computation.  Parent Stop and Child Stop navigate the relationship in the separate Debugger while the parent command remains running.  Closed stops retain previously queried results until Release Stop.  Closing a stop clears its selected frame and backtrace highlight.  The last returned frame inspection remains labelled as a recorded frame from the closed stop.
 
-The Web debugger currently exposes condition, frame, local, and restart inspection, interruption, lexical frame evaluation and writes, and restart invocation with interactive or explicit arguments.  Object browsing, source or disassembly views, and stepping remain unavailable.
+The Web debugger exposes condition, frame, local, and restart inspection, interruption, lexical frame evaluation and writes, object inspection and modification, and restart invocation with interactive or explicit arguments.  Source or disassembly views and stepping remain unavailable.
+
+### Object Inspector
+
+:Inspect opens the Inspector in the selected debugger stop.  Its History lists completed inspections, and three panes show the latest observations, with the newest at the bottom.  Click a component value to inspect it.  Each history entry identifies its component range.  Click the entry to inspect that object and range again.  More Above and More Below select component pages.  Refresh reads the displayed object and range again.  Describe returns its description in the debugger transcript.  Reload displays retained results without repeating these operations.
+
+Modify beside an editable component requests a Lisp expression through the evaluation's Input control.  The selected frame supplies lexical bindings.  The expression's primary value replaces that component, and the resulting inspection preserves the page size and position.  An unbound slot displays `<unbound>` and can still be writable.  A bound NIL displays `NIL` and can be inspected.  A type, reader, writer, or printer error enters a child debugger.  :Abort abandons that command and returns to the parent.  A completed store remains effective if later printing fails.  Refresh can inspect the changed object after recovery.
+
+Clear releases Inspector references and clears its displayed history.  It preserves recorded command outcomes for exact-request replay.  Closing a stop leaves its recorded panes visible with controls disabled.  References from a cleared Inspector or earlier boot cannot access current objects.  Clearing from another client can leave printed controls visible until use reports that their references expired.  Other threads can change shared objects between inspections.
+
+The Inspector displays cons cells, array elements, symbol fields, hash-table keys and values, and supported instance and structure slots.  The guest supplies the components and identifies writable places.  Each inspection is one bounded page.  The three panes can show successive pages or refreshes of one object.  This debugger-attached Inspector uses expression-based modification and fresh history navigation.  A standalone Inspector activity, Genera's middle/right-button operations, Return, Set backslash, function internals, and locatives remain unavailable.
 
 ## Document Examiner
 
@@ -146,9 +159,11 @@ When the guest reports an expired session, the browser creates a new session, ar
 
 Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
 
-Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, abort, proceed, help, invoke-restart, invoke-restart-interactively, and invoke-restart-with-arguments.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
+Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, and invoke-restart-with-arguments.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
 
 Evaluate requires one source string and returns an array of printed values, or null for zero values.  Evaluation and printing errors enter a child debugger.  Repeating an uncertain evaluation with the original command ID and source retrieves that command without evaluating it again.
+
+Inspect accepts null for the primary evaluation-history value, or `[object-token, start, count]`.  Modify requires `[part-token, start, count]`.  Start is nonnegative, and count is from 1 through 64.  The default inspection starts at zero with count 32.  Both return object, title, type, start, end, count, total, and parts.  End is exclusive.  Count preserves the requested size even on a partial page.  Each part supplies label, bound-p, value, object, and part.  Unbound values have null value and object fields.  A part token is present only for writable places.  Object and part tokens use the existing three-element session-token representation.  Describe-object accepts an object token or null and returns a string.  Clear-inspection takes no argument.
 
 Invoke-restart and invoke-restart-interactively require a restart index.  Invoke-restart calls the restart with zero arguments.  Invoke-restart-interactively runs its interactive argument reader.  Invoke-restart-with-arguments accepts an index or null for the default and reads an argument-list expression through QUERY-IO.  Abort, Proceed, and Help take no argument.  Proceed selects the first captured CL:CONTINUE restart and invokes it interactively.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
 

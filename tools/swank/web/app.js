@@ -95,6 +95,8 @@ function report(error) {
       ? "No default CONTINUE restart. Choose a restart or use :Proceed N."
     : error.reason === ":invalid-frame"
       ? "The requested frame is outside this stack. The current frame is unchanged."
+    : [":released-inspection-reference", ":expired-inspection-reference"].includes(error.reason)
+      ? "This Inspector reference is no longer valid. Inspect the value again."
     : error.message || String(error));
   if (error.reason === ":expired-session") connected = false;
   $("process-state").textContent = connected ? "Request Error" : "Disconnected";
@@ -877,6 +879,99 @@ function returnedFrameInspection() {
 function returnedResult(commandName) {
   return returnedInspection(commandName)?.result ?? null;
 }
+function returnedInspections(stop = selectedStop) {
+  const commands = state.commands.filter(command => same(command.stop, stop));
+  const cleared = commands.findLast(command => command.command === "clear-inspection"
+    && commandResults.get(commandKey(command))?.state === ":returned");
+  return commands.filter(command => (!cleared || command.id > cleared.id)
+    && ["inspect", "modify"].includes(command.command)
+    && commandResults.get(commandKey(command))?.state === ":returned")
+    .map(command => ({command, result: commandResults.get(commandKey(command)).result}));
+}
+function inspectionRange(result) {
+  return result.start === result.end ? "No components on this page (" + result.total + " total)"
+    : "Components " + result.start + "–" + (result.end - 1) + " of " + result.total;
+}
+function renderInspector(stop, info, available, control, controls) {
+  const records = returnedInspections(stop);
+  if (!records.length && !state.commands.some(command => same(command.stop, stop)
+      && command.command === "clear-inspection"
+      && commandResults.get(commandKey(command))?.state === ":returned")) return null;
+  const prefix = JSON.stringify(stop) + ":inspector:";
+  function element(key, tag, className) {
+    key = prefix + key;
+    const result = stopControls.get(key) || node(tag, undefined, className);
+    controls.set(key, result);
+    return result;
+  }
+  function action(key, title, command, argument, help) {
+    const result = control(prefix + key, title, () => submit(stop, command, argument), help);
+    result.disabled = !available;
+    return result;
+  }
+  const panel = element("panel", "section", "inspector");
+  panel.setAttribute("aria-label", "Object Inspector");
+  const header = element("header", "div", "inspector-header");
+  const history = element("history", "div", "inspector-history");
+  history.setAttribute("aria-label", "Inspector history");
+  const entries = records.map(({command, result}) => action("history:" + command.id,
+    inspectionRange(result) + ": " + result.title, "inspect", [result.object, result.start, result.count],
+    "Mouse-Left: Inspect this object and recorded component range again."));
+  reconcileChildren(history, [node("h3", "History"), ...entries]);
+  const menu = element("menu", "div", "inspector-menu");
+  reconcileChildren(menu, [
+    action("inspect", "Inspect Last", "inspect", null, "Mouse-Left: Inspect the primary evaluation-history value."),
+    action("describe", "Describe Last", "describe-object", null, "Mouse-Left: Describe the primary evaluation-history value."),
+    action("clear", "Clear", "clear-inspection", null, "Mouse-Left: Release Inspector references and clear its displayed history.")
+  ]);
+  reconcileChildren(header, [history, menu]);
+  const children = [node("h3", info.state === ":closed" ? "Inspector: recorded objects from this closed stop" : "Inspector"), header];
+  if (!records.length) children.push(node("p", "No retained Inspector objects."));
+  for (const {command, result} of records.slice(-3)) {
+    const key = "page:" + command.id;
+    const pane = element(key, "section", "inspection-pane");
+    pane.dataset.commandId = command.id;
+    pane.setAttribute("aria-label", "Inspection " + command.id);
+    const toolbar = element(key + ":toolbar", "div", "inspection-toolbar");
+    const previous = action(key + ":previous", "More Above", "inspect",
+      [result.object, Math.max(0, result.start - result.count), result.count],
+      "Mouse-Left: Inspect the preceding component page.");
+    previous.disabled ||= result.start === 0;
+    const next = action(key + ":next", "More Below", "inspect",
+      [result.object, result.end, result.count], "Mouse-Left: Inspect the following component page.");
+    next.disabled ||= result.end >= result.total;
+    reconcileChildren(toolbar, [
+      action(key + ":refresh", "Refresh", "inspect", [result.object, result.start, result.count],
+        "Mouse-Left: Read this object and component range again."),
+      action(key + ":describe", "Describe", "describe-object", result.object,
+        "Mouse-Left: Describe this retained object."), previous, next,
+      node("span", inspectionRange(result))
+    ]);
+    const table = element(key + ":parts", "table", "inspection-parts");
+    table.setAttribute("aria-label", "Object components");
+    const rows = (result.parts || []).map((part, index) => {
+      const partKey = key + ":part:" + index;
+      const row = element(partKey, "tr");
+      const value = element(partKey + ":value", "td");
+      reconcileChildren(value, part["bound-p"] && part.object != null
+        ? [action(partKey + ":inspect", part.value, "inspect", [part.object, 0, result.count],
+          "Mouse-Left: Inspect this component value.")]
+        : [node("span", part["bound-p"] ? part.value : "<unbound>")]);
+      const modify = element(partKey + ":modify", "td");
+      reconcileChildren(modify, part.part == null ? [] : [action(partKey + ":write", "Modify", "modify",
+        [part.part, result.start, result.count], "Mouse-Left: Read a Lisp expression for this component's new value.")]);
+      reconcileChildren(row, [node("th", part.label), value, modify]);
+      return row;
+    });
+    reconcileChildren(table, rows);
+    const contents = element(key + ":contents", "div", "inspection-contents");
+    reconcileChildren(contents, [table]);
+    reconcileChildren(pane, [node("pre", result.title, "inspection-title"), node("pre", result.type), toolbar, contents]);
+    children.push(pane);
+  }
+  reconcileChildren(panel, children);
+  return panel;
+}
 function debuggerAction(action) {
   return async () => {
     await action();
@@ -992,7 +1087,8 @@ function renderStops() {
     inspect.disabled = !available;
     menuChildren.push(inspect);
     for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All",
-                        ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack"]) {
+                        ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
+                        ":Inspect", ":Describe Last", ":Clear Inspector"]) {
       const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
       command.disabled = !available;
       menuChildren.push(command);
@@ -1002,6 +1098,8 @@ function renderStops() {
   if (help !== null) detailChildren.push(node("pre", help, "debugger-help"));
   const condition = returnedResult("condition");
   if (condition !== null) detailChildren.push(node("pre", condition, "condition"));
+  const inspector = renderInspector(selectedStop, info, available, control, controls);
+  if (inspector) detailChildren.push(inspector);
   const frameInspection = returnedFrameInspection();
   if (frameInspection) {
     const {command: request, result: frame} = frameInspection;
@@ -1079,6 +1177,11 @@ function renderStops() {
       evaluation.append(node("pre", result?.state === ":returned"
         ? (values.length ? values.join("\n") : "(No values)") : label(result?.state), "evaluation-values"));
       detailChildren.push(evaluation);
+    } else if (command.command === "describe-object") {
+      const description = node("div", undefined, "debugger-description");
+      description.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
+        node("pre", result?.state === ":returned" ? result.result : label(result?.state), "description-result"));
+      detailChildren.push(description);
     } else if (!result || result.state === ":pending" || result.state === ":running") {
       detailChildren.push(node("p", command.command + ": " + label(result?.state)));
     }
