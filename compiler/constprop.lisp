@@ -372,6 +372,18 @@
            (constant-fold form (name form) (arguments form)))
       form))
 
+(defun copy-propagated-value (value reference)
+  (let ((copy (copy-form value))
+        (environment (ast-source-environment reference)))
+    (labels ((set-environment (form)
+               (setf (ast-source-environment form) environment)
+               (etypecase form
+                 ((or ast-quote ast-function ast-variable-reference lambda-information))
+                 (ast-the (set-environment (value form)))
+                 (ast-call (mapc #'set-environment (arguments form))))))
+      (set-environment copy))
+    copy))
+
 (defmethod cp-form ((form ast-variable-reference))
   (let ((val (assoc (ast-reference-variable form) *known-variables*)))
     (cond (val
@@ -380,7 +392,7 @@
              (incf (getf (lambda-information-plist (unwrap-the (second val))) 'copy-count 0)))
            (decf (lexical-variable-use-count (ast-reference-variable form)))
            (incf (third val))
-           (copy-form (second val)))
+           (copy-propagated-value (second val) form))
           (t form))))
 
 (defmethod cp-form ((form lambda-information))

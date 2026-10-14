@@ -13,6 +13,11 @@
 (defun call-thunk (thunk)
   (funcall thunk))
 
+(declaim (inline inline-scope))
+(defun inline-scope (x)
+  (scope-point :inlined x)
+  x)
+
 (defun nodes (tree)
   (let ((result '()))
     (labels ((walk (node)
@@ -35,7 +40,31 @@
                     (walk (second statement))))
                  (c::ast-call (mapc #'walk (c::ast-arguments node)))
                  (c::ast-the (walk (c::ast-value node)))
-                 ((or c::ast-go c::ast-quote c::ast-function c::ast-variable-reference)
+                 (c::ast-if
+                  (walk (c::ast-test node))
+                  (walk (c::ast-if-then node))
+                  (walk (c::ast-if-else node)))
+                 (c::ast-go (walk (c::ast-info node)))
+                 (c::ast-return-from
+                  (walk (c::ast-info node))
+                  (walk (c::ast-value node)))
+                 (c::ast-setq (walk (c::ast-value node)))
+                 (c::ast-multiple-value-bind
+                  (walk (c::ast-value-form node))
+                  (walk (c::ast-body node)))
+                 (c::ast-multiple-value-call
+                  (walk (c::ast-function-form node))
+                  (walk (c::ast-value-form node)))
+                 (c::ast-multiple-value-prog1
+                  (walk (c::ast-value-form node))
+                  (walk (c::ast-body node)))
+                 (c::ast-unwind-protect
+                  (walk (c::protected-form node))
+                  (walk (c::cleanup-function node)))
+                 (c::ast-jump-table
+                  (walk (c::ast-value node))
+                  (mapc #'walk (c::targets node)))
+                 ((or c::ast-quote c::ast-function c::ast-variable-reference)
                   nil))))
       (walk tree))
     (nreverse result)))
@@ -241,6 +270,117 @@
                            (third case))))))))
   (format t "PASS individual lexical references, nested occurrence scopes, copying, generated expressions, optimizer identity, closure writes, nonlocal exits, and compilation policies.~%"))
 
+(defun check-propagation-scope ()
+  (let ((c::*optimize-policy* '(debug 0 safety 3 speed 1)))
+    (dolist (initializer '(x (the fixnum x) 42 (function identity) (byte x 0)
+                          (lambda (a &optional (b x))
+                            (scope-point :lambda a b x))))
+      (let* ((tree (c::pass1-lambda
+                    `(lambda (x)
+                        (declare (ignorable x))
+                        (let ((z ,initializer))
+                          (let ((x 9) (y 42))
+                            (declare (ignorable x))
+                            (scope-point :use z y)
+                            y)))
+                    nil))
+             (use (point :use tree))
+             (reference (second (c::ast-arguments use)))
+             (environment (c::ast-source-environment reference))
+             (outer-x (first (c::lambda-information-required-args tree)))
+             (before
+               (mapcar (lambda (node) (cons node (c::ast-source-environment node)))
+                       (nodes tree))))
+        (c::constprop tree (c::canonicalize-target :x86-64))
+        (let* ((value (second (c::ast-arguments (point :use tree))))
+               (unwrapped (c::unwrap-the value)))
+          (assert (not (eq value reference)))
+          (assert (eq (c::ast-source-environment value) environment))
+          (assert (eq (c::ast-source-environment unwrapped) environment))
+          (dolist (entry before)
+            (assert (eq (c::ast-source-environment (car entry)) (cdr entry))))
+          (etypecase unwrapped
+            (c::ast-variable-reference
+             (assert (eq (c::ast-reference-variable unwrapped) outer-x))
+             (assert (not (eq (c::lookup-variable-in-environment 'x environment)
+                              outer-x))))
+            (c::ast-quote (assert (= (c::ast-value unwrapped) 42)))
+            (c::ast-function (assert (eq (c::ast-name unwrapped) 'identity)))
+            (c::ast-call
+             (assert (eq (c::ast-name unwrapped) 'byte))
+             (dolist (argument (c::ast-arguments unwrapped))
+               (assert (eq (c::ast-source-environment argument) environment)))
+             (assert (eq (c::ast-reference-variable
+                          (first (c::ast-arguments unwrapped)))
+                         outer-x)))
+            (c::lambda-information
+             (let* ((body-env (c::ast-source-environment (point :lambda unwrapped)))
+                    (argument (first (c::lambda-information-required-args unwrapped)))
+                    (default (second (first (c::lambda-information-optional-args unwrapped)))))
+               (assert (eq (c::lookup-variable-in-environment 'x body-env) outer-x))
+               (assert (eq (c::lookup-variable-in-environment 'a body-env) argument))
+               (assert (typep (c::lookup-variable-in-environment 'y body-env)
+                              'c::special-variable))
+               (assert (eq (c::lookup-variable-in-environment
+                            'a (c::ast-source-environment default))
+                           argument))))))
+        (assert (= (funcall (c::compile-ast tree) 7) 42)))))
+  (format t "PASS propagated value occurrence scopes, shadowing, lambda definition scopes, copied bindings, and initializer preservation.~%")
+  t)
+
+(defun check-lowered-scope ()
+  (dolist (debug '(0 3))
+    (dolist (compilation-speed '(1 3))
+      (let* ((c::*optimize-policy*
+               (list 'debug debug 'safety 3 'speed 1
+                     'compilation-speed compilation-speed))
+             (tree (make-tree))
+             (environments
+               (loop for tag in '(:outer :inner :after-tag :after)
+                     collect (cons tag (c::ast-source-environment (point tag tree)))))
+             (lowered (c::compile-lambda-2 tree)))
+        (dolist (entry environments)
+          (assert (eq (c::ast-source-environment (point (car entry) lowered))
+                      (cdr entry))))
+        (assert (= (funcall (c::codegen-lambda lowered) 42) 42)))
+      (let* ((c::*optimize-policy*
+               (list 'debug debug 'safety 3 'speed 1
+                     'compilation-speed compilation-speed))
+             (tree (c::pass1-lambda
+                    '(lambda (x)
+                       (let ((reader (lambda ()
+                                       (scope-point :closed x)
+                                       x)))
+                         (call-thunk reader)))
+                    nil))
+             (environment (c::ast-source-environment (point :closed tree)))
+             (binding (first (c::lambda-information-required-args tree)))
+             (lowered (c::compile-lambda-2 tree)))
+        (let ((after (c::ast-source-environment (point :closed lowered))))
+          (dolist (slot '(c::%variables c::%functions c::%blocks c::%go-tags
+                          c::%variable-type-decls c::%inline-decls c::%optimize))
+            (assert (equal (slot-value after slot) (slot-value environment slot))))
+          (assert (eq (c::lookup-variable-in-environment 'x after) binding))
+          (assert (typep (c::lookup-variable-in-environment 'reader after)
+                         'c::special-variable)))
+        (assert (= (funcall (c::codegen-lambda lowered) 42) 42))))
+    (let* ((c::*optimize-policy* (list 'debug debug 'safety 3 'speed 1))
+           (lowered (c::compile-lambda-1
+                     '(lambda (caller)
+                        (scope-point :caller caller)
+                        (inline-scope caller))))
+           (caller-env (c::ast-source-environment (point :caller lowered)))
+           (callee-env (c::ast-source-environment (point :inlined lowered))))
+      (assert (typep (c::lookup-variable-in-environment 'caller caller-env)
+                     'c::lexical-variable))
+      (assert (typep (c::lookup-variable-in-environment 'caller callee-env)
+                     'c::special-variable))
+      (assert (typep (c::lookup-variable-in-environment 'x callee-env)
+                     'c::lexical-variable))
+      (assert (= (funcall (c::codegen-lambda lowered) 42) 42))))
+  (format t "PASS source scopes after AST optimization and lowering, closure binding identity, and separate inlined function scope.~%")
+  t)
+
 (defvar *restore-tree* nil)
 
 (defun prepare-restore-test ()
@@ -257,6 +397,8 @@
   t)
 
 (defun run ()
+  (check-lowered-scope)
+  (check-propagation-scope)
   (check-references)
   (check-reference-execution)
   (check-environment-states)
