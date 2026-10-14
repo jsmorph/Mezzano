@@ -73,6 +73,7 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Top Of Stack` | Selects frame zero. |
 | `:Bottom Of Stack` | Selects the last frame. |
 | `:Show Frame` | Displays the selected function and available locals. |
+| `:Show Arglist` | Displays the selected compiled function's argument list, preserving the active definition after redefinition. |
 | `:Show Local All` | Displays the selected frame's local records. |
 | `:Show Local N` | Displays one local by its zero-based index. |
 | `:Show Proceed Options` | Lists restart choices. |
@@ -83,6 +84,8 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 Input without an initial colon evaluates one Lisp form in the selected frame's lexical environment.  For example, `x` reads a binding, `(setq x 42)` writes it, and `(values x (helper))` returns multiple values.  Writes take effect immediately and must satisfy the binding's declared type and storage representation.  :Show Frame refreshes previously printed locals.  Evaluation sources and their printed results remain in command order, including across reload and stop closure.  Zero values display `(No values)`.
 
 Each debugger stop has separate `+`, `++`, and `+++` form history, `*`, `**`, and `***` primary-value history, and `/`, `//`, and `///` lists of returned values.  `-` holds the current form.  An evaluation error enters a child debugger.  Typed :Abort abandons that evaluation and returns to the parent.  Read-time evaluation is disabled, and the source must contain exactly one form.  Frames without lexical scope information reject evaluation.  The stopped thread's current special bindings apply.  Selecting an older frame does not reconstruct its former dynamic bindings.  References to a live frame expire when its stop exits or the image restarts.
+
+:Show Arglist displays the argument list stored with the selected compiled function.  An empty list displays NIL.  Missing metadata produces an explicit unavailable message.  The command preserves frame selection and evaluation history, and its printed result survives reload.
 
 The guest retains the current frame for each stop across browser reload and reconnection.  A child stop starts at frame zero and has its own selection.  Clicking a backtrace row selects that frame.  Next and Previous default to one frame.  Zero redisplays the current frame.  A target outside the stack reports an error and preserves the selection.  Repeating an uncertain navigation request with its original command ID moves once.  If printing a frame enters a child debugger, :Abort abandons that inspection and preserves the guest's selected index.  The browser waits for another explicit frame command before retrying the failed inspection.  Selection by another controller updates the highlight.  When the retained result does not match, :Show Frame requests its locals.
 
@@ -159,7 +162,9 @@ When the guest reports an expired session, the browser creates a new session, ar
 
 Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
 
-Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, and invoke-restart-with-arguments.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
+Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, and arglist.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
+
+Arglist takes no argument and returns the guest-formatted signature or unavailable message as a string.
 
 Evaluate requires one source string and returns an array of printed values, or null for zero values.  Evaluation and printing errors enter a child debugger.  Repeating an uncertain evaluation with the original command ID and source retrieves that command without evaluating it again.
 

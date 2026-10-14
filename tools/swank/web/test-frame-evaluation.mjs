@@ -130,7 +130,7 @@ try {
   assert.deepEqual((await completed(setup)).values, [':DESCRIPTION-FIXTURE-LOADED']);
   await browser.evaluate('document.querySelector("#interactive").checked = true');
   const target = marker + '-TARGET';
-  targetJob = await start(`(unwind-protect (progn (defun ${target} () (declare (optimize (debug 3) (safety 3) (speed 1))) (let ((x 37)) (declare (type fixnum x)) (let ((outer (lambda () x))) (let ((x 38)) (declare (type fixnum x)) (flet ((x () x) (bump () (incf x))) (symbol-macrolet ((alias x)) (macrolet ((twice (value) (list '+ value value))) (break "${marker} lexical evaluation") (values x (x) alias (funcall outer))))))))) (assert (compiled-function-p (symbol-function '${target}))) (${target})) (when (fboundp '${target}) (fmakunbound '${target})) (unintern '${target}))`);
+  targetJob = await start(`(unwind-protect (progn (defun ${target} (required &optional optional &key key) (declare (ignore required optional key) (optimize (debug 3) (safety 3) (speed 1))) (let ((x 37)) (declare (type fixnum x)) (let ((outer (lambda () x))) (let ((x 38)) (declare (type fixnum x)) (flet ((x () x) (bump () (incf x))) (symbol-macrolet ((alias x)) (macrolet ((twice (value) (list '+ value value))) (break "${marker} lexical evaluation") (values x (x) alias (funcall outer))))))))) (assert (compiled-function-p (symbol-function '${target}))) (${target} 1 2 :key 3)) (when (fboundp '${target}) (fmakunbound '${target})) (unintern '${target}))`);
   const parent = await stopped(targetJob);
   evidence.parent = parent;
   evidence.frame = await selectTarget();
@@ -145,7 +145,29 @@ try {
   evidence.checks.push('Selected compiled frame reads shadowed variables, same-name function, symbol macro, local macro, and captured outer binding; writes update the shared inner cell');
 
   await evaluation('(values 10 20)', ['10', '20']);
+  const expectedArglist = `The argument list for ${target} is (REQUIRED &OPTIONAL OPTIONAL &KEY KEY).`;
+  await fill('#source', ':Show Arg');
+  await key(' ', 'Space', 32);
+  await browser.waitFor("document.querySelector('#source').value.startsWith(':Show Arglist') && !busy");
+  await key('Enter', 'Enter', 13);
+  await browser.waitFor("latestCommand('arglist') && commandResults.get(commandKey(latestCommand('arglist')))?.state === ':returned' && !busy");
+  assert.equal(await browser.evaluate("document.querySelector('.arglist-result').textContent"), expectedArglist);
+  const firstArglist = await browser.evaluate("latestCommand('arglist').id");
+  const replacementJob = randomBytes(32).toString('hex');
+  jobs.push(replacementJob);
+  await browser.evaluate(`mutate('start-evaluation', ${text({name:replacementJob,
+    source:`(progn (defun ${target} (replacement) replacement) :definition-replaced)`,package:'CL-USER'})})`);
+  assert.deepEqual((await completed(replacementJob)).values, [':DEFINITION-REPLACED']);
+  await browser.click('#window-label');
+  await clickText('#debugger-menu', ':Show Arglist');
+  await browser.waitFor(`latestCommand('arglist')?.id > ${firstArglist} && commandResults.get(commandKey(latestCommand('arglist')))?.state === ':returned' && !busy`);
+  evidence.arglists = await browser.evaluate("[...document.querySelectorAll('.arglist-result')].map(element => element.textContent)");
+  assert.deepEqual(evidence.arglists, [expectedArglist, expectedArglist]);
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), evidence.frame);
+  await browser.evaluate("[...document.querySelectorAll('.arglist-result')].at(-1).scrollIntoView({block:'center'})");
+  await save('arglist-active-definition');
   await evaluation('(values * / + -)', ['10', '(10 20)', '(VALUES 10 20)', '(VALUES * / + -)']);
+  evidence.checks.push('Show Arglist completion and typed/menu commands report the active compiled signature after global redefinition without changing selected frame or evaluation history');
   await evaluation('(values)', []);
   await evaluation('(values * /)', ['NIL', 'NIL']);
   const beforeReload = await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)");
@@ -154,6 +176,7 @@ try {
   await browser.waitFor(`performance.timeOrigin !== ${origin} && document.readyState === 'complete' && connected && !busy`);
   await stopped(targetJob);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)"), beforeReload);
+  assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.arglist-result')].map(element => element.textContent)"), evidence.arglists);
   evidence.checks.push('Multiple and zero values, per-stop history, and ordered retained form results survive browser reload');
 
   await rejected('(setq x "wrong")', /FIXNUM/, true);
