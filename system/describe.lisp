@@ -176,30 +176,12 @@
           object (lisp-object-address object)))
 
 (defmethod describe-object ((object standard-object) stream)
-  (format stream "A Closette object~%~
-             Printed representation: ~A~%~
-             Class: ~S~%~
-             Structure~%"
-          (handler-case
-              (format nil "~S" object)
-            (error ()
-              (with-output-to-string (s)
-                (print-unreadable-object (object s :type t :identity t)
-                  (format s "<<error printing object>>")))))
-          (class-of object))
-  (dolist (sn (mapcar #'mezzano.clos:slot-definition-name
-                      (mezzano.clos:class-slots (class-of object))))
-    (if (slot-boundp object sn)
-        (format stream "    ~S <- ~A~%"
-                sn
-                (let ((value (slot-value object sn)))
-                  (handler-case
-                      (format nil "~S" value)
-                    (error ()
-                      (with-output-to-string (s)
-                        (print-unreadable-object (value s :type t :identity t)
-                          (format s "<<error printing object>>")))))))
-        (format stream "    ~S <- not bound~%" sn))))
+  (format stream "~S~%Class: ~S~%Slots~%" object (class-of object))
+  (dolist (slot (mezzano.clos:class-slots (class-of object)))
+    (let ((name (mezzano.clos:slot-definition-name slot)))
+      (if (slot-boundp object name)
+          (format stream "    ~S <- ~S~%" name (slot-value object name))
+          (format stream "    ~S <- not bound~%" name)))))
 
 (defun describe (object &optional stream)
   (describe-object object (case stream

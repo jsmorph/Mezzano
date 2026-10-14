@@ -65,7 +65,7 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [x] Complete interruption of debugger operations and correct frame capture for interrupted frameless functions.  Validate caller locals, moving GC, nested interruption, and input recovery in the browser before extending frame evaluation.  Register-local inspection remains separate work.
 - [x] Add guest-owned frame selection and navigation.
 - [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
-- [ ] Add live frame evaluation and writes, per-level evaluation history, and frame-environment lifetime checks.
+- [x] Add live frame evaluation and writes, per-level evaluation history, and frame-environment lifetime checks.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
 - [ ] Add retained object inspection and mutation with explicit reference lifetimes.
 - [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
@@ -262,11 +262,11 @@ Tracing applies to calls through the named function's reference in every thread.
 
 ## Frame evaluation
 
-The `:evaluate` debugger operation reads one Lisp form and evaluates it in the selected frame's lexical environment.  Its argument is a source string; its result is a list of printed values, including an empty list for zero values.  Reading disables reader evaluation.  Execution uses the stopped thread's package, dynamic bindings, and retained streams.
+The `:evaluate` debugger operation reads one Lisp form and evaluates it in the selected frame's lexical environment.  Its argument is a source string.  Its result is a list of printed values, including an empty list for zero values.  Reading disables reader evaluation.  Execution uses the stopped thread's package, dynamic bindings, and retained streams.
 
 Lexical variables and local functions resolve by binding identity in the selected instruction's scope.  Symbol macros and local macro definitions retain their source meaning.  SETQ and SETF write the live binding immediately, including a cell shared with compiled closures.  The setter checks the binding's source declaration and storage representation before writing.  A resumed computation observes the changed binding.
 
-A scope with unavailable metadata rejects evaluation.  A known binding with unavailable storage rejects access to that binding, while other expressions in the same scope can run.  Constant and unsupported locations reject writes.  These conditions enter a child debugger, where :Abort abandons the expression and restores the enclosing stop.  Reader, evaluator, and result-printer conditions use the same command boundary.
+A scope with unavailable metadata rejects evaluation.  A known binding with unavailable storage rejects access to that binding, while other expressions in the same scope can run.  Constant and unsupported locations reject writes.  These conditions enter a child debugger, where :Abort abandons the expression and restores the enclosing stop.  Reader, evaluator, and result-printer conditions use the same command boundary.  DESCRIBE propagates errors from an object's printer or its slot-value printers through that boundary.
 
 Each debugger level has separate `+`, `++`, `+++`, `*`, `**`, `***`, `/`, `//`, and `///` histories, initially NIL.  The variable `-` holds the current form.  A normally returning evaluation updates the histories before printing.  An aborted evaluation leaves automatic value history unchanged.  Nested debugging preserves its parent's history.
 

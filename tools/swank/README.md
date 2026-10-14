@@ -426,6 +426,13 @@ Load the debugger-service fixture first for its test helpers.  The test checks s
 
 For a saved-stop test, call `(lispm-frame-evaluation-test:prepare-restore-test)` before saving the image and `(lispm-frame-evaluation-test:finish-restore-test)` after restoration.  This checks preserved selection, value history, and changed bindings, expired old stop/frame references and frame-backed closures, fresh evaluation after full GC, Proceed, and shared compiled closures.  The fixture releases its stop and retained test objects.
 
+The description fixture checks propagation of the original printer condition from an object or slot value, ordinary bound/unbound slot output, stream designators, and zero return values:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DESCRIBE.LISP"))
+(lispm-describe-test:run)
+```
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:
