@@ -157,7 +157,7 @@ the data. Free the page with FREE-PAGE when done."
                   (count-block-reservations entry (1- level)))))
 
 (defun block-reservation-statistics ()
-  (with-snapshot-inhibited ()
+  (with-pseudo-atomic
     (with-rw-lock-read (*vm-lock*)
       (values (count-block-reservations)
               *store-fudge-factor*

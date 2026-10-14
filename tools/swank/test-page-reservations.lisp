@@ -48,7 +48,7 @@
   (format t "PASS snapshot retry after full collection.~%")
   (values))
 
-(defun snapshot-with-reader ()
+(defun call-with-reservation-reader (function description)
   (let ((done nil) (failure nil) (samples 0) (thread nil))
     (unwind-protect
          (progn
@@ -62,20 +62,34 @@
                                  (sleep 0.01))
                       (error (condition) (setf failure condition))))
                   :name "Snapshot reservation reader"))
-           (request-snapshot-with-retry)
-           (mezzano.supervisor:wait-for-snapshot-completion))
+           (let ((deadline (+ (get-internal-real-time)
+                              (* 2 internal-time-units-per-second))))
+             (loop until (or (plusp samples) failure)
+                   do (assert (< (get-internal-real-time) deadline))
+                      (sleep 0.001)))
+           (when failure (error failure))
+           (funcall function))
       (setf done t)
       (when thread (mezzano.supervisor:thread-join thread)))
     (when failure (error failure))
     (assert (plusp samples))
-    (format t "PASS ~D reservation samples during snapshot.~%" samples))
+    (format t "PASS ~D reservation samples during ~A.~%" samples description))
   (values))
 
-(defun run (&key snapshot)
+(defun run (&key snapshot (collections 3))
   (transient-mapping)
   (mezzano.extensions:gc :full t)
   (check)
+  (when (plusp collections)
+    (call-with-reservation-reader
+     (lambda () (dotimes (i collections) (mezzano.extensions:gc :full t)))
+     "full collections")
+    (check))
   (when snapshot
-    (snapshot-with-reader)
+    (call-with-reservation-reader
+     (lambda ()
+       (request-snapshot-with-retry)
+       (mezzano.supervisor:wait-for-snapshot-completion))
+     "snapshot")
     (check))
   (values))

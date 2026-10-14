@@ -267,7 +267,7 @@ Run the following forms in Mezzano with the source tree available as `SYS:SOURCE
 (lispm-page-reservation-test:run :snapshot t)
 ```
 
-The reservation test checks transient mappings and full collection, forces the snapshot worker to use its retry timer after collection, and samples reservations concurrently with the save.  Wait for the evaluation to return before restarting the image.  After restoration:
+The reservation test checks transient mappings and runs three full collections with a concurrent statistics reader.  Its :COLLECTIONS argument changes that count.  With :SNAPSHOT T, it forces the snapshot worker to use its retry timer after collection, and samples reservations concurrently with the save.  Wait for the evaluation to return before restarting the image.  After restoration:
 
 ```lisp
 (assert (mezzano.supervisor:event-state
