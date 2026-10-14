@@ -20,6 +20,14 @@ Product acceptance reloaded the catalog and displayed 82 exact excerpts across f
 
 The archive `/tmp/debugger-web-catch-display-evidence.tar.gz` contains the exact host logs, Chromium drivers/results/screenshots, and reviewed Web source and documentation.  SHA-256: `67296d3738e5077e7ad91b0c11c7917d0d9dbd24eb49a8c5967e9c0c82bdb3b3`.  Python and JavaScript syntax checks and the diff whitespace check passed.
 
+Core review subsequently reproduced a destination error when two captured %CATCH bindings with the same name shared an environment.  Name matching selected the inner destination for the outer binding.  The native correction matches the visible binding descriptor by EQ.  Its native same-environment test passed before the final browser run.  The browser fixture uses ordinary nested catches, whose runtime bindings occupy separate frames, so its earlier pass did not test that same-environment case.
+
+The unchanged 20-group driver passed after the correction (`/tmp/web-catch-display-final/result.json`).  The driver SHA-256 is `f1bd23e6333e15e0a1182a340e7d4229d1e6e88556d0ee9a1b6744b1f224f19e`, identical to the first run.  Catch ownership, destination output, keyword defaults, history/reload, tag-printer child Abort/repair, and continuation values 42/43/1/1 passed again.  Seven jobs, fifteen stops, eight named functions, six special symbols, one tag symbol, and the session were released.  Browser errors and failed HTTP responses were empty.  The final catch-blocks.png capture was reviewed.  No Web code or test assertion changed between these runs.
+
+The focused final catalog check displayed the new same-name binding-identity and interrupted-frameless unavailable-location test sentences (`/tmp/web-catch-display-docs-final/result.json`).  It reloaded the catalog, released its one job and session, and recorded an opening HTTP 200 with no browser or failed-response errors.  The evaluator-test-guide.png capture was reviewed.  Guest traffic stopped after that check.
+
+Final evidence is archived at `/tmp/debugger-web-catch-final-evidence.tar.gz`, SHA-256 `c28359d2530e41697604db162010af08b8df64f16cbb58e3f646cf82e48d0507`.  The archive preserves the unchanged driver, final results and screenshots, documentation checker, logs, and Web source/documentation.
+
 ## Catch-display browser preparation: 2026-10-14
 
 The next authorized increment retains the reviewed Show Catch Blocks behavior and :All defaults.  Core work is adding captured BLOCK/TAGBODY identities and exact catch destinations under the standing agenda authorization.  The browser must use the tested catches operation and complete guest-formatted output once supplied.  No client code will infer a destination from a closure name or raw frame address.  The existing Boolean validator, menu, and retained string renderer provide the required Web mechanisms.
