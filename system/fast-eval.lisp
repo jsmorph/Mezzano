@@ -39,6 +39,10 @@
               lazy-eval-function new-function)
              (setf function new-function))))))
 
+(defmethod make-load-form ((function lazy-eval-function) &optional environment)
+  (declare (ignore environment))
+  (list 'quote (lazy-eval-function-function function)))
+
 (defmethod mezzano.internals::funcallable-instance-lambda-expression ((function lazy-eval-function))
   (function-lambda-expression
    (lazy-eval-function-function function)))

@@ -56,6 +56,8 @@ The debug-metadata fixture checks binding order, locations, representations, ali
 
 The [binding-identity fixture](README.md#compiler-lexical-environment-tests) checks same-name stack and captured bindings, shared cells, function namespaces, copying, inlining, location deltas, native compiled-file loading, and full GC.  Its restore helpers retain closures and their descriptor through a saved-image restart.  Legacy-record acceptance requires retaining a function compiled before the descriptor change and passing it and its binding name to LISPM-BINDING-IDENTITY-TEST::CHECK-LEGACY.
 
+The [function-constant fixture](README.md#evaluator-environment-tests) checks native compiled-file serialization of compiled, lazy, and interpreted functions, shared identities and cells, nested macro environments, source metadata, and full GC.  Reload the compiled fixture before each RUN because its expected counters describe the file's initial state.  Recursive function/environment graphs and cross-target loading remain untested.
+
 The [instruction-scope fixture](README.md#compiler-lexical-environment-tests) checks scope selection at exact instruction offsets, empty versus unavailable scope, alignment, identity shared with location records, compiled-file loading, full GC, and legacy records.  Its scope objects are fixture data.  It does not establish compiler source-environment conversion or live frame evaluation.
 
 The spill-interference fixture checks overlapping, adjacent, disjoint, repeated, and unused ranges, edges from every range of a spilled register, and scalar and SIMD slot assignment.  It compares with supplied previous implementations when requested and checks that dense bit-vector rows retain their identity across insertions.

@@ -59,6 +59,14 @@
   (:metaclass mezzano.clos:funcallable-standard-class)
   (:default-initargs :name nil :filename nil :tlf nil))
 
+(defmethod make-load-form ((function interpreted-function) &optional environment)
+  (declare (ignore environment))
+  (values `(eval-lambda ',(interpreted-function-lambda function)
+                       ',(interpreted-function-environment function))
+          `(setf (slot-value ',function 'name) ',(interpreted-function-name function)
+                 (slot-value ',function 'filename) ',(interpreted-function-filename function)
+                 (slot-value ',function 'tlf) ',(interpreted-function-tlf function))))
+
 (defmethod sys.int::funcallable-instance-lambda-expression ((function interpreted-function))
   (values (interpreted-function-lambda function)
           (interpreted-function-environment function)
@@ -86,6 +94,15 @@
   ((name :initarg :name :reader variable-name)
    (value :initarg :value :accessor variable-value))
   (:default-initargs :value nil))
+
+(defmethod make-load-form ((variable lexical-variable) &optional environment)
+  (make-load-form-saving-slots variable :environment environment))
+
+(defmethod make-load-form ((environment c::lexical-environment) &optional compiler-environment)
+  (make-load-form-saving-slots environment :environment compiler-environment))
+
+(defmethod make-load-form ((macro c::symbol-macro) &optional environment)
+  (make-load-form-saving-slots macro :environment environment))
 
 (defmethod c::name ((variable lexical-variable))
   (variable-name variable))

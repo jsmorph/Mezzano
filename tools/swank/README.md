@@ -319,6 +319,15 @@ The local-macro fixture exercises enclosing macro and symbol-macro definitions, 
 (lispm-macro-environment-test:run)
 ```
 
+The function-constant fixture saves compiled, lazy, and interpreted functions in a native compiled file.  It checks shared function identity, retained compiled state, interpreted evaluation behavior, nested macro environments, shared lexical cells, source metadata, and full GC:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-FUNCTION-CONSTANTS.LISP"))
+(lispm-function-constant-test:run)
+```
+
+Its stateful assertions require a fresh compiled-file load before each RUN.  Lazy functions save their resolved target.  Interpreted functions retain an interpreter entry and their saved lexical environment.  Recursive function/environment graphs and cross-target loading have not been tested.
+
 The parameter fixture compares interpreted and compiled results for special bindings, initializer order and declaration scope, optional and keyword parameters, supplied-p values, rest and auxiliary bindings, keyword precedence, multiple values, closure writes, and dynamic unwinding:
 
 ```lisp

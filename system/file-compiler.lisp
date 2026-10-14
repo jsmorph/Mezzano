@@ -217,7 +217,7 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
 
 (defmethod save-one-object ((object function) omap stream)
   (when (not (eql (function-tag object) +object-tag-function+))
-    (error "Cannot save complicated function ~S" object))
+    (return-from save-one-object (call-next-method)))
   (dotimes (i (function-pool-size object))
     (save-object (function-pool-object object i) omap stream))
   (multiple-value-bind (fixups validp)
