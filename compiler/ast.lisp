@@ -104,6 +104,9 @@
       (and (null (cdr (lexical-variable-used-in var)))
            (eq (car (lexical-variable-used-in var)) (lexical-variable-definition-point var)))))
 
+(defclass ast-variable-reference (ast-node)
+  ((%variable :initarg :variable :reader ast-reference-variable)))
+
 ;;; A special variable, only used in bindings.
 (defclass special-variable (ast-node)
   ((%name :initarg :name :accessor name)
@@ -439,11 +442,11 @@
                              for targ in (targets form)
                              collect (copy-form-1 targ))))
 
-(defmethod copy-form-1 ((form lexical-variable))
-  (let ((var (copy-form-fix form)))
+(defmethod copy-form-1 ((form ast-variable-reference))
+  (let ((var (copy-form-fix (ast-reference-variable form))))
     (incf (lexical-variable-use-count var))
     (pushnew *current-lambda* (lexical-variable-used-in var))
-    var))
+    (make-instance 'ast-variable-reference :inherit form :variable var)))
 
 (defmethod copy-form-1 ((form lambda-information))
   (let* ((info (make-instance 'lambda-information
@@ -512,8 +515,10 @@
 (defmethod detect-uses-1 ((form ast-function)))
 
 (defmethod detect-uses-1 ((form ast-go))
-  (assert (or (not (tagbody-information-p (info form)))
-              (eql (go-tag-tagbody (target form)) (info form))))
+  (assert (or (not (and (typep (info form) 'ast-variable-reference)
+                       (tagbody-information-p (ast-reference-variable (info form)))))
+              (eql (go-tag-tagbody (target form))
+                   (ast-reference-variable (info form)))))
   (detect-uses-1 (info form))
   (incf (go-tag-use-count (target form)))
   (pushnew *current-lambda* (go-tag-used-in (target form)))
@@ -590,9 +595,10 @@
   (detect-uses-1 (value form))
   (mapc #'detect-uses-1 (targets form)))
 
-(defmethod detect-uses-1 ((form lexical-variable))
-  (pushnew *current-lambda* (lexical-variable-used-in form))
-  (incf (lexical-variable-use-count form)))
+(defmethod detect-uses-1 ((form ast-variable-reference))
+  (let ((variable (ast-reference-variable form)))
+    (pushnew *current-lambda* (lexical-variable-used-in variable))
+    (incf (lexical-variable-use-count variable))))
 
 (defmethod detect-uses-1 ((form lambda-information))
   (let ((*current-lambda* form))
@@ -691,6 +697,7 @@
     (ast-jump-table
      `(sys.int::%jump-table ,(unparse-compiler-form (value form))
                             ,@(mapcar #'unparse-compiler-form (targets form))))
+    (ast-variable-reference (ast-reference-variable form))
     (lexical-variable form #+nil(lexical-variable-name form))
     (lambda-information
      `(lambda ,(append (when (lambda-information-environment-arg form)

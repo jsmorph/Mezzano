@@ -330,7 +330,7 @@
           form)
       form))
 
-(defmethod ll-form ((form lexical-variable))
+(defmethod ll-form ((form ast-variable-reference))
   form)
 
 (defun lift-apply-body (form)
@@ -355,8 +355,13 @@
     (when list-tail
       (setf list-tail (unwrap-the list-tail)))
     ;; list-body must exactly be the required arguments and list-tail must be the rest argument.
-    (when (not (and (every 'eql (lambda-information-required-args form) list-body)
-                    (eql list-tail (lambda-information-rest-arg form))))
+    (when (not (and (= (length (lambda-information-required-args form)) (length list-body))
+                    (every (lambda (binding reference)
+                             (and (typep reference 'ast-variable-reference)
+                                  (eql binding (ast-reference-variable reference))))
+                           (lambda-information-required-args form) list-body)
+                    (typep list-tail 'ast-variable-reference)
+                    (eql (ast-reference-variable list-tail) (lambda-information-rest-arg form))))
       (return-from lift-apply-body nil))
     ;; Replace with the inner lambda.
     (change-made)

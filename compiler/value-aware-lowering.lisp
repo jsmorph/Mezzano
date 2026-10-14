@@ -89,7 +89,7 @@
                      ,(first (ast-arguments (value-form form))))
               form))
         ((or (typep (value-form form) 'ast-quote)
-             (typep (value-form form) 'lexical-variable))
+             (typep (value-form form) 'ast-variable-reference))
          ;; Replace this with funcall.
          (change-made)
          (ast `(call mezzano.runtime::%funcall
@@ -220,7 +220,7 @@
                           collect (value-aware-lowering-1 target :effect)))
   form)
 
-(defmethod value-aware-lowering-1 ((form lexical-variable) mode)
+(defmethod value-aware-lowering-1 ((form ast-variable-reference) mode)
   (ecase mode
     (:effect
      (change-made)

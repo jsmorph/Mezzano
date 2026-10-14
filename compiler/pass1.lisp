@@ -266,7 +266,7 @@
                :format-arguments (list (lexical-variable-name var))))
        (incf (lexical-variable-use-count var))
        (pushnew *current-lambda* (lexical-variable-used-in var))
-       var))))
+       (make-instance 'ast-variable-reference :environment env :variable var)))))
 
 (defun pass1-variable (form env)
   (let* ((converted (pass1-variable-inner form env))
@@ -344,7 +344,9 @@
            (make-instance 'ast-call
                           :environment env
                           :name 'funcall
-                          :arguments (list* fn args)))
+                          :arguments (list* (make-instance 'ast-variable-reference
+                                                          :environment env :variable fn)
+                                            args)))
           (t ;; Top-level function.
            (cond ((eql fn 'error)
                   ;; FIXME: Bit of a hack.
@@ -476,7 +478,7 @@
                  ;; Lexical function.
                  (incf (lexical-variable-use-count var))
                  (pushnew *current-lambda* (lexical-variable-used-in var))
-                 var)
+                 (make-instance 'ast-variable-reference :environment env :variable var))
                 (t ;; Top-level function.
                  (make-instance 'ast-function
                                 :environment env
@@ -492,7 +494,8 @@
       (make-instance 'ast-go
                      :environment env
                      :target tag
-                     :info (go-tag-tagbody tag)))))
+                     :info (make-instance 'ast-variable-reference
+                                          :environment env :variable (go-tag-tagbody tag))))))
 
 (defun pass1-if (form env)
   (destructuring-bind (test then &optional else) (cdr form)
@@ -800,7 +803,8 @@
                      :environment env
                      :target tag
                      :value (pass1-form result env)
-                     :info tag))))
+                     :info (make-instance 'ast-variable-reference
+                                          :environment env :variable tag)))))
 
 (defun special-variable-access-function (special-variable)
   (cond ((eql (sys.int::symbol-mode (name special-variable)) :global)

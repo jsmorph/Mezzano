@@ -12,7 +12,7 @@
   (declare (ignore architecture))
   (blexit-1 lambda '()))
 
-(defmethod blexit-1 ((form lexical-variable) live-block-list)
+(defmethod blexit-1 ((form ast-variable-reference) live-block-list)
   (declare (ignore live-block-list))
   form)
 

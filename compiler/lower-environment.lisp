@@ -131,7 +131,7 @@ of statements opens a new contour."
   (compute-environment-layout (value form))
   (mapc #'compute-environment-layout (targets form)))
 
-(defmethod compute-environment-layout ((form lexical-variable))
+(defmethod compute-environment-layout ((form ast-variable-reference))
   nil)
 
 (defmethod compute-environment-layout ((form lambda-information))
@@ -291,8 +291,8 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
   (union (compute-free-variable-sets-1 (value form))
          (compute-free-variable-sets-form-list (targets form))))
 
-(defmethod compute-free-variable-sets-1 ((form lexical-variable))
-  (list form))
+(defmethod compute-free-variable-sets-1 ((form ast-variable-reference))
+  (list (ast-reference-variable form)))
 
 (defmethod compute-free-variable-sets-1 ((form lambda-information))
   (let* ((initforms (append (mapcar #'second (lambda-information-optional-args form))
@@ -524,23 +524,24 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
          ,@(mapcar #'lower-env-form (targets form)))
        form))
 
-(defmethod lower-env-form ((form lexical-variable))
-  (if (or (localp form)
-          ;; Read-only bindings can use the incoming value unless debugger
-          ;; writes require access through the shared cell.
-          (and (eql (lexical-variable-definition-point form) *current-lambda*)
-               (zerop (lexical-variable-write-count form))
-               (not (preserve-variable-for-debugger-p form))))
-      form
-      (dolist (e *environment*
-               (error "Can't find variable ~S in environment." form))
-        (let* ((layout (gethash e *environment-layout*))
-               (offset (position form layout)))
-          (when offset
-            (return (ast `(call sys.int::%object-ref-t
-                                ,(get-env-vector e)
-                                (quote ,(1+ offset)))
-                         form)))))))
+(defmethod lower-env-form ((form ast-variable-reference))
+  (let ((variable (ast-reference-variable form)))
+    (if (or (localp variable)
+            ;; Read-only bindings can use the incoming value unless debugger
+            ;; writes require access through the shared cell.
+            (and (eql (lexical-variable-definition-point variable) *current-lambda*)
+                 (zerop (lexical-variable-write-count variable))
+                 (not (preserve-variable-for-debugger-p variable))))
+        form
+        (dolist (e *environment*
+                 (error "Can't find variable ~S in environment." variable))
+          (let* ((layout (gethash e *environment-layout*))
+                 (offset (position variable layout)))
+            (when offset
+              (return (ast `(call sys.int::%object-ref-t
+                                  ,(get-env-vector e)
+                                  (quote ,(1+ offset)))
+                           form))))))))
 
 (defun lower-env-lambda (lambda)
   (let ((*environment-chain* '())

@@ -129,7 +129,7 @@
            (il-form inlined-form architecture))
           (t form))))
 
-(defmethod il-form ((form lexical-variable) architecture)
+(defmethod il-form ((form ast-variable-reference) architecture)
   form)
 
 (defmethod il-form ((form lambda-information) architecture)

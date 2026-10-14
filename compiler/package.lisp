@@ -37,6 +37,8 @@
            #:lambda-information-closure-arg
            #:lambda-information-count-arg
            #:lambda-information-plist
+           #:ast-variable-reference
+           #:ast-reference-variable
            #:lexical-variable
            #:lexical-variable-p
            #:lexical-variable-name

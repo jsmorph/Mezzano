@@ -73,7 +73,7 @@ Must be run after keywords have been lowered."
   (lower-arguments-1 (value form))
   (mapc #'lower-arguments-1 (targets form)))
 
-(defmethod lower-arguments-1 ((form lexical-variable)))
+(defmethod lower-arguments-1 ((form ast-variable-reference)))
 
 (defun wrap-type-check (variable value)
   "Wrap a type check around VALUE, based on VARIABLE's type."

@@ -188,7 +188,7 @@
                           collect (convert-dx target)))
   form)
 
-(defmethod convert-dx ((form lexical-variable))
+(defmethod convert-dx ((form ast-variable-reference))
   form)
 
 (defmethod convert-dx ((form lambda-information))
@@ -310,7 +310,7 @@
                           collect (lower-dx-list target)))
   form)
 
-(defmethod lower-dx-list ((form lexical-variable))
+(defmethod lower-dx-list ((form ast-variable-reference))
   form)
 
 (defmethod lower-dx-list ((form lambda-information))

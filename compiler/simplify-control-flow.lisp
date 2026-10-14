@@ -350,7 +350,7 @@
      do (setf (target target) (simplify-control-flow-get-replacement-go-tag (target target) renames)))
   (values form t))
 
-(defmethod simplify-control-flow-1 ((form lexical-variable) ti/tb-mapping permitted-hoist-tagbodys renames leaving-tagbody)
+(defmethod simplify-control-flow-1 ((form ast-variable-reference) ti/tb-mapping permitted-hoist-tagbodys renames leaving-tagbody)
   (declare (ignore ti/tb-mapping permitted-hoist-tagbodys renames leaving-tagbody))
   (values form nil))
 

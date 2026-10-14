@@ -12,8 +12,8 @@
 
 (defgeneric apply-transforms-1 (form target-architecture))
 
-(defmethod apply-transforms-1 ((form lexical-variable) target-architecture)
-  (let ((updated (assoc form *propagated-type-definitions*)))
+(defmethod apply-transforms-1 ((form ast-variable-reference) target-architecture)
+  (let ((updated (assoc (ast-reference-variable form) *propagated-type-definitions*)))
     (cond (updated
            (change-made)
            (ast `(the ,(cdr updated) ,form) form))
@@ -152,8 +152,8 @@
               (setf (value form) new-form))
              (t
               (setf (value form) (apply-transforms-1 (value form) target-architecture))))))
-    (lexical-variable
-     (let ((updated (assoc (value form) *propagated-type-definitions*)))
+    (ast-variable-reference
+     (let ((updated (assoc (ast-reference-variable (value form)) *propagated-type-definitions*)))
        (when updated
          (change-made)
          (setf (the-type form)

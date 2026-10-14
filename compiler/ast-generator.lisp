@@ -10,9 +10,10 @@ Inherit source locations/etc from INHERIT."
 
 (defun convert-ast-form (form inherit new-variables)
   (when (symbolp form)
-    (let ((var (assoc form new-variables)))
-      (assert var () "Missing substitution variable ~S" form)
-      (return-from convert-ast-form (cdr var))))
+    (setf form (convert-ast-binding form new-variables)))
+  (when (lexical-variable-p form)
+    (return-from convert-ast-form
+      (make-instance 'ast-variable-reference :inherit inherit :variable form)))
   (when (not (consp form))
     (return-from convert-ast-form form))
   (apply (ecase (first form)
@@ -40,6 +41,13 @@ Inherit source locations/etc from INHERIT."
          new-variables
          (rest form)))
 
+(defun convert-ast-binding (binding new-variables)
+  (if (symbolp binding)
+      (let ((entry (assoc binding new-variables)))
+        (assert entry () "Missing substitution variable ~S" binding)
+        (cdr entry))
+      binding))
+
 (defun convert-ast-block (inherit new-variables name body)
   (check-type name (or block-information symbol))
   (let ((new-block (if (symbolp name)
@@ -65,7 +73,7 @@ Inherit source locations/etc from INHERIT."
 (defun convert-ast-go (inherit new-variables target info)
   (make-instance 'ast-go
                  :inherit inherit
-                 :target (convert-ast-form target inherit new-variables)
+                 :target (convert-ast-binding target new-variables)
                  :info (convert-ast-form info inherit new-variables)))
 
 (defun convert-ast-if (inherit new-variables test then else)
@@ -144,7 +152,7 @@ Inherit source locations/etc from INHERIT."
 (defun convert-ast-return-from (inherit new-variables target value-form info)
   (make-instance 'ast-return-from
                  :inherit inherit
-                 :target (convert-ast-form target inherit new-variables)
+                 :target (convert-ast-binding target new-variables)
                  :value (convert-ast-form value-form inherit new-variables)
                  :info (convert-ast-form info inherit new-variables)))
 
@@ -152,7 +160,7 @@ Inherit source locations/etc from INHERIT."
   (check-type variable (or symbol lexical-variable))
   (make-instance 'ast-setq
                  :inherit inherit
-                 :variable (convert-ast-form variable inherit new-variables)
+                 :variable (convert-ast-binding variable new-variables)
                  :value (convert-ast-form value inherit new-variables)))
 
 (defun convert-ast-tagbody (inherit new-variables info &rest statements)
@@ -187,7 +195,7 @@ Inherit source locations/etc from INHERIT."
                    :info tagbody-info
                    :statements (loop
                                   for (go-tag statement) in statements
-                                  collect (list (convert-ast-form go-tag inherit new-variables)
+                                  collect (list (convert-ast-binding go-tag new-variables)
                                                 (convert-ast-form statement inherit new-variables))))))
 
 (defun convert-ast-the (inherit new-variables type value)

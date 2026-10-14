@@ -18,8 +18,8 @@
 
 (defgeneric kt-form (form &optional target-variable replacement-form))
 
-(defmethod kt-form ((form lexical-variable) &optional target-variable replacement-form)
-  (cond ((eql form target-variable)
+(defmethod kt-form ((form ast-variable-reference) &optional target-variable replacement-form)
+  (cond ((eql (ast-reference-variable form) target-variable)
          (change-made)
          (values (ast `(call values ,replacement-form) form)
                  t))
@@ -36,10 +36,10 @@
                        did-something
                        (typep (unwrap-the form) '(or ast-quote ast-function lambda-information)))
                    (kt-form form))
-                  ((and (typep (unwrap-the form) 'lexical-variable)
+                  ((and (typep (unwrap-the form) 'ast-variable-reference)
                         ;; Don't skip over variables if they are written to.
                         ;; The replacement form may contain a SETQ.
-                        (zerop (lexical-variable-write-count (unwrap-the form))))
+                        (zerop (lexical-variable-write-count (ast-reference-variable (unwrap-the form)))))
                    (multiple-value-bind (new did-replace)
                        (kt-form form target-variable replacement-form)
                      (when did-replace
@@ -86,7 +86,8 @@
            (and context
                 (typep context 'ast-call)
                 (eql (ast-name context) 'mezzano.runtime::%apply)
-                (eql (second (ast-arguments context)) varlike)))))
+                (typep (second (ast-arguments context)) 'ast-variable-reference)
+                (eql (ast-reference-variable (second (ast-arguments context))) varlike)))))
 
 (defmethod kt-form ((form ast-block) &optional target-variable replacement-form)
   (multiple-value-bind (new-body did-replace)

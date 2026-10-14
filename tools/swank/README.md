@@ -337,7 +337,7 @@ The AST fixture checks source environments after first-pass expansion and tree c
 (lispm-ast-environment-test:run)
 ```
 
-A known null environment differs from an unknown environment.  Shared variable-reference objects report an unknown source environment.  This fixture does not establish scope preservation through later optimization or provide runtime frame evaluation.
+Each variable or local-function read has its own AST reference and source environment.  References to the same binding share its binding object.  A known null environment differs from an unknown environment.  The fixture checks distinct occurrence scopes and copied binding identities, then tests execution with DEBUG 0/3, COMPILATION-SPEED 1/3, SAFETY 3, SPEED 1, and type checking enabled.  Cases include constant assignment, closure writes, multiple values, dynamic-extent rest arguments, and nonlocal GO and RETURN-FROM through a non-inlined helper.  Complete scope preservation through later transformations and runtime frame evaluation remain work.
 
 For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains the first-pass tree, then checks its environments, macro functions, binding identities, copying, and compiled execution after full GC.
 

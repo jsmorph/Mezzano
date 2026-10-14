@@ -23,8 +23,8 @@
              (constprop-function-ast-p form)
              (lambda-information-p form))
          form)
-        ((lexical-variable-p form)
-         (let ((val (assoc form *known-variables*)))
+        ((typep form 'ast-variable-reference)
+         (let ((val (assoc (ast-reference-variable form) *known-variables*)))
            (when val
              (second val))))))
 
@@ -74,7 +74,7 @@
     (setf (test form) (cp-form (test form)))
     (let ((value (form-value (test form))))
       (cond ((and value
-                  (not (lexical-variable-p (unwrap-the value))))
+                  (not (typep (unwrap-the value) 'ast-variable-reference)))
              (change-made)
              (if (and (typep value 'ast-quote)
                       (eql (value value) 'nil))
@@ -130,6 +130,11 @@
              (eql (symbol-package true-name)
                   (find-package 'cl))))))
 
+(defun constprop-variable-p (variable)
+  (and (not (preserve-variable-for-debugger-p variable))
+       (localp variable)
+       (zerop (lexical-variable-write-count variable))))
+
 (defun constprop-value-p (form)
   (let ((unwrapped (unwrap-the form)))
     (or (lambda-information-p unwrapped)
@@ -140,10 +145,8 @@
              (eql (length (ast-arguments unwrapped)) 2)
              (constprop-value-p (first (ast-arguments unwrapped)))
              (constprop-value-p (second (ast-arguments unwrapped))))
-        (and (lexical-variable-p unwrapped)
-             (not (preserve-variable-for-debugger-p unwrapped))
-             (localp unwrapped)
-             (eql (lexical-variable-write-count unwrapped) 0)))))
+        (and (typep unwrapped 'ast-variable-reference)
+             (constprop-variable-p (ast-reference-variable unwrapped))))))
 
 (defun copyable-value-p (form variable)
   (let ((unwrapped (unwrap-the form)))
@@ -168,7 +171,7 @@
           (cond ((copyable-value-p val var)
                  (push (list var val 0 b) *known-variables*))
                 ((and (typep val 'ast-the)
-                      (constprop-value-p var))
+                      (constprop-variable-p var))
                  (push (list var (ast `(the ,(the-type val) ,var) val) 0 b) *known-variables*))))))
     ;; Run on the body, with the new constants.
     (setf (body form) (cp-form (body form)))
@@ -226,7 +229,7 @@
                   (setf (second (fourth info)) value)
                   ;; Prevent future SETQ forms from back-propgating values.
                   (incf (third info))
-                  (setq-variable form))
+                  (ast (setq-variable form) form))
                  (t ;; Leave this form alone.
                   form)))
           (t ;; Non-constant, flush.
@@ -253,13 +256,15 @@
   form)
 
 (defmethod cp-form ((form ast-the))
-  (let ((val (assoc (ast-value form) *known-variables*)))
+  (let ((val (and (typep (ast-value form) 'ast-variable-reference)
+                  (assoc (ast-reference-variable (ast-value form)) *known-variables*))))
     (cond ((and val
                 (typep (second val) 'ast-the)
                 (or (compiler-valid-type-equal-p (the-type (second val)) (the-type form))
                     (compiler-valid-subtypep (the-type form) (the-type (second val))))
-                (eql (ast-value (second val)) (ast-value form))
-                (typep (ast-value form) 'lexical-variable))
+                (typep (ast-value (second val)) 'ast-variable-reference)
+                (eql (ast-reference-variable (ast-value (second val)))
+                     (ast-reference-variable (ast-value form))))
            ;; Don't do anything. This would replace this form with an identical nested THE.
            form)
           (t
@@ -367,13 +372,13 @@
            (constant-fold form (name form) (arguments form)))
       form))
 
-(defmethod cp-form ((form lexical-variable))
-  (let ((val (assoc form *known-variables*)))
+(defmethod cp-form ((form ast-variable-reference))
+  (let ((val (assoc (ast-reference-variable form) *known-variables*)))
     (cond (val
            (change-made)
            (when (lambda-information-p (unwrap-the (second val)))
              (incf (getf (lambda-information-plist (unwrap-the (second val))) 'copy-count 0)))
-           (decf (lexical-variable-use-count form))
+           (decf (lexical-variable-use-count (ast-reference-variable form)))
            (incf (third val))
            (copy-form (second val)))
           (t form))))

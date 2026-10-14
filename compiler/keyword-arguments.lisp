@@ -242,7 +242,7 @@
   (lower-keyword-arguments-1 (value form))
   (mapc #'lower-keyword-arguments-1 (targets form)))
 
-(defmethod lower-keyword-arguments-1 ((form lexical-variable)))
+(defmethod lower-keyword-arguments-1 ((form ast-variable-reference)))
 
 (defmethod lower-keyword-arguments-1 ((form lambda-information))
   (let ((*current-lambda* form))

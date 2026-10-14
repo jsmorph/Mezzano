@@ -8,7 +8,7 @@
   (declare (ignore target))
   (insert-type-checks-1 form :single))
 
-(defmethod insert-type-checks-1 ((form lexical-variable) value-context)
+(defmethod insert-type-checks-1 ((form ast-variable-reference) value-context)
   form)
 
 (defmethod insert-type-checks-1 ((form lambda-information) value-context)
@@ -197,7 +197,7 @@ Descends into inner AND/OR/NOT types."
                       (eql rest-typespec 't)
                       (or (member value-context '(:effect :single))
                           ;; Lexical variable obviously only generates one value.
-                          (typep (unwrap-the (value form)) 'lexical-variable)))
+                          (typep (unwrap-the (value form)) 'ast-variable-reference)))
                  ;; Single value case.
                  (ast `(let ((val ,(insert-type-checks-1 (value form) :single)))
                          (progn

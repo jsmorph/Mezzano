@@ -204,7 +204,7 @@
     ;; Generate (return-from block body).
     (cg-form (make-instance 'ast-return-from
                             :inherit form
-                            :info info
+                            :info (make-instance 'ast-variable-reference :inherit form :variable info)
                             :value (ast-body form)
                             :target info)
              :effect)
@@ -1044,12 +1044,12 @@
           (t
            nil))))
 
-(defmethod cg-form ((form lexical-variable) result-mode)
-  (assert (localp form))
+(defmethod cg-form ((form ast-variable-reference) result-mode)
+  (assert (localp (ast-reference-variable form)))
   (ecase result-mode
     (:tail
      (let ((result (make-instance 'virtual-register))
-           (local (gethash form *variable-registers*)))
+           (local (gethash (ast-reference-variable form) *variable-registers*)))
        ;; Local can be a vreg if it refers to an nlx thunk.
        (cond ((typep local 'virtual-register)
               (emit (make-instance 'return-instruction
@@ -1062,7 +1062,7 @@
                                    :value result)))))
      nil)
     ((:multiple :value)
-     (let ((local (gethash form *variable-registers*)))
+     (let ((local (gethash (ast-reference-variable form) *variable-registers*)))
        ;; Local can be a vreg if it refers to an nlx thunk.
        ;; Note: If it is an NLX thunk, the it'll never be written to and
        ;; there's no need to generate a result temporary.

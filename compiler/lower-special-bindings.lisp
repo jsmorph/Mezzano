@@ -84,9 +84,10 @@
 (defmethod lsb-form ((form ast-go))
   (let ((tag (target form))
         (location (info form)))
-    (cond ((eql (go-tag-tagbody tag) location)
+    (cond ((and (typep location 'ast-variable-reference)
+                (eql (go-tag-tagbody tag) (ast-reference-variable location)))
            ;; Local GO, locate the matching TAGBODY and emit any unwind forms required.
-           (ast `(progn ,@(lsb-unwind-to (lsb-find-b-or-t-binding location))
+           (ast `(progn ,@(lsb-unwind-to (lsb-find-b-or-t-binding (ast-reference-variable location)))
                         (go ,tag ,location))
                 form))
           (t ;; Non-local GO, do the full unwind.
@@ -161,7 +162,8 @@
   (let ((tag (target form))
         (value-form (value form))
         (location (info form)))
-    (cond ((not (eql tag location))
+    (cond ((not (and (typep location 'ast-variable-reference)
+                     (eql tag (ast-reference-variable location))))
            ;; Non-local RETURN-FROM, do the full unwind.
            (ast `(let ((info ,(lsb-form location)))
                    (progn
@@ -267,7 +269,7 @@
                     ,@(mapcar #'lsb-form (targets form)))
        form))
 
-(defmethod lsb-form ((form lexical-variable))
+(defmethod lsb-form ((form ast-variable-reference))
   form)
 
 (defun lsb-find-b-or-t-binding (info)
