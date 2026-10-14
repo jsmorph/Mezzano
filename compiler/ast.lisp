@@ -163,6 +163,47 @@
 (defun go-tag-p (object)
   (typep object 'go-tag))
 
+(defun debug-source-scope (environment)
+  (when (member environment '(nil :unknown))
+    (return-from debug-source-scope environment))
+  (check-type environment lexical-environment)
+  (flet ((bindings (slot)
+           (remove-duplicates (slot-value environment slot)
+                              :test #'equal :key #'first :from-end t)))
+    (list
+     :variables
+     (loop for (name binding) in (bindings '%variables)
+           collect
+           (append
+            (etypecase binding
+              (lexical-variable
+               (list name :lexical (debug-variable-identity binding)))
+              (special-variable
+               (list name :special (special-variable-implicitly-declared binding)))
+              (symbol-macro
+               (list name :symbol-macro (symbol-macro-expansion binding))))
+            (list (lookup-variable-declared-type-in-environment name environment))))
+     :functions
+     (loop for (name binding) in (bindings '%functions)
+           collect
+           (etypecase binding
+             (lexical-variable
+              (list name :lexical (debug-variable-identity binding)))
+             (function
+              (list name :macro binding))
+             (top-level-function
+              (list name :global))))
+     :blocks
+     (loop for (name binding) in (bindings '%blocks)
+           do (check-type binding block-information)
+           collect (list name (debug-variable-identity binding)))
+     :go-tags
+     (loop for (name binding) in (bindings '%go-tags)
+           do (check-type binding go-tag)
+           collect (list name (debug-variable-identity (go-tag-tagbody binding))))
+     :inline-declarations (copy-tree (inline-qualities-in-environment environment))
+     :optimize (copy-list (optimize-qualities-in-environment environment)))))
+
 (defclass ast-block (ast-node)
   ((%info :initarg :info :accessor info :accessor ast-info)
    (%body :initarg :body :accessor body :accessor ast-body)))

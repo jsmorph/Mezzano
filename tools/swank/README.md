@@ -386,7 +386,16 @@ The instruction-scope fixture tests the assembler's address table and runtime lo
 
 It checks address boundaries, repeated and distinct scope objects, multiple records at one address, alignment, compiled-file sharing, full GC, and older debug records.  NIL denotes a known empty scope; :UNKNOWN denotes unavailable scope information.  Both assembler targets emit the fixture's byte sequence.  The tests inspect its metadata without executing that byte sequence.
 
-These tests cover compiler metadata.  The code generators still emit unavailable source scopes.  Converting their lexical environments to persistent scope records and using those records for frame evaluation remain work.
+The source-scope fixture converts compiler environments to records containing visible bindings and declarations:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-SOURCE-SCOPES.LISP"))
+(lispm-debug-source-scope-test:run)
+```
+
+It checks shadowing, variable and function namespaces, declared types, special declarations, symbol macros, original macro identity and state, block/tagbody identities, compiled-file sharing, full GC, and backend environments under DEBUG 0/3 and COMPILATION-SPEED 1/3.  Reload the compiled fixture before each RUN because its macro counter checks the saved initial state.
+
+These tests cover compiler metadata and native scope conversion.  The code generators still emit unavailable source scopes.  Cross-target macro construction, generated scope records, and runtime frame evaluation remain work.
 
 ## CLOS method replacement tests
 
