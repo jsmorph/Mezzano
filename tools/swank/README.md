@@ -481,7 +481,16 @@ The control-record fixture observes internal catch and handler records through t
 (lispm-control-records-test:run)
 ```
 
-It checks nested and repeated catch tags, exit functions, handler-cluster identity and frame ownership, an ordinary BREAK, a BREAK within a selected handler, full GC, multiple-value THROW, unwind cleanup, continuation after the inner catch, and release of owned jobs and stops.  It uses the same test helpers and native x86-64 DEBUG 3 policy.  It also tests Show Condition Handlers defaults and completion, selected/all-frame output, active/inactive state, invalid options, replay, unchanged history and selection, and a valid callable-instance handler whose printer raises a condition.  Printer Abort, accepted replay, repaired display, and restored handler invocation must pass.  Public catch display remains planned.
+It checks nested and repeated catch tags, exit functions, handler-cluster identity and frame ownership, an ordinary BREAK, a BREAK within a selected handler, full GC, multiple-value THROW, unwind cleanup, continuation after the inner catch, and release of owned jobs and stops.  It uses the same test helpers and native x86-64 DEBUG 3 policy.  It also tests Show Condition Handlers defaults and completion, selected/all-frame output, active/inactive state, invalid options, replay, unchanged history and selection, and a valid callable-instance handler whose printer raises a condition.  Printer Abort, accepted replay, repaired display, and restored handler invocation must pass.
+
+The catch-display fixture uses the debugger-service, frame-evaluation, and control-record helpers:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-CATCH-DISPLAY.LISP"))
+(lispm-catch-display-test:run)
+```
+
+It checks selected/all-frame output, defaults and completion, repeated tags, destination function and byte offset, legacy unavailable metadata, rejected malformed options, accepted replay, unchanged history and selection, moving GC, tag-printer failure with child Abort, repaired display, multiple-value THROW, cleanup, and release.  The fixtures use x86-64 condition stops at DEBUG 3, SAFETY 3, SPEED 1, plus a DEBUG 0 legacy-layout target.  Two captured blocks with the same internal name must resolve to distinct destinations by binding identity, with different continuation effects.  The frameless interruption fixture checks unavailable catch locations in the interrupted activation.
 
 The captured-control metadata fixture checks compiled-file loading, closure/source identity sharing, nested same-name blocks and tagbodies, variable-layout compatibility, DEBUG 0/1/3, nonlocal multiple values, destination function and offset through moving GC, and redefinition of the active function:
 

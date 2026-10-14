@@ -79,6 +79,10 @@
              (leaf-data (mezzano.internals::frame-raw-data leaf-frame))
              (address (mezzano.internals::lisp-object-address *root*)))
         (assert (mezzano.internals::frame-interrupted-p leaf-frame))
+        (run-command stop lease :select-frame leaf-position)
+        (assert (search "Catch locations unavailable."
+                        (getf (run-command stop lease :catches) :result)))
+        (run-command stop lease :select-frame 0)
         (assert (null (mezzano.internals::frame-stack-available-p leaf-data)))
         (assert (equal (multiple-value-list
                         (mezzano.internals::read-frame-slot leaf-data 0))

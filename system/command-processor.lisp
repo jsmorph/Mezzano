@@ -45,6 +45,9 @@
     (:name "Show Bindings" :id :show-bindings
      :help "Display special bindings established by the selected frame. :All selects all frames. :Matching filters symbol names by a case-sensitive substring."
      :keywords (("All" :boolean "No" "Yes") ("Matching" :string "" nil)))
+    (:name "Show Catch Blocks" :id :show-catches
+     :help "Display catch tags and available destination functions and byte offsets. :All selects all frames."
+     :keywords (("All" :boolean "No" "Yes")))
     (:name "Show Condition Handlers" :id :show-handlers
      :help "Display condition handlers established by the selected frame, with their active state at debugger entry. :All selects all frames."
      :keywords (("All" :boolean "No" "Yes")))
@@ -448,6 +451,8 @@
     (:show-bindings (list :operation "bindings"
                           :argument (list (cdr (assoc "All" keywords :test #'equal))
                                           (cdr (assoc "Matching" keywords :test #'equal)))))
+    (:show-catches (list :operation "catches"
+                        :argument (cdr (assoc "All" keywords :test #'equal))))
     (:show-handlers (list :operation "handlers"
                          :argument (cdr (assoc "All" keywords :test #'equal))))
     (:show-backtrace (list :operation "frames"))

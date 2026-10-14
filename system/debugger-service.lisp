@@ -432,6 +432,9 @@
         (:locals (check-service-frame argument stop))
         ((:inspect :modify :describe-object)
          (check-service-inspection-argument stop operation argument))
+        (:catches
+         (unless (typep argument '(member nil t))
+           (service-error :invalid-catch-options)))
         (:handlers
          (unless (typep argument '(member nil t))
            (service-error :invalid-handler-options)))
@@ -576,6 +579,53 @@
                                                   (not (null (member cluster active :test #'eq))))))))
      available-p)))
 
+(defun service-catch-destination (exit)
+  (let ((binding
+          (loop for (offset . scope) in
+                (mezzano.internals::debug-info-source-scopes
+                 (mezzano.internals::function-debug-info exit))
+                thereis (and (listp scope)
+                             (second (assoc 'mezzano.internals::%catch
+                                            (getf scope :blocks)))))))
+    (loop for (kind identity context) in (mezzano.internals::closure-control-bindings exit)
+          when (and (eq kind :block) (eq identity binding))
+            return (mezzano.internals::control-context-destination context)
+          finally (return (values nil nil nil)))))
+
+(defun service-frame-catches (frame)
+  (multiple-value-bind (bindings available-p) (service-frame-bindings frame)
+    (values
+     (loop for (symbol bound-p value) in bindings
+           when (and bound-p (eq symbol 'mezzano.runtime::*active-catch-handlers*))
+             collect
+             (multiple-value-bind (function offset destination-p)
+                 (service-catch-destination (svref value 1))
+               (list (svref value 0) function offset destination-p)))
+     available-p)))
+
+(defun service-show-catches (stop all-p)
+  (let ((found nil))
+    (with-output-to-string (stream)
+      (loop for frame across (service-stop-frames stop)
+            for index from 0
+            when (or all-p (= index (service-stop-current-frame stop)))
+              do (multiple-value-bind (catches available-p) (service-frame-catches frame)
+                   (when (or catches (not available-p) (not all-p))
+                     (setf found t)
+                     (format stream "Frame ~D ~A:~%" index (service-print (frame-function frame)))
+                     (cond ((not available-p) (write-line "  Catch locations unavailable." stream))
+                           ((null catches) (write-line "  No catch blocks." stream))
+                           (t (dolist (catch catches)
+                                (destructuring-bind (tag function offset destination-p) catch
+                                  (if destination-p
+                                      (format stream "  Throwing to tag ~A returns to ~A at byte offset #x~X~%    with the values supplied to THROW.~%"
+                                              (service-print tag)
+                                              (service-print (mezzano.internals::function-name function))
+                                              offset)
+                                      (format stream "  Throwing to tag ~A: Destination unavailable.~%"
+                                              (service-print tag))))))))))
+      (unless found (write-line "No catch blocks." stream)))))
+
 (defun service-show-handlers (stop all-p)
   (let ((active (service-program-handlers stop)) (found nil))
     (with-output-to-string (stream)
@@ -664,6 +714,7 @@
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
     (:bindings (service-show-bindings stop (service-command-argument command)))
+    (:catches (service-show-catches stop (service-command-argument command)))
     (:handlers (service-show-handlers stop (service-command-argument command)))
     (:arglist
      (multiple-value-bind (called function)
