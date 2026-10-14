@@ -345,6 +345,33 @@ try {
   assert.deepEqual((await completed(afterScopes)).values, ['42']);
   evidence.checks.push('Direct NOTINLINE helper stops show X and Y only inside their separate LET scopes; four continuations and subsequent Listener evaluation return 42');
 
+  const typedTarget = marker + '-TYPED-EVALUATOR';
+  const typedCleanup = marker + ' typed evaluator cleanup';
+  const typedJob = await start(`(unwind-protect (progn (defun ${typedTarget} () (declare (optimize (debug 3) (safety 3) (speed 1))) (let ((let-value (mezzano.full-eval:eval-in-lexenv '(let ((x 40)) (declare (type fixnum x)) (+ x 2)))) (let-star-value (mezzano.full-eval:eval-in-lexenv '(let* ((x 40) (y (1+ x))) (declare (type fixnum x y)) (1+ y)))) (lambda-value (mezzano.full-eval:eval-in-lexenv '(funcall (lambda (x) (declare (type fixnum x)) (+ x 2)) 40))) (closure-values (let ((functions (mezzano.full-eval:eval-in-lexenv '(let ((x 17)) (declare (type fixnum x)) (list (lambda () x) (lambda (value) (declare (type fixnum value)) (setf x value))))))) (assert (not (compiled-function-p (first functions)))) (assert (not (compiled-function-p (second functions)))) (list (funcall (first functions)) (funcall (second functions) 42) (funcall (first functions)))))) (assert (equal (list let-value let-star-value lambda-value closure-values) '(42 42 42 (17 42 42)))) (cerror "Continue typed evaluator test." "${marker} typed evaluator") (list let-value let-star-value lambda-value closure-values))) (assert (compiled-function-p (symbol-function '${typedTarget}))) (${typedTarget})) (when (fboundp '${typedTarget}) (fmakunbound '${typedTarget})) (unintern '${typedTarget}) (write-string "${typedCleanup}"))`);
+  await stopped(typedJob);
+  await browser.waitFor(`returnedResult('condition')?.includes(${text(marker + ' typed evaluator')}) && !stopCommandPending(selectedStop) && !busy`);
+  const typedFrame = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.startsWith(${text('#<Compiled-Function ' + typedTarget + ' ')}))`);
+  assert(typedFrame > 0);
+  await clickText('#stop-detail', typedTarget);
+  await frame(typedFrame);
+  const typedExpected = {'LET-VALUE': '42', 'LET-STAR-VALUE': '42', 'LAMBDA-VALUE': '42', 'CLOSURE-VALUES': '(17 42 42)'};
+  const typedLocals = await browser.evaluate(`returnedFrameInspection().result.locals.filter(local => ${text(Object.keys(typedExpected))}.includes(local.name))`);
+  assert.equal(typedLocals.length, 4);
+  for (const local of typedLocals) {
+    assert.equal(local['available-p'], true);
+    assert.equal(local.value, typedExpected[local.name]);
+    assert.equal(await browser.evaluate(`[...document.querySelectorAll('#stop-detail .locals tr')].find(row => row.firstElementChild.textContent.includes(${text('(' + local.name + '):')}))?.lastElementChild.textContent`), local.value);
+  }
+  evidence.typedEvaluator = {frame: typedFrame, locals: typedLocals};
+  await browser.evaluate('document.querySelector("#stop-detail .current-function").scrollIntoView({block: "center"})');
+  await save('typed-evaluator-locals');
+  await command(':Abort');
+  await completed(typedJob, ':aborted');
+  assert(await browser.evaluate(`views.get(${text(typedJob)}).text.includes(${text(typedCleanup)})`));
+  const afterTyped = await start('(+ 20 22)');
+  assert.deepEqual((await completed(afterTyped)).values, ['42']);
+  evidence.checks.push('Listener calls full evaluator for typed LET, LET*, lambda, and shared closure writes; named compiled frame displays all four results; typed Abort runs cleanup and subsequent Listener returns 42');
+
   const abort = await start(`(unwind-protect (cerror "Continue owned test." "${marker} abort") (write-string "${marker} abort cleanup"))`);
   await stopped(abort);
   const abortButton = await browser.evaluate(`(() => {
