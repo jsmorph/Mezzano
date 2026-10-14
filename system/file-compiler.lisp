@@ -37,19 +37,19 @@
 
 (defun make-macrolet-env (defs env)
   "Return a new environment containing the macro definitions."
-  ;; FIXME: Outer macrolets & symbol macrolets should be visible in the macrolet's body.
-  (let ((macro-bindings (loop
-                           for def in defs
-                           collect (list (first def)
-                                         (eval (expand-macrolet-function def))))))
+  (let* ((macro-env (mezzano.compiler::environment-macro-definitions-only env))
+         (macro-bindings
+           (loop for def in defs
+                 collect (list (first def)
+                               (eval-in-lexenv (expand-macrolet-function def) macro-env)))))
     (mezzano.compiler::extend-environment env :functions macro-bindings)))
 
 (defun make-symbol-macrolet-env (defs env)
   (let ((defs (loop
                  for (name expansion) in defs
-                 collect (make-instance 'mezzano.compiler::symbol-macro
-                                        :name name
-                                        :expansion expansion))))
+                 collect (list name (make-instance 'mezzano.compiler::symbol-macro
+                                                   :name name
+                                                   :expansion expansion)))))
     (mezzano.compiler::extend-environment env :variables defs)))
 
 (defun handle-top-level-implicit-progn (forms load-fn eval-fn mode env)

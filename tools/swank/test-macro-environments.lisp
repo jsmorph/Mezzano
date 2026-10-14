@@ -1,0 +1,67 @@
+(defpackage #:lispm-macro-environment-test
+  (:use #:cl)
+  (:export #:run))
+(in-package #:lispm-macro-environment-test)
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+
+(symbol-macrolet ((increment 1))
+  (macrolet ((outer (x) (list '+ x increment)))
+    (macrolet ((inner (x) (outer x)))
+      (defun compiled-file-macros ()
+        (inner 41)))))
+
+(symbol-macrolet ((value 42))
+  (defun compiled-file-symbol-macro ()
+    value))
+
+(defun check-form (form expected)
+  (assert (equal (multiple-value-list (mezzano.full-eval:eval-in-lexenv form nil))
+                 expected)
+          () "Interpreted macro result differs for ~S." form)
+  (multiple-value-bind (function warnings-p failure-p)
+      (compile nil `(lambda () ,form))
+    (assert (and function (compiled-function-p function) (not warnings-p) (not failure-p)))
+    (assert (equal (multiple-value-list (funcall function)) expected)
+            () "Compiled macro result differs for ~S." form)))
+
+(defun run ()
+  (assert (= (compiled-file-macros) 42))
+  (assert (= (compiled-file-symbol-macro) 42))
+  (check-form
+   '(let ((cell (list 41)))
+      (symbol-macrolet ((value (car cell)))
+        (declare (type fixnum value))
+        (incf value)
+        (values value (car cell))))
+   '(42 42))
+  (check-form
+   '(macrolet ((outer (x) (list '1+ x)))
+      (macrolet ((inner (x) (outer x)))
+        (inner 41)))
+   '(42))
+  (check-form
+   '(symbol-macrolet ((increment 1))
+      (macrolet ((next (x) (list '+ x increment)))
+        (next 41)))
+   '(42))
+  (check-form
+   '(macrolet ((next (x) (list '+ x 1)))
+      (values (macrolet ((next (x) (list '+ x 2))) (next 40))
+              (next 41)))
+   '(42 42))
+  (check-form
+   '(macrolet ((expand (form &environment env) (macroexpand form env)))
+      (macrolet ((next (x) (list '1+ x)))
+        (expand (next 41))))
+   '(42))
+  (check-form
+   '(let ((cell (list 1)))
+      (symbol-macrolet ((x (car cell)))
+        (let ((x 41))
+          (declare (fixnum x))
+          (incf x))
+        (values x
+                (flet ((x () 42)) (x)))))
+   '(1 42))
+  (format t "PASS interpreted, compiled, and compiled-file local macros, symbol macros, shadowing, environment arguments, and assignment.~%")
+  (values))

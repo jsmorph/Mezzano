@@ -312,6 +312,13 @@ The compiled fixture checks type declarations in compiler and interpreter enviro
 
 The evaluation cases run through both the full interpreter and compiled functions.  Environment queries also check symbol-macro shadowing.  Stopped-frame lexical evaluation remains a separate implementation task.
 
+The local-macro fixture exercises enclosing macro and symbol-macro definitions, shadowing, assignment, and macro environment arguments through interpretation, compilation, and compiled-file loading:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-MACRO-ENVIRONMENTS.LISP"))
+(lispm-macro-environment-test:run)
+```
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:
