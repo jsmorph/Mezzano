@@ -44,6 +44,17 @@ Each driver starts a separate headless browser profile and removes that profile 
 
 Lost-reply tests discard a completed HTTP response after server dispatch.  They exercise saved-request recovery rather than every possible transport failure point.  Print tests intercept print dispatch.  They do not verify physical printer output.  Browser screenshots require separate comparison before supporting a visual-fidelity claim.
 
+## Debugger frame evaluation
+
+The frame-evaluation driver compiles a named DEBUG 3 target and enters forms through the inline and standalone debugger inputs.  It checks shadowed bindings, same-name variable and function namespaces, symbol and local macros, immediate shared-cell writes, multiple and zero values, and per-stop histories.  Reader and type errors must enter child stops, and typed :Abort must preserve the parent and its bindings.  A frame without lexical scope information must reject evaluation.  The driver discards one accepted reply, repeats its original request, and verifies one binding increment.  Reload and stop closure must retain the printed form results.  Continuation must observe the writes, and the next Listener expression must succeed.
+
+```sh
+node tools/swank/web/test-frame-evaluation.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-frame-evaluation-test
+```
+
+The driver releases its jobs, stops, session, and named function.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
+
 ## Listener debugger input
 
 The focused debugger driver tests inline and standalone Help, completion and contextual help, guest nesting prompts, ordinary and nested Abort, and interactive restart arguments through retained evaluation input.  It tests SPACE completion of :Proceed, omitted and explicit Default selection, the Proceed button, restart indices and the default marker, and missing-default rejection followed by explicit interactive selection in the same session.  It distinguishes a restart that exits the stop from one that returns a command result while the stop remains active, including visible values, zero values, and normally returning Proceed and typed Abort operations.  Native mouse clicks spanning a monitor refresh check that unchanged Debugger and restart actions retain their DOM elements and receive the click.  The restart test also renders a pending replacement query and changes an unrelated stop row while the mouse button is pressed.  A held action queue tests immediate debugger-menu dismissal.  Its nested operation-error case reloads at the child stop, aborts that command, verifies the restored outer draft and selection, and continues the original computation.  It interrupts blocked restart argument readers from a condition stop and from an earlier interruption stop, aborts each child, and completes the original computation.  It checks that invalid no-argument and restart-index requests return HTTP 400 without advancing the stop's command ID.

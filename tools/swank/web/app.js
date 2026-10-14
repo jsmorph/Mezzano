@@ -1072,7 +1072,14 @@ function renderStops() {
   }
   for (const command of state.commands.filter(item => same(item.stop, selectedStop))) {
     const result = commandResults.get(commandKey(command));
-    if (!result || result.state === ":pending" || result.state === ":running") {
+    if (command.command === "evaluate") {
+      const evaluation = node("div", undefined, "debugger-evaluation");
+      evaluation.append(node("pre", "→ " + (command.source ?? command.argument), "debugger-transcript"));
+      const values = result?.result || [];
+      evaluation.append(node("pre", result?.state === ":returned"
+        ? (values.length ? values.join("\n") : "(No values)") : label(result?.state), "evaluation-values"));
+      detailChildren.push(evaluation);
+    } else if (!result || result.state === ":pending" || result.state === ":running") {
       detailChildren.push(node("p", command.command + ": " + label(result?.state)));
     }
   }
