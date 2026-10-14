@@ -392,13 +392,19 @@
           (pass1-form `(progn ,@forms) env)
           (pass1-form ''nil env)))))
 
-(defun frob-flet-function (fn)
+(defun frob-flet-function (fn env)
   "Turn an FLET/LABELS function definition into a symbolic name, a lexical variable and a lambda expression."
   (multiple-value-bind (body declares docstring)
       (sys.int::parse-declares (cddr fn) :permit-docstring t)
     (let* ((name (first fn))
            (var (make-instance 'lexical-variable
                                :name name
+                               :environment env
+                               :plist (list 'debug-name (list 'function name)
+                                            'preserve-for-debugger
+                                            (= (optimize-quality-1
+                                                (optimize-qualities-in-environment env) 'debug)
+                                               3))
                                :definition-point *current-lambda*)))
       (values name var `(lambda ,(second fn)
                           (declare (sys.int::lambda-name (flet ,name :in ,(lambda-information-name *current-lambda*)))
@@ -441,7 +447,7 @@
                        :environment env
                        :bindings (mapcar (lambda (x)
                                            (multiple-value-bind (sym var lambda)
-                                               (frob-flet-function x)
+                                               (frob-flet-function x env)
                                              (push (list sym var) bindings)
                                              (let ((lambda (pass1-lambda-inner lambda env)))
                                                (when (function-declared-dynamic-extent-p sym declares)
@@ -499,16 +505,17 @@
         (sys.int::parse-declares forms)
       (check-known-declarations declares)
       ;; Generate variables & lambda expressions for each function.
-      (let* ((raw-bindings (mapcar (lambda (x)
-                                     (multiple-value-list (frob-flet-function x)))
+      (let* ((env (extend-environment env
+                                      :declarations (remove-if-not (lambda (x) (eql x 'optimize))
+                                                                   declares
+                                                                   :key #'first)))
+             (raw-bindings (mapcar (lambda (x)
+                                     (multiple-value-list (frob-flet-function x env)))
                                    functions))
              (env (extend-environment env
                                       :functions (mapcar (lambda (x)
                                                            (list (first x) (second x)))
-                                                         raw-bindings)
-                                      :declarations (remove-if-not (lambda (x) (eql x 'optimize))
-                                                                   declares
-                                                                   :key #'first))))
+                                                         raw-bindings))))
          (make-instance 'ast-let
                         :environment env
                         :bindings (mapcar (lambda (x)

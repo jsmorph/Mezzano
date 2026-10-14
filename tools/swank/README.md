@@ -274,6 +274,15 @@ The local-value fixture checks NIL and keyword values in compiled arguments, cop
 (lispm-local-availability-test:run)
 ```
 
+The local-function fixture checks FLET, recursive LABELS, function/variable namespaces, shadowed function bindings, SETF names, closure metadata, collection, and debug policies:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-LOCAL-FUNCTIONS.LISP"))
+(lispm-local-function-test:run)
+```
+
+After loading the service fixture, call (lispm-local-function-test:prepare-restore-test) before saving.  After restoration, call (lispm-local-function-test:finish-restore-test).  The fixture checks a stopped frame's separate function and variable bindings after full GC, then continuation and cleanup.  Running RUN again after restoration exercises the saved compiler definitions.
+
 To include selected-frame persistence in a snapshot test, load the restoration fixture and prepare its stopped thread before saving:
 
 ```lisp

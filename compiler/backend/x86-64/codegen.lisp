@@ -38,7 +38,7 @@
     (unless presentp
       (setf layout
             (loop for (variable location repr) in info
-                  collect (list* (c:lexical-variable-name variable)
+                  collect (list* (c::debug-variable-name variable)
                                  (if (typep location 'ir:virtual-register)
                                      (or (gethash location spill-locations)
                                          (error "Missing stack slot for spilled virtual ~S" location))

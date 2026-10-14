@@ -259,6 +259,8 @@ The image bootstrap policy is `(safety 3 debug 1 speed 1)`.  The running compile
 
 At debug level 3, the compiler preserves lexical bindings for inspection, including unused bindings.  A binding follows the policy at its introduction.  A local debug-3 declaration preserves a binding inside a function compiled at debug levels 0, 1, or 2.  Entering a lower-debug region afterward does not remove that preservation.  Captured preserved bindings share one environment cell between the defining function and its closures.
 
+At debug level 3, FLET and LABELS bindings retain their function objects, including unused functions.  Local-function names appear as (FUNCTION name), or (FUNCTION (SETF name)) for a SETF function.  A variable and function with the same symbol have separate records.  Function bindings use the policy at their introduction and retain captured cells shared with their closures.  The records permit inspection.  Resolving the innermost lexical scope for frame evaluation remains pending.
+
 Local records describe names, locations, and representations.  Availability is independent of the Lisp value, including NIL and keywords.  Missing storage reports an unavailable value.  Errors reading accessible storage enter the debugger.  The service does not reconstruct every source-level activation lost to inlining or tail calls, and it does not provide separate original and current argument records.  The remote API exposes inspection, with no local-write or lexical-evaluation operation.
 
 ## Operation limits

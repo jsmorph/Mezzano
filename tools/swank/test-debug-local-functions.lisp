@@ -1,0 +1,202 @@
+(defpackage #:lispm-local-function-test
+  (:use #:cl)
+  (:export #:run #:prepare-restore-test #:finish-restore-test))
+(in-package #:lispm-local-function-test)
+
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+
+(defun binding-values (frame name)
+  (loop for local in (mezzano.debug:frame-local-variables frame)
+        when (equal (mezzano.debug:local-variable-name local) name)
+          collect (multiple-value-bind (value available-p)
+                      (mezzano.debug:local-variable-value frame local)
+                    (assert available-p)
+                    value)))
+
+(defun check-frame-functions (frame name arguments expected variable-name variable-value)
+  (mezzano.extensions:gc :full t)
+  (let ((functions (binding-values frame (list 'function name))))
+    (assert (= (length functions) (length expected)))
+    (assert (every #'functionp functions))
+    (assert (equal (sort (mapcar (lambda (fn) (apply fn arguments)) functions) #'<)
+                   (sort (copy-list expected) #'<))))
+  (when variable-name
+    (assert (equal (binding-values frame variable-name) (list variable-value)))))
+
+(defun check-functions (definition arguments name call-arguments expected result
+                        &key variable-name variable-value)
+  (multiple-value-bind (target warnings-p failure-p) (compile nil definition)
+    (assert (and (compiled-function-p target) (not warnings-p) (not failure-p)))
+    (let ((seen nil))
+      (flet ((inspect ()
+               (mezzano.debug:map-backtrace
+                (lambda (frame)
+                  (when (eq (nth-value 1 (mezzano.debug:frame-function frame)) target)
+                    (setf seen t)
+                    (check-frame-functions frame name call-arguments expected
+                                           variable-name variable-value))))))
+        (assert (equal result (apply target (append arguments (list #'inspect))))))
+      (assert seen))))
+
+(defun check-closure-layout ()
+  (multiple-value-bind (target warnings-p failure-p)
+      (compile nil
+               '(lambda (value)
+                  (declare (optimize (debug 3) (safety 3) (speed 1)))
+                  (flet ((helper () value))
+                    (lambda (inspect)
+                      (funcall inspect)
+                      (helper)))))
+    (assert (and (compiled-function-p target) (not warnings-p) (not failure-p)))
+    (let ((closure (funcall target 73)) (seen nil))
+      (assert (mezzano.internals::closure-p closure))
+      (flet ((inspect ()
+               (mezzano.debug:map-backtrace
+                (lambda (frame)
+                  (when (eq (nth-value 1 (mezzano.debug:frame-function frame))
+                            (mezzano.internals::%closure-function closure))
+                    (setf seen t)
+                    (mezzano.extensions:gc :full t)
+                    (let ((functions (binding-values frame '(function helper))))
+                      (assert (= (length functions) 1))
+                      (assert (functionp (first functions)))
+                      (assert (= (funcall (first functions)) 73))))))))
+        (assert (= (funcall closure #'inspect) 73)))
+      (assert seen))))
+
+(defun run ()
+  (check-functions
+   '(lambda (value inspect)
+      (declare (optimize (debug 3) (safety 3) (speed 1)))
+      (let ((helper 13))
+        (declare (ignorable helper))
+        (flet ((helper () value))
+          (funcall inspect)
+          value)))
+   '(37) 'helper '() '(37) 37 :variable-name 'helper :variable-value 13)
+  (check-functions
+   '(lambda (inspect)
+      (declare (optimize (debug 3) (safety 3) (speed 1)))
+      (labels ((helper (n) (if (zerop n) 1 (* n (helper (1- n))))))
+        (funcall inspect)
+        19))
+   '() 'helper '(5) '(120) 19)
+  (check-functions
+   '(lambda (inspect)
+      (declare (optimize (debug 3) (safety 3) (speed 1)))
+      (flet ((helper () 10))
+        (flet ((helper () 20))
+          (funcall inspect)
+          (helper))))
+   '() 'helper '() '(10 20) 20)
+  (check-functions
+   '(lambda (inspect)
+      (declare (optimize (debug 3) (safety 3) (speed 1)))
+      (flet (((setf helper) (new-value) new-value))
+        (funcall inspect)
+        29))
+   '() '(setf helper) '(41) '(41) 29)
+  (dolist (debug '(0 1 2))
+    (check-functions
+     `(lambda (inspect)
+        (declare (optimize (debug ,debug) (safety 3) (speed 1)))
+        (flet ((helper () 43))
+          (declare (optimize (debug 3)))
+          (funcall inspect)
+          47))
+     '() 'helper '() '(43) 47)
+    (check-functions
+     `(lambda (inspect)
+        (declare (optimize (debug 3) (safety 3) (speed 1)))
+        (flet ((helper () 53))
+          (locally (declare (optimize (debug ,debug)))
+            (funcall inspect))
+          59))
+     '() 'helper '() '(53) 59)
+    (check-functions
+     `(lambda (inspect)
+        (declare (optimize (debug ,debug) (safety 3) (speed 1)))
+        (flet ((helper () 61))
+          (funcall inspect)
+          67))
+     '() 'helper '() '() 67))
+  (check-closure-layout)
+  (format t "PASS local function namespaces, recursion, shadowing, SETF names, captured bindings, GC, and debug policies.~%")
+  (values))
+
+(defvar *restore-thread* nil)
+(defvar *restore-cleanups* 0)
+
+(defun restore-target (value)
+  (let ((helper 5))
+    (flet ((helper () value))
+      (unwind-protect
+           (progn
+             (cerror "Continue the local-function restoration test."
+                     "Local-function restoration test")
+             (values (+ helper (helper)) :local-function-restored))
+        (incf *restore-cleanups*)))))
+
+(defun inspect-restore-stop (handle lease)
+  (let* ((frames (lispm-service-test::command handle lease :frames))
+         (index (position-if (lambda (entry)
+                               (search "RESTORE-TARGET" (getf entry :function)))
+                             frames)))
+    (assert index)
+    (mezzano.extensions:gc :full t)
+    (let* ((result (lispm-service-test::command handle lease :select-frame index))
+           (locals (getf result :locals))
+           (variable (find "HELPER" locals :key (lambda (entry) (getf entry :name))
+                           :test #'equal))
+           (function (find "(FUNCTION HELPER)" locals
+                           :key (lambda (entry) (getf entry :name)) :test #'equal)))
+      (assert (and variable function))
+      (assert (getf variable :available-p))
+      (assert (getf function :available-p))
+      (assert (equal (getf variable :value) "5"))
+      (assert (search "Closure" (getf function :value))))))
+
+(defun prepare-restore-test ()
+  (setf *restore-cleanups* 0
+        *restore-thread*
+        (mezzano.supervisor:make-thread
+         (lambda ()
+           (let ((*package* (find-package :lispm-local-function-test)))
+             (mezzano.debug:call-with-debugger-service
+              (lambda () (restore-target 37)))))
+         :name "Local function restore test"))
+  (let* ((handle (lispm-service-test::await
+                  (lambda () (lispm-service-test::stop-for-thread
+                              "Local function restore test"))))
+         (controller (mezzano.debug:make-debugger-controller))
+         (lease (mezzano.debug:attach-debugger-stop handle controller)))
+    (unwind-protect
+         (inspect-restore-stop handle lease)
+      (mezzano.debug:close-debugger-controller controller)))
+  (assert (zerop *restore-cleanups*))
+  (format t "Prepared local-function restoration stop.~%")
+  (values))
+
+(defun finish-restore-test ()
+  (let* ((handle (lispm-service-test::stop-for-thread "Local function restore test"))
+         (controller (mezzano.debug:make-debugger-controller))
+         (lease (mezzano.debug:attach-debugger-stop handle controller)))
+    (unwind-protect
+         (progn
+           (inspect-restore-stop handle lease)
+           (assert (zerop *restore-cleanups*))
+           (let ((id (getf (mezzano.debug:debugger-stop-information handle)
+                           :next-command-id)))
+             (mezzano.debug:submit-debugger-command lease id :proceed nil)
+             (assert (eq (getf (lispm-service-test::completed-command handle id) :state)
+                         :unwound)))
+           (lispm-service-test::await
+            (lambda ()
+              (nth-value 1 (mezzano.supervisor:thread-join *restore-thread* nil))))
+           (assert (equal (mezzano.supervisor:thread-join *restore-thread*)
+                          '(42 :local-function-restored)))
+           (assert (= *restore-cleanups* 1))
+           (mezzano.debug:release-debugger-stop lease))
+      (mezzano.debug:close-debugger-controller controller)))
+  (format t "PASS restored local function and variable, GC, continuation, and cleanup.~%")
+  (values))

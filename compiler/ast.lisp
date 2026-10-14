@@ -83,6 +83,10 @@
   (and (lexical-variable-p variable)
        (getf (lexical-variable-plist variable) 'preserve-for-debugger)))
 
+(defun debug-variable-name (variable)
+  (or (getf (lexical-variable-plist variable) 'debug-name)
+      (lexical-variable-name variable)))
+
 (defmethod print-object ((object lexical-variable) stream)
   (print-unreadable-object (object stream :type t :identity t)
     (format stream "~S" (lexical-variable-name object))))
@@ -268,8 +272,12 @@
                                 :name (lexical-variable-name var)
                                 :ignore (lexical-variable-ignore var)
                                 :dynamic-extent (lexical-variable-dynamic-extent var)
-                                :plist (when (preserve-variable-for-debugger-p var)
-                                         (list 'preserve-for-debugger t)))))
+                                :plist (append
+                                        (when (preserve-variable-for-debugger-p var)
+                                          (list 'preserve-for-debugger t))
+                                        (when (getf (lexical-variable-plist var) 'debug-name)
+                                          (list 'debug-name
+                                                (getf (lexical-variable-plist var) 'debug-name)))))))
         (setf (lexical-variable-definition-point new) (copy-form-fix (lexical-variable-definition-point var))
               (lexical-variable-use-count new) 0
               (lexical-variable-write-count new) 0
