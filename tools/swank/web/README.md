@@ -62,6 +62,8 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | Command | Behavior |
 |---|---|
 | `:Abort` | Invokes the stop's ABORT restart.  In a child entered by a debugger command, it abandons that command and returns to the enclosing debugger. |
+| `:Proceed` or `:Proceed Default` | Invokes the first captured CL:CONTINUE restart interactively.  The restart list marks it `Default`. |
+| `:Proceed N` | Invokes the restart with zero-based index N interactively. |
 | `:Help` | Displays the guest debugger command help. |
 | `:Show Backtrace` | Lists frames. |
 | `:Set Current Frame N` | Selects a frame by its zero-based index and displays its locals. |
@@ -70,7 +72,7 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Show Local N` | Displays one local by its zero-based index. |
 | `:Show Proceed Options` | Lists restart choices. |
 
-Restart lines invoke the selected restart interactively.  For an evaluation started with interactive input, a restart's QUERY-IO reader accepts text and EOF through the existing input controls.  A restart can return to the same stop or transfer control out of it.  Returned restart values, including values from a returning :Abort, appear in the debugger, with `(No values)` for zero values.  Unavailable local values display `<unavailable>`.  Original caller argument values are unavailable.  The selected frame's function and index identify the displayed locals.  The [debugger guide](../../../doc/debugger.md) describes stopping states and the compiler information required for local inspection.
+The :Proceed button invokes the default restart.  If no CL:CONTINUE restart exists, the guest rejects that request, and the debugger remains available for an explicit choice.  The error remains in Request History.  Restart lines show their indices and invoke the selected restart interactively.  For an evaluation started with interactive input, a restart's QUERY-IO reader accepts text and EOF through the existing input controls.  A restart can return to the same stop or transfer control out of it.  Returned restart values, including values from a returning :Proceed or :Abort, appear in the debugger, with `(No values)` for zero values.  Unavailable local values display `<unavailable>`.  Original caller argument values are unavailable.  The selected frame's function and index identify the displayed locals.  The [debugger guide](../../../doc/debugger.md) describes stopping states and the compiler information required for local inspection.
 
 Printing a condition or value can enter a child stop.  Interrupting a running debugger command also creates a child stop, including when its parent came from an earlier interruption.  The owning Listener follows that child, and :Abort returns to its parent without continuing the original computation.  Parent Stop and Child Stop navigate the relationship in the separate Debugger while the parent command remains running.  Closed stops retain previously queried results until Release Stop.
 
@@ -129,6 +131,6 @@ When the guest reports an expired session, the browser creates a new session, ar
 
 Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
 
-Submit accepts condition, restarts, frames, locals, abort, help, invoke-restart, and invoke-restart-interactively.  Locals requires a frame token.  Both restart operations require a restart index.  Invoke-restart calls the restart with zero arguments.  Invoke-restart-interactively runs its interactive argument reader.  Abort and Help take no argument.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
+Submit accepts condition, restarts, frames, locals, abort, proceed, help, invoke-restart, and invoke-restart-interactively.  Locals requires a frame token.  Both indexed restart operations require a restart index.  Invoke-restart calls the restart with zero arguments.  Invoke-restart-interactively runs its interactive argument reader.  Abort, Proceed, and Help take no argument.  Proceed selects the first captured CL:CONTINUE restart and invokes it interactively.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
 
 Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns an `error` and, for operation failures, an `uncertain` flag.  Input validation precedes SWANK dispatch.  Transport or remote decoding failures after dispatch report an uncertain outcome.  Requests require a Content-Length header, and bodies are limited to one MiB.  Chunked transfer encoding is unsupported.

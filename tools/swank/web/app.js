@@ -90,6 +90,8 @@ function button(text, action, help) {
 function report(error) {
   message(error.reason === ":listener-busy"
     ? "Input was rejected because this Listener already had an active evaluation. Your input is preserved."
+    : error.reason === ":no-continue-restart"
+      ? "No default CONTINUE restart. Choose a restart or use :Proceed N."
     : error.message || String(error));
   if (error.reason === ":expired-session") connected = false;
   $("process-state").textContent = connected ? "Request Error" : "Disconnected";
@@ -811,7 +813,8 @@ function renderListenerState() {
   } else action?.remove();
 }
 function stopCommandPending(stop) {
-  return state.pending.some(record => record.operation === "submit" && same(record.arguments.stop, stop))
+  return state.pending.some(record => record.operation === "submit" && record.status !== "rejected"
+      && same(record.arguments.stop, stop))
     || state.commands.some(command => {
       if (!same(command.stop, stop)) return false;
       const result = commandResults.get(commandKey(command));
@@ -1028,9 +1031,13 @@ function renderStops() {
   if (restarts) {
     const panel = stopControls.get(prefix + "restarts") || node("div", undefined, "restarts");
     controls.set(prefix + "restarts", panel);
-    const restartChildren = [];
+    const proceed = control(prefix + "proceed", ":Proceed", () => submit(selectedStop, "proceed"),
+      "Mouse-Left: Invoke the default CONTINUE restart and request any interactive arguments.");
+    proceed.disabled = !available;
+    const restartChildren = [proceed];
     for (const restart of restarts) {
-      const action = control(prefix + "restart:" + restart.index, restart.name + ": " + restart.description,
+      const action = control(prefix + "restart:" + restart.index,
+        restart.name + ": [" + restart.index + (restart["default-p"] ? ", Default" : "") + "] " + restart.description,
         () => submit(selectedStop, "invoke-restart-interactively", restart.index),
         "Mouse-Left: Invoke this restart and request any interactive arguments.");
       action.disabled = !available;
@@ -1040,7 +1047,7 @@ function renderStops() {
     detailChildren.push(panel);
   }
   const restartCommand = state.commands.findLast(command => same(command.stop, selectedStop)
-    && ["invoke-restart", "invoke-restart-interactively", "abort"].includes(command.command));
+    && ["proceed", "invoke-restart", "invoke-restart-interactively", "abort"].includes(command.command));
   const restartResult = restartCommand && commandResults.get(commandKey(restartCommand));
   if (restartResult?.state === ":returned") {
     const values = restartResult.result || [];

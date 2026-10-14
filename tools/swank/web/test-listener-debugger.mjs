@@ -19,7 +19,7 @@ const evidence = {marker, checks: []};
 let originalStops = [];
 
 async function key(key, code, windowsVirtualKeyCode, modifiers = 0) {
-  const generatedText = key === 'Enter' ? '\r' : undefined;
+  const generatedText = key === 'Enter' ? '\r' : key === ' ' ? ' ' : undefined;
   await browser.send('Input.dispatchKeyEvent', {type: 'keyDown', key, code, windowsVirtualKeyCode,
     modifiers, text: generatedText, unmodifiedText: generatedText});
   await browser.send('Input.dispatchKeyEvent', {type: 'keyUp', key, code, windowsVirtualKeyCode, modifiers});
@@ -134,7 +134,7 @@ try {
   const rejected = await browser.evaluate(`(async () => {
     const before = await api('information', {stop: ${text(first.stop)}});
     const replies = [];
-    for (const [command, argument] of [['abort', 0], ['condition', 0], ['help', 0], ['invoke-restart-interactively', '0']]) {
+    for (const [command, argument] of [['abort', 0], ['condition', 0], ['help', 0], ['proceed', 0], ['invoke-restart-interactively', '0']]) {
       const response = await fetch('/api', {method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-Mezzano-Request': '1'},
         body: JSON.stringify({session: state.session, operation: 'submit',
@@ -148,11 +148,18 @@ try {
   assert.equal(rejected.before, rejected.after);
   evidence.rejectedArguments = rejected;
   await save('ordinary-stop-help');
-  await proceed();
+  const defaultRestart = await browser.evaluate('returnedResult("restarts").filter(restart => restart["default-p"])');
+  assert.equal(defaultRestart.length, 1);
+  assert.equal(defaultRestart[0].name, 'CONTINUE');
+  assert(await browser.evaluate(`document.querySelector('#listener-debugger .restarts').textContent.includes(${text('CONTINUE: [' + defaultRestart[0].index + ', Default]')})`));
+  await fill('#source', ':Pro');
+  await key(' ', 'Space', 32);
+  await browser.waitFor('document.querySelector("#source").value === ":Proceed " && !busy');
+  await key('Enter', 'Enter', 13);
   assert.deepEqual((await completed(normal)).values, ['42']);
   assert.deepEqual(await browser.evaluate('({text: document.querySelector("#source").value, start: document.querySelector("#source").selectionStart, end: document.querySelector("#source").selectionEnd})'), {text: ordinaryDraft, start: 3, end: 6});
   evidence.checks.push('Inline/standalone Help, completion, rejected argument validation, ordinary draft and selection restoration');
-  evidence.continuation = 'CONTINUE restart button';
+  evidence.checks.push('SPACE completes Proceed; omitted selector invokes the marked default and returns 42');
 
   const abort = await start(`(unwind-protect (cerror "Continue owned test." "${marker} abort") (write-string "${marker} abort cleanup"))`);
   await stopped(abort);
@@ -219,13 +226,41 @@ try {
   assert.deepEqual(await browser.evaluate('({text: document.querySelector("#source").value, start: document.querySelector("#source").selectionStart, end: document.querySelector("#source").selectionEnd})'), {text: parentDraft, start: 2, end: 7});
   assert.equal(await browser.evaluate(`views.get(${text(nested)}).info.state`), ':running');
   await save('outer-stop-restored');
-  await proceed();
+  await command(':Proceed Default');
   assert.deepEqual((await completed(nested)).values, ['333']);
   evidence.checks.push('Debugger operation error -> child Abort -> original outer stop/draft -> continuation ->333, including reload');
 
   const interactive = await start(`(restart-case (error "${marker} interactive restart") (use-value (value) :report "Use an entered value." :interactive (lambda () (format *query-io* "${marker} replacement: ") (list (read *query-io*))) (+ value 7)))`);
-  await stopped(interactive);
-  await clickText('#listener-debugger .restarts', 'USE-VALUE');
+  const noDefaultStop = await stopped(interactive);
+  await browser.waitFor('returnedResult("restarts") && !stopCommandPending(listenerDebugger.stop) && !busy');
+  assert.equal(await browser.evaluate('returnedResult("restarts").some(restart => restart["default-p"])'), false);
+  const nextBeforeRejection = await browser.evaluate('stops.find(stop => same(stop.token, listenerDebugger.stop)).info["next-command-id"]');
+  await fill('#source', ':Proceed');
+  await key('Enter', 'Enter', 13);
+  await browser.waitFor('state.pending.some(record => record.operation === "submit" && record.arguments.command === "proceed" && record.status === "rejected") && !busy');
+  await browser.waitFor('[...document.querySelectorAll("#listener-debugger .restarts button")].every(button => !button.disabled) && !busy');
+  const rejection = await browser.evaluate(`({session: state.session, connected, stop: listenerDebugger.stop,
+    info: stops.find(stop => same(stop.token, listenerDebugger.stop)).info,
+    pending: stopCommandPending(listenerDebugger.stop), draft: document.querySelector('#source').value,
+    accepted: state.commands.some(command => same(command.stop, listenerDebugger.stop) && command.id === ${nextBeforeRejection}),
+    message: document.body.innerText.includes('No default CONTINUE restart. Choose a restart or use :Proceed N.'),
+    buttons: [...document.querySelectorAll('#listener-debugger .restarts button')].every(button => !button.disabled)})`);
+  assert.equal(rejection.session, evidence.session);
+  assert.equal(rejection.connected, true);
+  assert.deepEqual(rejection.stop, noDefaultStop.stop);
+  assert.equal(rejection.info.state, ':stopped');
+  assert.equal(rejection.info.child, null);
+  assert.equal(rejection.info['next-command-id'], nextBeforeRejection);
+  assert.equal(rejection.pending, false);
+  assert.equal(rejection.accepted, false);
+  assert.equal(rejection.draft, ':Proceed');
+  assert.equal(rejection.message, true);
+  assert.equal(rejection.buttons, true);
+  evidence.rejectedDefault = rejection;
+  await save('no-default');
+  const useValue = await browser.evaluate('returnedResult("restarts").find(restart => restart.name === "USE-VALUE")');
+  await command(':Proceed ' + useValue.index);
+  assert.equal(await browser.evaluate('latestCommand("invoke-restart-interactively").argument'), useValue.index);
   await browser.waitFor(`views.get(${text(interactive)})?.info['input-waiting-p']`);
   const interactiveParent = await browser.evaluate('listenerDebugger.stop');
   await browser.waitFor(`views.get(${text(interactive)})?.info['interruptible-p']
@@ -235,7 +270,7 @@ try {
   await command(':Abort');
   await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(interactiveParent)}) && !busy`);
   assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('invoke-restart-interactively'))).state"), ':unwound');
-  await clickText('#listener-debugger .restarts', 'USE-VALUE');
+  await command(':Proceed ' + useValue.index);
   await browser.waitFor(`views.get(${text(interactive)})?.info['input-waiting-p']
     && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':running'`);
   const restartInput = '[data-job="' + interactive + '"] .input-form';
@@ -243,6 +278,26 @@ try {
   await clickText(restartInput, 'Send Input');
   assert.deepEqual((await completed(interactive)).values, ['42']);
   evidence.checks.push('Blocked restart reader interrupt -> child Abort -> same condition stop -> retry reader and entered argument');
+  evidence.checks.push('Missing default preserves stop, command ID, connection, draft, and enabled controls; explicit Proceed selects an interactive restart');
+
+  const returningProceed = await start(`(restart-bind ((continue (lambda (value) (values value :continued)) :report-function (lambda (stream) (write-string "Return the entered value to this debugger." stream)) :interactive-function (lambda () (format *query-io* "${marker} proceed replacement: ") (list (read *query-io*))))) (error "${marker} returning Proceed"))`);
+  const returningProceedStop = await stopped(returningProceed);
+  await clickText('#listener-debugger .restarts', ':Proceed');
+  await browser.waitFor(`views.get(${text(returningProceed)})?.info['input-waiting-p']`);
+  const proceedInput = '[data-job="' + returningProceed + '"] .input-form';
+  await fill(proceedInput + ' textarea', '81');
+  await clickText(proceedInput, 'Send Input');
+  await browser.waitFor(`document.querySelector('#listener-debugger .restart-values')?.textContent === ${text('Restart returned:\n81\n:CONTINUED')} && !busy`);
+  assert.deepEqual(await browser.evaluate('listenerDebugger.stop'), returningProceedStop.stop);
+  assert.equal(await browser.evaluate(`views.get(${text(returningProceed)}).info.state`), ':running');
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, listenerDebugger.stop)).info.state'), ':stopped');
+  assert.deepEqual(await browser.evaluate('commandResults.get(commandKey(latestCommand("proceed"))).result'), ['81', ':CONTINUED']);
+  await save('returning-proceed');
+  await command(':Abort');
+  await completed(returningProceed, ':aborted');
+  const afterProceed = await start('(+ 19 23)');
+  assert.deepEqual((await completed(afterProceed)).values, ['42']);
+  evidence.checks.push('Proceed button reads an argument and displays two returned values at the same stop; Abort and subsequent Listener evaluation succeed');
 
   const returning = await start(`(let ((replacement 0) (abort-returned nil) (job-abort (find-restart 'abort))) (restart-bind ((use-value (lambda (value) (setf replacement value)) :report-function (lambda (stream) (write-string "Set the replacement and return to this debugger." stream)) :interactive-function (lambda () (format *query-io* "${marker} returning replacement: ") (list (read *query-io*)))) (no-values (lambda () (values)) :report-function (lambda (stream) (write-string "Return no values to this debugger." stream))) (abort (lambda () (if abort-returned (invoke-restart job-abort) (progn (setf abort-returned t) (values :abort-returned 9)))) :report-function (lambda (stream) (write-string "Return from the captured ABORT restart." stream)))) (cerror "Continue after returning restart." "${marker} returning restart")) replacement)`);
   const returningStop = await stopped(returning);
@@ -342,8 +397,10 @@ try {
       evidence.protectedStop = original.find(stop => stop.id === protectedStop);
     }
     const expected = browser.errors.filter(error => error.source === 'network' && error.url === new URL('/api', url).href && error.text.includes('status of 400'));
-    assert.equal(expected.length, evidence.rejectedArguments ? 4 : 0);
-    assert.deepEqual(browser.errors.filter(error => !expected.includes(error)), []);
+    assert.equal(expected.length, evidence.rejectedArguments ? 5 : 0);
+    const missingDefault = browser.errors.filter(error => error.source === 'network' && error.url === new URL('/api', url).href && error.text.includes('status of 409'));
+    assert.equal(missingDefault.length, evidence.rejectedDefault ? 1 : 0);
+    assert.deepEqual(browser.errors.filter(error => !expected.includes(error) && !missingDefault.includes(error)), []);
   } catch (cleanupError) {
     evidence.cleanupFailure = cleanupError.stack;
     throw cleanupError;

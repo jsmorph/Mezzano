@@ -48,6 +48,13 @@ class ProtocolTests(unittest.TestCase):
 
     def test_typed_arguments(self):
         session = "a" * 64
+        stop = [":stop", session, 1]
+        self.assertEqual(server.operation_arguments("submit",
+            {"stop": stop, "id": 0, "command": "proceed"}, session),
+            [[server.Symbol(":stop"), session, 1], 0, server.Symbol(":proceed"), None])
+        with self.assertRaises(ValueError):
+            server.operation_arguments("submit",
+                {"stop": stop, "id": 0, "command": "proceed", "argument": 0}, session)
         with self.assertRaises(ValueError):
             server.operation_arguments("submit",
                 {"stop": [":stop", session, 1], "id": 0, "command": "quit"}, session)
