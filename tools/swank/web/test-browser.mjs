@@ -545,11 +545,37 @@ try {
   await releaseJob('REPLAY');
   console.log('PASS browser recovery after discarding an accepted evaluation reply');
 
+  await browser.evaluate(`(() => {
+    const original = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await original(...args);
+      const request = args[1]?.body && JSON.parse(args[1].body);
+      if (request?.operation === 'submit' && request.arguments?.command === 'frames') {
+        window.fetch = original;
+        await new Promise(resolve => { window.releaseInitialInspection = resolve; });
+      }
+      return response;
+    };
+  })()`);
   const functionName = marker + '-DEBUG';
   await enter('#source', `(defun ${functionName} (a b) (declare (optimize (debug 3) (safety 3))) (cerror "Continue browser test." "${marker} debugger") (+ a b)) (unwind-protect (${functionName} 111 222) (fmakunbound '${functionName}))`);
   job = await selectJob('DEBUG');
   await waitText(job, 'Debugger');
-  await clickText(job, 'Debugger');
+  await browser.waitFor('typeof releaseInitialInspection === "function"');
+  const initialDebuggerPosition = await browser.evaluate(`(() => {
+    window.initialDebuggerAction = [...document.querySelectorAll(${text(job + ' button')})]
+      .find(button => button.textContent === 'Debugger');
+    initialDebuggerAction.scrollIntoView({block: 'center'});
+    const bounds = initialDebuggerAction.getBoundingClientRect();
+    return {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2};
+  })()`);
+  await browser.send('Input.dispatchMouseEvent', {type: 'mouseMoved', ...initialDebuggerPosition});
+  await browser.send('Input.dispatchMouseEvent', {type: 'mousePressed', button: 'left', clickCount: 1, ...initialDebuggerPosition});
+  await browser.evaluate('releaseInitialInspection(); delete window.releaseInitialInspection');
+  await browser.waitFor('!busy');
+  assert(await browser.evaluate('initialDebuggerAction.isConnected && document.activeElement === initialDebuggerAction'));
+  assert(await browser.evaluate(`document.elementFromPoint(${initialDebuggerPosition.x}, ${initialDebuggerPosition.y}) === initialDebuggerAction`));
+  await browser.send('Input.dispatchMouseEvent', {type: 'mouseReleased', button: 'left', clickCount: 1, ...initialDebuggerPosition});
   await browser.waitFor('!busy');
   const debugStop = await browser.evaluate('selectedStop');
   await waitText('#stop-detail .condition', marker + ' debugger');
@@ -805,6 +831,7 @@ try {
   console.log('PASS no unexpected browser errors (two expected HTTP 409 responses)');
   console.log('Screenshots:', output);
 } catch (error) {
+  await browser.evaluate('window.releaseInitialInspection?.()');
   await screenshot('failure');
   await writeFile(join(output, 'failure-session.json'), await browser.evaluate('JSON.stringify(sessionStorage)'));
   await writeFile(join(output, 'failure.txt'), await browser.evaluate('document.body.innerText'));

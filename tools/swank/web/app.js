@@ -364,7 +364,7 @@ async function evaluate(source, interactive) {
   historyIndex = null;
   showActivity("listener");
   await refresh();
-  $("page").scrollTop = $("page").scrollHeight;
+  if (document.activeElement === $("source")) $("page").scrollTop = $("page").scrollHeight;
 }
 function editorCursor(editor) {
   return Array.from(editor.value.slice(0, editor.selectionStart)).length;
@@ -784,9 +784,9 @@ async function refresh() {
   renderPending();
   updateStatus();
   updateTracks();
-  if (activity === "listener") {
-    if (priorDraft !== editorDraftKeys.get(editor)) editor.focus();
-    if (editorVisible || priorDraft !== editorDraftKeys.get(editor)) editor.scrollIntoView({block: "nearest"});
+  if (activity === "listener" && document.activeElement === editor
+      && (editorVisible || priorDraft !== editorDraftKeys.get(editor))) {
+    editor.scrollIntoView({block: "nearest"});
   }
 }
 function renderListenerState() {

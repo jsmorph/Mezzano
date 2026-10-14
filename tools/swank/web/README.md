@@ -105,7 +105,9 @@ F9 starts SELECT.  L selects the Listener, D selects Document Examiner, and P se
 
 A tab retains its session identity, input history, request records, and viewer state in sessionStorage.  Reload resumes the same session.  Independent tabs create separate sessions.  Duplicated tabs can inherit one identity.  Closing a browser or releasing a session leaves guest jobs retained until explicit release.  Stored output and results consume guest memory.
 
-Each HTTP operation opens a SWANK connection and closes it after the operation.  Debugger control lasts for that connection.  The guest preserves accepted jobs and debugger commands independently of the connection.
+The server retains one SWANK connection per browser session and serializes that session's requests.  Each operation attaches the guest session and releases its debugger controller before replying.  Accepted jobs and commands remain in the guest.  Release Session closes the transport immediately.  The server closes an idle transport after sixty seconds without a request.  A later request opens another connection and resumes the same guest session.  These transport closures preserve retained jobs and results.
+
+Orderly server shutdown cancels open HTTP sockets, waits for active handlers to finish, and closes retained SWANK connections.  An accepted guest request keeps its existing deadline.  Cancellation can lose its HTTP reply, leaving an uncertain outcome for recovery through the original request identity.
 
 Request History distinguishes rejected requests from requests whose replies were lost.  Repeat Original Request uses the recorded evaluation name, input range, interrupt ID, debugger command ID, or private-document Save arguments.  It preserves the identity of the uncertain request.  Recalling input in the Listener and pressing Return creates a new evaluation instead.
 

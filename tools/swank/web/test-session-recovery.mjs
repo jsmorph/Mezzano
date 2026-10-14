@@ -13,6 +13,7 @@ const marker = 'RECOVERY-' + randomBytes(6).toString('hex').toUpperCase();
 const counter = 'cl-user::*' + marker + '*';
 const owned = [];
 let stopJob;
+let restartBeforeClick;
 const ready = () => browser.waitFor("typeof connected !== 'undefined' && connected && !busy", 45);
 
 async function key(key, code, windowsVirtualKeyCode, modifiers = 0, text) {
@@ -171,7 +172,9 @@ try {
     await selectStop(stop);
     await submit(stop, 'condition');
   })`);
-  await browser.waitFor("state.commands.length === 1 && [...commandResults.values()].some(result => result.state === ':returned')", 90);
+  await browser.waitFor("!busy && state.commands.length === 4 && state.commands.every(command => commandResults.get(commandKey(command))?.state === ':returned')", 90);
+  assert.deepEqual(await browser.evaluate('state.commands.map(command => command.command).sort()'),
+    ['condition', 'current-frame', 'frames', 'restarts']);
   console.log('Prepared retained debugger command');
   const oldCommands = await browser.evaluate('state.commands');
   const historyBefore = await browser.evaluate('state.inputHistory');
@@ -266,7 +269,15 @@ try {
     await submit(stop, 'restarts');
   })`);
   await browser.waitFor("[...document.querySelectorAll('.restarts button')].some(button => button.textContent.includes('Continue recovery fixture.'))");
-  await browser.evaluate("[...document.querySelectorAll('.restarts button')].find(button => button.textContent.includes('Continue recovery fixture.')).click()");
+  restartBeforeClick = await browser.evaluate(`(() => {
+    const button = [...document.querySelectorAll('#debugger .restarts button')]
+      .find(button => button.textContent.includes('Continue recovery fixture.'));
+    return {disabled: button.disabled, text: button.textContent, pending: stopCommandPending(selectedStop)};
+  })()`);
+  await browser.waitFor('!busy && !stopCommandPending(selectedStop)');
+  assert(await browser.evaluate(`[...document.querySelectorAll('#debugger .restarts button')]
+    .some(button => button.textContent === ${q(restartBeforeClick.text)} && !button.disabled)`));
+  await clickText('#debugger .restarts button', restartBeforeClick.text);
   await browser.waitFor(`!busy && views.get(${q(stopJob)})?.info.state === ':returned'`, 45);
   await browser.evaluate("run(()=>mutate('release-stop', {stop:selectedStop}))");
   await command(`(progn (makunbound '${counter}) (unintern '${counter} "CL-USER") (values))`);
@@ -281,7 +292,7 @@ try {
   assert.equal(conflicts.length, 5);
   assert.deepEqual(browser.errors.filter(error => !conflicts.includes(error)), []);
   await writeFile(join(output, 'result.json'), JSON.stringify({
-    marker, owned, oldSession, archived, rejected, rebound, beforeReload, requests,
+    marker, owned, oldSession, archived, rejected, rebound, beforeReload, requests, restartBeforeClick,
     refreshes: await browser.evaluate('window.recoveryRefreshes'),
     errors: browser.errors, cleaned: true
   }, null, 2));
@@ -289,7 +300,7 @@ try {
 } catch (error) {
   await browser.screenshot(join(output, 'failure.png'));
   await writeFile(join(output, 'failure.json'), JSON.stringify({
-    error: error.stack, marker, counter, owned, stopJob,
+    error: error.stack, marker, counter, owned, stopJob, restartBeforeClick,
     state: await browser.evaluate('state'),
     requests: await browser.evaluate('window.recoveryRequests'),
     refreshes: await browser.evaluate('window.recoveryRefreshes'),

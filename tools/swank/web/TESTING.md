@@ -10,7 +10,7 @@ Python 3.13 or later is required.  From the Mezzano checkout:
 uv run --no-python-downloads --python python3 tools/swank/web/test_server.py
 ```
 
-The isolated tests create local fake peers and HTTP servers.  They exercise framing, encoding, typed arguments, request-origin checks, error classification, connection cleanup, and session serialization.  They do not require a running guest.
+The isolated tests create local fake peers and HTTP servers.  They exercise framing, encoding, typed arguments, request-origin checks, error classification, retained connection reuse, per-request deadlines and output, session serialization, failed-socket disposal without replay, and idle closure.  Shutdown tests cover incomplete headers and bodies with continued input, HTTP cancellation while guest dispatch completes, thread-start failure, and constructor bind failure.  They do not require a running guest.
 
 The live suite connects to SWANK on loopback.  The port is configurable:
 
@@ -19,7 +19,7 @@ uv run --no-python-downloads --python python3 tools/swank/web/test_server.py \
   --live-port 4005
 ```
 
-It starts a temporary HTTP server and exercises evaluation, Unicode output offsets, returned values, replay, interactive input, condition stops, frame and local inspection, restart continuation, interruption, and child stops.  Its cleanup removes the functions, classes, jobs, stops, and session it created.
+It starts a temporary HTTP server and exercises evaluation, Unicode output offsets, returned values, replay, interactive input, condition stops, frame and local inspection, restart continuation, interruption, and child stops.  It also checks reuse of one initialized SWANK connection, detached guest ownership, idle closure and resume of the same session, and immediate connection closure on session release.  Its cleanup removes the functions, classes, jobs, stops, and session it created.
 
 ## Browser tests
 
@@ -38,7 +38,7 @@ node tools/swank/web/test-peek.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-peek-test
 ```
 
-The Listener driver covers command assistance, evaluation and input history, guest file commands, Unicode presentations, interactive input, debugger commands and restarts, retained-request recovery, and release reconciliation.  It checks initial debugger inspection, Listener ownership through reload, typed Help through the owning Listener, and successful ordinary submission after CONTINUE.  The Examiner driver covers topics, mouse operations, candidate history, search options, bookmarks, named viewers, reload, reading positions, and print dispatch.  The private-document driver covers command menus, defaults, bookmark order, Save replay, Load, Read, Hardcopy, and file cleanup.
+The Listener driver covers command assistance, evaluation and input history, guest file commands, Unicode presentations, interactive input, debugger commands and restarts, retained-request recovery, and release reconciliation.  It holds an initial frame-inspection reply across native mouse-down, then checks that refresh completion preserves the Debugger button's focus and pointer target before mouse-up.  It checks initial debugger inspection, Listener ownership through reload, typed Help through the owning Listener, and successful ordinary submission after CONTINUE.  The Examiner driver covers topics, mouse operations, candidate history, search options, bookmarks, named viewers, reload, reading positions, and print dispatch.  The private-document driver covers command menus, defaults, bookmark order, Save replay, Load, Read, Hardcopy, and file cleanup.
 
 Each driver starts a separate headless browser profile and removes that profile on exit.  Successful runs release their owned guest sessions and fixtures.  Failed interactions save session state and fixture identities for inspection and cleanup.  The Listener and private-document tests create guest files and evaluation jobs.  They require a writable guest home directory.  Other clients' retained objects must remain untouched.
 

@@ -6,6 +6,8 @@
 
 import argparse
 from contextlib import contextmanager
+from dataclasses import dataclass, field
+import errno
 import json
 import re
 import socket
@@ -239,6 +241,12 @@ class Swank:
                              *[[Symbol("quote"), value] for value in arguments]])
 
 
+    def transient_request(self, name, operation, *arguments):
+        return self.checked([Symbol("swank/mezzano-debugger:transient-request"), name,
+                             Symbol(":" + operation),
+                             *[[Symbol("quote"), value] for value in arguments]])
+
+
 def require_name(value):
     if not isinstance(value, str) or not NAME.fullmatch(value):
         raise ValueError("A session or evaluation name must contain 64 lowercase hexadecimal digits.")
@@ -401,11 +409,25 @@ def operation_arguments(operation, args, session):
     raise ValueError("Unsupported operation.")
 
 
+@dataclass
+class Session:
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    users: int = 0
+    connection: Swank | None = None
+    last_used: float = 0
+
+    def close(self):
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
+
+
 class Application:
     def __init__(self, host, port, timeout):
         self.host, self.port, self.timeout = host, port, timeout
-        self.locks = {}
+        self.sessions = {}
         self.lock = threading.Lock()
+        self.closed = False
 
     @staticmethod
     def prepare(data):
@@ -421,44 +443,123 @@ class Application:
         return name, operation, values
 
     @contextmanager
-    def session_lock(self, name):
+    def session_lock(self, name, deadline):
         with self.lock:
-            entry = self.locks.setdefault(name, [threading.Lock(), 0])
-            entry[1] += 1
+            if self.closed:
+                raise ConnectionError("The HTTP server is shutting down.")
+            entry = self.sessions.setdefault(name, Session())
+            entry.users += 1
         acquired = False
         try:
-            acquired = entry[0].acquire(timeout=self.timeout)
+            acquired = entry.lock.acquire(timeout=max(0, deadline - time.monotonic()))
             if not acquired:
                 raise TimeoutError("The session's HTTP request queue exceeded its deadline.")
-            yield
+            yield entry
         finally:
             if acquired:
-                entry[0].release()
+                entry.lock.release()
             with self.lock:
-                entry[1] -= 1
-                if entry[1] == 0:
-                    del self.locks[name]
+                entry.users -= 1
+                if acquired:
+                    entry.last_used = time.monotonic()
+                if entry.users == 0 and entry.connection is None:
+                    del self.sessions[name]
+
+    def close_idle(self):
+        now = time.monotonic()
+        with self.lock:
+            for name, entry in list(self.sessions.items()):
+                if entry.users == 0 and now - entry.last_used >= 60:
+                    entry.close()
+                    del self.sessions[name]
+
+    def close(self):
+        with self.lock:
+            self.closed = True
+            for entry in self.sessions.values():
+                entry.close()
+            self.sessions.clear()
 
     def dispatch(self, prepared):
         name, operation, values = prepared
         deadline = time.monotonic() + self.timeout
-        with self.session_lock(name):
-            connection = Swank(self.host, self.port, deadline)
+        with self.session_lock(name, deadline) as entry:
             try:
-                attached = connection.attach(name, create=operation == "open-session")
-                if operation in ("open-session", "resume-session"):
-                    result = attached
-                elif operation in ("submit", "release-stop"):
-                    lease = connection.request(name, "attach", values[0])
-                    result = connection.request(name, operation, lease, *values[1:])
+                if entry.connection is None:
+                    entry.connection = Swank(self.host, self.port, deadline)
+                    entry.connection.rpc([Symbol("swank:swank-require"),
+                                          Symbol(":swank-mezzano-debugger")])
                 else:
-                    result = connection.request(name, operation, *values)
-                return {"value": json_value(result), "diagnostics": connection.output}
+                    entry.connection.deadline = deadline
+                    entry.connection.output.clear()
+                connection = entry.connection
+                result = connection.transient_request(name, operation, *values)
+                return {"value": json_value(result), "diagnostics": list(connection.output)}
+            except ServiceError:
+                raise
+            except BaseException:
+                entry.close()
+                raise
             finally:
-                connection.close()
+                if operation == "release-session":
+                    entry.close()
+
+
+class Server(ThreadingHTTPServer):
+    def __init__(self, *args, **kwargs):
+        self.application = None
+        self.request_condition = threading.Condition()
+        self.requests = set()
+        self.closing = False
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        with self.request_condition:
+            if self.closing:
+                self.close_request(request)
+                return
+            self.requests.add(request)
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.close_request(request)
+            raise
+
+    def close_request(self, request):
+        with self.request_condition:
+            try:
+                super().close_request(request)
+            finally:
+                self.requests.discard(request)
+                self.request_condition.notify_all()
+
+    def service_actions(self):
+        self.application.close_idle()
+
+    def server_close(self):
+        with self.request_condition:
+            self.closing = True
+            super().server_close()
+            for request in self.requests:
+                try:
+                    request.shutdown(socket.SHUT_RDWR)
+                except OSError as error:
+                    if error.errno not in (errno.ENOTCONN, errno.EBADF):
+                        raise
+            self.request_condition.wait_for(lambda: not self.requests)
+        if self.application is not None:
+            self.application.close()
 
 
 class Handler(BaseHTTPRequestHandler):
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except ConnectionError:
+            if not self.server.closing:
+                raise
+            self.close_connection = True
+
     server_version = "MezzanoHTTP/1"
     protocol_version = "HTTP/1.0"
 
@@ -580,7 +681,7 @@ def main():
     parser.add_argument("--timeout", type=float, default=15)
     parser.add_argument("--allow-host", action="append", default=[])
     args = parser.parse_args()
-    server = ThreadingHTTPServer((args.listen, args.port), Handler)
+    server = Server((args.listen, args.port), Handler)
     server.application = Application(args.swank_host, args.swank_port, args.timeout)
     server.allowed_hosts = {"localhost", "127.0.0.1", socket.gethostname(), socket.getfqdn(),
                             *args.allow_host}

@@ -7,7 +7,6 @@ import threading
 import time
 import unittest
 from unittest import mock
-from http.server import ThreadingHTTPServer
 
 import server
 
@@ -231,15 +230,261 @@ class ProtocolTests(unittest.TestCase):
     def test_idle_session_locks_are_removed(self):
         app = server.Application("127.0.0.1", 4006, 2)
         for _ in range(10):
-            with app.session_lock(secrets.token_hex(32)):
-                self.assertEqual(len(app.locks), 1)
-            self.assertEqual(app.locks, {})
+            with app.session_lock(secrets.token_hex(32), time.monotonic() + 2):
+                self.assertEqual(len(app.sessions), 1)
+            self.assertEqual(app.sessions, {})
+
+
+class ConnectionTests(unittest.TestCase):
+    def setUp(self):
+        self.app = server.Application("127.0.0.1", 4006, 15)
+        self.name = "a" * 64
+        self.connection = mock.Mock(output=[])
+        self.connection.transient_request.return_value = None
+        self.factory = mock.patch.object(server, "Swank", return_value=self.connection)
+        self.factory_mock = self.factory.start()
+        self.addCleanup(self.factory.stop)
+        self.addCleanup(self.app.close)
+
+    def dispatch(self, operation="jobs"):
+        return self.app.dispatch((self.name, operation, []))
+
+    def test_reuse_and_request_reset(self):
+        self.connection.deadline = time.monotonic() + 15
+        self.connection.rpc.side_effect = lambda form: self.connection.output.append("module output")
+        before = time.monotonic()
+        self.dispatch()
+        self.assertEqual(self.connection.output, ["module output"])
+        first_deadline = self.factory_mock.call_args.args[2]
+        self.assertGreaterEqual(first_deadline, before + 15)
+        self.assertLessEqual(first_deadline, time.monotonic() + 15)
+        self.connection.output.append("previous output")
+        self.dispatch()
+        self.factory_mock.assert_called_once()
+        self.connection.rpc.assert_called_once_with(
+            [server.Symbol("swank:swank-require"), server.Symbol(":swank-mezzano-debugger")])
+        self.assertEqual(self.connection.output, [])
+        self.assertGreaterEqual(self.connection.deadline, first_deadline)
+        self.connection.close.assert_not_called()
+
+    def test_rejection_keeps_transport_and_release_closes_it(self):
+        self.connection.transient_request.side_effect = [server.ServiceError(":invalid-frame"), None, None]
+        with self.assertRaises(server.ServiceError):
+            self.dispatch()
+        self.dispatch()
+        self.factory_mock.assert_called_once()
+        self.connection.close.assert_not_called()
+        self.dispatch("release-session")
+        self.connection.close.assert_called_once()
+        self.assertEqual(self.app.sessions, {})
+
+    def test_failure_discards_transport_without_replay(self):
+        replacement = mock.Mock(output=[])
+        replacement.transient_request.return_value = None
+        self.factory_mock.side_effect = [self.connection, replacement]
+        self.connection.transient_request.side_effect = TimeoutError("Lost reply")
+        with self.assertRaisesRegex(TimeoutError, "Lost reply"):
+            self.dispatch("start-listener")
+        self.connection.transient_request.assert_called_once_with(self.name, "start-listener")
+        self.connection.close.assert_called_once()
+        self.assertEqual(self.app.sessions, {})
+        self.dispatch("resume-session")
+        replacement.transient_request.assert_called_once_with(self.name, "resume-session")
+        self.assertEqual(self.factory_mock.call_count, 2)
+
+    def test_idle_and_active_connections(self):
+        self.dispatch()
+        entry = self.app.sessions[self.name]
+        entry.last_used = time.monotonic() - 59
+        self.app.close_idle()
+        self.connection.close.assert_not_called()
+        with self.app.session_lock(self.name, time.monotonic() + 1):
+            entry.last_used = time.monotonic() - 61
+            self.app.close_idle()
+            self.connection.close.assert_not_called()
+        entry.last_used = time.monotonic() - 61
+        self.app.close_idle()
+        self.connection.close.assert_called_once()
+        self.assertEqual(self.app.sessions, {})
+
+    def test_queued_request_deadline_and_other_session(self):
+        self.dispatch()
+        entry = self.app.sessions[self.name]
+        queued = threading.Event()
+        result = []
+        def caller():
+            queued.set()
+            try:
+                with self.app.session_lock(self.name, time.monotonic() + .05):
+                    result.append("acquired")
+            except TimeoutError:
+                result.append("expired")
+        with self.app.session_lock(self.name, time.monotonic() + 1):
+            thread = threading.Thread(target=caller)
+            thread.start()
+            self.assertTrue(queued.wait(1))
+            with self.app.session_lock("b" * 64, time.monotonic() + .05):
+                self.assertEqual(len(self.app.sessions), 2)
+            entry.last_used = time.monotonic() - 61
+            self.app.close_idle()
+            self.connection.close.assert_not_called()
+            thread.join(1)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(result, ["expired"])
+            self.assertEqual(entry.users, 1)
+        self.assertEqual(entry.users, 0)
+        self.assertEqual(len(self.app.sessions), 1)
+
+    def test_server_shutdown_waits_for_active_request(self):
+        entered, release, closed, completed = (threading.Event() for _ in range(4))
+        def request(*arguments):
+            entered.set()
+            if not release.wait(3):
+                raise TimeoutError("Test caller did not release request")
+            completed.set()
+            return None
+        self.connection.transient_request.side_effect = request
+        http_server = server.Server(("127.0.0.1", 0), server.Handler)
+        http_server.application = self.app
+        http_server.allowed_hosts = {"127.0.0.1"}
+        serving = threading.Thread(target=http_server.serve_forever)
+        replies = []
+        def close():
+            http_server.server_close()
+            closed.set()
+        def client():
+            connection = http.client.HTTPConnection("127.0.0.1", http_server.server_port, timeout=3)
+            try:
+                connection.request("POST", "/api", json.dumps({"session": self.name, "operation": "jobs"}),
+                                   {"Content-Type": "application/json", "X-Mezzano-Request": "1"})
+                response = connection.getresponse()
+                replies.append((response.status, json.loads(response.read())))
+            except http.client.RemoteDisconnected:
+                replies.append("disconnected")
+            finally:
+                connection.close()
+        caller = threading.Thread(target=client)
+        closer = threading.Thread(target=close)
+        serving.start()
+        caller.start()
+        try:
+            self.assertTrue(entered.wait(1))
+            http_server.shutdown()
+            serving.join(1)
+            closer.start()
+            self.assertFalse(closed.wait(.05))
+            self.connection.close.assert_not_called()
+        finally:
+            release.set()
+            http_server.shutdown()
+            serving.join(3)
+            caller.join(3)
+            if closer.ident is not None:
+                closer.join(3)
+            else:
+                http_server.server_close()
+        self.assertFalse(caller.is_alive())
+        self.assertFalse(closer.is_alive())
+        self.assertEqual(replies, ["disconnected"])
+        self.assertTrue(completed.is_set())
+        self.connection.transient_request.assert_called_once()
+        self.connection.close.assert_called_once()
+
+    def test_shutdown_cancels_incomplete_http_requests(self):
+        for body in (False, True):
+            with self.subTest(body=body):
+                entered, stopped, closed, written = (threading.Event() for _ in range(4))
+                class Handler(server.Handler):
+                    def handle_one_request(self):
+                        entered.set()
+                        super().handle_one_request()
+                http_server = server.Server(("127.0.0.1", 0), Handler)
+                http_server.application = server.Application("127.0.0.1", 4006, 15)
+                http_server.allowed_hosts = {"127.0.0.1"}
+                serving = threading.Thread(target=http_server.serve_forever)
+                serving.start()
+                connection = socket.create_connection(http_server.server_address, timeout=2)
+                prefix = f"POST /api HTTP/1.0\r\nHost: 127.0.0.1:{http_server.server_port}\r\n"
+                if body:
+                    prefix += "Content-Type: application/json\r\nX-Mezzano-Request: 1\r\nContent-Length: 1000000\r\n\r\n{"
+                connection.sendall(prefix.encode())
+                def trickle():
+                    while not stopped.wait(.01):
+                        try:
+                            connection.sendall(b" ")
+                        except ConnectionError:
+                            return
+                        written.set()
+                sender = threading.Thread(target=trickle)
+                def close():
+                    http_server.server_close()
+                    closed.set()
+                closer = threading.Thread(target=close)
+                sender.start()
+                try:
+                    self.assertTrue(entered.wait(1))
+                    self.assertTrue(written.wait(1))
+                    http_server.shutdown()
+                    serving.join(1)
+                    closer.start()
+                    self.assertTrue(closed.wait(1), "Shutdown waited for incomplete HTTP input")
+                    self.assertEqual(http_server.requests, set())
+                    self.factory_mock.assert_not_called()
+                finally:
+                    stopped.set()
+                    connection.close()
+                    sender.join(2)
+                    http_server.shutdown()
+                    serving.join(2)
+                    if closer.ident is not None:
+                        closer.join(2)
+                    else:
+                        http_server.server_close()
+                self.assertFalse(sender.is_alive())
+                self.assertFalse(closer.is_alive())
+
+    def test_http_thread_start_failure_releases_request(self):
+        http_server = server.Server(("127.0.0.1", 0), server.Handler)
+        http_server.application = self.app
+        accepted, client = socket.socketpair()
+        try:
+            with mock.patch.object(threading.Thread, "start", side_effect=RuntimeError("thread start failed")):
+                with self.assertRaisesRegex(RuntimeError, "thread start failed"):
+                    http_server.process_request(accepted, ("127.0.0.1", 0))
+            self.assertEqual(accepted.fileno(), -1)
+            self.assertEqual(http_server.requests, set())
+            http_server.server_close()
+            self.assertTrue(self.app.closed)
+        finally:
+            accepted.close()
+            client.close()
+            http_server.server_close()
+
+    def test_http_bind_failure_preserves_original_error(self):
+        with socket.socket() as occupied:
+            occupied.bind(("127.0.0.1", 0))
+            occupied.listen()
+            with self.assertRaises(OSError):
+                server.Server(occupied.getsockname(), server.Handler)
+
+    def test_shutdown_closes_every_idle_session(self):
+        self.dispatch()
+        other = mock.Mock(output=[])
+        other.transient_request.return_value = None
+        self.factory_mock.return_value = other
+        self.app.dispatch(("b" * 64, "jobs", []))
+        self.app.close()
+        self.connection.close.assert_called_once()
+        other.close.assert_called_once()
+        self.assertEqual(self.app.sessions, {})
+        with self.assertRaisesRegex(ConnectionError, "shutting down"):
+            self.dispatch()
 
 
 class HTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.http = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        cls.http = server.Server(("127.0.0.1", 0), server.Handler)
         cls.http.allowed_hosts = {"127.0.0.1"}
         cls.http.application = server.Application("127.0.0.1", 1, 1)
         cls.thread = threading.Thread(target=cls.http.serve_forever)
@@ -375,7 +620,7 @@ class HTTPTests(unittest.TestCase):
             connection, _ = listener.accept()
             connection.settimeout(3)
             with connection, connection.makefile("rb") as stream:
-                for rpc_id in range(1, 4):
+                for rpc_id in range(1, 3):
                     header = stream.read(6)
                     if len(header) != 6:
                         raise AssertionError("Short SWANK test header.")
@@ -385,7 +630,7 @@ class HTTPTests(unittest.TestCase):
                         raise AssertionError("Short SWANK test body.")
                     form = server.parse(text.decode())
                     received.append(form)
-                    if rpc_id == 3:
+                    if rpc_id == 2:
                         connection.sendall(b"000001\xff")
                     else:
                         value = "nil" if rpc_id == 1 else '(:ok "' + name + '")'
@@ -400,15 +645,16 @@ class HTTPTests(unittest.TestCase):
                  "arguments": {"name": "c" * 64, "source": "(values)"}})
             self.assertEqual(status, 502)
             self.assertIs(reply["uncertain"], True)
-            self.assertEqual(len(received), 3)
+            self.assertEqual(len(received), 2)
         finally:
             thread.join()
             listener.close()
+            self.http.application.close()
             self.http.application = previous
 
 
 def live_test(port):
-    http_server = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+    http_server = server.Server(("127.0.0.1", 0), server.Handler)
     http_server.allowed_hosts = {"127.0.0.1"}
     http_server.application = server.Application("127.0.0.1", port, 15)
     worker = threading.Thread(target=http_server.serve_forever)
@@ -504,6 +750,8 @@ def live_test(port):
         finally:
             connection.close()
         assert request("open-session") == session
+        transport = http_server.application.sessions[session].connection
+        assert transport.next_id == 2
         name = secrets.token_hex(32)
         source = '(format t "λ中文~%")\n(values 42 :done)'
         job = request("start-evaluation", name=name, source=source)
@@ -515,6 +763,16 @@ def live_test(port):
         assert request("job-output", job=job, start=0)["text"] == "λ中文\n"
         assert request("job-output", job=job, start=0)["end"] == 4
         assert request("resume-session") == session
+        assert http_server.application.sessions[session].connection is transport
+        assert raw(f"(cl:list (swank/mezzano-debugger::session-connection {session_form}) "
+                   f"(swank/mezzano-debugger::session-controller {session_form}))") == [None, None]
+        http_server.application.sessions[session].last_used = time.monotonic() - 61
+        http_server.service_actions()
+        assert session not in http_server.application.sessions
+        assert transport.socket.fileno() == -1
+        assert request("resume-session") == session
+        replacement = http_server.application.sessions[session].connection
+        assert replacement is not transport and replacement.next_id == 2
         assert job in request("jobs")
         monitor = request("monitor-state")
         row = next(row for row in monitor["jobs"] if row["token"] == job)
@@ -714,7 +972,10 @@ def live_test(port):
             monitor = request("monitor-state")
             assert not any(row["token"] in jobs for row in monitor["jobs"] or [])
             assert not any(row["token"] in owned_stops for row in monitor["stops"] or [])
+            transport = http_server.application.sessions[session].connection
             request("release-session")
+            assert session not in http_server.application.sessions
+            assert transport.socket.fileno() == -1
             request("resume-session", _expected_error=":expired-session")
         finally:
             http_server.shutdown()
@@ -724,6 +985,8 @@ def live_test(port):
           "interruption, abort cleanup, child printer recovery, and closed-stop release passed.")
     print("HTTP -> SWANK -> Mezzano: Unicode, output offsets, values, zero values, replay, "
           "session resume, interactive input, and terminal release passed.")
+    print("Retained transport: one initialization, detached guest ownership, idle socket closure, "
+          "same-session resume, and immediate release closure passed.")
     print("Monitor state: Unicode increments, invalid offsets, stable handles, "
           "active and closed stops, and captured-handle release omission passed.")
 
