@@ -72,9 +72,12 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Proceed Default | Uses the same default selection as :Proceed. |
 | :Proceed index | Invokes the captured restart at that zero-based decimal index interactively. |
 | :Proceed index :Arguments | Prompts for a Lisp expression returning the argument list, then invokes that restart.  An omitted index selects Default. |
-| :Inspect | Inspects the primary value from this debugger level's evaluation history. |
+| :Inspect | Inspects this debugger level's * value. |
 | :Describe Last | Describes that value without changing the history. |
 | :Clear Inspector | Releases this stop's retained Inspector object and place references. |
+| :Show Function | Displays the selected frame's associated function and assigns only the debugger level's * value before printing. |
+| :Show Compiled Code | Disassembles the selected executing function, with labels, hexadecimal byte offsets, bytes, and annotations. |
+| :Show Instruction | Displays the instruction containing the selected saved caller location or interrupted program counter. |
 | :Show Arglist | Prints the selected compiled function's stored lambda list, preserving selection and evaluation history.  Missing metadata reports unavailable. |
 | :Show Bindings | Prints the special bindings established by the selected frame.  :All includes all frames.  :Matching takes a case-sensitive symbol-name substring.  Bound NIL and unbound are distinct. |
 | :Show Catch Blocks | Prints active catch tags and available destination functions and hexadecimal byte offsets.  :All includes all retained frames. |
@@ -97,6 +100,8 @@ Proceed without an available CONTINUE reports an error while leaving the computa
 :Arguments is a Boolean keyword.  Omitted, it defaults to No.  Mentioned without a value, it defaults to Yes.  :Arguments No uses the restart's interactive reader.  :Arguments Yes reads one expression, evaluates it in the stopped thread's current dynamic environment and a null lexical environment, and passes the elements of its primary value to the restart.  The value must be a finite proper list.  For example, entering (list 20 22) supplies two arguments, while NIL supplies none.  Reading disables read-time evaluation.  Aborting an unfinished read clears input already buffered on QUERY-IO while preserving the retained input record for replay.  Reader, evaluation, and argument errors enter a child debugger.  :Abort there abandons the command and returns to the original stop.
 
 Selection starts at frame zero and persists across reconnects and image restoration.  Each nested debugger has its own selection.  A mentioned :Nframes requires a value.  Zero displays the current frame.  Movement beyond the retained stack reports an error and preserves selection.  Mouse selection and :Set Current Frame use the same guest operation.
+
+Show Function, Show Compiled Code, and Show Instruction take no arguments.  Show Function preserves the other eight expression/value history slots, including +.  Code display preserves all history and selection and retains an older active function version after redefinition.  Ordinary call locations use the saved return address minus one.  Interrupted locations use the exact saved PC.  Headers distinguish these locations and unavailable metadata.  The commands initially support the selected function and complete disassembly.  Genera's function/range arguments, octal PCs, More processing, output destinations, and + locative assignment remain unsupported.  The [function and instruction reference](debugger.md#functions-and-instructions) defines offsets, printer recovery, invalid-argument frames, and tested stopping states.
 
 Show Bindings supports established x86-64 condition-stop frames and preserves selection and evaluation history.  Its :All keyword defaults to No when omitted and Yes when mentioned without a value.  :Matching requires a string when mentioned, for example `:Show Bindings :All :Matching "*PACKAGE*"`.  The empty string matches every symbol name.  Repeated bindings appear from inner to outer, and bindings established by runtime functions appear under their runtime frames.  Unsupported frame layouts report unavailable binding locations.  Frame-visibility filtering and switching evaluation's dynamic environment remain unavailable.
 

@@ -423,7 +423,8 @@
                 (service-stop-child stop))
         (service-error :stop-busy))
       (case operation
-        ((:frames :restarts :condition :abort :help :clear-inspection :arglist)
+        ((:frames :restarts :condition :abort :help :clear-inspection :arglist
+          :function :compiled-code :instruction)
          (when argument (service-error :unexpected-argument)))
         (:proceed
          (when argument (service-error :unexpected-argument))
@@ -579,6 +580,76 @@
                                                   (not (null (member cluster active :test #'eq))))))))
      available-p)))
 
+(defun service-frame-code-location (frame)
+  (mezzano.supervisor:with-pseudo-atomic
+    (let* ((data (mezzano.internals::frame-raw-data frame))
+           (interrupted-p (mezzano.internals::frame-interrupted-p frame))
+           (address (- (mezzano.internals::frame-code-address data)
+                       (if interrupted-p 0 1))))
+      (if (mezzano.internals::within-function-area-p address)
+          (multiple-value-bind (function offset)
+              (mezzano.internals::return-address-to-function address)
+            (values function offset interrupted-p))
+          (values nil nil interrupted-p)))))
+
+(defun service-code-instruction (context offset)
+  (loop with start = (mezzano.disassemble:code-initial-offset
+                      (mezzano.disassemble:context-function context))
+        for instruction across (mezzano.disassemble:context-instructions context)
+        for size = (if instruction (mezzano.disassemble:inst-size instruction) 1)
+        when (<= start offset (1- (+ start size)))
+          return (values instruction start t)
+        do (incf start size)
+        finally (return (values nil nil nil))))
+
+(defun service-write-instruction (context instruction offset)
+  (let ((label (mezzano.disassemble:label context offset)))
+    (when label (format t " L~D" label)))
+  (format t "~7T#x~4,'0X: " offset)
+  (cond (instruction
+         (mezzano.disassemble:print-instruction-bytes context offset instruction)
+         (format t "~50T")
+         (mezzano.disassemble:print-instruction context instruction))
+        (t
+         (format t "Undecoded byte #x~2,'0X."
+                 (mezzano.disassemble:code-byte
+                  (mezzano.disassemble:context-function context) offset))))
+  (terpri))
+
+(defun service-show-code (stop instruction-p)
+  (multiple-value-bind (function offset interrupted-p)
+      (service-frame-code-location
+       (aref (service-stop-frames stop) (service-stop-current-frame stop)))
+    (unless function
+      (return-from service-show-code "Compiled code location unavailable."))
+    (let ((*print-readably* nil) (*print-circle* t)
+          (*print-level* 5) (*print-length* 20) (*print-pretty* nil))
+      (with-output-to-string (*standard-output*)
+        (let ((context (mezzano.disassemble:make-disassembler-context function)))
+          (if instruction-p
+              (multiple-value-bind (instruction start available-p)
+                  (service-code-instruction context offset)
+                (if available-p
+                    (progn
+                      (format t "~A in ~A at byte offset #x~X (instruction starts at #x~X):~%"
+                              (if interrupted-p "Interrupted program counter" "Saved caller location")
+                              (service-print function) offset start)
+                      (service-write-instruction context instruction start))
+                    (format t "Instruction unavailable for ~A at byte offset #x~X.~%"
+                            (service-print function) offset)))
+              (progn
+                (format t "Compiled code for ~A:~%" (service-print function))
+                (loop with start = (mezzano.disassemble:code-initial-offset function)
+                      for instruction across (mezzano.disassemble:context-instructions context)
+                      do (service-write-instruction context instruction start)
+                         (incf start (if instruction (mezzano.disassemble:inst-size instruction) 1))))))))))
+
+(defun service-show-function (stop)
+  (let ((function (frame-function
+                   (aref (service-stop-frames stop) (service-stop-current-frame stop)))))
+    (setf (fourth (service-stop-evaluation-history stop)) function)
+    (format nil "Function = ~A." (service-print function))))
+
 (defun service-catch-destination (exit)
   (let ((binding
           (loop for (offset . scope) in
@@ -713,6 +784,9 @@
                                  (service-handle stop)
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
+    (:function (service-show-function stop))
+    (:compiled-code (service-show-code stop nil))
+    (:instruction (service-show-code stop t))
     (:bindings (service-show-bindings stop (service-command-argument command)))
     (:catches (service-show-catches stop (service-command-argument command)))
     (:handlers (service-show-handlers stop (service-command-argument command)))

@@ -481,6 +481,19 @@ The argument-list fixture uses the debugger-service and frame-evaluation helpers
 
 It checks parameter syntax, empty and unavailable metadata, active function redefinition, full GC, unchanged history and selection, command replay, parser completion, continuation, and cleanup.  The fixture uses native x86-64 compiled condition stops at DEBUG 3, SAFETY 3, SPEED 1.
 
+The function and code-display fixtures require the debugger-service, frame-evaluation, control-record, and catch-display fixtures first:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-CODE-DISPLAY.LISP"))
+(lispm-code-display-test:run)
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-LARGE-CODE-DISPLAY.LISP"))
+(lispm-large-code-display-test:run)
+```
+
+The first fixture checks Show Function's isolated * assignment, every branch-label definition, actual call bytes and instruction boundaries, active redefinition, replay, rejected arguments, unchanged selection, generic-associated functions, missing lexical scope, invalid-argument helper identity and bindings, unknown decoding in unexecuted owned code, printer child Abort and repair, moving constants, continuation, cleanup, and release.  The large fixture checks complete disassembly above 64 KiB through its final instruction, unchanged history, multiple values, and continuation effects.  The existing frameless fixture checks an interrupted instruction's exact saved PC.  Tests execute native x86-64 code at DEBUG 3, SAFETY 3, SPEED 1.  Service compilation uses DEBUG 1 with SAFETY 3 and SPEED 1.
+
+The invalid-argument binding case requires RAISE-INVALID-ARGUMENT-ERROR compiled with current DEBUG 3 metadata.  Loading all of system/error.lisp reinitializes debugger-hook globals.  A bootstrap DEBUG 1 helper therefore requires separate DEBUG 3 compilation before this binding case.  The [function and instruction reference](../../doc/debugger.md#functions-and-instructions) states the supported behavior and remaining compatibility work.
+
 The dynamic-binding fixture uses the same helpers:
 
 ```lisp

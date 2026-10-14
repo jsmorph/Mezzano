@@ -82,6 +82,17 @@
         (run-command stop lease :select-frame leaf-position)
         (assert (search "Catch locations unavailable."
                         (getf (run-command stop lease :catches) :result)))
+        (let ((instruction (getf (run-command stop lease :instruction) :result)))
+          (assert (search "Interrupted program counter" instruction))
+          (multiple-value-bind (function offset interrupted-p)
+              (mezzano.debug::service-frame-code-location leaf-frame)
+            (assert (eq function #'leaf))
+            (assert interrupted-p)
+            (multiple-value-bind (decoded start available-p)
+                (mezzano.debug::service-code-instruction
+                 (mezzano.disassemble:make-disassembler-context function) offset)
+              (assert (and decoded available-p))
+              (assert (= start offset)))))
         (run-command stop lease :select-frame 0)
         (assert (null (mezzano.internals::frame-stack-available-p leaf-data)))
         (assert (equal (multiple-value-list

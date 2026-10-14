@@ -113,16 +113,6 @@ Returns NIL if the function captures no variables."
                            (if (sixth frame) 0 1))))
     (multiple-value-bind (fn offset)
         (return-address-to-function return-address)
-      (when (eql fn #'raise-invalid-argument-error)
-        (loop
-           for (name location repr . plist) in (local-variables-at-offset fn offset)
-           when (eql name 'function)
-           do
-             (multiple-value-bind (value available-p)
-                 (read-frame-slot frame location repr)
-               (when available-p
-                 (setf fn value offset 0)))
-             (return)))
       (values fn offset))))
 
 (defun decode-debug-register (reg)

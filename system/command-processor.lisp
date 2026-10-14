@@ -38,10 +38,13 @@
     (:name "Proceed" :id :proceed :type :restart
      :help "Invoke the default CONTINUE restart or a zero-based restart index. :Arguments requests a Lisp expression returning the argument list."
      :keywords (("Arguments" :boolean "No" "Yes")))
-    (:name "Inspect" :id :inspect :help "Inspect the primary value from this debugger level's last successful evaluation.")
-    (:name "Describe Last" :id :describe-last :help "Describe the primary value from this debugger level's last successful evaluation.")
+    (:name "Inspect" :id :inspect :help "Inspect this debugger level's * value.")
+    (:name "Describe Last" :id :describe-last :help "Describe this debugger level's * value.")
     (:name "Clear Inspector" :id :clear-inspector :help "Release this debugger level's retained Inspector references.")
     (:name "Show Arglist" :id :show-arglist :help "Display the selected compiled function's argument list.")
+    (:name "Show Function" :id :show-function :help "Display the selected frame's function and assign it to *.")
+    (:name "Show Compiled Code" :id :show-compiled-code :help "Disassemble the selected frame's executing function with hexadecimal byte offsets.")
+    (:name "Show Instruction" :id :show-instruction :help "Display the instruction at the selected frame's saved caller location or interrupted program counter.")
     (:name "Show Bindings" :id :show-bindings
      :help "Display special bindings established by the selected frame. :All selects all frames. :Matching filters symbol names by a case-sensitive substring."
      :keywords (("All" :boolean "No" "Yes") ("Matching" :string "" nil)))
@@ -448,6 +451,9 @@
     (:describe-last (list :operation "describe-object" :display :description))
     (:clear-inspector (list :operation "clear-inspection" :display :inspector))
     (:show-arglist (list :operation "arglist"))
+    (:show-function (list :operation "function"))
+    (:show-compiled-code (list :operation "compiled-code"))
+    (:show-instruction (list :operation "instruction"))
     (:show-bindings (list :operation "bindings"
                           :argument (list (cdr (assoc "All" keywords :test #'equal))
                                           (cdr (assoc "Matching" keywords :test #'equal)))))

@@ -416,10 +416,6 @@
   (error 'type-error :datum datum :expected-type expected-type))
 
 (defun raise-invalid-argument-error (&rest args &closure function)
-  ;; FIXME: The wronged function tail-calls here, causing it to not show
-  ;; up in backtraces. Fixing this probably involves a non-trivial rework
-  ;; of the invalid args mechanism.
-  ;; This is currently worked around with a hack in FUNCTION-FROM-FRAME.
   (restart-case
       (error 'invalid-argument-error :function function :arguments args)
     (specify-arguments (new-arguments)
