@@ -1,5 +1,13 @@
 # Web UI development journal
 
+## Binding-identity restored browser acceptance: 2026-10-14
+
+The bounded post-restore check will call the loaded binding-identity fixture from the Listener, then compile a named DEBUG 3 function with nested X bindings holding 37 and 38.  At its condition stop, the browser will select the exact compiled frame, require both X records to be available and displayed, and invoke :Proceed.  The function must return 42 and remove its test definition.  The existing product checker will then verify the current documentation, Peek, command completion, and arithmetic.  The checker will release its own jobs, stops, and session.  The native save/restore fixture separately establishes descriptor identity across image restoration.  This browser check creates a fresh stopped frame after boot.
+
+The check passed in restored x86-64 QEMU 623850.  The native identity fixture printed its PASS line and returned T through the Listener.  The browser selected frame 7 of the freshly compiled DEBUG 3 function and displayed both X records as available, with values 37 and 38.  Typed :Proceed returned 42, and the definition cleanup ran.  All thirteen documentation excerpts appeared, Peek listed thirty-one processes, SPACE/Tab completed Set Package, and subsequent arithmetic returned 42.  Four jobs, stop 728, the function definition, and the session were released.  No browser or HTTP error occurred.  The local-value and native-fixture captures were inspected.
+
+Evidence is `/tmp/web-binding-identities-restored/result.json` and the adjacent captures and log.  The exact checker and browser-support source are preserved with those results in `/tmp/debugger-web-binding-identities-restored-evidence.tar.gz` (SHA-256 `575684c39c9b01deaefd182dc4d11c571bd9c16ee498057cc6de734e6e03b3c8`).  No Web product code changed, and the full debugger suite was not repeated after this restart.  The earlier concurrent monitor timeout and unidentified extra HTTP 409 remain unresolved.
+
 ## Retained HTTP session transports: 2026-10-14
 
 The selected correction retains one SWANK connection in each existing host session record.  Every HTTP request keeps its fifteen-second deadline, including its per-session lock wait, and resets the connection's diagnostic output.  A new socket loads the contrib once.  Different sessions remain independent.  Release Session closes its socket immediately.  The HTTP server's service_actions closes sockets idle for sixty seconds, considering only records with no active or queued caller.  Server shutdown stops accepting work, waits for current handlers to finish within their existing deadlines, and closes all retained sockets.  No browser unload message or additional thread is required.
