@@ -294,6 +294,79 @@
              (assert (eq lock (mezzano.clos::generic-function-lock gf)))))
       (remove-fixture-methods gf))))
 
+(defclass recursive-replacement-generic-function (standard-generic-function)
+  ((replacement :initform nil)
+   (arguments :initarg :arguments)
+   (stage :initarg :stage))
+  (:metaclass mezzano.clos:funcallable-standard-class))
+
+(defun replace-during-lookup (gf stage)
+  (when (eq (slot-value gf 'stage) stage)
+    (let ((method (slot-value gf 'replacement)))
+      (when method
+        (setf (slot-value gf 'replacement) nil)
+        (add-method gf method)
+        (assert (eq (apply gf (slot-value gf 'arguments)) :new))))))
+
+(defmethod mezzano.clos:compute-applicable-methods-using-classes :around
+    ((gf recursive-replacement-generic-function) classes)
+  (multiple-value-prog1 (call-next-method)
+    (replace-during-lookup gf :applicability)))
+
+(defmethod mezzano.clos::compute-effective-method-function :around
+    ((gf recursive-replacement-generic-function) methods)
+  (replace-during-lookup gf :effective-function)
+  (call-next-method))
+
+(define-method-combination recursive-replacement-combination ()
+  ((primary () :required t))
+  (:generic-function gf)
+  (replace-during-lookup gf :combination)
+  (list 'call-method (first primary)))
+
+(defun check-recursive-replacement (lambda-list specializers arguments stage)
+  (let ((gf (make-instance
+             'recursive-replacement-generic-function
+             :lambda-list lambda-list :arguments arguments :stage stage
+             :method-combination
+             (when (eq stage :combination)
+               (mezzano.clos:find-method-combination
+                #'cell-value 'recursive-replacement-combination nil)))))
+    (flet ((make-method (value)
+             (make-instance
+              'standard-method :qualifiers nil :lambda-list lambda-list
+              :specializers specializers
+              :function (lambda (arguments next-methods)
+                          (declare (ignore arguments next-methods))
+                          value))))
+      (let ((old (make-method :old))
+            (new (make-method :new)))
+        (unwind-protect
+             (progn
+               (add-method gf old)
+               (setf (slot-value gf 'replacement) new)
+               (assert (member (apply gf arguments) '(:old :new)))
+               (assert (null (slot-value gf 'replacement)))
+               (assert (null (mezzano.clos:method-generic-function old)))
+               (assert (eq (mezzano.clos:method-generic-function new) gf))
+               (dotimes (i 3)
+                 (assert (eq (apply gf arguments) :new) ()
+                         "Recursive replacement at ~S retained the old method for ~S."
+                         stage specializers))
+               (assert (not (mezzano.supervisor:mutex-held-p
+                             (mezzano.clos::generic-function-lock gf)))))
+          (remove-fixture-methods gf))))))
+
+(defun check-recursive-replacements ()
+  (dolist (stage '(:applicability :effective-function :combination))
+    (check-recursive-replacement
+     '(a b) (list (find-class 'integer) (find-class 'integer)) '(1 2) stage))
+  (dolist (stage '(:applicability :combination))
+    (check-recursive-replacement '(value) (list (find-class 'integer)) '(1) stage))
+  (check-recursive-replacement '(value) (list (find-class 't)) '(1) :combination)
+  (check-recursive-replacement
+   '(value) (list (mezzano.clos:intern-eql-specializer 1)) '(1) :combination))
+
 (defun run ()
   (check-standard '(value) (list (find-class 'integer)) '(1))
   (check-standard '(value) (list (find-class 't)) '(1))
@@ -305,5 +378,6 @@
   (check-heterogeneous-reader)
   (check-dispatch-transitions)
   (check-lookup-publication)
-  (format t "PASS concurrent method replacement, MOP ordering and backpointers, dispatch variants and transitions, cache publication, GC, errors, removal, and unlocked application methods.~%")
+  (check-recursive-replacements)
+  (format t "PASS concurrent method replacement, MOP ordering and backpointers, dispatch variants and transitions, cache publication, recursive replacement, GC, errors, removal, and unlocked application methods.~%")
   (values))

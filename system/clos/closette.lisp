@@ -2160,6 +2160,8 @@ has only has class specializer."
               (applicable-methods (if (eql (class-of gf) *the-class-standard-gf*)
                                       (std-compute-applicable-methods-using-classes gf classes)
                                       (compute-applicable-methods-using-classes gf classes))))
+         (unless (eq emf-table (classes-to-emf-table gf))
+           (return-from compute-single-dispatch-function gf))
          (cond ((and (not (null applicable-methods))
                      (every 'primary-method-p applicable-methods)
                      (typep (first applicable-methods) 'standard-reader-method)
@@ -2183,9 +2185,10 @@ has only has class specializer."
                   (set-funcallable-instance-function gf function)
                   function))
                (t ;; Switch to 1-effective.
-                (set-funcallable-instance-function
-                 gf
-                 (compute-1-effective-discriminator gf emf-table argument-offset))
+                (let ((function (compute-1-effective-discriminator gf emf-table argument-offset)))
+                  (unless (eq emf-table (classes-to-emf-table gf))
+                    (return-from compute-single-dispatch-function gf))
+                  (set-funcallable-instance-function gf function))
                 (compute-single-dispatch-effective-method gf args (class-of (nth argument-offset args))))))))))
 
 (defun slow-single-dispatch-method-lookup* (gf argument-offset args state &optional table)
@@ -2221,7 +2224,8 @@ has only has class specializer."
      args)))
 
 (defun compute-effective-method-for-call (gf args)
-  (let ((std-gf-p (eq (class-of gf) *the-class-standard-gf*))
+  (let ((emf-table (classes-to-emf-table gf))
+        (std-gf-p (eq (class-of gf) *the-class-standard-gf*))
         (classes (mapcar #'class-of (required-portion gf args))))
     (multiple-value-bind (applicable-methods validp)
         (if std-gf-p
@@ -2238,7 +2242,8 @@ has only has class specializer."
       (let ((emfun (if std-gf-p
                        (std-compute-effective-method-function gf applicable-methods)
                        (compute-effective-method-function gf applicable-methods))))
-        (insert-into-emf-cache (classes-to-emf-table gf) args emfun)
+        (when (eq emf-table (classes-to-emf-table gf))
+          (insert-into-emf-cache emf-table args emfun))
         (dolist (c classes)
           (register-redefinition-flusher gf c))
         emfun))))
@@ -2296,7 +2301,8 @@ always match."
      collect method))
 
 (defun compute-single-dispatch-effective-method (gf args class)
-  (let* ((classes (mapcar #'class-of (required-portion gf args)))
+  (let* ((emf-table (classes-to-emf-table gf))
+         (classes (mapcar #'class-of (required-portion gf args)))
          (standard-gf-p (eql (class-of gf) *the-class-standard-gf*)))
     (multiple-value-bind (applicable-methods validp)
         (if standard-gf-p
@@ -2360,9 +2366,9 @@ always match."
                           (lambda (&rest args)
                             (apply #'no-applicable-method gf args))))))
         ;; Cache is only valid for non-eql methods.
-        (when validp
+        (when (and validp (eq emf-table (classes-to-emf-table gf)))
           (register-redefinition-flusher gf class)
-          (setf (single-dispatch-emf-entry (classes-to-emf-table gf) class) emfun))
+          (setf (single-dispatch-emf-entry emf-table class) emfun))
         emfun))))
 
 (defun slow-single-dispatch-method-lookup (gf args class &optional table)
@@ -2374,22 +2380,24 @@ always match."
          args))
 
 (defun compute-unspecialized-effective-method (gf args)
-  (let* ((classes (loop
+  (let* ((methods (safe-generic-function-methods gf))
+         (classes (loop
                      for req in (required-portion gf args)
                      collect *the-class-t*))
          (applicable-methods (std-compute-applicable-methods-using-classes gf classes)))
     (cond (applicable-methods
            (let ((emfun (std-compute-effective-method-function gf applicable-methods)))
-             (set-funcallable-instance-function gf emfun)
+             (when (eq methods (safe-generic-function-methods gf))
+               (set-funcallable-instance-function gf emfun))
              emfun))
           (t
            (lambda (&rest arguments)
              (apply #'no-applicable-method gf arguments))))))
 
-;;; compute-applicable-methods-using-classes
-
 (defun slow-unspecialized-dispatch-method-lookup (gf args)
   (apply (std-compute-discriminating-function gf) args))
+
+;;; compute-applicable-methods-using-classes
 
 (defun std-compute-applicable-methods-using-classes (gf required-classes)
   (values (sort

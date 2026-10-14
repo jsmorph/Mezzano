@@ -301,7 +301,7 @@ The compiled fixture checks calls overlapping method replacement, method and spe
 (lispm-method-replacement-test:run)
 ```
 
-The overlap tests arrange a cache miss during a removal notification and a replacement during cache construction.  They require the competing thread to wait on the generic function's mutex.  A separate running method waits for another thread to replace it, testing that dispatch releases the lookup mutex before invocation.  Run the fixture again after image restoration to test the saved implementation.
+The overlap tests arrange a cache miss during a removal notification and a replacement during cache construction.  They require the competing thread to wait on the generic function's mutex.  A separate running method waits for another thread to replace it, testing that dispatch releases the lookup mutex before invocation.  Recursive lookup tests replace a method from applicability, effective-function construction, and long-form method-combination callbacks, initialize the replacement cache through a recursive call, and require subsequent calls to use the replacement.  Run the fixture again after image restoration to test the saved implementation.
 
 ## Snapshot tests
 
