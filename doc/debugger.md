@@ -66,7 +66,7 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [x] Add guest-owned frame selection and navigation.
 - [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
 - [x] Add live frame evaluation and writes, per-level evaluation history, and frame-environment lifetime checks.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
-- [ ] Add retained object inspection and mutation with explicit reference lifetimes.
+- [x] Add retained object inspection and mutation with explicit reference lifetimes.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
 - [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
 - [ ] Complete the command inventory, product guide, compatibility reference, Document Examiner topics, and architecture-specific acceptance results.
