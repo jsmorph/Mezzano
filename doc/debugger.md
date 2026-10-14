@@ -63,7 +63,9 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [x] Add explicit Lisp argument expressions for restart invocation.
 - [x] Complete interruption of debugger operations and correct frame capture for interrupted frameless functions.  Validate caller locals, moving GC, nested interruption, and input recovery in the browser before extending frame evaluation.  Register-local inspection remains separate work.
 - [x] Add guest-owned frame selection and navigation.
-- [ ] Add live frame evaluation and writes, evaluation history, object inspection, and the required compiler metadata.
+- [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
+- [ ] Add live frame evaluation and writes, per-level evaluation history, and frame-environment lifetime checks.
+- [ ] Add retained object inspection and mutation with explicit reference lifetimes.
 - [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
 - [ ] Complete the command inventory, product guide, compatibility reference, Document Examiner topics, and architecture-specific acceptance results.
