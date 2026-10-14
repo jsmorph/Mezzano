@@ -1,5 +1,16 @@
 # Web UI development journal
 
+## Local values and availability: 2026-10-13
+
+The debugger's old missing-value keyword could also be a program value.  The guest correction separates the value from its availability flag.  The Web renderer already uses that flag.  The recommendation is to add one fixture to the existing focused browser driver: compile a debug-3 function with NIL and :$INACCESSIBLE-VALUE$ arguments captured by a reader closure, stop inside that function, and select its frame by mouse.  The test will check both guest availability flags and displayed values, continue to the closure's returned values, and evaluate another Listener form.  Existing cleanup will release the fixture's records.  No product Web changes or dependencies are required.
+
+- [x] Run the focused driver against the compiled guest correction.
+- [x] Inspect the value display and document the result.
+
+The first browser attempt reached the compiled fixture but failed its frame-name lookup before inspecting values.  COMPILE with the named binding and explicit lambda produced a frame labelled `(LAMBDA :IN NIL)`.  Its warning/failure and compiled-function checks had passed.  The test now uses the existing named DEFUN fixture pattern and retains the compiled-function assertion and debug-3 declaration.  The failed attempt released its owned records.  Evidence: `/tmp/listener-debugger-local-values/result.json`.
+
+The corrected focused Chromium run passed all seventeen groups in the x86-64 guest.  The named DEFUN fixture uses debug 3, safety 3, and speed 1.  Mouse selection displayed NIL and :$INACCESSIBLE-VALUE$ with true availability flags.  The inspected capture also showed the reader closure.  Proceed called that closure and returned `(NIL :$INACCESSIBLE-VALUE$)`, and the next Listener evaluation returned 42.  Existing frame navigation, nested Abort, restart-reader interruption, request replay, and connection tests passed.  The driver released fifteen jobs, nineteen stops, and its session.  Five intentional HTTP 400 responses and three intentional HTTP 409 responses were the only browser errors.  Evidence is `/tmp/listener-debugger-local-values-final/result.json`, its `available-local-values.png` capture, and `/tmp/listener-debugger-local-values-final.log`.  This run used the loaded guest correction.  Post-restoration testing remains pending.  No product Web change was required.
+
 ## Guest-owned frame selection: 2026-10-13
 
 The guest debugger will retain each stop's current frame and execute frame motion.  The Web interface will remove its selected-frame variable and draft field, forward the guest command plan, and derive stack highlighting from stop information.  A returned frame inspection will display only when its index agrees with the guest's current frame.  Navigation will use the existing System Menu and backtrace rows.

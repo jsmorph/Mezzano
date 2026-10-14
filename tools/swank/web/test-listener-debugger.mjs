@@ -248,6 +248,31 @@ try {
   evidence.checks.push('Inline/standalone Help, completion, rejected argument validation, ordinary draft and selection restoration');
   evidence.checks.push('SPACE completes Proceed; omitted selector invokes the marked default and returns 42');
 
+  const valueFunction = marker + '-LOCAL-VALUES';
+  const valuesJob = await start(`(unwind-protect (progn (defun ${valueFunction} (nil-value keyword-value) (declare (optimize (debug 3) (safety 3) (speed 1))) (let ((reader (lambda () (list nil-value keyword-value)))) (cerror "Continue local-value test." "${marker} local values") (funcall reader))) (assert (compiled-function-p (symbol-function '${valueFunction}))) (${valueFunction} nil :$inaccessible-value$)) (when (fboundp '${valueFunction}) (fmakunbound '${valueFunction})) (unintern '${valueFunction}))`);
+  await stopped(valuesJob);
+  await browser.waitFor('returnedResult("frames") && !stopCommandPending(selectedStop) && !busy');
+  const valueFrame = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(valueFunction)}))`);
+  assert(valueFrame > 0);
+  await clickText('#stop-detail', valueFunction);
+  await frame(valueFrame);
+  const localValues = await browser.evaluate(`returnedFrameInspection().result.locals.filter(local => ['NIL-VALUE', 'KEYWORD-VALUE'].includes(local.name))`);
+  for (const [name, value] of [['NIL-VALUE', 'NIL'], ['KEYWORD-VALUE', ':$INACCESSIBLE-VALUE$']]) {
+    const local = localValues.find(local => local.name === name);
+    assert(local, 'Missing local ' + name);
+    assert.equal(local['available-p'], true);
+    assert.equal(local.value, value);
+    assert.equal(await browser.evaluate(`[...document.querySelectorAll('#stop-detail .locals tr')].find(row => row.firstElementChild.textContent.includes(${text('(' + name + '):')}))?.lastElementChild.textContent`), value);
+  }
+  evidence.localValues = localValues;
+  await browser.evaluate('document.querySelector("#stop-detail .current-function").scrollIntoView({block: "center"})');
+  await save('available-local-values');
+  await command(':Proceed');
+  assert.deepEqual((await completed(valuesJob)).values, ['(NIL :$INACCESSIBLE-VALUE$)']);
+  const afterValues = await start('(+ 20 22)');
+  assert.deepEqual((await completed(afterValues)).values, ['42']);
+  evidence.checks.push('Compiled debug-3 frame displays captured NIL and :$INACCESSIBLE-VALUE$ bindings as available, then continuation and Listener reuse return the expected values');
+
   const abort = await start(`(unwind-protect (cerror "Continue owned test." "${marker} abort") (write-string "${marker} abort cleanup"))`);
   await stopped(abort);
   const abortButton = await browser.evaluate(`(() => {
