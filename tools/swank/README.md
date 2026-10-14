@@ -283,6 +283,15 @@ The local-function fixture checks FLET, recursive LABELS, function/variable name
 
 After loading the service fixture, call (lispm-local-function-test:prepare-restore-test) before saving.  After restoration, call (lispm-local-function-test:finish-restore-test).  The fixture checks a stopped frame's separate function and variable bindings after full GC, then continuation and cleanup.  Running RUN again after restoration exercises the saved compiler definitions.
 
+The binding-lifetime fixture inspects an argument-free compiled function inside and after two separate LET scopes.  Direct non-inline calls identify each inspection point.  The test repeats the sequence with full GC while each frame remains active:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-SCOPES.LISP"))
+(lispm-debug-scope-test:run)
+```
+
+Run it again after image restoration to test the saved compiler.
+
 To include selected-frame persistence in a snapshot test, load the restoration fixture and prepare its stopped thread before saving:
 
 ```lisp

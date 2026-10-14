@@ -985,8 +985,7 @@
                                     (eq (rest cached) layout))
                                cached
                                (setf (gethash tail layouts) (cons record layout))))
-            finally (when layout
-                      (setf (gethash inst result) layout))))
+            finally (setf (gethash inst result) layout)))
     ;; Now loop over all instructions & patch up any that were missed.
     (let ((last-entry '()))
       (ir:do-instructions (inst (allocator-backend-function allocator))

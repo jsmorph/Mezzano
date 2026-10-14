@@ -1,0 +1,63 @@
+(defpackage #:lispm-debug-scope-test
+  (:use #:cl)
+  (:export #:probe #:run))
+(in-package #:lispm-debug-scope-test)
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+
+(defvar *target*)
+(defvar *inspector*)
+(defvar *observations*)
+
+(defun scope-point (point)
+  (funcall *inspector* point))
+
+(defun probe (&key collect)
+  (multiple-value-bind (target warnings-p failure-p)
+      (compile nil
+               '(lambda ()
+                  (declare (optimize (debug 3) (safety 3) (speed 1))
+                           (notinline scope-point))
+                  (let ((x 37))
+                    (declare (ignorable x))
+                    (scope-point :inside-x))
+                  (scope-point :after-x)
+                  (let ((y 41))
+                    (declare (ignorable y))
+                    (scope-point :inside-y))
+                  (scope-point :after-y)
+                  :done))
+    (assert (and (compiled-function-p target) (not warnings-p) (not failure-p)))
+    (let* ((*target* target)
+           (*observations* nil)
+           (*inspector*
+             (lambda (point)
+               (let ((seen nil))
+                 (mezzano.debug:map-backtrace
+                  (lambda (frame)
+                    (when (eq (nth-value 1 (mezzano.debug:frame-function frame)) *target*)
+                      (assert (not seen))
+                      (setf seen t)
+                      (when collect (mezzano.extensions:gc :full t))
+                      (push
+                       (list point
+                             (loop for local in (mezzano.debug:frame-local-variables frame)
+                                   for name = (mezzano.debug:local-variable-name local)
+                                   when (member name '(x y))
+                                     collect (multiple-value-bind (value available-p)
+                                                 (mezzano.debug:local-variable-value frame local)
+                                               (assert available-p)
+                                               (list name value))))
+                       *observations*))))
+                 (assert seen)))))
+      (assert (eq (funcall target) :done))
+      (nreverse *observations*))))
+
+(defun run ()
+  (dolist (collect '(nil t))
+    (let ((observed (probe :collect collect)))
+      (assert (equal observed
+                     '((:inside-x ((x 37))) (:after-x nil)
+                       (:inside-y ((y 41))) (:after-y nil)))
+              () "Out-of-scope debugger bindings: ~S" observed)))
+  (format t "PASS lexical bindings inside and after separate LET scopes, with and without full GC.~%")
+  (values))
