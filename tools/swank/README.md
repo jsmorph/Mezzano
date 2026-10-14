@@ -433,6 +433,19 @@ The description fixture checks propagation of the original printer condition fro
 (lispm-describe-test:run)
 ```
 
+## Inspection reference tests
+
+The reference fixture tests the internal object-retention layer.  Load the debugger-service and frame-evaluation fixtures first:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-INSPECTION-REFERENCES.LISP"))
+(lispm-inspection-reference-test:run)
+```
+
+It checks EQ identity, cycles, shared objects, NIL, kind and owning-thread validation, foreign stops, full GC, Clear, monotonically increasing IDs, continuation, and release.  It requires the native x86-64 debugger service.  This fixture does not exercise component enumeration, mutation, or public inspector commands.
+
+For saved-state acceptance, call `(lispm-inspection-reference-test:prepare-restore-test)` before saving and `(lispm-inspection-reference-test:finish-restore-test)` after restoration.  The test rejects old references, obtains fresh references with the preserved object IDs, checks retained sharing and cycles after full GC, continues the stopped computation, and releases its state.
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:

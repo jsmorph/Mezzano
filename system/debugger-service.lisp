@@ -18,7 +18,10 @@
   pending active
   (event (mezzano.supervisor:make-event :name 'debugger-command))
   (current-frame 0)
-  (evaluation-history (make-list 9)))
+  (evaluation-history (make-list 9))
+  (inspection-values (make-hash-table))
+  (inspection-identities (make-hash-table :test #'eq))
+  (next-inspection-id 0))
 
 (defstruct (service-handle (:constructor %make-service-handle (boot stop)))
   (boot nil :read-only t)
@@ -32,6 +35,13 @@
   (handle nil :read-only t)
   (generation 0 :read-only t)
   (index 0 :read-only t))
+
+(defstruct (service-inspection-reference
+             (:constructor %make-service-inspection-reference (handle generation kind id)))
+  (handle nil :read-only t)
+  (generation 0 :read-only t)
+  (kind nil :read-only t)
+  (id 0 :read-only t))
 
 (defstruct (service-command (:constructor %make-service-command))
   boot operation argument
@@ -575,7 +585,9 @@
           (service-stop-current-frame stop) nil
           (service-stop-evaluation-history stop) nil
           (service-stop-active stop) nil
-          (service-stop-pending stop) nil)))
+          (service-stop-pending stop) nil)
+    (clrhash (service-stop-inspection-values stop))
+    (clrhash (service-stop-inspection-identities stop))))
 
 (defun service-debugger (condition)
   (let* ((boundary (mezzano.internals::read-frame-pointer))

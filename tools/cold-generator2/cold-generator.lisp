@@ -157,6 +157,7 @@
     "system/fast-eval.lisp"
     "system/eval.lisp"
     "system/debugger-service.lisp"
+    "system/debugger-inspector.lisp"
     "system/gray-streams.lisp"
     "system/external-format.lisp"
     "system/standard-streams.lisp"
