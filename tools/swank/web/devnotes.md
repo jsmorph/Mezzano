@@ -1,5 +1,15 @@
 # Web UI development journal
 
+## Generated scope-record browser acceptance: 2026-10-14
+
+After native scope-emission tests pass, the existing twenty-one-group focused debugger driver will run with unchanged assertions.  Its named compiled fixtures exercise local values and functions, scope exit, frame selection, typed Abort and Proceed, nested debugger errors, restart arguments, and Listener recovery.  A separate product check will reload the catalog and verify the final scope-emission documentation, Peek, command completion, and arithmetic.  Guest traffic remains paused until the core agent reports readiness.  No Web product change is proposed.
+
+The unchanged focused Chromium suite passed all twenty-one groups against the loaded scope-emission compiler in x86-64 QEMU 628206.  It released twenty-three owned jobs, twenty-five stops, and its session.  Its eight HTTP errors were the five deliberate argument-validation failures, two :INVALID-FRAME replies, and one :NO-CONTINUE-RESTART reply.  No additional browser error occurred.  The local-function and restored-parent captures were inspected.  Evidence is `/tmp/listener-debugger-emitted-scopes/result.json` and its adjacent log and captures.
+
+The separate product check reloaded the Document Examiner catalog and displayed all twenty-five requested excerpts, including both emitters' scope records, live call-address/storage tests, remaining compiler coverage and frame-evaluation work, and untested host cross-build and ARM64 execution.  Peek listed thirty-one processes, SPACE/Tab completed Set Package, and arithmetic returned 42.  Both owned jobs and the session were released.  No browser or HTTP error occurred.  The debugger-guide and Peek captures were inspected.  Evidence is `/tmp/web-emitted-scopes-product/result.json` and its adjacent log and captures.
+
+The two runs and exact drivers are preserved in `/tmp/debugger-web-emitted-scopes-evidence.tar.gz` (SHA-256 `3a52e5f68d641db0cfe642818fa684000775f36063a09aeed9adb07c877018d0`).  These checks precede this compiler increment's save/restore acceptance.  No Web product code changed.  The earlier concurrent monitor timeout and unidentified extra HTTP 409 remain unresolved.
+
 ## Lazy compiler failure browser test: 2026-10-14
 
 The planned core correction propagates compiler errors from EVAL-COMPILE and resets a lazy function's pending compilation state on nonlocal exit.  The browser test will create one lazy function and a macro expander under unique, removable symbols.  The expander increments a counter and signals a named error while a test flag is true.  Listener invocation must expose the compiler condition and stack.  Typed :Abort must leave the counter at one and the lazy target slot NIL.  Clearing the flag must let the same lazy object compile and return 42.  A further call must reuse the compiled target without another expansion.  The test will release its jobs, stop, session, macro, function, and value bindings.  Guest execution waits for the core agent's native acceptance and ready signal.
