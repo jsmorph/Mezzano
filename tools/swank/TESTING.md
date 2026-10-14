@@ -196,6 +196,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-interrupt-return-gc.lisp` | GC and resumption at the observed x86-64 interrupt-return instruction addresses, in full-save state and beneath another foothold. |
 | `test-gc-restart.lisp` | Raw instruction-address rewriting and resumption for an x86-64 GC restart region, in full-save state and beneath a foothold. |
 | `test-cons-allocation-gc.lisp` | The observed instruction addresses on the x86-64 DO-CONS success path in both saved states, with restart-address checks and relocated CAR/CDR values after resumption. |
+| `test-remote-eof.lisp` | Remote OPEN recovery after orderly TCP EOF during its initial probe, the one-retry limit, and EOF after CREATE without replay.  Compile/load the fixture and call LISPM-REMOTE-EOF-TEST:RUN.  Uses a test-owned loopback peer. |
 | `test-frame-locals.lisp` | Distinct SWANK local IDs and lookup. |
 | `test-frameless-backtrace.lisp` | Deterministic x86-64 frameless interruption, adjacent debug-3 caller, unavailable callee stack slots, caller locals, moving GC, continuation, and cleanup.  Load the control fixture first, compile/load this file, and call LISPM-FRAMELESS-TEST:RUN. |
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |

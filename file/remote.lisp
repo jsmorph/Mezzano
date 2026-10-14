@@ -265,7 +265,7 @@ the server instead of reconnecting for each operation.")
       ;; the connection is working.
       (when (not (eql (block nil
                         (handler-bind
-                            ((mezzano.network.tcp:connection-error
+                            (((or mezzano.network.tcp:connection-error end-of-file)
                               (lambda (c)
                                 (declare (ignore c))
                                 (when (not did-retry-connection)
