@@ -87,6 +87,9 @@
    (value :initarg :value :accessor variable-value))
   (:default-initargs :value nil))
 
+(defmethod c::name ((variable lexical-variable))
+  (variable-name variable))
+
 (defun eval-lambda (lambda outer-env)
   (let ((lambda-list (second lambda))
         (forms (cddr lambda))

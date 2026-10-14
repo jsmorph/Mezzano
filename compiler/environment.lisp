@@ -61,16 +61,23 @@
     (return-from extend-environment environment))
   (when (null environment)
     (setf environment (make-instance 'lexical-environment)))
-  (let ((sub (make-instance 'lexical-environment)))
-    (setf (slot-value sub '%variables) (append variables
-                                               (loop
-                                                  for (what . names) in declarations
-                                                  when (eql what 'special)
-                                                  append (mapcar (lambda (x)
-                                                                   (list x (make-instance 'special-variable :name x)))
-                                                                 (remove-if (lambda (x) (member x variables :key #'first))
-                                                                            names)))
-                                               (slot-value environment '%variables)))
+  (let* ((sub (make-instance 'lexical-environment))
+         (new-variables
+           (append variables
+                   (loop for (what . names) in declarations
+                         when (eql what 'special)
+                           append (loop for name in names
+                                        unless (assoc name variables)
+                                          collect
+                                          (let ((previous (lookup-variable-in-environment
+                                                           name environment)))
+                                            (list name
+                                                  (if (and (typep previous 'special-variable)
+                                                           (not (special-variable-implicitly-declared previous)))
+                                                      previous
+                                                      (make-instance 'special-variable :name name)))))))))
+    (setf (slot-value sub '%variables)
+          (append new-variables (slot-value environment '%variables)))
     (setf (slot-value sub '%functions) (append functions
                                                (slot-value environment '%functions)))
     (setf (slot-value sub '%blocks) (append blocks
@@ -99,50 +106,40 @@
                                                                     :test #'equal
                                                                     :key #'first))))
     (let ((new-decls '()))
-      (flet ((add-decl (name type)
-               (let* ((new-var (assoc name variables))
-                      (actual-var (or (and new-var (second new-var))
-                                      (lookup-variable-in-environment name environment)))
-                      (real-type (etypecase actual-var
-                                   ((or lexical-variable
-                                        symbol-macro)
-                                    (if new-var
-                                        type
-                                        (merge-the-types
-                                         (lookup-variable-declared-type-in-environment name environment)
-                                         type)))
-                                   (special-variable
-                                    (merge-the-types
-                                     (mezzano.runtime::symbol-type name)
-                                     type)))))
-                 (let ((existing (assoc name new-decls :key #'name)))
-                   (when existing
-                     (warn 'sys.int::simple-style-warning
-                           :format-control "Multiple type declarations at same scope for ~S."
-                           :format-arguments (list name))
-                     ;; Merge the two types together.
-                     (unless (compiler-type-equal-p real-type (second existing))
-                       (setf (second existing)
-                             (merge-the-types (second existing) real-type)))))
-                 (push (list actual-var real-type) new-decls))))
-        (loop
-           for (what type . names) in declarations
-           when (eql what 'type)
-           do (loop for name in names do (add-decl name type)))
-        (loop
-           for (what . names) in declarations
-           when (non-type-type-declaration-p what)
-           do (loop for name in names do (add-decl name what)))
-        (loop
-           for (name var) in variables
-           when (and (typep var 'lexical-variable)
-                     (not (assoc var new-decls)))
-           do (push (list var 't) new-decls))
-        (loop
-           for (var type) in (slot-value environment '%variable-type-decls)
-           when (not (assoc var new-decls))
-           do (push (list var type) new-decls))
-        (setf (slot-value sub '%variable-type-decls) new-decls)))
+      (labels ((prior-type (name variable)
+                 (let ((specialp (typep variable 'special-variable)))
+                   (cond ((assoc name variables)
+                          (if specialp (mezzano.runtime::symbol-type name) 't))
+                         ((and specialp
+                               (not (typep (lookup-variable-in-environment name environment)
+                                           'special-variable)))
+                          (mezzano.runtime::symbol-type name))
+                         (t
+                          (lookup-variable-declared-type-in-environment name environment)))))
+               (add-decl (name type)
+                 (let* ((variable (lookup-variable-in-environment name sub))
+                        (existing (assoc variable new-decls))
+                        (real-type (merge-the-types
+                                    (if existing (second existing) (prior-type name variable))
+                                    type)))
+                   (unless (assoc name (slot-value sub '%variables))
+                     (push (list name variable) (slot-value sub '%variables)))
+                   (if existing
+                       (setf (second existing) real-type)
+                       (push (list variable real-type) new-decls)))))
+        (loop for (what type . names) in declarations
+              when (eql what 'type)
+                do (dolist (name names) (add-decl name type)))
+        (loop for (what . names) in declarations
+              when (non-type-type-declaration-p what)
+                do (dolist (name names) (add-decl name what)))
+        (loop for (name variable) in new-variables
+              unless (assoc variable new-decls)
+                do (push (list variable (prior-type name variable)) new-decls))
+        (setf (slot-value sub '%variable-type-decls)
+              (append new-decls
+                      (remove-if (lambda (entry) (assoc (first entry) new-decls))
+                                 (slot-value environment '%variable-type-decls))))))
     (let ((optimize-settings (optimize-qualities-in-environment environment)))
       (loop
          for (what . qualities) in declarations
@@ -223,11 +220,17 @@
            (macro-function-in-environment symbol nil)))))
 
 (defmethod lookup-variable-declared-type-in-environment (symbol (environment lexical-environment))
-  (let ((ty (assoc symbol (slot-value environment '%variable-type-decls)
-                   :key #'name)))
-    (if ty
-        (second ty)
-        (lookup-variable-declared-type-in-environment symbol nil))))
+  (let* ((binding (assoc symbol (slot-value environment '%variables)))
+         (declarations (slot-value environment '%variable-type-decls))
+         (declaration (if binding
+                          (assoc (second binding) declarations)
+                          (assoc symbol declarations :key #'name))))
+    (cond (declaration
+           (second declaration))
+          ((and binding (not (typep (second binding) 'special-variable)))
+           't)
+          (t
+           (lookup-variable-declared-type-in-environment symbol nil)))))
 
 (defmethod optimize-qualities-in-environment ((environment lexical-environment))
   (slot-value environment '%optimize))

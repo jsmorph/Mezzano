@@ -301,6 +301,17 @@ To include selected-frame persistence in a snapshot test, load the restoration f
 
 After restoration, call (lispm-service-test::finish-restore-test).  It requires expired old handles, the same selected frame and local values after full GC, restart completion, and one cleanup, then releases the stop.
 
+## Evaluator environment tests
+
+The compiled fixture checks type declarations in compiler and interpreter environments, binding identity, shadowing, special-variable proclamations, inline declarations, and typed closure writes:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-EVALUATOR-ENVIRONMENT.LISP"))
+(lispm-environment-test:run)
+```
+
+The evaluation cases run through both the full interpreter and compiled functions.  Environment queries also check symbol-macro shadowing.  Stopped-frame lexical evaluation remains a separate implementation task.
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:
