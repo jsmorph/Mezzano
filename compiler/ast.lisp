@@ -163,46 +163,69 @@
 (defun go-tag-p (object)
   (typep object 'go-tag))
 
-(defun debug-source-scope (environment)
+(defun debug-macro-for-target (binding target)
+  (let ((table (fifth binding))
+        (key (class-name (class-of target))))
+    (check-type table hash-table)
+    (or (gethash key table)
+        (let ((definition
+                (make-instance 'debug-macro-definition
+                               :source (third binding)
+                               :environment (fourth binding)
+                               :target target)))
+          (or (mezzano.extensions:cas (gethash key table) nil definition)
+              definition)))))
+
+(defun debug-source-scope (environment &optional target-architecture cache)
   (when (member environment '(nil :unknown))
     (return-from debug-source-scope environment))
   (check-type environment lexical-environment)
-  (flet ((bindings (slot)
-           (remove-duplicates (slot-value environment slot)
-                              :test #'equal :key #'first :from-end t)))
-    (list
-     :variables
-     (loop for (name binding) in (bindings '%variables)
-           collect
-           (append
-            (etypecase binding
-              (lexical-variable
-               (list name :lexical (debug-variable-identity binding)))
-              (special-variable
-               (list name :special (special-variable-implicitly-declared binding)))
-              (symbol-macro
-               (list name :symbol-macro (symbol-macro-expansion binding))))
-            (list (lookup-variable-declared-type-in-environment name environment))))
-     :functions
-     (loop for (name binding) in (bindings '%functions)
-           collect
-           (etypecase binding
-             (lexical-variable
-              (list name :lexical (debug-variable-identity binding)))
-             (function
-              (list name :macro binding))
-             (top-level-function
-              (list name :global))))
-     :blocks
-     (loop for (name binding) in (bindings '%blocks)
-           do (check-type binding block-information)
-           collect (list name (debug-variable-identity binding)))
-     :go-tags
-     (loop for (name binding) in (bindings '%go-tags)
-           do (check-type binding go-tag)
-           collect (list name (debug-variable-identity (go-tag-tagbody binding))))
-     :inline-declarations (copy-tree (inline-qualities-in-environment environment))
-     :optimize (copy-list (optimize-qualities-in-environment environment)))))
+  (when cache
+    (return-from debug-source-scope
+      (or (gethash environment cache)
+          (setf (gethash environment cache)
+                (debug-source-scope environment target-architecture)))))
+  (let ((target (canonicalize-target target-architecture)))
+    (flet ((bindings (slot)
+             (remove-duplicates (slot-value environment slot)
+                                :test #'equal :key #'first :from-end t)))
+      (list
+       :variables
+       (loop for (name binding) in (bindings '%variables)
+             collect
+             (append
+              (etypecase binding
+                (lexical-variable
+                 (list name :lexical (debug-variable-identity binding)))
+                (special-variable
+                 (list name :special (special-variable-implicitly-declared binding)))
+                (symbol-macro
+                 (list name :symbol-macro (symbol-macro-expansion binding))))
+              (list (lookup-variable-declared-type-in-environment name environment))))
+       :functions
+       (loop for entry in (bindings '%functions)
+             for (name binding) = entry
+             collect
+             (etypecase binding
+               (lexical-variable
+                (list name :lexical (debug-variable-identity binding)))
+               (function
+                (list name :macro
+                      (if (native-target-p target)
+                          binding
+                          (debug-macro-for-target entry target))))
+               (top-level-function
+                (list name :global))))
+       :blocks
+       (loop for (name binding) in (bindings '%blocks)
+             do (check-type binding (or block-information tagbody-information))
+             collect (list name (debug-variable-identity binding)))
+       :go-tags
+       (loop for (name binding) in (bindings '%go-tags)
+             do (check-type binding go-tag)
+             collect (list name (debug-variable-identity (go-tag-tagbody binding))))
+       :inline-declarations (copy-tree (inline-qualities-in-environment environment))
+       :optimize (copy-list (optimize-qualities-in-environment environment))))))
 
 (defclass ast-block (ast-node)
   ((%info :initarg :info :accessor info :accessor ast-info)

@@ -30,6 +30,10 @@
 
 (defvar *target-architecture*)
 
+(defun native-target-p (target)
+  (declare (ignore target))
+  nil)
+
 (in-package :mezzano.internals)
 
 (defclass structure-definition ()

@@ -139,11 +139,20 @@
                         (c::lookup-variable-in-environment (first entry) environment)))))))))
         (assert (plusp count))))))
 
+(defun check-lowered-block ()
+  (let* ((block (make-instance 'c::block-information :name 'done))
+         (env (c::extend-environment nil :blocks (list (list 'done block))))
+         (before (second (assoc 'done (getf (c::debug-source-scope env) :blocks)))))
+    (change-class block 'c::tagbody-information :go-tags nil)
+    (assert (eq before
+                (second (assoc 'done (getf (c::debug-source-scope env) :blocks)))))))
+
 (defun run ()
   "Run once after loading the compiled fixture."
   (assert (null (c::debug-source-scope nil)))
   (assert (eq (c::debug-source-scope :unknown) :unknown))
   (assert (consp (c::debug-source-scope (make-instance 'c::lexical-environment))))
+  (check-lowered-block)
   (check-fixture (make-fixture))
   (check-fixture *saved-scopes*)
   (check-compiled-environments)

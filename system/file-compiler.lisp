@@ -40,7 +40,8 @@
     (list (first definition)
           (eval-in-lexenv source macro-env)
           source
-          macro-env)))
+          macro-env
+          (make-hash-table :test 'eq))))
 
 (defun make-macrolet-env (defs env)
   "Return a new environment containing the macro definitions."
@@ -168,6 +169,17 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
   (progn
     #+x86-64 :x86-64
     #+arm64 :arm64))
+
+(defmethod make-load-form ((definition mezzano.compiler::debug-macro-definition)
+                          &optional environment)
+  (declare (ignore environment))
+  (list 'quote
+        (or (mezzano.compiler::debug-macro-function definition)
+            (setf (mezzano.compiler::debug-macro-function definition)
+                  (mezzano.compiler::compile-lambda
+                   (mezzano.compiler::debug-macro-source definition)
+                   (mezzano.compiler::debug-macro-environment definition)
+                   (mezzano.compiler::debug-macro-target definition))))))
 
 (defun write-llf-header (output-stream input-file)
   (declare (ignore input-file))

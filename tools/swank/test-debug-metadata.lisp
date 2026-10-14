@@ -106,8 +106,11 @@
                          (list :debug (append prefix (list (list a-id reg :value) (list b-id 0 'fixnum :hidden t)))))))
     (setf (gethash vreg spills) 0)
     (let ((actual (emit-layouts architecture rows spills)))
-      (assert (equal actual expected))
-      (when reference (assert (equal actual (emit-layouts architecture rows spills reference))))
+      (assert (every (lambda (row) (and (= (length row) 3) (eq (third row) :unknown))) actual))
+      (assert (equal (mapcar #'butlast actual) expected))
+      (when reference
+        (assert (equal (mapcar #'second actual)
+                       (mapcar #'second (emit-layouts architecture rows spills reference)))))
       (assert (eq (second (second actual)) (second (third actual))))
       (assert (eq (second (second actual)) (second (seventh actual))))
       (assert (eq (second (fourth actual)) (second (fifth actual))))

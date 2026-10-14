@@ -67,6 +67,11 @@ Currently disabled by default as it has a severe performance impact.")
       #+x86-64 :x86-64
       #+arm64 :arm64))
 
+(defun native-target-p (target)
+  (typep target
+         #+x86-64 'x86-64-target
+         #+arm64 'arm64-target))
+
 (defun compile-lambda (lambda &optional env target-architecture)
   (let ((*print-readably* nil))
     (let ((target (canonicalize-target target-architecture)))

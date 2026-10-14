@@ -33,7 +33,7 @@
   (dolist (i instructions)
     (push i *emitted-lap*)))
 
-(defun emit-debug-info (info spill-locations layout-cache)
+(defun emit-debug-info (info spill-locations layout-cache &optional (scope :unknown))
   (multiple-value-bind (layout presentp) (gethash info layout-cache)
     (unless presentp
       (setf layout
@@ -49,7 +49,7 @@
                                      (list :hidden t)
                                      ())))
             (gethash info layout-cache) layout))
-    (emit (list :debug layout))))
+    (emit (list :debug layout scope))))
 
 (defun emit-gc-info (&rest metadata)
   (emit `(:gc :frame :layout ,*current-frame-layout* ,@metadata)))
@@ -127,6 +127,7 @@
                  (lap-prepass backend-function inst-or-label uses defs))))
         (let ((*emitted-lap* '())
               (debug-layouts (make-hash-table :test 'eq))
+              (debug-scopes (make-hash-table :test 'eq))
               (*current-frame-layout* (coerce (loop
                                                  for elt across *stack-layout*
                                                  collect (if (not (eql elt :value))
@@ -156,7 +157,10 @@
                     (emit `(lap:mov64 (:stack ,i) :r14)))))
           (emit-gc-info :incoming-arguments :rcx)
           (ir:do-instructions (inst-or-label backend-function)
-            (emit-debug-info (gethash inst-or-label debug-map '()) *spill-locations* debug-layouts)
+            (emit-debug-info
+             (gethash inst-or-label debug-map '()) *spill-locations* debug-layouts
+             (c::debug-source-scope (ir:instruction-source-environment inst-or-label)
+                                   *target* debug-scopes))
             (cond ((typep inst-or-label 'ir:label)
                    (push (gethash inst-or-label *labels*) *emitted-lap*))
                   (t

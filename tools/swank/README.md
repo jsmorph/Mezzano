@@ -353,7 +353,7 @@ The AST fixture checks source environments after first-pass expansion and tree c
 (lispm-ast-environment-test:run)
 ```
 
-Each variable or local-function read has its own AST reference and source environment.  References to the same binding share its binding object.  A known null environment differs from an unknown environment.  The fixture checks distinct occurrence scopes and copied binding identities, then tests execution with DEBUG 0/3, COMPILATION-SPEED 1/3, SAFETY 3, SPEED 1, and type checking enabled.  Cases include constant assignment, closure writes, multiple values, dynamic-extent rest arguments, and nonlocal GO and RETURN-FROM through a non-inlined helper.  Propagation tests check the replaced occurrence's scope while retaining a copied lambda body's definition scope.  Source-marker tests cover AST optimization and lowering, closure binding identity, and separate inlined function scope.  Complete compiler scope coverage, instruction-specific storage, and runtime frame evaluation remain work.
+Each variable or local-function read has its own AST reference and source environment.  References to the same binding share its binding object.  A known null environment differs from an unknown environment.  The fixture checks distinct occurrence scopes and copied binding identities, then tests execution with DEBUG 0/3, COMPILATION-SPEED 1/3, SAFETY 3, SPEED 1, and type checking enabled.  Cases include constant assignment, closure writes, multiple values, dynamic-extent rest arguments, and nonlocal GO and RETURN-FROM through a non-inlined helper.  Propagation tests check the replaced occurrence's scope while retaining a copied lambda body's definition scope.  Source-marker tests cover AST optimization and lowering, closure binding identity, and separate inlined function scope.  Complete compiler scope coverage and runtime frame evaluation remain work.
 
 For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains the first-pass tree, then checks its environments, macro functions, binding identities, copying, and compiled execution after full GC.
 
@@ -395,7 +395,23 @@ The source-scope fixture converts compiler environments to records containing vi
 
 It checks shadowing, variable and function namespaces, declared types, special declarations, symbol macros, original macro identity and state, block/tagbody identities, compiled-file sharing, full GC, and backend environments under DEBUG 0/3 and COMPILATION-SPEED 1/3.  Reload the compiled fixture before each RUN because its macro counter checks the saved initial state.
 
-These tests cover compiler metadata and native scope conversion.  The code generators still emit unavailable source scopes.  Cross-target macro construction, generated scope records, and runtime frame evaluation remain work.
+The target-macro fixture checks shared definition constants, target compilation through the file writer, fresh target state, retained native expander state, nested defining environments, failure and retry, compiled-file loading, and full GC:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-MACRO-TARGETS.LISP"))
+(lispm-debug-macro-target-test:run)
+```
+
+Reload its compiled file before each RUN.  It selects both architectures but executes x86-64 functions.  Host cross-build acceptance remains untested.
+
+The emitted-scope fixture resolves compiled source scopes from live call addresses and matches visible binding descriptors to local storage:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-EMITTED-SCOPES.LISP"))
+(lispm-emitted-scope-test:run)
+```
+
+It checks nested and disjoint same-name bindings, variable/function namespaces, symbol macros and local macros, scope exits, mutation, compiled-file loading, full GC, and both emitters.  Execution uses x86-64 with DEBUG 0/3 and COMPILATION-SPEED 1/3, SAFETY 3, and SPEED 1.  Value checks use DEBUG 3.  Prologue instructions retain unavailable scope information.  ARM64 execution and runtime frame evaluation remain untested or unimplemented, respectively.
 
 ## CLOS method replacement tests
 

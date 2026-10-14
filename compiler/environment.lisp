@@ -9,6 +9,12 @@
 (defclass top-level-function ()
   ((%name :initarg :name :accessor name)))
 
+(defclass debug-macro-definition ()
+  ((source :initarg :source :reader debug-macro-source)
+   (environment :initarg :environment :reader debug-macro-environment)
+   (target :initarg :target :reader debug-macro-target)
+   (function :initform nil :accessor debug-macro-function)))
+
 (defun function-name-p (object)
   (or (symbolp object)
       (and (consp object)
