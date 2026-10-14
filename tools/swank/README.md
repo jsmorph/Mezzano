@@ -451,6 +451,15 @@ The dynamic-binding fixture uses the same helpers:
 
 It checks per-frame ownership, shadowed values, bound NIL and unbound cells, selected/all-frame output, case-sensitive name filtering, parser defaults, invalid options, copied request strings, replay, unchanged history and selection, printer failure with nested Abort, full GC, continuation, and cleanup.  Its compiled condition-stop scope is x86-64 at DEBUG 3, SAFETY 3, SPEED 1.  See [special bindings](../../doc/debugger.md#special-bindings).
 
+The handler-scope fixture uses the debugger-service and frame-evaluation helpers:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-HANDLERS.LISP"))
+(lispm-debugger-handlers-test:run)
+```
+
+It verifies that application handlers cannot intercept errors from debugger evaluation, printers, or normally returning restart functions.  Handlers installed by evaluated forms remain active.  Nested BREAK, child Abort, continuation, and unwind cleanup test restoration of the original handlers.  These native x86-64 tests use DEBUG 3, SAFETY 3, SPEED 1 and release their owned jobs and stops.
+
 ## Inspection reference tests
 
 The reference fixture tests the internal object-retention layer.  Load the debugger-service and frame-evaluation fixtures first:

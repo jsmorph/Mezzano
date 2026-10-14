@@ -625,18 +625,19 @@
                             (service-stop-restarts stop))))))))
 
 (defun run-service-command (stop command)
-  (with-simple-restart (abort "Abort this debugger command.")
-    (unwind-protect
-         (let ((result (let ((*service-current-command* command))
-                         (execute-service-command stop command))))
-           (with-service-lock
-             (setf (service-command-result command) result
-                   (service-command-state command) :returned
-                   (service-stop-active stop) nil)))
-      (with-service-lock
-        (when (eq (service-command-state command) :running)
-          (setf (service-command-state command) :unwound))
-        (setf (service-stop-active stop) nil)))))
+  (let ((mezzano.internals::*active-handlers* nil))
+    (with-simple-restart (abort "Abort this debugger command.")
+      (unwind-protect
+           (let ((result (let ((*service-current-command* command))
+                           (execute-service-command stop command))))
+             (with-service-lock
+               (setf (service-command-result command) result
+                     (service-command-state command) :returned
+                     (service-stop-active stop) nil)))
+        (with-service-lock
+          (when (eq (service-command-state command) :running)
+            (setf (service-command-state command) :unwound))
+          (setf (service-stop-active stop) nil))))))
 
 (defun service-command-loop (stop)
   (loop

@@ -88,6 +88,8 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Show Local index | Displays one local by its zero-based decimal index. |
 | :Show Proceed Options | Displays retained restart choices and marks the default CONTINUE.  Selecting a choice invokes its interactive function in the guest to obtain any arguments. |
 
+Debugger operations run with application condition handlers disabled.  A handler established inside an evaluated expression still works.  Unhandled reader, evaluator, printer, and restart-function errors enter a child debugger.  Leaving the debugger restores the application's handlers for continuation and unwind cleanup.
+
 Proceed without an available CONTINUE reports an error while leaving the computation stopped.  An explicit index selects another restart.  A restart can return values and leave the debugger active, or transfer control out of it.  The browser displays returning values.
 
 :Arguments is a Boolean keyword.  Omitted, it defaults to No.  Mentioned without a value, it defaults to Yes.  :Arguments No uses the restart's interactive reader.  :Arguments Yes reads one expression, evaluates it in the stopped thread's current dynamic environment and a null lexical environment, and passes the elements of its primary value to the restart.  The value must be a finite proper list.  For example, entering (list 20 22) supplies two arguments, while NIL supplies none.  Reading disables read-time evaluation.  Aborting an unfinished read clears input already buffered on QUERY-IO while preserving the retained input record for replay.  Reader, evaluation, and argument errors enter a child debugger.  :Abort there abandons the command and returns to the original stop.
