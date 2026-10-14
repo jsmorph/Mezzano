@@ -667,11 +667,13 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
       (list pointer
             (mapcar (lambda (layout)
                       (mapcar (lambda (variable)
-                                (unless (or (tagbody-information-p variable)
-                                            (block-information-p variable)
-                                            (and debug-zero-p
-                                                 (not (preserve-variable-for-debugger-p variable))))
-                                  (debug-variable-identity variable)))
+                                (unless (and debug-zero-p
+                                             (not (preserve-variable-for-debugger-p variable)))
+                                  (cond ((block-information-p variable)
+                                         (vector :block (debug-variable-identity variable)))
+                                        ((tagbody-information-p variable)
+                                         (vector :tagbody (debug-variable-identity variable)))
+                                        (t (debug-variable-identity variable)))))
                               layout))
                     layouts)))))
 

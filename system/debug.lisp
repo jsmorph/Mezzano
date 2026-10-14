@@ -25,6 +25,35 @@ Returns NIL if the function captures no variables."
        (= (length object) 2)
        (eq (aref object 0) :binding)))
 
+(defun debug-control-binding-p (object)
+  (and (typep object 'simple-vector)
+       (= (length object) 2)
+       (member (aref object 0) '(:block :tagbody))
+       (debug-binding-p (aref object 1))))
+
+(defun closure-control-bindings (function)
+  (when (closure-p function)
+    (let ((environment (%closure-value function 0)))
+      (loop for level in (fifth (function-debug-info function))
+            append (loop for entry in level
+                         for index from 1
+                         when (debug-control-binding-p entry)
+                           collect (list (aref entry 0) (aref entry 1)
+                                         (svref environment index)))
+            do (setf environment (svref environment 0))))))
+
+(defun control-context-destination (context)
+  (declare (ignorable context))
+  #+x86-64
+  (mezzano.supervisor:with-pseudo-atomic
+    (let* ((address (lisp-object-address context))
+           (table (memref-unsigned-byte-64 address))
+           (destination (+ table (memref-signed-byte-64 table))))
+      (multiple-value-bind (function offset) (return-address-to-function destination)
+        (values function offset t))))
+  #-x86-64
+  (values nil nil nil))
+
 (defun debug-binding-name (object)
   (if (debug-binding-p object) (aref object 1) object))
 
@@ -351,7 +380,7 @@ Returns NIL if the function captures no variables."
               (loop
                  for i from 1
                  for name in level
-                 when name
+                 when (and name (not (debug-control-binding-p name)))
                  do (push (list (debug-binding-name name) (incf var-id)
                                 (reverse (list* i base-path)) :value
                                 (when (debug-binding-p name) name))
@@ -371,7 +400,7 @@ Returns NIL if the function captures no variables."
                   (loop
                      for i from 1
                      for name in level
-                     when name
+                     when (and name (not (debug-control-binding-p name)))
                      do (push (list (debug-binding-name name) (incf var-id)
                                     (reverse (list* i base-path)) :value
                                     (when (debug-binding-p name) name))

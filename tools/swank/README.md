@@ -469,6 +469,15 @@ The control-record fixture observes internal catch and handler records through t
 
 It checks nested and repeated catch tags, exit functions, handler-cluster identity and frame ownership, an ordinary BREAK, a BREAK within a selected handler, full GC, multiple-value THROW, unwind cleanup, continuation after the inner catch, and release of owned jobs and stops.  It uses the same test helpers and native x86-64 DEBUG 3 policy.  It also tests Show Condition Handlers defaults and completion, selected/all-frame output, active/inactive state, invalid options, replay, unchanged history and selection, and a valid callable-instance handler whose printer raises a condition.  Printer Abort, accepted replay, repaired display, and restored handler invocation must pass.  Public catch display remains planned.
 
+The captured-control metadata fixture checks compiled-file loading, closure/source identity sharing, nested same-name blocks and tagbodies, variable-layout compatibility, DEBUG 0/1/3, nonlocal multiple values, destination function and offset through moving GC, and redefinition of the active function:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-CONTROL-METADATA.LISP"))
+(lispm-control-metadata-test:run)
+```
+
+The fixture executes x86-64 code at SAFETY 3 and SPEED 1.  Captured-variable availability checks use DEBUG 3.  DEBUG 1 tests control identities while allowing optimized variable values.  ARM64 execution and control-destination lookup remain untested or unavailable as described in the [compiler reference](../../doc/debugger.md#compiler-guarantees).
+
 ## Inspection reference tests
 
 The reference fixture tests the internal object-retention layer.  Load the debugger-service and frame-evaluation fixtures first:
