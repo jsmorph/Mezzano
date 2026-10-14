@@ -432,6 +432,9 @@
         (:locals (check-service-frame argument stop))
         ((:inspect :modify :describe-object)
          (check-service-inspection-argument stop operation argument))
+        (:handlers
+         (unless (typep argument '(member nil t))
+           (service-error :invalid-handler-options)))
         (:bindings
          (unless (or (null argument)
                      (typep argument '(cons (member nil t) (cons string null))))
@@ -496,13 +499,13 @@
                         :available-p available-p
                         :value (when available-p (service-print value))))))
 
-(defun service-frame-bindings (frame)
+(defun service-frame-binding-cells (frame)
   (declare (ignorable frame))
   #+x86-64
   (let ((raw (mezzano.internals::frame-raw-data frame)))
     (unless (and (mezzano.internals::frame-stack-available-p raw)
                  (not (mezzano.internals::frame-interrupted-p frame)))
-      (return-from service-frame-bindings (values nil nil)))
+      (return-from service-frame-binding-cells (values nil nil)))
     (let* ((lower (mezzano.internals::frame-fp frame))
            (upper (mezzano.internals::memref-unsigned-byte-64 lower)))
       (values
@@ -514,13 +517,83 @@
                           (- (mezzano.internals::lisp-object-address cell)
                              mezzano.internals::+tag-object+)
                           upper))
-               collect
-               (let ((bound-p (mezzano.runtime::symbol-value-cell-boundp cell)))
-                 (list (mezzano.runtime::symbol-value-cell-symbol cell) bound-p
-                       (when bound-p (mezzano.runtime::symbol-value-cell-value cell)))))
+               collect cell)
        t)))
   #-x86-64
   (values nil nil))
+
+(defun service-frame-bindings (frame)
+  (multiple-value-bind (cells available-p) (service-frame-binding-cells frame)
+    (values
+     (loop for cell in cells
+           for bound-p = (mezzano.runtime::symbol-value-cell-boundp cell)
+           collect (list (mezzano.runtime::symbol-value-cell-symbol cell) bound-p
+                         (when bound-p (mezzano.runtime::symbol-value-cell-value cell))))
+     available-p)))
+
+(defun service-previous-binding-value (cell)
+  (let ((symbol (mezzano.runtime::symbol-value-cell-symbol cell)))
+    (loop for older = (mezzano.internals::%object-ref-t cell 0)
+            then (mezzano.internals::%object-ref-t older 0)
+          while older
+          when (and (mezzano.runtime::symbol-value-cell-p older)
+                    (eq (mezzano.runtime::symbol-value-cell-symbol older) symbol))
+            return (mezzano.runtime::symbol-value-cell-value older)
+          finally (return (mezzano.runtime::symbol-value-cell-value
+                           (mezzano.runtime::symbol-global-value-cell symbol))))))
+
+(defun service-program-handlers (stop)
+  #+x86-64
+  (let ((boundary (mezzano.internals::frame-fp (aref (service-stop-frames stop) 0))))
+    (loop for cell = (mezzano.internals::%%special-stack-pointer)
+            then (mezzano.internals::%object-ref-t cell 0)
+          while cell
+          when (and (mezzano.runtime::symbol-value-cell-p cell)
+                    (eq (mezzano.runtime::symbol-value-cell-symbol cell)
+                        'mezzano.internals::*active-handlers*)
+                    (> (- (mezzano.internals::lisp-object-address cell)
+                          mezzano.internals::+tag-object+)
+                       boundary))
+            return (mezzano.runtime::symbol-value-cell-value cell)
+          finally (return (mezzano.runtime::symbol-value-cell-value
+                           (mezzano.runtime::symbol-global-value-cell
+                            'mezzano.internals::*active-handlers*)))))
+  #-x86-64
+  (locally (declare (ignore stop)) nil))
+
+(defun service-frame-handlers (frame active)
+  (multiple-value-bind (cells available-p) (service-frame-binding-cells frame)
+    (values
+     (loop for cell in cells
+           when (eq (mezzano.runtime::symbol-value-cell-symbol cell)
+                    'mezzano.internals::*active-handlers*)
+             append
+             (let ((older (service-previous-binding-value cell)))
+               (loop for cluster in (mezzano.runtime::symbol-value-cell-value cell)
+                     unless (member cluster older :test #'eq)
+                       append (loop for (type . function) in cluster
+                                    collect (list type function
+                                                  (not (null (member cluster active :test #'eq))))))))
+     available-p)))
+
+(defun service-show-handlers (stop all-p)
+  (let ((active (service-program-handlers stop)) (found nil))
+    (with-output-to-string (stream)
+      (loop for frame across (service-stop-frames stop)
+            for index from 0
+            when (or all-p (= index (service-stop-current-frame stop)))
+              do (multiple-value-bind (handlers available-p) (service-frame-handlers frame active)
+                   (when (or handlers (not available-p) (not all-p))
+                     (setf found t)
+                     (format stream "Frame ~D ~A:~%" index (service-print (frame-function frame)))
+                     (cond ((not available-p) (write-line "  Handler locations unavailable." stream))
+                           ((null handlers) (write-line "  No condition handlers." stream))
+                           (t (dolist (handler handlers)
+                                (format stream "  Handler for ~A: ~A [~A]~%"
+                                        (service-print (first handler))
+                                        (service-print (second handler))
+                                        (if (third handler) "active" "inactive"))))))))
+      (unless found (write-line "No condition handlers." stream)))))
 
 (defun service-show-bindings (stop argument)
   (let ((all-p (first argument))
@@ -591,6 +664,7 @@
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
     (:bindings (service-show-bindings stop (service-command-argument command)))
+    (:handlers (service-show-handlers stop (service-command-argument command)))
     (:arglist
      (multiple-value-bind (called function)
          (frame-function (aref (service-stop-frames stop) (service-stop-current-frame stop)))

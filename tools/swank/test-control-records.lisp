@@ -10,9 +10,34 @@
 (define-condition probe-condition (condition) ())
 (define-condition probe-subcondition (probe-condition) ())
 (defvar *outer-handler-count* 0)
+(defvar *second-handler-count* 0)
 (defvar *cleanup-count* 0)
 (defvar *after-body-count* 0)
 (defvar *after-inner-count* 0)
+
+(define-condition handler-print-error (error) ())
+(defclass printable-handler ()
+  ((fail-p :initform nil) (print-count :initform 0) (calls :initform 0))
+  (:metaclass mezzano.clos:funcallable-standard-class))
+
+(defmethod initialize-instance :after ((object printable-handler) &rest initargs)
+  (declare (ignore initargs))
+  (mezzano.clos::set-funcallable-instance-function
+   object (lambda (condition)
+            (declare (ignore condition))
+            (incf (slot-value object 'calls)))))
+
+(defmethod print-object ((object printable-handler) stream)
+  (incf (slot-value object 'print-count))
+  (when (slot-value object 'fail-p) (error 'handler-print-error))
+  (write-string "#<Printable-handler>" stream))
+
+(defun printing-target ()
+  (let ((handler (make-instance 'printable-handler)))
+    (handler-bind ((probe-condition handler))
+      (break "Owned callable-handler printer test.")
+      (signal 'probe-condition)
+      (slot-value handler 'calls))))
 
 (defun outer-handler (condition)
   (declare (ignore condition))
@@ -21,6 +46,10 @@
 (defun inner-handler (condition)
   (declare (ignore condition))
   (break "Owned selected-handler inspection."))
+
+(defun inner-second-handler (condition)
+  (declare (ignore condition))
+  (incf *second-handler-count*))
 
 (defun body-target (mode)
   (ecase mode
@@ -35,7 +64,8 @@
     (catch (if (eq mode :duplicate) 'inner-tag 'outer-tag)
       (multiple-value-prog1
           (unwind-protect
-               (handler-bind ((probe-subcondition #'inner-handler))
+               (handler-bind ((probe-subcondition #'inner-handler)
+                              (probe-subcondition #'inner-second-handler))
                  (catch 'inner-tag
                    (multiple-value-prog1 (body-target mode)
                      (incf *after-body-count*))))
@@ -83,7 +113,7 @@
 
     (assert (if handler-p
                 (equal types '((probe-condition)))
-                (equal types '((probe-subcondition) (probe-condition))))
+                (equal types '((probe-subcondition probe-subcondition) (probe-condition))))
             () "~S" types)
     (mapcar (lambda (row)
               (list (first row) (second row)
@@ -94,8 +124,73 @@
                                                 (fourth row))))))
             rows)))
 
+(defun handler-line (text type)
+  (let* ((start (search (format nil "  Handler for ~A:" type) text))
+         (end (when start (position #\Newline text :start start))))
+    (assert start () "No handler for ~S in ~S." type text)
+    (subseq text start end)))
+
+(defun check-handler-display (handle lease mode)
+  (frame::evaluate-source handle lease "37" '("37"))
+  (let* ((stop (d::service-handle-stop handle))
+         (history (copy-list (d::service-stop-evaluation-history stop)))
+         (index (getf (debugger-stop-information handle) :current-frame))
+         (id (getf (debugger-stop-information handle) :next-command-id)))
+    (dolist (argument '(0 :all "Yes" (t)))
+      (test::expect-error :invalid-handler-options
+                          (lambda () (submit-debugger-command lease id :handlers argument))))
+    (assert (= id (getf (debugger-stop-information handle) :next-command-id)))
+    (assert (search "No condition handlers." (test::command handle lease :handlers)))
+    (let ((all (test::command handle lease :handlers t)))
+      (assert (search (if (eq mode :handler) "[inactive]" "[active]")
+                      (handler-line all 'probe-subcondition)))
+      (assert (search "[active]" (handler-line all 'probe-condition)))
+      (let* ((first (search "INNER-HANDLER" all))
+             (second (search "INNER-SECOND-HANDLER" all))
+             (end (when second (position #\Newline all :start second))))
+        (assert (and first second (< first second)))
+        (assert (search (if (eq mode :handler) "[inactive]" "[active]")
+                        (subseq all second end))))
+      (assert (< (search "Handler for PROBE-SUBCONDITION:" all)
+                 (search "Handler for PROBE-CONDITION:" all)))
+      (format t "~S handlers: ~A" mode all)
+      (mezzano.extensions:gc :full t)
+      (assert (equal all (test::command handle lease :handlers t)))
+      (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+        (submit-debugger-command lease id :handlers t)
+        (let ((result (getf (test::completed-command handle id) :result)))
+          (submit-debugger-command lease id :handlers t)
+          (assert (equal result (getf (test::completed-command handle id) :result))))))
+    (assert (equal history (d::service-stop-evaluation-history stop)))
+    (assert (= index (getf (debugger-stop-information handle) :current-frame)))
+    (let ((owner (position #'i::%handler-bind (d::service-stop-frames stop)
+                           :key (lambda (frame) (nth-value 1 (frame-function frame))))))
+      (assert owner)
+      (test::command handle lease :select-frame owner)
+      (let ((selected (test::command handle lease :handlers)))
+        (assert (search "Handler for PROBE-SUBCONDITION:" selected))
+        (assert (not (search "Handler for PROBE-CONDITION:" selected))))
+      (assert (= owner (getf (debugger-stop-information handle) :current-frame))))))
+
+(defun check-handler-parser ()
+  (let ((listener (mezzano.command-processor:make-listener)))
+    (dolist (case '((":Show Condition Handlers" nil)
+                    (":Show Condition Handlers :All" t)
+                    (":Show Condition Handlers :All No" nil)
+                    (":Show Condition Handlers :All Yes" t)))
+      (let* ((source (first case))
+             (reply (mezzano.command-processor:assistance
+                     listener source (length source) :parse :context :debugger)))
+        (assert (and (getf reply :complete-p) (not (getf reply :error))))
+        (assert (equal (getf reply :operation) "handlers"))
+        (assert (eql (getf reply :argument) (second case)))))
+    (let* ((source ":Show Cond")
+           (reply (mezzano.command-processor:assistance
+                   listener source (length source) :space :context :debugger)))
+      (assert (equal (getf reply :text) ":Show Condition ")))))
+
 (defun run-case (mode)
-  (setf *outer-handler-count* 0 *cleanup-count* 0
+  (setf *outer-handler-count* 0 *second-handler-count* 0 *cleanup-count* 0
         *after-body-count* 0 *after-inner-count* 0)
   (let* ((controller (make-debugger-controller))
          (job (start-evaluation-job
@@ -113,6 +208,7 @@
              (format t "~S records: ~A~%" mode (first before))
              (mezzano.extensions:gc :full t)
              (assert (equal before (test::command handle lease :evaluate source))))
+           (check-handler-display handle lease mode)
            (let ((id (getf (debugger-stop-information handle) :next-command-id)))
              (submit-debugger-command lease id :proceed)
              (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
@@ -123,6 +219,7 @@
              (assert (eq (getf info :state) :returned))
              (assert (equal (getf info :values) '("42" "43")) () "~S" info))
            (assert (= *outer-handler-count* (if (eq mode :handler) 1 0)))
+           (assert (zerop *second-handler-count*))
            (assert (= *cleanup-count* 1))
            (assert (= *after-inner-count* 1))
            (assert (= *after-body-count* (if (member mode '(:throw :duplicate)) 0 1)))
@@ -136,10 +233,61 @@
         (release-evaluation-job job))
       (close-debugger-controller controller))))
 
+(defun run-printer-case ()
+  (let* ((controller (make-debugger-controller))
+         (job (start-evaluation-job
+               (string-downcase (format nil "~32,'0X~32,'0X" (get-universal-time)
+                                        (random most-positive-fixnum)))
+               "(printing-target)" :package "LISPM-CONTROL-RECORDS-TEST"))
+         (handle nil) (lease nil))
+    (unwind-protect
+         (progn
+           (setf handle (test::await (lambda () (first (getf (evaluation-job-information job) :stops))))
+                 lease (attach-debugger-stop handle controller))
+           (frame::select-function handle lease #'printing-target)
+           (frame::evaluate-source handle lease
+                                   "(progn (setf (slot-value handler 'fail-p) t (slot-value handler 'print-count) 0) 0)"
+                                   '("0"))
+           (let ((id (getf (debugger-stop-information handle) :next-command-id))
+                 (child nil))
+             (unwind-protect
+                  (progn
+                    (submit-debugger-command lease id :handlers t)
+                    (setf child (test::await (lambda () (getf (debugger-stop-information handle) :child))))
+                    (assert (typep (d::service-stop-condition (d::service-handle-stop child))
+                                   'handler-print-error))
+                    (test::command child (attach-debugger-stop child controller) :condition))
+               (when child (frame::release-test-stop child controller)))
+             (assert (eq (getf (test::completed-command handle id) :state) :unwound))
+             (submit-debugger-command lease id :handlers t))
+           (frame::evaluate-source handle lease "(slot-value handler 'print-count)" '("1"))
+           (frame::evaluate-source handle lease "(setf (slot-value handler 'fail-p) nil)" '("NIL"))
+           (assert (search "Printable-handler" (test::command handle lease :handlers t)))
+           (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :proceed)
+             (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
+           (let ((info (test::await
+                        (lambda ()
+                          (let ((info (evaluation-job-information job)))
+                            (unless (eq (getf info :state) :running) info))))))
+             (assert (eq (getf info :state) :returned))
+             (assert (equal (getf info :values) '("1")) () "~S" info))
+           (release-debugger-stop lease)
+           (setf handle nil)
+           (release-evaluation-job job)
+           (setf job nil))
+      (when handle (frame::release-test-stop handle controller))
+      (when job
+        (test::await (lambda () (not (eq (getf (evaluation-job-information job) :state) :running))))
+        (release-evaluation-job job))
+      (close-debugger-controller controller))))
+
 (defun run ()
+  (check-handler-parser)
   (run-case :body)
   (run-case :handler)
   (run-case :throw)
   (run-case :duplicate)
-  (format t "PASS control-record ownership, active handler tails, repeated catch tags, GC, multiple-value THROW, unwind cleanup, and release.~%")
+  (run-printer-case)
+  (format t "PASS control-record ownership, active handler tails, repeated catch tags, GC, multiple-value THROW, unwind cleanup, handler printer error and replay, and release.~%")
   t)

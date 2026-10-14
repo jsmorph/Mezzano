@@ -45,6 +45,9 @@
     (:name "Show Bindings" :id :show-bindings
      :help "Display special bindings established by the selected frame. :All selects all frames. :Matching filters symbol names by a case-sensitive substring."
      :keywords (("All" :boolean "No" "Yes") ("Matching" :string "" nil)))
+    (:name "Show Condition Handlers" :id :show-handlers
+     :help "Display condition handlers established by the selected frame, with their active state at debugger entry. :All selects all frames."
+     :keywords (("All" :boolean "No" "Yes")))
     (:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
     (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
     (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
@@ -445,6 +448,8 @@
     (:show-bindings (list :operation "bindings"
                           :argument (list (cdr (assoc "All" keywords :test #'equal))
                                           (cdr (assoc "Matching" keywords :test #'equal)))))
+    (:show-handlers (list :operation "handlers"
+                         :argument (cdr (assoc "All" keywords :test #'equal))))
     (:show-backtrace (list :operation "frames"))
     (:show-proceed-options (list :operation "restarts"))
     (:show-frame (list :operation "current-frame" :display :frame))
