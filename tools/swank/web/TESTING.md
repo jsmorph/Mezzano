@@ -55,6 +55,8 @@ node tools/swank/web/test-listener-debugger.mjs \
 
 Explicit-argument tests invoke a restart with required parameters and no interactive function, reload during its input wait, interrupt that reader, abort an expression error, and complete the original evaluation.  A separate fixture evaluates a dynamically bound expression, returns multiple values, and counts argument evaluation and restart invocation across a discarded accepted submission reply and exact-request replay.  Both counts must remain one.  The driver also checks Arguments completion, default selection, the per-restart button, and subsequent Listener evaluation.
 
+Frame tests check completion, typed and mouse selection, Next/Previous/Top/Bottom, zero movement, rejected targets without command-ID consumption, once-only relative motion after reply loss, and selection across reconnect and reload.  Parent and child selections remain independent.  External selection updates the highlight without executing another inspection.  A frame containing a local whose printer signals an error tests child Abort after mouse and external-controller selection, absence of automatic printing retries, suppression of results for a different frame, and recovery through an explicit frame command.  The broad Listener suite checks Show Frame, individual and all locals, unavailable-local rendering, and labelled recorded locals after a stop closes and its selection clears.
+
 The driver tests both typed Proceed and the CONTINUE button for continuation.  `PROTECTED_STOP` optionally names a numeric stop ID whose state and next command ID must remain unchanged.  The driver records its session and releases its owned evaluations, stops, and session.
 
 ## Expired sessions

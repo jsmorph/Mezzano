@@ -49,6 +49,24 @@ class ProtocolTests(unittest.TestCase):
     def test_typed_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]
+        for command in ("current-frame", "top-frame", "bottom-frame"):
+            with self.subTest(command=command):
+                self.assertEqual(server.operation_arguments("submit",
+                    {"stop": stop, "id": 0, "command": command}, session)[2:],
+                    [server.Symbol(":" + command), None])
+                with self.assertRaises(ValueError):
+                    server.operation_arguments("submit",
+                        {"stop": stop, "id": 0, "command": command, "argument": 0}, session)
+        for command in ("select-frame", "next-frame", "previous-frame"):
+            for argument in (0, 1):
+                with self.subTest(command=command, argument=argument):
+                    self.assertEqual(server.operation_arguments("submit",
+                        {"stop": stop, "id": 0, "command": command, "argument": argument}, session)[2:],
+                        [server.Symbol(":" + command), argument])
+            for argument in (None, True, -1, "0", 1.5):
+                with self.subTest(command=command, argument=argument), self.assertRaises(ValueError):
+                    server.operation_arguments("submit",
+                        {"stop": stop, "id": 0, "command": command, "argument": argument}, session)
         self.assertEqual(server.operation_arguments("submit",
             {"stop": stop, "id": 0, "command": "proceed"}, session),
             [[server.Symbol(":stop"), session, 1], 0, server.Symbol(":proceed"), None])

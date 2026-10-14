@@ -558,6 +558,7 @@ try {
   assert.equal(await browser.evaluate("document.activeElement === document.querySelector('#debugger-command')"), true);
   const activeJob = await browser.evaluate('activeListenerJob');
   assert(activeJob);
+  await browser.waitFor('returnedFrameInspection() && !stopCommandPending(selectedStop) && !busy');
   const initialInspections = await browser.evaluate(`state.commands.filter(command => same(command.stop, ${text(debugStop)}))`);
   const stoppedSession = await browser.evaluate('state.session');
   await browser.send('Page.reload');
@@ -596,12 +597,12 @@ try {
   const frameIndex = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(functionName)}))`);
   assert(frameIndex >= 0);
   await enter('#debugger-command', ':Set Current Frame ' + frameIndex);
-  await browser.waitFor(`selectedFrame?.index === ${frameIndex} && !busy`);
+  await browser.waitFor(`returnedFrameInspection()?.result.index === ${frameIndex} && !busy`);
   await waitText('.locals', '111');
   await waitText('.locals', '222');
   await enter('#debugger-command', ':Show Frame');
-  await browser.waitFor("latestCommand('locals')?.display === ':frame' && !busy");
-  assert.equal(await browser.evaluate('selectedFrame.index'), frameIndex);
+  await browser.waitFor("returnedFrameInspection()?.command.display === ':frame' && !busy");
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), frameIndex);
   assert((await browser.evaluate("document.querySelector('.current-function').textContent")).includes(functionName));
   assert(await browser.evaluate("document.querySelector('#stop-detail').textContent.includes('Original caller arguments are unavailable')"));
   await enter('#debugger-command', ':Show Local 0');
@@ -609,14 +610,14 @@ try {
   await enter('#debugger-command', ':Show Local All');
   await browser.waitFor("document.querySelectorAll('.locals tr').length === 2");
   await clickText('#stop-detail', functionName);
-  await browser.waitFor(`selectedFrame?.index === ${frameIndex} && !busy`);
+  await browser.waitFor(`returnedFrameInspection()?.result.index === ${frameIndex} && !busy`);
   const unavailable = await browser.evaluate(`(() => {
-    const key = commandKey(latestCommand('locals'));
+    const key = commandKey(returnedFrameInspection().command);
     const original = commandResults.get(key);
     try {
-      commandResults.set(key, {...original, result: [
+      commandResults.set(key, {...original, result: {...original.result, locals: [
         {index: 0, name: 'unavailable-fixture', 'available-p': false, value: 'MUST-NOT-BE-DISPLAYED'}
-      ]});
+      ]}});
       renderStops();
       return [...document.querySelectorAll('.locals td')].map(cell => cell.textContent);
     } finally {
@@ -632,6 +633,13 @@ try {
   console.log('PASS browser condition, stack, typed/mouse frame selection, Show Frame, locals, and restart list');
   await clickText('.restarts', 'Continue browser test.');
   await waitText('#debugger-menu', 'Release Stop');
+  await waitText('#stop-detail .recorded-frame', 'Recorded frame ' + frameIndex + ' from this closed stop.');
+  await waitText('.locals', '111');
+  await waitText('.locals', '222');
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), null);
+  assert.equal(await browser.evaluate('document.querySelectorAll("#stop-detail .frame.selected").length'), 0);
+  await screenshot('debugger-closed');
+  console.log('PASS closed stop retains labelled printed frame locals and clears live frame selection');
   await debuggerAction('Release Stop');
   await listener();
   job = await selectJob('DEBUG');

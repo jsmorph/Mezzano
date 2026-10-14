@@ -1,5 +1,34 @@
 # Web UI development journal
 
+## Guest-owned frame selection: 2026-10-13
+
+The guest debugger will retain each stop's current frame and execute frame motion.  The Web interface will remove its selected-frame variable and draft field, forward the guest command plan, and derive stack highlighting from stop information.  A returned frame inspection will display only when its index agrees with the guest's current frame.  Navigation will use the existing System Menu and backtrace rows.
+
+Initial inspection will request the current frame.  A failed printing operation will require explicit retry, avoiding repeated entry into its child debugger.  Pending inspections retain the preceding matching result.  Existing frame-token inspection remains available to HTTP clients.
+
+The [Genera debugger documentation](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf#page=220) defines stack motion.  Next moves toward older callers, Previous toward newer frames, Top selects zero, and Bottom selects the last frame.  Lisp owns defaults, range checks, and replay semantics.
+
+- [x] Add HTTP validation and guest-owned frame rendering.
+- [x] Test typed and mouse selection, completion, relative and endpoint motion, zero and rejected bounds, exact replay, nested independence, and reload/reconnect in Chromium.
+- [x] Run the focused and broad browser suites, HTTP tests, and Clear All rendering fixture.
+- [x] Review product documentation and record the exact results before committing.
+
+The first focused browser run passed Next, Previous, and zero movement, then stopped at the Web menu's incorrect `:Bottom Frame` label.  The guest command is `:Bottom Of Stack`.  The menu, tests, and documentation now use `:Top Of Stack` and `:Bottom Of Stack`.  The failed run released its owned evaluation, stop, and session.  Its evidence is `/tmp/listener-debugger-frames-first/result.json`.  The fourteen isolated HTTP tests passed before that run.
+
+The second focused run passed sixteen groups, including a failed local printer, child Abort, frame replay, and external selection.  Review then identified an unnecessary behavior in the initial recommendation: inspecting an externally selected frame could repeat a printer that the other controller had already aborted.  The simpler recommendation is to remove inspection triggered by an externally changed index.  Polling will update the highlight and show a request to use :Show Frame when the retained result does not match.  Initial inspection still runs once.  Explicit frame commands still inspect.  This requires no additional state or guest-result queries.  The external-controller test will check unchanged command count, explicit inspection, and the existing failure object's printing error followed by child Abort.  The focused and broad suites will run again after that change.
+
+Review also found that comparing every returned frame against current-frame would hide its printed locals after closure, when the guest clears selection to NIL.  The recommendation is to display the last returned inspection for a closed stop under an explicit recorded-frame label.  Closed stops retain no live selection or highlighted backtrace row.  The broad test will check the recorded 111 and 222 local values after continuation, the NIL guest selection, and absence of a selected row before releasing that stop.
+
+The revised focused run passed sixteen groups on the running x86-64 guest.  It released thirteen owned evaluations, eighteen stops, and its session.  Five HTTP 400 responses came from malformed arguments, and three HTTP 409 responses came from the two out-of-range frame requests and missing default restart.  No unexpected browser errors occurred.  The final broad run passed twenty-nine groups, including recorded locals after closure, and released its fixtures.  Its two deliberate HTTP 409 responses were the only browser network errors.  The recorded-frame screenshot shows the label, values 111 and 222, and no selected backtrace row.  The Clear All rendering fixture passed with zero guest requests.
+
+| Test | Evidence |
+|---|---|
+| Revised focused debugger | `/tmp/listener-debugger-frames-final/result.json` |
+| Final broad Listener | `/tmp/listener-debugger-frames-broad-final.log` and `/tmp/listener-debugger-frames-broad-final/debugger-closed.png` |
+| Clear All rendering | `/tmp/clear-all-frame-fixtures/result.json` |
+
+The final closed-stop display change was tested by the broad suite after the focused run.  The attempted image restoration failed before SWANK became available, so the post-restore focused, Document Examiner, Peek, and Listener checks did not run.  The core investigation reported an index 19221225 access into a zero-length array in `%WEAK-FIND-HASH-TABLE-SLOT-1-STANDARD-EQL`, through GETHASH and CHECK-UPDATE-INSTANCE-FOR-DIFFERENT-CLASS-INITARGS, followed by a native-debugger serial-input panic.  The tested Web increment is committed independently.  Restoration and the post-restore checks remain unresolved.
+
 ## Scope and approved design: 2026-10-12
 
 The user requested a Symbolics-like Web UI served by a uv-runnable Python server that communicates with Mezzano through SWANK.  The parent reviewed the standard-library Python and native-browser design.  The user approved implementation and required HTTP to listen on all interfaces, with exact original Listener and Debugger fonts and colors.

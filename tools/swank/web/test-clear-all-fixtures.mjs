@@ -44,7 +44,6 @@ try {
     commandResults.set(commandKey(command), {state: ':returned'});
     stops = [{token, info: {id: 123, state: ':closed'}}];
     selectedStop = token;
-    selectedFrame = ['frame'];
     state.inputHistory = [{name: old, sequence: 0}, {name: receipt, sequence: 1}, {name: later, sequence: 2}];
     state.initialHerald = {session: state.session, hidden: false};
     createView(state.jobs[old]);
@@ -62,7 +61,7 @@ try {
     views.get(receipt).element.hidden = Boolean(state.jobs[receipt].hidden);
     const cleared = {jobs: Object.keys(state.jobs), pending: state.pending.map(item => item.id),
       history: state.history, inputs: state.inputHistory, commands: state.commands,
-      results: commandResults.size, selectedStop, selectedFrame, herald: state.initialHerald.hidden,
+      results: commandResults.size, selectedStop, herald: state.initialHerald.hidden,
       hidden: views.get(receipt).element.hidden, receipt: state.jobs[receipt].receipt};
     state.pending.push({id: '7'.repeat(64)});
     await updateJob(state.jobs[receipt], info, {start: 0, text: '', end: 0});
@@ -93,7 +92,6 @@ try {
   assert.deepEqual(result.cleared.commands, []);
   assert.equal(result.cleared.results, 0);
   assert.equal(result.cleared.selectedStop, null);
-  assert.equal(result.cleared.selectedFrame, null);
   assert.equal(result.cleared.herald, true);
   assert.equal(result.cleared.hidden, true);
   assert.equal(result.cleared.receipt, true);

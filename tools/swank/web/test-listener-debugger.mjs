@@ -62,6 +62,11 @@ async function command(value, selector = '#source') {
   await key('Enter', 'Enter', 13);
   await browser.waitFor(`document.querySelector(${text(selector)}).value !== ${text(value)} && !busy`, 60);
 }
+async function frame(index) {
+  await browser.waitFor(`returnedFrameInspection()?.result.index === ${index} && !stopCommandPending(selectedStop) && !busy`);
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), index);
+  assert.equal(await browser.evaluate('document.querySelector("#stop-detail .frame.selected")?.textContent.split("  ")[0]'), String(index));
+}
 async function proceed() {
   await clickText('#listener-debugger .restarts', 'CONTINUE');
 }
@@ -148,6 +153,88 @@ try {
   assert.equal(rejected.before, rejected.after);
   evidence.rejectedArguments = rejected;
   await save('ordinary-stop-help');
+  await frame(0);
+  const lastFrame = await browser.evaluate('returnedResult("frames").length - 1');
+  assert(lastFrame > 2);
+  await fill('#source', ':Next Fr');
+  await key(' ', 'Space', 32);
+  await browser.waitFor('document.querySelector("#source").value === ":Next Frame " && !busy');
+  await key('Enter', 'Enter', 13);
+  await frame(1);
+  await command(':Next Frame :Nframes 0');
+  await frame(1);
+  await command(':Previous Frame');
+  await frame(0);
+  await browser.click('#window-label');
+  await clickText('#debugger-menu', ':Bottom Of Stack');
+  await frame(lastFrame);
+  evidence.rejectedFrames = [];
+  for (const source of [':Next Frame', ':Set Current Frame ' + (lastFrame + 1)]) {
+    const before = await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]');
+    await fill('#source', source);
+    await key('Enter', 'Enter', 13);
+    await browser.waitFor(`state.pending.some(record => record.operation === 'submit' && record.source === ${text(source)} && record.arguments.id === ${before} && record.status === 'rejected') && !busy`);
+    const after = await browser.evaluate('({session: state.session, connected, info: stops.find(stop => same(stop.token, selectedStop)).info, pending: stopCommandPending(selectedStop), draft: document.querySelector("#source").value})');
+    assert.equal(after.session, evidence.session);
+    assert.equal(after.connected, true);
+    assert.equal(after.info['current-frame'], lastFrame);
+    assert.equal(after.info['next-command-id'], before);
+    assert.equal(after.pending, false);
+    assert.equal(after.draft, source);
+    evidence.rejectedFrames.push({source, before, after});
+  }
+  await command(':Top Of Stack');
+  await frame(0);
+  await browser.evaluate(`(() => {
+    const original = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await original(...args);
+      const request = args[1]?.body && JSON.parse(args[1].body);
+      if (request?.operation === 'submit' && request.arguments.command === 'next-frame') {
+        window.fetch = original;
+        await response.arrayBuffer();
+        throw new TypeError('Browser test discarded the accepted frame-motion reply');
+      }
+      return response;
+    };
+  })()`);
+  await fill('#source', ':Next Frame');
+  await key('Enter', 'Enter', 13);
+  await browser.waitFor('!connected && !busy && state.pending.some(record => record.arguments.command === "next-frame" && record.status === "outcome unknown")');
+  const motionReceipt = await browser.evaluate('state.pending.find(record => record.arguments.command === "next-frame" && record.status === "outcome unknown")');
+  await browser.click('#window-label');
+  await browser.click('#resume-session');
+  await browser.waitFor('connected && !busy');
+  assert.equal(await browser.evaluate('state.session'), evidence.session);
+  await switchActivity('requests');
+  await browser.evaluate(`[...document.querySelectorAll('#pending .command-row')].find(row => row.textContent.includes(${text(JSON.stringify(motionReceipt.arguments))})).querySelector('button').dataset.focusedTest = 'motion-replay'`);
+  await browser.click('[data-focused-test="motion-replay"]');
+  await browser.waitFor(`!state.pending.some(record => record.id === ${text(motionReceipt.id)}) && !busy`);
+  await switchActivity('listener');
+  await frame(1);
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), motionReceipt.arguments.id + 1);
+  evidence.motionReplay = motionReceipt;
+  const motionOrigin = await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin !== ${motionOrigin} && document.readyState === 'complete'`);
+  await browser.waitFor('connected && !busy');
+  await frame(1);
+  assert.equal(await browser.evaluate('state.session'), evidence.session);
+  assert(await browser.evaluate('Object.values(state.drafts).every(draft => !("frame" in draft))'));
+  const externalSelectionId = await browser.evaluate(`(async () => {
+    const info = await api('information', {stop: ${text(first.stop)}});
+    await api('submit', {stop: ${text(first.stop)}, id: info['next-command-id'], command: 'select-frame', argument: 2});
+    return info['next-command-id'];
+  })()`);
+  await browser.waitFor('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"] === 2 && !busy');
+  await browser.evaluate('run(refresh)');
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), externalSelectionId + 1);
+  assert.equal(await browser.evaluate('document.querySelector("#stop-detail .frame.selected")?.textContent.split("  ")[0]'), '2');
+  assert(await browser.evaluate('document.querySelector("#stop-detail").textContent.includes("Frame 2 selected. Use :Show Frame to inspect its locals.")'));
+  await command(':Show Frame');
+  await frame(2);
+  await save('frame-motion-restored');
+  evidence.checks.push('Frame completion, relative and endpoint motion, zero movement, rejected bounds without ID advance, once-only lost-reply replay, selection across reconnect/reload, and external selection without automatic inspection followed by explicit Show Frame');
   const defaultRestart = await browser.evaluate('returnedResult("restarts").filter(restart => restart["default-p"])');
   assert.equal(defaultRestart.length, 1);
   assert.equal(defaultRestart[0].name, 'CONTINUE');
@@ -203,16 +290,62 @@ try {
   assert(await browser.evaluate(`views.get(${text(typedAbort)}).text.includes(${text(marker + ' typed abort cleanup')})`));
   evidence.checks.push('Typed Abort unwinds the owned evaluation and runs cleanup');
 
+  const printedClass = marker + '-PRINTED';
+  const printedFunction = marker + '-FRAME';
+  const printed = await start(`(defclass ${printedClass} () ()) (defmethod print-object ((object ${printedClass}) stream) (declare (ignore object stream)) (error "${marker} frame printer")) (defun ${printedFunction} (object) (declare (optimize (debug 3) (safety 3))) (cerror "Continue frame printer test." "${marker} frame") (typep object '${printedClass})) (unwind-protect (${printedFunction} (make-instance '${printedClass})) (remove-method #'print-object (find-method #'print-object nil (list (find-class '${printedClass}) (find-class 't)))) (setf (find-class '${printedClass}) nil) (fmakunbound '${printedFunction}) (unintern '${printedClass}) (unintern '${printedFunction}))`);
+  const printedParent = await stopped(printed);
+  await frame(0);
+  const printedIndex = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(printedFunction)}))`);
+  assert(printedIndex > 0);
+  await clickText('#stop-detail', printedFunction);
+  await stopped(printed, 2);
+  await frame(0);
+  assert.equal(await browser.evaluate(`stops.find(stop => same(stop.token, ${text(printedParent.stop)})).info['current-frame']`), printedIndex);
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(printedParent.stop)}) && !busy`);
+  const failedFrameId = await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]');
+  await browser.evaluate('run(refresh)');
+  await browser.evaluate('run(refresh)');
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), failedFrameId);
+  assert.equal(await browser.evaluate('returnedFrameInspection()'), null);
+  assert.equal(await browser.evaluate('document.querySelector("#stop-detail .current-function")'), null);
+  assert.equal(await browser.evaluate('commandResults.get(commandKey(latestCommand("select-frame"))).state'), ':unwound');
+  await command(':Top Of Stack');
+  await frame(0);
+  const externalPrinterId = await browser.evaluate(`(async () => {
+    const info = await api('information', {stop: ${text(printedParent.stop)}});
+    await api('submit', {stop: ${text(printedParent.stop)}, id: info['next-command-id'], command: 'select-frame', argument: ${printedIndex}});
+    return info['next-command-id'];
+  })()`);
+  await stopped(printed, 2);
+  await frame(0);
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(printedParent.stop)}) && !busy`);
+  await browser.evaluate('run(refresh)');
+  await browser.evaluate('run(refresh)');
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), externalPrinterId + 1);
+  assert.equal(await browser.evaluate('document.querySelector("#stop-detail .current-function")'), null);
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), printedIndex);
+  await command(':Top Of Stack');
+  await frame(0);
+  await proceed();
+  assert.deepEqual((await completed(printed)).values, ['T']);
+  evidence.checks.push('Mouse and external-controller frame selection with a failing local printer enter children; Abort preserves parent selection without repeating printing or showing another frame; explicit Top recovers');
+
   const condition = marker + '-CONDITION';
   const count = marker + '-REPORTS';
   const nested = await start(`(defparameter ${count} 0) (define-condition ${condition} (error) () (:report (lambda (condition stream) (declare (ignore condition)) (if (zerop (prog1 ${count} (incf ${count}))) (write-string "${marker} outer" stream) (error "${marker} debugger operation error"))))) (unwind-protect (progn (cerror "Continue outer computation." '${condition}) 333) (setf (find-class '${condition}) nil) (makunbound '${count}) (unintern '${condition}) (unintern '${count}))`);
   const outer = await stopped(nested);
   await browser.waitFor(`document.querySelector('#listener-debugger .condition')?.textContent.includes(${text(marker + ' outer')})`);
+  await command(':Next Frame');
+  await frame(1);
   const parentDraft = ':Show Frame';
   await fill('#source', parentDraft);
   await browser.evaluate('document.querySelector("#source").setSelectionRange(2, 7); storeEditorDraft(document.querySelector("#source"))');
   await inspectCondition();
   const child = await stopped(nested, 2);
+  await frame(0);
+  assert.equal(await browser.evaluate(`stops.find(stop => same(stop.token, ${text(outer.stop)})).info['current-frame']`), 1);
   assert.notDeepEqual(child.stop, outer.stop);
   assert.equal(await browser.evaluate('document.querySelector("#listener-prompt").textContent'), child.prompt);
   assert(await browser.evaluate('(() => { const input = document.querySelector("#source").getBoundingClientRect(); const page = document.querySelector("#page").getBoundingClientRect(); return document.activeElement.id === "source" && input.top >= page.top && input.bottom <= page.bottom; })()'));
@@ -223,6 +356,7 @@ try {
   await browser.waitFor(`connected && !busy && listenerDebugger?.depth === 2 && same(listenerDebugger.stop, ${text(child.stop)})`);
   await command(':Abort');
   await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(outer.stop)}) && !busy`);
+  await frame(1);
   assert.deepEqual(await browser.evaluate('({text: document.querySelector("#source").value, start: document.querySelector("#source").selectionStart, end: document.querySelector("#source").selectionEnd})'), {text: parentDraft, start: 2, end: 7});
   assert.equal(await browser.evaluate(`views.get(${text(nested)}).info.state`), ':running');
   await save('outer-stop-restored');
@@ -489,7 +623,7 @@ try {
     const expected = browser.errors.filter(error => error.source === 'network' && error.url === new URL('/api', url).href && error.text.includes('status of 400'));
     assert.equal(expected.length, evidence.rejectedArguments ? 5 : 0);
     const missingDefault = browser.errors.filter(error => error.source === 'network' && error.url === new URL('/api', url).href && error.text.includes('status of 409'));
-    assert.equal(missingDefault.length, evidence.rejectedDefault ? 1 : 0);
+    assert.equal(missingDefault.length, (evidence.rejectedDefault ? 1 : 0) + (evidence.rejectedFrames?.length || 0));
     assert.deepEqual(browser.errors.filter(error => !expected.includes(error) && !missingDefault.includes(error)), []);
   } catch (cleanupError) {
     evidence.cleanupFailure = cleanupError.stack;

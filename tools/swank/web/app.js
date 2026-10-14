@@ -12,6 +12,7 @@ try {
 } catch (error) {
   storageError = error;
 }
+for (const draft of Object.values(state.drafts)) delete draft.frame;
 for (const [index, item] of state.inputHistory.entries()) {
   if (!Number.isSafeInteger(item.sequence)) item.sequence = index;
   state.nextInputSequence = Math.max(state.nextInputSequence, item.sequence + 1);
@@ -21,7 +22,7 @@ let busy = false;
 let actions = Promise.resolve();
 let activity = "listener";
 let selectedStop = null;
-let selectedFrame = null;
+const frameCommands = ["current-frame", "select-frame", "next-frame", "previous-frame", "top-frame", "bottom-frame"];
 let stops = [];
 let activeListenerJob = null;
 let listenerDebugger = null;
@@ -92,6 +93,8 @@ function report(error) {
     ? "Input was rejected because this Listener already had an active evaluation. Your input is preserved."
     : error.reason === ":no-continue-restart"
       ? "No default CONTINUE restart. Choose a restart or use :Proceed N."
+    : error.reason === ":invalid-frame"
+      ? "The requested frame is outside this stack. The current frame is unchanged."
     : error.message || String(error));
   if (error.reason === ":expired-session") connected = false;
   $("process-state").textContent = connected ? "Request Error" : "Disconnected";
@@ -175,7 +178,6 @@ async function newSession() {
   state.attempted = false;
   state.commands = [];
   selectedStop = null;
-  selectedFrame = null;
   commandResults.clear();
   views.clear();
   $("transcript").replaceChildren();
@@ -310,12 +312,7 @@ function useEditorDraft(editor, key, reload = false) {
 }
 function activateStop(stop) {
   if (same(selectedStop, stop)) return;
-  if (selectedStop) {
-    const key = debuggerDraftKey(selectedStop);
-    state.drafts[key] = {...state.drafts[key], frame: selectedFrame};
-  }
   selectedStop = stop;
-  selectedFrame = stop ? state.drafts[debuggerDraftKey(stop)]?.frame || null : null;
 }
 function updateListenerInput(reload = false) {
   const stop = listenerDebugger?.stop;
@@ -614,7 +611,6 @@ function applyListenerEffects(job, info) {
       for (const key of commandKeys) commandResults.delete(key);
       if (stopped.some(stop => same(stop.token, selectedStop))) {
         selectedStop = null;
-        selectedFrame = null;
       }
       if (job.clearState) {
         state.history = state.history.slice(job.clearState.history).map(record => ({...record,
@@ -769,7 +765,6 @@ async function refresh() {
   state.commands = state.commands.filter(command => stops.some(stop => same(stop.token, command.stop)));
   if (selectedStop && !stops.some(stop => same(stop.token, selectedStop))) {
     selectedStop = null;
-    selectedFrame = null;
   }
   for (const command of state.commands) {
     const key = commandKey(command);
@@ -826,7 +821,9 @@ async function inspectSelectedStop() {
   if (!(activity === "debugger" || (activity === "listener" && listenerDebugger))
       || !selected || selected.info.state !== ":stopped"
       || selected.info.child || stopCommandPending(selectedStop)) return;
-  const command = ["frames", "restarts", "condition"].find(name => !latestCommand(name));
+  let command = ["frames", "restarts", "condition"].find(name => !latestCommand(name));
+  const frameCommand = state.commands.findLast(item => same(item.stop, selectedStop) && frameCommands.includes(item.command));
+  if (!command && !frameCommand) command = "current-frame";
   if (command) await mutate("submit", {stop: selectedStop,
     id: selected.info["next-command-id"], command, argument: null});
 }
@@ -870,6 +867,13 @@ function returnedInspection(commandName) {
     && item.command === commandName && commandResults.get(commandKey(item))?.state === ":returned");
   return command ? {command, result: commandResults.get(commandKey(command)).result} : null;
 }
+function returnedFrameInspection() {
+  const command = state.commands.findLast(item => same(item.stop, selectedStop)
+    && frameCommands.includes(item.command) && commandResults.get(commandKey(item))?.state === ":returned");
+  const result = command && commandResults.get(commandKey(command)).result;
+  const info = stops.find(stop => same(stop.token, selectedStop))?.info;
+  return result && (info?.state === ":closed" || result.index === info?.["current-frame"]) ? {command, result} : null;
+}
 function returnedResult(commandName) {
   return returnedInspection(commandName)?.result ?? null;
 }
@@ -886,17 +890,8 @@ async function debuggerCommand(text, stop = selectedStop) {
     action: "parse", context: "debugger"});
   if (plan.error) throw new Error(plan.error);
   if (!plan["complete-p"]) throw new Error(plan.prompt || "Complete the debugger command.");
-  if (plan["select-frame"] != null) {
-    const index = plan["select-frame"];
-    const frame = returnedResult("frames")?.[index];
-    if (!frame) throw new Error(":Show Backtrace, then select an existing frame number.");
-    selectedFrame = {token: frame.frame, index, function: frame.function};
-  }
   if (typeof plan.operation !== "string") throw new Error("No executable debugger operation was returned.");
-  if (plan["needs-frame"] && !selectedFrame) {
-    throw new Error(":Show Backtrace, then select a frame.");
-  }
-  await submit(stop, plan.operation, plan["needs-frame"] ? selectedFrame.token : (plan.argument ?? null),
+  await submit(stop, plan.operation, plan.argument ?? null,
     {display: plan.display, localIndex: plan["local-index"], source: text});
 }
 function queueDebuggerInput(editor, text, stop) {
@@ -996,7 +991,8 @@ function renderStops() {
     const inspect = control(prefix + "condition", "Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
     inspect.disabled = !available;
     menuChildren.push(inspect);
-    for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All"]) {
+    for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All",
+                        ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack"]) {
       const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
       command.disabled = !available;
       menuChildren.push(command);
@@ -1006,19 +1002,21 @@ function renderStops() {
   if (help !== null) detailChildren.push(node("pre", help, "debugger-help"));
   const condition = returnedResult("condition");
   if (condition !== null) detailChildren.push(node("pre", condition, "condition"));
-  if (selectedFrame) detailChildren.push(node("pre", selectedFrame.function, "current-function"));
-  const localInspection = returnedInspection("locals");
-  const locals = localInspection?.result;
-  if (locals && selectedFrame && same(localInspection.command.argument, selectedFrame.token)) {
-    const request = localInspection.command;
+  const frameInspection = returnedFrameInspection();
+  if (frameInspection) {
+    const {command: request, result: frame} = frameInspection;
+    if (info.state === ":closed") detailChildren.push(node("pre", "Recorded frame " + frame.index + " from this closed stop.", "recorded-frame"));
+    detailChildren.push(node("pre", frame.function, "current-function"));
+    const locals = frame.locals || [];
     if (request.display === ":frame") {
       detailChildren.push(node("pre", "Original caller arguments are unavailable. Available lexical locals follow."));
     }
     const visibleLocals = request.localIndex == null ? locals : locals.filter(local => local.index === request.localIndex);
-    if (!visibleLocals.length) detailChildren.push(node("pre", "No local value with the requested index."));
+    if (!visibleLocals.length) detailChildren.push(node("pre", request.localIndex == null
+      ? "No local values are recorded for this frame." : "No local value with the requested index."));
     const table = node("table", undefined, "locals");
     table.setAttribute("aria-label", "Frame locals");
-    table.title = "Frame " + selectedFrame.index + ": " + selectedFrame.function;
+    table.title = "Frame " + frame.index + ": " + frame.function;
     for (const local of visibleLocals) {
       const row = node("tr");
       row.append(node("td", "Local " + local.index + " (" + local.name + "):"),
@@ -1026,6 +1024,8 @@ function renderStops() {
       table.append(row);
     }
     detailChildren.push(table);
+  } else if (info["current-frame"] != null) {
+    detailChildren.push(node("pre", "Frame " + info["current-frame"] + " selected. Use :Show Frame to inspect its locals."));
   }
   const restarts = returnedResult("restarts");
   if (restarts) {
@@ -1065,7 +1065,7 @@ function renderStops() {
     for (const [index, frame] of frames.entries()) {
       const item = control(prefix + "frame:" + index, index + "  " + frame.function, () => debuggerCommand(":Set Current Frame " + index),
         "Mouse-Left: Select this frame and show its locals.");
-      item.className = "frame" + (index === selectedFrame?.index ? " selected" : "");
+      item.className = "frame" + (index === info["current-frame"] ? " selected" : "");
       item.disabled = !available;
       detailChildren.push(item);
     }
