@@ -40,7 +40,7 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 |---|---|---|
 | Recovery | Abort; Proceed; Disable Aborts; Enable Aborts | Abort and Proceed are implemented.  Abort disabling remains planned. |
 | Help and display | Help; Display Debugger | Help lists implemented commands.  Display Debugger command remains planned.  Separate Web view exists. |
-| Frame movement | Top Of Stack; Bottom Of Stack; Next Frame; Previous Frame; Find Frame; Set Current Frame | Set Current Frame is partial.  Remaining commands planned. |
+| Frame movement | Top Of Stack; Bottom Of Stack; Next Frame; Previous Frame; Find Frame; Set Current Frame | Top, Bottom, Next, Previous, and Set Current Frame support guest-owned selection and available locals.  Find Frame, filtering, and detailed display options remain planned. |
 | Frame inspection | Show Backtrace; Show Frame; Show Function; Show Arglist; Show Argument; Show Rest Argument; Show Local; Show Stack; Show Value | Backtrace, frame, and local inspection are partial.  Remaining commands planned. |
 | Environment | Show Bindings; Show Catch Blocks; Show Condition Handlers; Show Lexical Environment; Show Special; Show Standard Value Warnings; Use Dynamic Environment; Use Lexical Environment | Planned. |
 | Recovery choices | Show Proceed Options | Partial: lists captured restart names and reports, marking the default CONTINUE. |
@@ -62,7 +62,7 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [x] Implement interactive restart invocation, default Proceed selection, restart reports, and normal-return versus nonlocal-exit results.
 - [x] Add explicit Lisp argument expressions for restart invocation.
 - [x] Complete interruption of debugger operations and correct frame capture for interrupted frameless functions.  Validate caller locals, moving GC, nested interruption, and input recovery in the browser before extending frame evaluation.  Register-local inspection remains separate work.
-- [ ] Add guest-owned frame selection and navigation.
+- [x] Add guest-owned frame selection and navigation.
 - [ ] Add live frame evaluation and writes, evaluation history, object inspection, and the required compiler metadata.
 - [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
@@ -124,7 +124,7 @@ The public functions are exported from `MEZZANO.DEBUG`:
 |---|---|
 | `call-with-debugger-service function` | Establishes condition-stop entry for a dynamic extent. |
 | `debugger-stops &key include-closed` | Returns current-boot handles for registered stops. |
-| `debugger-stop-information handle` | Returns identity, state, thread display label, parent/child, generation, and next command ID. |
+| `debugger-stop-information handle` | Returns identity, state, thread display label, parent/child, generation, current frame index, and next command ID. |
 | `make-debugger-controller` | Creates a controller. |
 | `close-debugger-controller controller` | Closes a controller and releases its leases. |
 | `attach-debugger-stop handle controller` | Acquires exclusive control, including for a closed record. |
@@ -133,6 +133,16 @@ The public functions are exported from `MEZZANO.DEBUG`:
 | `release-debugger-stop lease` | Removes a closed stop and its command records. |
 
 The `:thread` field in stop and evaluation-job information is a display string of at most 160 characters.  Its formatter accepts bounded primitive names without invoking user printers.  ASCII control characters become spaces, unsupported objects appear as `[object]`, and truncated names end with `[truncated]`.  [Peek](peek.md) uses the same label rules.
+
+### Current frame
+
+Each stop owns a zero-based current-frame index, initially zero.  Increasing indices lead toward older callers.  A child debugger has its own index.  Closing a controller leaves selection intact.  Closing the stop clears it to NIL.
+
+:CURRENT-FRAME returns the selected index, printed function, and available local records.  :SELECT-FRAME takes an absolute index.  :NEXT-FRAME and :PREVIOUS-FRAME take a nonnegative count.  :TOP-FRAME and :BOTTOM-FRAME select the newest and oldest retained frames.  Each movement returns the same inspection result.  A zero count inspects the current frame.  An invalid count or target reports :INVALID-FRAME before acceptance, preserving selection and the next command ID.
+
+The stopped thread changes selection before printing the frame.  A printer error can enter a child debugger.  Aborting that command preserves the parent's selected index.  Accepted relative movement uses ordinary command replay and executes once.  Selection survives image restoration, while old handles and prior-boot command replay expire under the existing rules.
+
+The separate :LOCALS operation inspects an opaque frame reference without changing selection.  Selected-frame inspection reports the current available lexical values.  Original argument values, frame filtering, and detailed disassembly remain unavailable through these commands.
 
 ### Acceptance and execution
 
@@ -153,7 +163,7 @@ A stop accepts one outstanding command.  A pending command, running command, or 
 
 A failure during command execution can enter a child stop.  The parent command remains running, and new parent commands are rejected until the child resolves.  Each command establishes an ABORT restart with report "Abort this debugger command."  Invoking that captured restart in a child unwinds the parent command, records :unwound, and resumes the parent's command loop.  Its original computation stays stopped.  Client polling needs a deadline and a way to inspect child stops.  The API provides no remote command-cancellation operation.
 
-The operation set is `:condition`, `:restarts`, `:frames`, `:locals`, `:abort`, `:proceed`, `:help`, `:invoke-restart`, `:invoke-restart-interactively`, and `:invoke-restart-with-arguments`.  Abort invokes the innermost captured restart named CL:ABORT.  Proceed invokes the innermost captured CL:CONTINUE restart interactively.  If none exists, acceptance rejects :NO-CONTINUE-RESTART without consuming a command ID or entering a child debugger.  The restart listing marks its selected default with :DEFAULT-P.  Help returns the guest command descriptions.  INVOKE-RESTART supplies zero arguments.  INVOKE-RESTART-INTERACTIVELY uses the selected restart's interactive function to obtain arguments.  INVOKE-RESTART-WITH-ARGUMENTS reads and evaluates one expression through QUERY-IO, then applies INVOKE-RESTART to its primary value, a finite proper list.  NIL selects zero arguments.  This operation accepts a restart index or NIL for the default CONTINUE.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#command-results) specifies result fields.
+The operation set is `:condition`, `:restarts`, `:frames`, `:locals`, `:current-frame`, `:select-frame`, `:next-frame`, `:previous-frame`, `:top-frame`, `:bottom-frame`, `:abort`, `:proceed`, `:help`, `:invoke-restart`, `:invoke-restart-interactively`, and `:invoke-restart-with-arguments`.  Abort invokes the innermost captured restart named CL:ABORT.  Proceed invokes the innermost captured CL:CONTINUE restart interactively.  If none exists, acceptance rejects :NO-CONTINUE-RESTART without consuming a command ID or entering a child debugger.  The restart listing marks its selected default with :DEFAULT-P.  Help returns the guest command descriptions.  INVOKE-RESTART supplies zero arguments.  INVOKE-RESTART-INTERACTIVELY uses the selected restart's interactive function to obtain arguments.  INVOKE-RESTART-WITH-ARGUMENTS reads and evaluates one expression through QUERY-IO, then applies INVOKE-RESTART to its primary value, a finite proper list.  NIL selects zero arguments.  This operation accepts a restart index or NIL for the default CONTINUE.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#command-results) specifies result fields.
 
 Values are printed on the stopped thread with `*print-readably* NIL`, `*print-circle* T`, `*print-level* 5`, and `*print-length* 20`.  User printers can allocate, block, signal conditions, or enter another stop.  Those bindings do not bound a custom printer's runtime or output.  The returned strings contain representations of objects.  The API provides no retained object references for browsing or editing.
 

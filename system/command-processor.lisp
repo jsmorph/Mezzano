@@ -42,7 +42,15 @@
     (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
     (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
     (:name "Show Local" :id :show-local :type :local :help "Display All locals, or a local by its zero-based decimal index.")
-    (:name "Set Current Frame" :id :set-current-frame :type :frame :help "Select a zero-based frame index from Show Backtrace.")))
+    (:name "Set Current Frame" :id :set-current-frame :type :frame :help "Select a zero-based frame index from Show Backtrace.")
+    (:name "Top Of Stack" :id :top-frame :help "Select and display the newest retained frame.")
+    (:name "Bottom Of Stack" :id :bottom-frame :help "Select and display the oldest retained frame.")
+    (:name "Next Frame" :id :next-frame
+     :help "Move toward older callers. :Nframes takes a nonnegative count, defaulting to one."
+     :keywords (("Nframes" :count "1" nil)))
+    (:name "Previous Frame" :id :previous-frame
+     :help "Move toward newer callees. :Nframes takes a nonnegative count, defaulting to one."
+     :keywords (("Nframes" :count "1" nil)))))
 
 (defun debugger-help ()
   (with-output-to-string (stream)
@@ -151,7 +159,7 @@
           (case type (:package "A package") ((:pathname :directory) "pathname")
                 (:format "Brief or Detailed") (:boolean "Yes or No")
                 (:local "local index or All") (:frame "frame index")
-                (:restart "restart index or Default"))
+                (:restart "restart index or Default") (:count "nonnegative frame count"))
           default))
 
 (defun parse-argument (text type listener)
@@ -173,11 +181,11 @@
          (merge-pathnames pathname (listener-pathname listener))))
       (:boolean (string-equal text "Yes"))
       (:format (if (string-equal text "Detailed") :detailed :brief))
-      ((:frame :local :restart)
+      ((:frame :local :restart :count)
        (cond ((and (eq type :local) (string-equal text "All")) :all)
              ((and (eq type :restart) (string-equal text "Default")) :default)
              (t (or (and (plusp (length text)) (every #'digit-char-p text) (parse-integer text))
-                    (input-error "Expected a nonnegative decimal index, received ~S." text))))))))
+                    (input-error "Expected a nonnegative decimal integer, received ~S." text))))))))
 
 (defun command-tokens (source)
   (let* ((text (trim-input source))
@@ -424,11 +432,16 @@
     (:help (list :operation "help"))
     (:show-backtrace (list :operation "frames"))
     (:show-proceed-options (list :operation "restarts"))
-    (:show-frame (list :operation "locals" :needs-frame t :display :frame))
-    (:show-local (list :operation "locals" :needs-frame t :display :locals
+    (:show-frame (list :operation "current-frame" :display :frame))
+    (:show-local (list :operation "current-frame" :argument nil :display :locals
                        :local-index (unless (eq argument :all) argument)))
-    (:set-current-frame (list :operation "locals" :needs-frame t :display :frame
-                              :select-frame argument))))
+    (:set-current-frame (list :operation "select-frame" :argument argument :display :frame))
+    (:top-frame (list :operation "top-frame" :display :frame))
+    (:bottom-frame (list :operation "bottom-frame" :display :frame))
+    ((:next-frame :previous-frame)
+     (list :operation (if (eq (getf command :id) :next-frame) "next-frame" "previous-frame")
+           :argument (cdr (assoc "Nframes" keywords :test #'equal))
+           :display :frame))))
 
 (defun join-words (words)
   (format nil "~{~A~^ ~}" words))

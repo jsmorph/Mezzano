@@ -16,7 +16,8 @@
   (next-command-id 0)
   (commands (make-hash-table))
   pending active
-  (event (mezzano.supervisor:make-event :name 'debugger-command)))
+  (event (mezzano.supervisor:make-event :name 'debugger-command))
+  (current-frame 0))
 
 (defstruct (service-handle (:constructor %make-service-handle (boot stop)))
   (boot nil :read-only t)
@@ -201,6 +202,8 @@
             :child (when (service-stop-child stop)
                      (service-handle (service-stop-child stop)))
             :generation (service-stop-generation stop)
+            :current-frame (when (eq (service-stop-state stop) :stopped)
+                             (service-stop-current-frame stop))
             :next-command-id (service-stop-next-command-id stop)))))
 
 (defun attach-debugger-stop (handle controller)
@@ -238,6 +241,24 @@
           (nth index (service-stop-restarts stop))
           (service-error :invalid-restart))))
 
+(defun service-frame-target (stop operation argument)
+  (case operation
+    ((:current-frame :top-frame :bottom-frame)
+     (when argument (service-error :unexpected-argument)))
+    (otherwise
+     (unless (and (integerp argument) (<= 0 argument))
+       (service-error :invalid-frame))))
+  (let ((index (ecase operation
+                 (:current-frame (service-stop-current-frame stop))
+                 (:select-frame argument)
+                 (:next-frame (+ (service-stop-current-frame stop) argument))
+                 (:previous-frame (- (service-stop-current-frame stop) argument))
+                 (:top-frame 0)
+                 (:bottom-frame (1- (length (service-stop-frames stop)))))))
+    (unless (< -1 index (length (service-stop-frames stop)))
+      (service-error :invalid-frame))
+    index))
+
 (defun submit-debugger-command (lease id operation &optional argument)
   (with-service-lock
     (let* ((stop (check-service-lease lease))
@@ -264,6 +285,8 @@
          (service-restart stop nil))
         (:invoke-restart-with-arguments (service-restart stop argument))
         (:locals (check-service-frame argument stop))
+        ((:current-frame :select-frame :next-frame :previous-frame :top-frame :bottom-frame)
+         (service-frame-target stop operation argument))
         ((:invoke-restart :invoke-restart-interactively)
          (unless (and (integerp argument)
                       (<= 0 argument)
@@ -304,6 +327,16 @@
         (*print-length* 20))
     (if aesthetic (princ-to-string object) (prin1-to-string object))))
 
+(defun service-frame-locals (frame)
+  (loop for local in (frame-local-variables frame)
+        for index from 0
+        collect (multiple-value-bind (value available-p)
+                    (local-variable-value frame local)
+                  (list :index index
+                        :name (service-print (local-variable-name local))
+                        :available-p available-p
+                        :value (when available-p (service-print value))))))
+
 (defun execute-service-command (stop command)
   (ecase (service-command-operation command)
     (:condition (service-print (service-stop-condition stop) t))
@@ -342,16 +375,19 @@
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
     (:locals
-     (let ((frame (with-service-lock
-                    (check-service-frame (service-command-argument command) stop))))
-       (loop for local in (frame-local-variables frame)
-             for index from 0
-             collect (multiple-value-bind (value available-p)
-                         (local-variable-value frame local)
-                       (list :index index
-                             :name (service-print (local-variable-name local))
-                             :available-p available-p
-                             :value (when available-p (service-print value)))))))
+     (service-frame-locals
+      (with-service-lock
+        (check-service-frame (service-command-argument command) stop))))
+    ((:current-frame :select-frame :next-frame :previous-frame :top-frame :bottom-frame)
+     (multiple-value-bind (frame index)
+         (with-service-lock
+           (let ((index (service-frame-target stop (service-command-operation command)
+                                              (service-command-argument command))))
+             (setf (service-stop-current-frame stop) index)
+             (values (aref (service-stop-frames stop) index) index)))
+       (list :index index
+             :function (service-print (frame-function frame))
+             :locals (service-frame-locals frame))))
     ((:invoke-restart :invoke-restart-interactively)
      (mapcar #'service-print
              (multiple-value-list
@@ -409,6 +445,7 @@
           (service-stop-condition stop) nil
           (service-stop-restarts stop) nil
           (service-stop-frames stop) nil
+          (service-stop-current-frame stop) nil
           (service-stop-active stop) nil
           (service-stop-pending stop) nil)))
 

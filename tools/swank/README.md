@@ -255,6 +255,27 @@ Commands that print values execute application printers and can block or enter a
 
 Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers and executing debugger commands.  Local-variable mutation, lexical frame evaluation, arbitrary frame return or reinvocation, breakpoints, and integrated stepping remain planned for the remote API.  Local-variable availability depends on compiler debug metadata and the selected frame.  The [debugger guide](../../doc/debugger.md) describes those limits and the supported stopping states.
 
+## Debugger frame tests
+
+Compile and load the fixtures in Mezzano:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-SERVICE.LISP"))
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-FRAMES.LISP"))
+(lispm-service-test::run-frame-tests)
+```
+
+The service fixture runs its existing tests when loaded.  The frame fixture checks selection, movement boundaries, parser completion, command replay, controller replacement, local values after full GC, child-debugger independence, Abort, and cleanup.  For a live structure-redefinition test, call PREPARE-FRAME-TEST before loading the changed debugger service, then call RUN-FRAME-TESTS.  A failed test retains its fixture for inspection.
+
+To include selected-frame persistence in a snapshot test, load the restoration fixture and prepare its stopped thread before saving:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUGGER-SERVICE-RESTORE.LISP"))
+(lispm-service-test::prepare-restore-test)
+```
+
+After restoration, call (lispm-service-test::finish-restore-test).  It requires expired old handles, the same selected frame and local values after full GC, restart completion, and one cleanup, then releases the stop.
+
 ## Snapshot tests
 
 Run the following forms in Mezzano with the source tree available as `SYS:SOURCE;`.  The synchronization fixture inspects kernel queues with interrupts disabled, so its compiled code requires `:WIRED T`.

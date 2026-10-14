@@ -62,7 +62,7 @@ The current editor displays the argument prompt and contextual help above the co
 
 ### Debugger commands
 
-A stopped Listener uses its guest-reported innermost debugger stop and nesting prompt.  Debugger commands require a leading colon.  Lisp parses the command and selects the retained operation.  The browser resolves the selected frame token and renders the result.  It preserves ordinary Listener input and each debugger level's draft and cursor across entry, exit, and reload.  Frame evaluation remains planned.
+A stopped Listener uses its guest-reported innermost debugger stop and nesting prompt.  Debugger commands require a leading colon.  Lisp parses the command and selects the retained operation.  The guest retains the current frame independently for each stop, and the browser renders that selection and its inspection result.  It preserves ordinary Listener input and each debugger level's draft and cursor across entry, exit, and reload.  Frame evaluation remains planned.
 
 | Command | Supported behavior |
 |---|---|
@@ -74,6 +74,10 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Proceed index :Arguments | Prompts for a Lisp expression returning the argument list, then invokes that restart.  An omitted index selects Default. |
 | :Show Backtrace | Lists retained call frames. |
 | :Set Current Frame index | Selects a frame by its zero-based decimal index and displays its available locals. |
+| :Top Of Stack | Selects frame zero, the newest retained frame, and displays its available locals. |
+| :Bottom Of Stack | Selects the oldest retained frame and displays its available locals. |
+| :Next Frame | Moves toward older callers and displays the selected frame.  :Nframes takes a nonnegative decimal count, defaulting to one. |
+| :Previous Frame | Moves toward newer callees and displays the selected frame.  :Nframes takes a nonnegative decimal count, defaulting to one. |
 | :Show Frame | Displays the selected function and available locals.  Original argument values remain unavailable. |
 | :Show Local All | Displays all available local records for the selected frame.  All is the default. |
 | :Show Local index | Displays one local by its zero-based decimal index. |
@@ -83,7 +87,9 @@ Proceed without an available CONTINUE reports an error while leaving the computa
 
 :Arguments is a Boolean keyword.  Omitted, it defaults to No.  Mentioned without a value, it defaults to Yes.  :Arguments No uses the restart's interactive reader.  :Arguments Yes reads one expression, evaluates it in the stopped thread's current dynamic environment and a null lexical environment, and passes the elements of its primary value to the restart.  The value must be a finite proper list.  For example, entering (list 20 22) supplies two arguments, while NIL supplies none.  Reading disables read-time evaluation.  Reader, evaluation, and argument errors enter a child debugger.  :Abort there abandons the command and returns to the original stop.
 
-Show Backtrace lists call frames.  Raw stack-slot inspection is unavailable through the retained API.
+Selection starts at frame zero and persists across reconnects and image restoration.  Each nested debugger has its own selection.  A mentioned :Nframes requires a value.  Zero displays the current frame.  Movement beyond the retained stack reports an error and preserves selection.  Mouse selection and :Set Current Frame use the same guest operation.
+
+Show Backtrace lists call frames.  Find Frame, internal/invisible-frame filtering, detailed argument/disassembly options, and raw stack-slot inspection remain unavailable through these commands.
 
 ## Guest and transport APIs
 
@@ -99,7 +105,7 @@ Listener state survives connection closure.  Session release or a new boot retir
 | start-listener | name, source, and optional interactive.  Returns an ordinary retained job token. |
 | listener-assistance | source, cursor, action, optional context and presentation.  Returns input classification, replacement text and cursor, prompt, default, expected-type, help, candidates, complete-p, and error. |
 
-Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display, needs-frame, local-index, or select-frame.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
+Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display or local-index.  Frame selection plans carry a decimal index or movement count.  Current-frame inspection carries NIL, with an optional local-index identifying the displayed local.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
 
 Job information adds :listener-result.  It is NIL for ordinary evaluation jobs.  A Listener result records :kind (:command or :form), optional :command, :effects, :presentations, and any command input :error.  An input error is printed and recorded.  Runtime conditions, including file and compiler errors, enter the retained debugger.
 

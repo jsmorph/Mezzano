@@ -5,6 +5,7 @@
 (defvar *restore-handle* nil)
 (defvar *restore-lease* nil)
 (defvar *restore-frame* nil)
+(defvar *restore-frame-index* nil)
 (defvar *restore-command-id* nil)
 
 (defun prepare-restore-test ()
@@ -23,10 +24,13 @@
   (setf *restore-command-id*
         (getf (debugger-stop-information *restore-handle*) :next-command-id))
   (let ((frames (command *restore-handle* *restore-lease* :frames)))
-    (setf *restore-frame*
-          (getf (find-if (lambda (entry) (search "CALL-MISSING" (getf entry :function)))
-                        frames)
-                :frame)))
+    (setf *restore-frame-index*
+          (position-if (lambda (entry) (search "CALL-MISSING" (getf entry :function))) frames))
+    (assert *restore-frame-index*)
+    (setf *restore-frame* (getf (nth *restore-frame-index* frames) :frame))
+    (assert (= (getf (command *restore-handle* *restore-lease*
+                             :select-frame *restore-frame-index*) :index)
+               *restore-frame-index*)))
   (assert *restore-frame*)
   (assert (zerop *cleanup-count*))
   (format t "Prepared a retained stop and handles for snapshot restore.~%")
@@ -52,7 +56,9 @@
                                      *restore-lease* 1 :locals *restore-frame*)))
            (expect-error :expired-stop
                          (lambda () (submit-debugger-command
-                                     lease 1 :locals *restore-frame*)))
+                                     lease
+                                     (getf (debugger-stop-information handle) :next-command-id)
+                                     :locals *restore-frame*)))
            (let* ((frames (command handle lease :frames))
                   (frame (getf (find-if (lambda (entry)
                                          (search "CALL-MISSING" (getf entry :function)))
@@ -67,6 +73,14 @@
                (assert (find "222" locals
                              :key (lambda (entry) (getf entry :value))
                              :test #'equal))))
+           (assert (= (getf (debugger-stop-information handle) :current-frame)
+                      *restore-frame-index*))
+           (let ((selected (command handle lease :current-frame)))
+             (assert (= (getf selected :index) *restore-frame-index*))
+             (assert (search "CALL-MISSING" (getf selected :function)))
+             (dolist (value '("111" "222"))
+               (assert (find value (getf selected :locals)
+                             :key (lambda (entry) (getf entry :value)) :test #'equal))))
            (assert (zerop *cleanup-count*))
            (setf (symbol-function 'missing)
                  (compile nil '(lambda (a b object)
