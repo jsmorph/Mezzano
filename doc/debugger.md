@@ -191,6 +191,8 @@ Code commands preserve frame selection and all expression/value history.  Functi
 
 An invalid-argument condition identifies the attempted callee and supplied arguments.  Its executing frame remains the runtime RAISE-INVALID-ARGUMENT-ERROR helper, with that helper's instruction, locals, and source scope.  The compiler tail-calls this helper, so the attempted callee has no separate retained activation.  Binding inspection requires the helper's current debug metadata.  Current DEBUG 3 metadata supports binding inspection.  Earlier images can retain older metadata until rebuilt or the helper is recompiled.
 
+A parked x86-64 condition-stop restore retains frame selection, Show Function's `*` assignment, and completed code/instruction text.  Fresh displays before and after full GC agree with those saved results.  Old handles expire, and prior-boot command replay rejects execution.  The native fixture then continues through multiple-value THROW and unwind cleanup.
+
 The retained operations `:function`, `:compiled-code`, and `:instruction` accept NIL or an omitted argument and return one formatted string.  A non-NIL argument reports `:unexpected-argument` before acceptance.  Replay compares the argument with EQL.  Native x86-64 tests cover DEBUG 3 condition stops and an interrupted frameless activation, active redefinition, byte-exact call locations, label definitions, complete output above 64 KiB, unknown decoding, function-history effects, printer Abort and repair, moving constants, continuation, and release.  ARM64 execution remains untested.  Explicit function/range arguments, octal PC formatting, More processing, output destinations, and mouse breakpoint operations remain planned.
 
 ### Special bindings

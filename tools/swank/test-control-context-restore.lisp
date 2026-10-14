@@ -11,6 +11,8 @@
 (defvar *old-handle* nil)
 (defvar *destinations* nil)
 (defvar *result* nil)
+(defvar *views* nil)
+(defvar *code-command-id* nil)
 
 (defun observe-destinations ()
   (loop for row in (c::observe)
@@ -36,7 +38,8 @@
 (defun prepare-restore-test ()
   (assert (null *thread*))
   (setf c::*outer-handler-count* 0 c::*second-handler-count* 0 c::*cleanup-count* 0
-        c::*after-body-count* 0 c::*after-inner-count* 0 *result* nil)
+        c::*after-body-count* 0 c::*after-inner-count* 0 *result* nil
+        *views* nil *code-command-id* nil)
   (setf *thread*
         (mezzano.supervisor:make-thread
          (lambda ()
@@ -56,10 +59,29 @@
            (test::command *old-handle* lease :evaluate
                           "(setf lispm-control-context-restore-test::*destinations*
                                  (lispm-control-context-restore-test::observe-destinations))")
-           (assert (= (length *destinations*) 2)))
+           (assert (= (length *destinations*) 2))
+           (test::command *old-handle* lease :function)
+           (setf *code-command-id*
+                 (getf (debugger-stop-information *old-handle*) :next-command-id))
+           (let ((code (test::command *old-handle* lease :compiled-code))
+                 (instruction (test::command *old-handle* lease :instruction))
+                 (stop (d::service-handle-stop *old-handle*)))
+             (setf *views*
+                   (list (d::service-stop-current-frame stop)
+                         (copy-list (d::service-stop-evaluation-history stop))
+                         code instruction))))
       (close-debugger-controller controller)))
   (format t "Prepared live catch destinations for image restoration.~%")
   t)
+
+(defun check-restored-views (handle lease)
+  (let ((stop (d::service-handle-stop handle)))
+    (assert (= (d::service-stop-current-frame stop) (first *views*)))
+    (assert (eq (fourth (second *views*))
+                (frame-function (aref (d::service-stop-frames stop) (first *views*)))))
+    (assert (equal (test::command handle lease :compiled-code) (third *views*)))
+    (assert (equal (test::command handle lease :instruction) (fourth *views*)))
+    (assert (equal (d::service-stop-evaluation-history stop) (second *views*)))))
 
 (defun finish-restore-test ()
   (test::expect-error :expired-stop (lambda () (debugger-stop-information *old-handle*)))
@@ -68,6 +90,15 @@
          (lease (attach-debugger-stop handle controller)))
     (unwind-protect
          (progn
+           (let ((old (debugger-command-result handle *code-command-id*)))
+             (assert (not (getf old :current-boot-p)))
+             (assert (equal (getf old :result) (third *views*))))
+           (test::expect-error :request-conflict
+                               (lambda ()
+                                 (submit-debugger-command lease *code-command-id* :compiled-code)))
+           (check-restored-views handle lease)
+           (mezzano.extensions:gc :full t)
+           (check-restored-views handle lease)
            (frame::evaluate-source
             handle lease
             "(equal lispm-control-context-restore-test::*destinations*
@@ -85,8 +116,9 @@
            (assert (= c::*cleanup-count* c::*after-inner-count* 1))
            (assert (zerop c::*after-body-count*))
            (release-debugger-stop lease)
-           (setf handle nil *thread* nil *old-handle* nil *destinations* nil *result* nil)
-           (format t "PASS restored catch destinations, expired handle, fresh inspection, GC, multiple-value THROW, cleanup, continuation, and release.~%")
+           (setf handle nil *thread* nil *old-handle* nil *destinations* nil *result* nil
+                 *views* nil *code-command-id* nil)
+           (format t "PASS restored catch destinations and code views, function history, prior-boot replay rejection, expired handle, fresh inspection, GC, multiple-value THROW, cleanup, continuation, and release.~%")
            t)
       (when handle (frame::release-test-stop handle controller))
       (close-debugger-controller controller))))

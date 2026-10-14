@@ -546,7 +546,7 @@ The parked-control fixture tests live catch destinations across image restoratio
 (lispm-control-context-restore-test:prepare-restore-test)
 ```
 
-After saving and restarting the image, `(lispm-control-context-restore-test:finish-restore-test)` checks expired old handles, fresh destination lookup before and after GC, multiple-value THROW to the inner repeated-tag catch, cleanup, continuation, and release.  These tests cover an x86-64 parked condition stop.
+Preparation also retains Show Function's * assignment, selection, and completed code/instruction strings.  After saving and restarting the image, `(lispm-control-context-restore-test:finish-restore-test)` checks expired old handles, prior-boot command results and replay rejection, preserved function history, fresh code/instruction output and catch destinations before and after GC, multiple-value THROW to the inner repeated-tag catch, cleanup, continuation, and release.  These tests cover an x86-64 parked condition stop.
 
 ## Inspection reference tests
 
