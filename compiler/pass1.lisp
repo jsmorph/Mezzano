@@ -218,10 +218,11 @@
           (t
            result))))
 
-(defun expand-constant-variable (symbol)
-  "Expand a constant variable, returning the quoted value or returning NIL if the variable is not a constant."
-  (when (eql (sys.int::variable-information symbol) :constant)
-    (ignore-errors (make-instance 'ast-quote :value (symbol-value symbol)))))
+(defun expand-constant-variable (symbol environment)
+  "Expand a bound constant variable, returning its quoted value or NIL."
+  (when (and (eql (sys.int::variable-information symbol) :constant)
+             (boundp symbol))
+    (make-instance 'ast-quote :environment environment :value (symbol-value symbol))))
 
 (defun compiler-macroexpand-1 (form env)
   "Expand one level of macros and compiler macros."
@@ -255,7 +256,7 @@
     (etypecase var
       (special-variable
        ;; Replace constants with their quoted values.
-       (or (expand-constant-variable form)
+       (or (expand-constant-variable form env)
            ;; And replace special variable with calls to symbol-value.
            (pass1-form `(,(special-variable-access-function var) ',(name var)) env)))
       (lexical-variable

@@ -328,6 +328,17 @@ The parameter fixture compares interpreted and compiled results for special bind
 
 For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains interpreted closures containing a local macro and a shared typed binding, then checks reads and writes after full GC.
 
+## Compiler lexical-environment tests
+
+The AST fixture checks source environments after first-pass expansion and tree copying.  It checks binding identity, shadowing, variable/function namespaces, local macro and symbol-macro definitions, declarations, block/tag references, and preservation of the original tree's environments.  It then compiles and executes the original and copied trees:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-AST-ENVIRONMENTS.LISP"))
+(lispm-ast-environment-test:run)
+```
+
+A known null environment differs from an unknown environment.  Shared variable-reference objects report an unknown source environment.  This fixture does not establish scope preservation through later optimization or provide runtime frame evaluation.
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:

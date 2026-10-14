@@ -3,18 +3,23 @@
 (in-package :mezzano.compiler)
 
 (defclass ast-node ()
-  ((%optimize-qualities :initarg :optimize :accessor ast-optimize)
+  ((%source-environment :initform :unknown :accessor ast-source-environment)
+   (%optimize-qualities :initarg :optimize :accessor ast-optimize)
    (%inline-declarations :initarg :inline-declarations :accessor ast-inline-declarations))
   (:default-initargs :optimize '() :inline-declarations '()))
 
-(defmethod initialize-instance :after ((instance ast-node) &key inherit environment)
+(defmethod initialize-instance :after ((instance ast-node)
+                                      &key inherit (environment nil environment-p))
   (when inherit
     (loop
        for (quality value) on (ast-optimize inherit) by #'cddr
        do (setf (getf (ast-optimize instance) quality)
                 (max value
                      (getf (ast-optimize instance) quality 0))))
-    (setf (ast-inline-declarations instance) (ast-inline-declarations inherit)))
+    (setf (ast-inline-declarations instance) (ast-inline-declarations inherit)
+          (ast-source-environment instance) (ast-source-environment inherit)))
+  (when environment-p
+    (setf (ast-source-environment instance) environment))
   (when environment
     (setf (ast-optimize instance) (optimize-qualities-in-environment environment))
     (setf (ast-inline-declarations instance) (inline-qualities-in-environment environment))))
@@ -72,6 +77,9 @@
                      :write-count 0
                      :used-in '()
                      :plist '()))
+
+(defmethod initialize-instance :after ((instance lexical-variable) &key)
+  (setf (ast-source-environment instance) :unknown))
 
 (defmethod name ((object lexical-variable))
   (lexical-variable-name object))
@@ -257,7 +265,14 @@
 
 (defmethod copy-form-1 :around (form)
   (let ((*replacements* *replacements*))
-    (call-next-method)))
+    (let ((result (call-next-method)))
+      (unless (lexical-variable-p form)
+        (let ((environment (ast-source-environment form)))
+          (setf (ast-source-environment result)
+                (if (eq environment :unknown)
+                    :unknown
+                    (map-environment-bindings #'copy-form-fix environment)))))
+      result)))
 
 (defun copy-form-fix (thing)
   (let ((r (assoc thing *replacements*)))
@@ -304,7 +319,7 @@
                    :info (copy-form-1 (info form)))))
 
 (defmethod copy-form-1 ((form ast-function))
-  form)
+  (make-instance 'ast-function :inherit form :name (name form)))
 
 (defmethod copy-form-1 ((form ast-if))
   (make-instance 'ast-if
@@ -354,7 +369,7 @@
                            collect (copy-form-1 form))))
 
 (defmethod copy-form-1 ((form ast-quote))
-  form)
+  (make-instance 'ast-quote :inherit form :value (value form)))
 
 (defmethod copy-form-1 ((form ast-return-from))
   (let ((var (copy-form-fix (target form))))

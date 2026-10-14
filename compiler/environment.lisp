@@ -40,6 +40,22 @@
    (%variable-type-decls :initform '())
    (%optimize :initform '())))
 
+(defun map-environment-bindings (function environment)
+  (when (null environment)
+    (return-from map-environment-bindings nil))
+  (check-type environment lexical-environment)
+  (let ((result (make-instance 'lexical-environment)))
+    (dolist (slot '(%variables %functions %blocks %go-tags))
+      (setf (slot-value result slot)
+            (loop for (name binding . rest) in (slot-value environment slot)
+                  collect (list* name (funcall function binding) rest))))
+    (setf (slot-value result '%variable-type-decls)
+          (loop for (binding type) in (slot-value environment '%variable-type-decls)
+                collect (list (funcall function binding) type)))
+    (dolist (slot '(%inline-decls %optimize))
+      (setf (slot-value result slot) (copy-list (slot-value environment slot))))
+    result))
+
 (defun extend-environment (environment &key
                                          variables
                                          functions

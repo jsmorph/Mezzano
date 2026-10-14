@@ -36,7 +36,7 @@ Return submits input.  SPACE and Tab complete command names and arguments.  F12 
 
 ## Evaluation and debugging
 
-A retained evaluation runs in a guest worker thread.  Its output, values, and debugger stops remain available after a client disconnects.  Interactive evaluations accept input and EOF.  An interrupt requests a debugger stop in that worker.  A stop preserves the running computation while a client inspects frames, local values, and restart choices or invokes a zero-argument restart.
+A retained evaluation runs in a guest worker thread.  Its output, values, and debugger stops remain available after a client disconnects.  Interactive evaluations accept input and EOF.  An interrupt requests a debugger stop in that worker.  A stop preserves the running computation while a client inspects frames, local values, and restart choices or invokes a restart with explicit or interactively read arguments.
 
 Local inspection depends on the compiler's debug policy and available location metadata.  The [compiler guarantees](debugger.md#compiler-guarantees) describe those requirements.  The [retained evaluation reference](debugger.md#retained-evaluation) defines job identity, input, output, interruption, and release.  Restoring an image begins a new boot and expires prior client references.  A client can discover surviving jobs and stops through a new session.
 
@@ -49,4 +49,4 @@ Mezzano schedules threads in a shared Lisp heap.  The following expression retur
         (mezzano.supervisor:all-threads))
 ```
 
-ALL-THREADS walks the live thread list without the scheduler's global lock.  Threads can start or finish during that walk.  Retained evaluation jobs and debugger stops identify their associated threads through the debugger service.
+ALL-THREADS copies the live thread list while holding the scheduler's global lock.  The returned thread objects can change state or terminate after that copy.  Retained evaluation jobs and debugger stops identify their associated threads through the debugger service.
