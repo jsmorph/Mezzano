@@ -339,6 +339,8 @@ The AST fixture checks source environments after first-pass expansion and tree c
 
 A known null environment differs from an unknown environment.  Shared variable-reference objects report an unknown source environment.  This fixture does not establish scope preservation through later optimization or provide runtime frame evaluation.
 
+For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains the first-pass tree, then checks its environments, macro functions, binding identities, copying, and compiled execution after full GC.
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:

@@ -1,7 +1,7 @@
 (defpackage #:lispm-ast-environment-test
   (:use #:cl)
   (:local-nicknames (#:c #:mezzano.compiler))
-  (:export #:run))
+  (:export #:run #:prepare-restore-test #:finish-restore-test))
 (in-package #:lispm-ast-environment-test)
 
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
@@ -66,28 +66,29 @@
     (assert (eq (c::ast-source-environment (c::copy-form unknown)) :unknown))
     (assert (null (c::ast-source-environment (c::copy-form known))))))
 
-(defun check-copy ()
-  (let* ((original
-           (c::pass1-lambda
-            '(lambda (x)
-               (declare (fixnum x) (notinline scope-point))
-               (scope-point :outer x #'identity)
-               (let ((x "inner"))
-                 (declare (type simple-string x))
-                 (symbol-macrolet ((alias (char x 0)))
-                   (macrolet ((local (value) (list 'identity value)))
-                     (flet ((x () (local 41)))
-                       (block exit
-                         (tagbody
-                          start
-                            (scope-point :inner x #'x #'identity)
-                            (go end)
-                          end)
-                         (scope-point :after-tag alias))))))
-               (scope-point :after x #'identity)
-               x)
-            nil))
-         (original-environments
+(defun make-tree ()
+  (c::pass1-lambda
+   '(lambda (x)
+      (declare (fixnum x) (notinline scope-point))
+      (scope-point :outer x #'identity)
+      (let ((x "inner"))
+        (declare (type simple-string x))
+        (symbol-macrolet ((alias (char x 0)))
+          (macrolet ((local (value) (list 'identity value)))
+            (flet ((x () (local 41)))
+              (block exit
+                (tagbody
+                 start
+                   (scope-point :inner x #'x #'identity)
+                   (go end)
+                 end)
+                (scope-point :after-tag alias))))))
+      (scope-point :after x #'identity)
+      x)
+   nil))
+
+(defun check-copy (&optional (original (make-tree)))
+  (let* ((original-environments
            (mapcar (lambda (node) (cons node (c::ast-source-environment node)))
                    (nodes original)))
          (copied (c::copy-form original))
@@ -159,6 +160,21 @@
       (let ((function (c::compile-ast tree)))
         (assert (compiled-function-p function))
         (assert (= (funcall function 42) 42))))))
+
+(defvar *restore-tree* nil)
+
+(defun prepare-restore-test ()
+  (assert (null *restore-tree*))
+  (setf *restore-tree* (make-tree))
+  t)
+
+(defun finish-restore-test ()
+  (assert (typep *restore-tree* 'c::lambda-information))
+  (mezzano.extensions:gc :full t)
+  (check-copy *restore-tree*)
+  (setf *restore-tree* nil)
+  (format t "PASS restored AST lexical environments, macro functions, binding identities, copying, and compiled execution after full GC.~%")
+  t)
 
 (defun run ()
   (check-environment-states)
