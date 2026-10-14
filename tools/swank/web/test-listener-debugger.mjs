@@ -372,6 +372,18 @@ try {
   assert.deepEqual((await completed(afterTyped)).values, ['42']);
   evidence.checks.push('Listener calls full evaluator for typed LET, LET*, lambda, and shared closure writes; named compiled frame displays all four results; typed Abort runs cleanup and subsequent Listener returns 42');
 
+  const specialParameter = marker + '-SPECIAL-PARAMETER';
+  const parameterJob = await start(`(unwind-protect (values (mezzano.full-eval:eval-in-lexenv '(let ((${specialParameter} 17)) (declare (special ${specialParameter})) (list (funcall (lambda (${specialParameter} &optional (initial ${specialParameter})) (declare (special ${specialParameter})) (list ${specialParameter} (symbol-value '${specialParameter}) initial)) 42) ${specialParameter}))) (mezzano.full-eval:eval-in-lexenv '(let ((cell (list 17))) (symbol-macrolet ((value (car cell))) (setf value 42) (list value (car cell)))))) (unintern '${specialParameter}))`);
+  const parameterResult = await completed(parameterJob);
+  assert.deepEqual(parameterResult.values, ['((42 42 42) 17)', '(42 42)']);
+  assert.equal(await browser.evaluate(`views.get(${text(parameterJob)}).values.textContent`), parameterResult.values.join('\n'));
+  await browser.evaluate(`views.get(${text(parameterJob)}).values.scrollIntoView({block: 'center'})`);
+  await save('interpreter-parameter-macro');
+  evidence.interpreterParameterMacro = {job: parameterJob, values: parameterResult.values};
+  const afterParameters = await start('(+ 20 22)');
+  assert.deepEqual((await completed(afterParameters)).values, ['42']);
+  evidence.checks.push('Interpreted special parameter and optional initializer observe dynamic 42 and restore outer 17; symbol-macro assignment updates its shared cell; subsequent Listener returns 42');
+
   const abort = await start(`(unwind-protect (cerror "Continue owned test." "${marker} abort") (write-string "${marker} abort cleanup"))`);
   await stopped(abort);
   const abortButton = await browser.evaluate(`(() => {
