@@ -52,6 +52,16 @@ Returns NIL if the function captures no variables."
 (defun debug-info-precise-variable-data (info)
   (tenth info))
 
+(defun debug-info-source-scopes (info)
+  (nth 10 info))
+
+(defun source-scope-at-offset (function offset)
+  (loop with scope = :unknown
+        for (address . current) in (debug-info-source-scopes (function-debug-info function))
+        when (> address offset) return scope
+        do (setf scope current)
+        finally (return scope)))
+
 (defparameter *debugger-depth* 0)
 (defvar *debugger-condition* nil)
 (defvar *current-debug-frame* nil)

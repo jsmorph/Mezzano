@@ -361,7 +361,16 @@ Its PREPARE-RESTORE-TEST retains three closures and a binding descriptor.  FINIS
 
 Compiled locations and closure layouts retain a descriptor for each binding.  Distinct bindings can have the same display name.  Copied bindings receive new descriptors, while closures sharing a binding retain the same descriptor.  Existing debug records remain readable with absent descriptor identity.  The public local-variable API retains its existing names, locations, and values.
 
-These tests cover compiler metadata.  Encoding source environments in compiled functions and using them for frame evaluation remain work.
+The instruction-scope fixture tests the assembler's address table and runtime lookup:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-SCOPE-TABLE.LISP"))
+(lispm-debug-scope-table-test:run)
+```
+
+It checks address boundaries, repeated and distinct scope objects, multiple records at one address, alignment, compiled-file sharing, full GC, and older debug records.  NIL denotes a known empty scope; :UNKNOWN denotes unavailable scope information.  Both assembler targets emit the fixture's byte sequence.  The tests inspect its metadata without executing that byte sequence.
+
+These tests cover compiler metadata.  The code generators still emit unavailable source scopes.  Converting their lexical environments to persistent scope records and using those records for frame evaluation remain work.
 
 ## CLOS method replacement tests
 

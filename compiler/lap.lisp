@@ -311,12 +311,22 @@
   (loop
      with previous-layout = '()
      for entry in info
-     collect (destructuring-bind (offset &key layout)
+     collect (destructuring-bind (offset &key layout scope)
                  entry
+               (declare (ignore scope))
                (prog1
                    (list offset :compressed-layout (delta-compress-debug-info-1 previous-layout layout))
                  (setf previous-layout layout)))))
 
+
+(defun debug-source-scopes (info)
+  (let ((result nil))
+    (dolist (entry info)
+      (destructuring-bind (offset &key layout (scope :unknown)) entry
+        (declare (ignore layout))
+        (when (or (null result) (not (eq scope (cdar result))))
+          (push (cons offset scope) result))))
+    (nreverse result)))
 
 (defun encode-debug-representation (repr)
   (ecase repr
@@ -513,13 +523,15 @@ a vector of constants and an alist of symbols & addresses."
                    (consp (aref *constant-pool* 1))
                    (eql (first (aref *constant-pool* 1)) :debug-info)
                    (>= (length (aref *constant-pool* 1)) 10))
-          ;; Make sure all variable names are present in the constant pool.
+          ;; Make sure all binding records are present in the constant pool.
           (dolist (entry result-debug-md)
-            (destructuring-bind (offset &key layout) entry
-              (declare (ignore offset))
+            (destructuring-bind (offset &key layout scope) entry
+              (declare (ignore offset scope))
               (dolist (var layout)
                 (add-to-constant-pool (first var)))))
-          (setf (tenth (aref *constant-pool* 1)) (encode-debug-info result-debug-md *constant-pool*)))
+          (setf (tenth (aref *constant-pool* 1)) (encode-debug-info result-debug-md *constant-pool*))
+          (when (>= (length (aref *constant-pool* 1)) 11)
+            (setf (nth 10 (aref *constant-pool* 1)) (debug-source-scopes result-debug-md))))
         (values result-mc
                 *constant-pool*
                 result-fixups
@@ -683,8 +695,8 @@ a vector of constants and an alist of symbols & addresses."
                        gc-keys)
                 *gc-data*)))))
 
-(defun emit-debug (current-layout)
-  (let ((debug-data (list :layout current-layout)))
+(defun emit-debug (current-layout &optional (scope :unknown))
+  (let ((debug-data (list :layout current-layout :scope scope)))
     ;; Most recent takes priority.
     (if (eql (first (first *debug-data*)) (length *machine-code*))
         (setf (first *debug-data*) (list* (length *machine-code*)

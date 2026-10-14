@@ -280,7 +280,8 @@
              sys.int::*top-level-form-number*
              (lambda-information-lambda-list ast-lambda) ; lambda-list
              (lambda-information-docstring ast-lambda) ; docstring
-             nil)) ; precise debug info
+             nil ; precise debug info
+             nil)) ; instruction source scopes
      nil
      target)))
 
