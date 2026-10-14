@@ -132,6 +132,24 @@ class ProtocolTests(unittest.TestCase):
             server.integer(True)
 
 
+    def test_binding_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        def submit(argument):
+            return server.operation_arguments("submit",
+                {"stop": stop, "id": 2, "command": "bindings", "argument": argument}, session)[3]
+        self.assertIsNone(submit(None))
+        for all_frames in (None, False, True):
+            for matching in ("", "*λ-probe*"):
+                with self.subTest(all_frames=all_frames, matching=matching):
+                    result = submit([all_frames, matching])
+                    self.assertEqual(result, [bool(all_frames), matching])
+                    self.assertEqual(server.lisp(result), server.lisp([all_frames, matching]))
+        for argument in (True, 0, "", [], [True], [True, "", 0], [0, ""], [1, ""],
+                         ["Yes", ""], [[], ""], [False, None], [False, 0], [False, []]):
+            with self.subTest(argument=argument), self.assertRaises(ValueError):
+                submit(argument)
+
     def test_inspection_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]

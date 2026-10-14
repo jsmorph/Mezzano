@@ -393,11 +393,16 @@ def operation_arguments(operation, args, session):
         if command not in ("condition", "restarts", "frames", "locals", "current-frame", "select-frame",
                            "next-frame", "previous-frame", "top-frame", "bottom-frame", "proceed", "invoke-restart",
                            "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "help",
-                           "inspect", "modify", "describe-object", "clear-inspection", "arglist"):
+                           "inspect", "modify", "describe-object", "clear-inspection", "arglist", "bindings"):
             raise ValueError("Unsupported debugger command.")
         argument = args.get("argument")
         if command == "evaluate":
             argument = string(argument)
+        elif command == "bindings":
+            if argument is not None:
+                if not isinstance(argument, list) or len(argument) != 2:
+                    raise ValueError("Expected an all-frames Boolean and a matching string.")
+                argument = [boolean(False if argument[0] is None else argument[0]), string(argument[1])]
         elif command == "locals":
             argument = token(argument, "frame", session)
         elif command in ("inspect", "modify"):

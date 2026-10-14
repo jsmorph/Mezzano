@@ -1086,7 +1086,7 @@ function renderStops() {
     const inspect = control(prefix + "condition", "Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
     inspect.disabled = !available;
     menuChildren.push(inspect);
-    for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist",
+    for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
                         ":Inspect", ":Describe Last", ":Clear Inspector"]) {
       const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
@@ -1182,11 +1182,12 @@ function renderStops() {
       description.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : label(result?.state), "description-result"));
       detailChildren.push(description);
-    } else if (command.command === "arglist") {
-      const arglist = node("div", undefined, "debugger-arglist");
-      arglist.append(node("pre", "→ " + (command.source ?? ":Show Arglist"), "debugger-transcript"),
-        node("pre", result?.state === ":returned" ? result.result : label(result?.state), "arglist-result"));
-      detailChildren.push(arglist);
+    } else if (["arglist", "bindings"].includes(command.command)) {
+      const output = node("div", undefined, "debugger-" + command.command);
+      const name = command.command === "arglist" ? ":Show Arglist" : ":Show Bindings";
+      output.append(node("pre", "→ " + (command.source ?? name), "debugger-transcript"),
+        node("pre", result?.state === ":returned" ? result.result : label(result?.state), command.command + "-result"));
+      detailChildren.push(output);
     } else if (!result || result.state === ":pending" || result.state === ":running") {
       detailChildren.push(node("p", command.command + ": " + label(result?.state)));
     }

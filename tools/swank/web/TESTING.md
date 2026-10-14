@@ -55,9 +55,11 @@ node tools/swank/web/test-frame-evaluation.mjs \
 
 The target has required, optional, and keyword parameters.  :Show Arglist completion and typed/menu actions must display its active compiled signature after a second owned evaluation replaces the global function definition.  Frame selection and evaluation histories must remain unchanged, and reload must retain the signature text.
 
+The target and its caller establish special bindings with repeated shadowed values, bound NIL, and an unbound cell.  :Show Bindings tests typed completion and menu entry, selected/all-frame output, explicit keyword defaults, literal case-sensitive filtering, unchanged selection/history, and retained results across reload.  A binding with a failing printer must enter a child debugger.  Typed :Abort must return to the parent, and replacing that value with NIL must permit another inspection.
+
 The driver compiles and loads the checked-in description fixture.  It checks that object and slot-value printer failures in DESCRIBE enter child debuggers, typed :Abort returns to the parent, and a subsequent description prints its slot value and returns zero values.  The reusable native fixture definitions remain loaded.
 
-The driver releases its jobs, stops, session, and named function.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
+The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
 ## Object Inspector
 

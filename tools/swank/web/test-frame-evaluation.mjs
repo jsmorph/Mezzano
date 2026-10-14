@@ -10,7 +10,7 @@ const output = resolve(process.argv[3] ?? '/tmp/frame-evaluation-test');
 const protectedStop = process.env.PROTECTED_STOP === undefined ? null : Number(process.env.PROTECTED_STOP);
 assert(protectedStop === null || Number.isSafeInteger(protectedStop));
 await mkdir(output, {recursive: true});
-const browser = await openBrowser(url);
+const browser = await openBrowser('about:blank');
 const marker = 'FRAME-EVAL-' + randomBytes(6).toString('hex').toUpperCase();
 const text = JSON.stringify;
 const jobs = [];
@@ -121,7 +121,20 @@ async function rejected(source, pattern, history = false) {
 
 let targetJob;
 try {
-  await browser.waitFor('connected && !busy');
+  await browser.send('Page.addScriptToEvaluateOnNewDocument', {source:`(() => {
+    const original = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await original(...args);
+      if (!response.ok) {
+        const failures = JSON.parse(sessionStorage.getItem('frame-evaluation-http-failures') || '[]');
+        failures.push({request:args[1]?.body, status:response.status, response:await response.clone().text()});
+        sessionStorage.setItem('frame-evaluation-http-failures', JSON.stringify(failures));
+      }
+      return response;
+    };
+  })()`});
+  await browser.send('Page.navigate', {url});
+  await browser.waitFor("document.readyState === 'complete' && connected && !busy");
   evidence.session = await browser.evaluate('state.session');
   evidence.rejections = [];
   originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, next: stop.info["next-command-id"]}))');
@@ -129,8 +142,37 @@ try {
   const setup = await start('(progn (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DESCRIBE.LISP")) :description-fixture-loaded)');
   assert.deepEqual((await completed(setup)).values, [':DESCRIPTION-FIXTURE-LOADED']);
   await browser.evaluate('document.querySelector("#interactive").checked = true');
-  const target = marker + '-TARGET';
-  targetJob = await start(`(unwind-protect (progn (defun ${target} (required &optional optional &key key) (declare (ignore required optional key) (optimize (debug 3) (safety 3) (speed 1))) (let ((x 37)) (declare (type fixnum x)) (let ((outer (lambda () x))) (let ((x 38)) (declare (type fixnum x)) (flet ((x () x) (bump () (incf x))) (symbol-macrolet ((alias x)) (macrolet ((twice (value) (list '+ value value))) (break "${marker} lexical evaluation") (values x (x) alias (funcall outer))))))))) (assert (compiled-function-p (symbol-function '${target}))) (${target} 1 2 :key 3)) (when (fboundp '${target}) (fmakunbound '${target})) (unintern '${target}))`);
+  const target = marker + '-TARGET', caller = marker + '-CALLER';
+  const binding = '*' + marker + '-BINDING*', nilBinding = '*' + marker + '-NIL*';
+  const unbound = '*' + marker + '-UNBOUND*', printer = '*' + marker + '-PRINTER*';
+  const symbols = [target, caller, binding, nilBinding, unbound, printer];
+  targetJob = await start(`(unwind-protect (progn
+    (defun ${target} (required &optional optional &key key)
+      (declare (ignore required optional key) (optimize (debug 3) (safety 3) (speed 1)))
+      (let ((${binding} 22)) (declare (special ${binding}))
+        (let ((${binding} 33) (${nilBinding} nil) (${unbound} 77) (${printer} nil))
+          (declare (special ${binding} ${nilBinding} ${unbound} ${printer}))
+          (makunbound '${unbound})
+          (let ((x 37)) (declare (type fixnum x))
+            (let ((outer (lambda () x)))
+              (let ((x 38)) (declare (type fixnum x))
+                (flet ((x () x) (bump () (incf x)))
+                  (symbol-macrolet ((alias x))
+                    (macrolet ((twice (value) (list '+ value value)))
+                      (break "${marker} lexical evaluation")
+                      (assert (and (= ${binding} 33) (null ${nilBinding})
+                                   (not (boundp '${unbound})) (null ${printer})))
+                      (values x (x) alias (funcall outer)))))))))))
+    (defun ${caller} ()
+      (declare (notinline ${target}) (optimize (debug 3) (safety 3) (speed 1)))
+      (let ((${binding} 11)) (declare (special ${binding}))
+        (multiple-value-prog1 (${target} 1 2 :key 3) (assert (= ${binding} 11)))))
+    (assert (and (compiled-function-p (symbol-function '${target}))
+                 (compiled-function-p (symbol-function '${caller}))))
+    (${caller}))
+    (dolist (name '(${target} ${caller})) (when (fboundp name) (fmakunbound name)))
+    (dolist (name '(${binding} ${nilBinding} ${unbound} ${printer})) (assert (not (boundp name))))
+    (dolist (name '(${symbols.join(' ')})) (unintern name)))`);
   const parent = await stopped(targetJob);
   evidence.parent = parent;
   evidence.frame = await selectTarget();
@@ -143,6 +185,72 @@ try {
   evidence.locals = locals;
   await save('lexical-values-and-write');
   evidence.checks.push('Selected compiled frame reads shadowed variables, same-name function, symbol macro, local macro, and captured outer binding; writes update the shared inner cell');
+
+  await evaluation('(values 70 71)', ['70', '71']);
+  const ownBindingRows = value => value.split('\n').filter(line => line.startsWith('  *' + marker));
+  const repeatedBindings = value => ownBindingRows(value).filter(line => line.startsWith('  ' + binding + ': '));
+  async function bindingResultAfter(previous) {
+    await browser.waitFor(`latestCommand('bindings')?.id > ${previous} && commandResults.get(commandKey(latestCommand('bindings')))?.state === ':returned' && !busy`);
+    const result = await browser.evaluate("commandResults.get(commandKey(latestCommand('bindings'))).result");
+    assert.equal(await browser.evaluate("[...document.querySelectorAll('.bindings-result')].at(-1).textContent"), result);
+    assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), evidence.frame);
+    return result;
+  }
+  async function showBindings(source) {
+    const previous = await browser.evaluate("latestCommand('bindings')?.id ?? -1");
+    await command(source);
+    return bindingResultAfter(previous);
+  }
+  await fill('#source', ':Show Bind');
+  await key(' ', 'Space', 32);
+  await browser.waitFor("document.querySelector('#source').value.startsWith(':Show Bindings') && !busy");
+  await key('Enter', 'Enter', 13);
+  evidence.bindings = {selected: await bindingResultAfter(-1)};
+  assert.deepEqual(repeatedBindings(evidence.bindings.selected), ['  ' + binding + ': 33', '  ' + binding + ': 22']);
+  assert.deepEqual(ownBindingRows(evidence.bindings.selected).sort(), [
+    '  ' + binding + ': 33', '  ' + binding + ': 22', '  ' + nilBinding + ': NIL',
+    '  ' + unbound + ': [unbound]', '  ' + printer + ': NIL'].sort());
+  assert(evidence.bindings.selected.startsWith('Frame ' + evidence.frame + ' '));
+  const menuPrevious = await browser.evaluate("latestCommand('bindings').id");
+  await browser.click('#window-label');
+  await clickText('#debugger-menu', ':Show Bindings');
+  assert.deepEqual(ownBindingRows(await bindingResultAfter(menuPrevious)), ownBindingRows(evidence.bindings.selected));
+  evidence.bindings.all = await showBindings(':Show Bindings :All :Matching "' + marker + '"');
+  assert.deepEqual(repeatedBindings(evidence.bindings.all), [
+    '  ' + binding + ': 33', '  ' + binding + ': 22', '  ' + binding + ': 11']);
+  assert.equal(ownBindingRows(evidence.bindings.all).length, 6);
+  const callerIndex = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(caller + ' ')}))`);
+  assert(callerIndex > evidence.frame);
+  assert(evidence.bindings.all.includes('Frame ' + callerIndex + ' '));
+  evidence.checks.push('Show Bindings completion/menu and selected/all-frame output preserve repeated inner-to-outer values and distinguish bound NIL from unbound');
+
+  const explicit = await showBindings(':Show Bindings :All No :Matching ""');
+  assert.deepEqual(ownBindingRows(explicit), ownBindingRows(evidence.bindings.selected));
+  evidence.bindings.filtered = await showBindings(':Show Bindings :All Yes :Matching "' + binding + '"');
+  assert.deepEqual(ownBindingRows(evidence.bindings.filtered), repeatedBindings(evidence.bindings.all));
+  evidence.bindings.noMatch = await showBindings(':Show Bindings :Matching "' + marker.toLowerCase() + '"');
+  assert.equal(ownBindingRows(evidence.bindings.noMatch).length, 0);
+  assert(evidence.bindings.noMatch.endsWith('  No matching bindings.\n'));
+  await evaluation('(values * / + -)', ['70', '(70 71)', '(VALUES 70 71)', '(VALUES * / + -)']);
+  evidence.checks.push('Bindings accepts explicit All Yes/No and empty matching string, matches literal case-sensitive symbol names, and preserves selected frame and nonempty evaluation history');
+  await browser.evaluate("[...document.querySelectorAll('.bindings-result')].find(element => element.textContent.includes(': 11')).scrollIntoView({block:'center'})");
+  await save('dynamic-bindings');
+
+  const printerFailure = marker + ' binding printer';
+  await evaluation(`(progn (setq ${printer} (make-instance 'lispm-describe-test:probe :failure (make-condition 'simple-error :format-control "${printerFailure}"))) (values))`, []);
+  await command(':Show Bindings :Matching "' + printer + '"');
+  await stopped(targetJob, 2);
+  assert.equal(await browser.evaluate("returnedResult('condition')"), printerFailure);
+  await save('binding-printer-error');
+  await command(':Abort');
+  await stopped(targetJob);
+  assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('bindings'))).state"), ':unwound');
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('.bindings-result')].at(-1).textContent"), 'unwound');
+  await evaluation(`(progn (setq ${printer} nil) (values))`, []);
+  const recovered = await showBindings(':Show Bindings :Matching "' + printer + '"');
+  assert.deepEqual(ownBindingRows(recovered), ['  ' + printer + ': NIL']);
+  evidence.bindings.retained = await browser.evaluate("[...document.querySelectorAll('.bindings-result')].map(element => element.textContent)");
+  evidence.checks.push('Binding value printer errors enter a child; typed Abort returns to the parent, retains the unwound result, and permits inspection after replacement');
 
   await evaluation('(values 10 20)', ['10', '20']);
   const expectedArglist = `The argument list for ${target} is (REQUIRED &OPTIONAL OPTIONAL &KEY KEY).`;
@@ -177,6 +285,7 @@ try {
   await stopped(targetJob);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)"), beforeReload);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.arglist-result')].map(element => element.textContent)"), evidence.arglists);
+  assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.bindings-result')].map(element => element.textContent)"), evidence.bindings.retained);
   evidence.checks.push('Multiple and zero values, per-stop history, and ordered retained form results survive browser reload');
 
   await rejected('(setq x "wrong")', /FIXNUM/, true);
@@ -251,7 +360,7 @@ try {
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)"), beforeProceed);
   await save('closed-history');
   await switchActivity('listener');
-  const next = await start(`(progn (assert (null (find-symbol "${target}" "CL-USER"))) (+ 20 22))`);
+  const next = await start(`(progn (dolist (name '(${symbols.map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
   assert.deepEqual((await completed(next)).values, ['42']);
   evidence.checks.push('Standalone debugger evaluates forms; Proceed observes immediate writes and distinct outer cell, closed stop retains printed history, definition cleanup and next Listener succeed');
 
@@ -317,6 +426,7 @@ try {
     evidence.jobs = jobs;
     evidence.stops = [...ownedStops.entries()];
     evidence.errors = browser.errors;
+    evidence.httpFailures = await browser.evaluate("JSON.parse(sessionStorage.getItem('frame-evaluation-http-failures') || '[]')");
     await writeFile(join(output, 'result.json'), JSON.stringify(evidence, null, 2));
     await browser.close();
   }
