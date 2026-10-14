@@ -1042,12 +1042,18 @@ function renderStops() {
         "Mouse-Left: Invoke this restart and request any interactive arguments.");
       action.disabled = !available;
       restartChildren.push(action);
+      const argumentsAction = control(prefix + "restart-arguments:" + restart.index,
+        ":Proceed " + restart.index + " :Arguments",
+        () => submit(selectedStop, "invoke-restart-with-arguments", restart.index),
+        "Mouse-Left: Read a Lisp expression whose value is the argument list for this restart.");
+      argumentsAction.disabled = !available;
+      restartChildren.push(argumentsAction);
     }
     reconcileChildren(panel, restartChildren);
     detailChildren.push(panel);
   }
   const restartCommand = state.commands.findLast(command => same(command.stop, selectedStop)
-    && ["proceed", "invoke-restart", "invoke-restart-interactively", "abort"].includes(command.command));
+    && ["proceed", "invoke-restart", "invoke-restart-interactively", "invoke-restart-with-arguments", "abort"].includes(command.command));
   const restartResult = restartCommand && commandResults.get(commandKey(restartCommand));
   if (restartResult?.state === ":returned") {
     const values = restartResult.result || [];

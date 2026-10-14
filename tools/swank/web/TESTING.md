@@ -53,6 +53,8 @@ node tools/swank/web/test-listener-debugger.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-listener-debugger-test
 ```
 
+Explicit-argument tests invoke a restart with required parameters and no interactive function, reload during its input wait, interrupt that reader, abort an expression error, and complete the original evaluation.  A separate fixture evaluates a dynamically bound expression, returns multiple values, and counts argument evaluation and restart invocation across a discarded accepted submission reply and exact-request replay.  Both counts must remain one.  The driver also checks Arguments completion, default selection, the per-restart button, and subsequent Listener evaluation.
+
 The driver tests both typed Proceed and the CONTINUE button for continuation.  `PROTECTED_STOP` optionally names a numeric stop ID whose state and next command ID must remain unchanged.  The driver records its session and releases its owned evaluations, stops, and session.
 
 ## Expired sessions

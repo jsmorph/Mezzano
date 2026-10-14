@@ -55,6 +55,15 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.operation_arguments("submit",
                 {"stop": stop, "id": 0, "command": "proceed", "argument": 0}, session)
+        for argument in (None, 0, 3):
+            with self.subTest(argument=argument):
+                self.assertEqual(server.operation_arguments("submit",
+                    {"stop": stop, "id": 0, "command": "invoke-restart-with-arguments", "argument": argument}, session),
+                    [[server.Symbol(":stop"), session, 1], 0, server.Symbol(":invoke-restart-with-arguments"), argument])
+        for argument in (True, -1, "0", [1]):
+            with self.subTest(argument=argument), self.assertRaises(ValueError):
+                server.operation_arguments("submit",
+                    {"stop": stop, "id": 0, "command": "invoke-restart-with-arguments", "argument": argument}, session)
         with self.assertRaises(ValueError):
             server.operation_arguments("submit",
                 {"stop": [":stop", session, 1], "id": 0, "command": "quit"}, session)
