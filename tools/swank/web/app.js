@@ -1086,7 +1086,7 @@ function renderStops() {
     const inspect = control(prefix + "condition", "Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
     inspect.disabled = !available;
     menuChildren.push(inspect);
-    for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings",
+    for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings", ":Show Condition Handlers",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
                         ":Inspect", ":Describe Last", ":Clear Inspector"]) {
       const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
@@ -1182,9 +1182,9 @@ function renderStops() {
       description.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : label(result?.state), "description-result"));
       detailChildren.push(description);
-    } else if (["arglist", "bindings"].includes(command.command)) {
+    } else if (["arglist", "bindings", "handlers"].includes(command.command)) {
       const output = node("div", undefined, "debugger-" + command.command);
-      const name = command.command === "arglist" ? ":Show Arglist" : ":Show Bindings";
+      const name = {arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers"}[command.command];
       output.append(node("pre", "→ " + (command.source ?? name), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : label(result?.state), command.command + "-result"));
       detailChildren.push(output);

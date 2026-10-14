@@ -395,7 +395,132 @@ try {
   assert.deepEqual(evidence.handlerContinued.values, [':APPLICATION-HANDLER', '1', '1', text(applicationError)]);
   await save('application-handler-restored');
   evidence.checks.push('Debugger printer failure also preserves the application handler; Proceed restores it and application ERROR returns through that handler after one unwind cleanup');
-  const next = await start(`(progn (dolist (name '(${[...symbols, handlerTarget].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
+  const controlTarget = marker + '-CONTROL-TARGET', controlBody = marker + '-CONTROL-BODY';
+  const controlInner = marker + '-CONTROL-INNER', controlOuter = marker + '-CONTROL-OUTER';
+  const controlCount = '*' + marker + '-CONTROL-COUNT*', controlCleanup = '*' + marker + '-CONTROL-CLEANUP*';
+  const controlFunctions = [controlTarget, controlBody, controlInner, controlOuter];
+  const controlSymbols = [...controlFunctions, controlCount, controlCleanup];
+  targetJob = await start(`(unwind-protect (progn
+    (defun ${controlOuter} (condition)
+      (declare (ignore condition) (special ${controlCount})
+               (optimize (debug 3) (safety 3) (speed 1)))
+      (incf ${controlCount}))
+    (defun ${controlInner} (condition)
+      (declare (ignore condition) (optimize (debug 3) (safety 3) (speed 1)))
+      (break "${marker} selected condition handler"))
+    (defun ${controlBody} ()
+      (declare (optimize (debug 3) (safety 3) (speed 1)))
+      (break "${marker} condition handler body")
+      (signal 'simple-warning :format-control "${marker} owned warning")
+      42)
+    (defun ${controlTarget} ()
+      (declare (notinline ${controlBody}) (optimize (debug 3) (safety 3) (speed 1)))
+      (let ((${controlCount} 0) (${controlCleanup} 0))
+        (declare (special ${controlCount} ${controlCleanup}))
+        (let ((value (unwind-protect
+                       (handler-bind ((warning #'${controlOuter}))
+                         (handler-bind ((simple-warning #'${controlInner}))
+                           (${controlBody})))
+                       (incf ${controlCleanup}))))
+          (values value ${controlCount} ${controlCleanup}))))
+    (assert (every (lambda (name) (compiled-function-p (symbol-function name)))
+                   '(${controlFunctions.join(' ')})))
+    (${controlTarget}))
+    (dolist (name '(${controlFunctions.join(' ')})) (when (fboundp name) (fmakunbound name)))
+    (dolist (name '(${controlCount} ${controlCleanup})) (assert (not (boundp name))))
+    (dolist (name '(${controlSymbols.join(' ')})) (unintern name)))`);
+  const controlParent = await stopped(targetJob);
+  const bodyFrame = await selectTarget('#source', controlBody);
+  evidence.handlerDisplay = {bodyStop:controlParent.stop, bodyFrame};
+  await evaluation('(values 80 81)', ['80', '81']);
+  async function handlersAfter(previous, expectedFrame) {
+    await browser.waitFor(`latestCommand('handlers')?.id > ${previous} && commandResults.get(commandKey(latestCommand('handlers')))?.state === ':returned' && !busy`);
+    const value = await browser.evaluate("commandResults.get(commandKey(latestCommand('handlers'))).result");
+    assert.equal(await browser.evaluate("[...document.querySelectorAll('.handlers-result')].at(-1).textContent"), value);
+    assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), expectedFrame);
+    return value;
+  }
+  async function showHandlers(source, expectedFrame) {
+    const previous = await browser.evaluate("latestCommand('handlers')?.id ?? -1");
+    await command(source);
+    return handlersAfter(previous, expectedFrame);
+  }
+  function ownHandlers(value) {
+    return value.split(/(?=^Frame \d+ )/m).flatMap(block => {
+      const heading = /^Frame (\d+) (.*):\n/.exec(block);
+      return block.split('\n').filter(line => line.startsWith('  Handler for ')
+        && (line.includes(controlInner) || line.includes(controlOuter)))
+        .map(line => {
+          assert(heading, 'Handler row has no frame heading');
+          return {index:Number(heading[1]), owner:heading[2], line};
+        });
+    });
+  }
+  await fill('#source', ':Show Condition Hand');
+  await key(' ', 'Space', 32);
+  await browser.waitFor("document.querySelector('#source').value.startsWith(':Show Condition Handlers') && !busy");
+  await key('Enter', 'Enter', 13);
+  evidence.handlerDisplay.empty = await handlersAfter(-1, bodyFrame);
+  assert(evidence.handlerDisplay.empty.startsWith('Frame ' + bodyFrame + ' '));
+  assert(evidence.handlerDisplay.empty.endsWith('  No condition handlers.\n'));
+  evidence.handlerDisplay.bodyAll = await showHandlers(':Show Condition Handlers :All', bodyFrame);
+  assert.equal(await browser.evaluate("latestCommand('handlers').argument"), true);
+  const bodyHandlers = ownHandlers(evidence.handlerDisplay.bodyAll);
+  assert.equal(bodyHandlers.length, 2);
+  assert(bodyHandlers[0].line.includes('Handler for SIMPLE-WARNING: ') && bodyHandlers[0].line.includes(controlInner));
+  assert(bodyHandlers[1].line.includes('Handler for WARNING: ') && bodyHandlers[1].line.includes(controlOuter));
+  assert(bodyHandlers.every(row => row.line.endsWith(' [active]') && row.owner.includes('%HANDLER-BIND')));
+  assert(bodyHandlers[0].index < bodyHandlers[1].index);
+  assert.equal(await showHandlers(':Show Condition Handlers :All Yes', bodyFrame), evidence.handlerDisplay.bodyAll);
+  assert.equal(await showHandlers(':Show Condition Handlers :All No', bodyFrame), evidence.handlerDisplay.empty);
+  for (const row of bodyHandlers) {
+    await command(':Set Current Frame ' + row.index);
+    await frame(row.index);
+    assert.deepEqual(ownHandlers(await showHandlers(':Show Condition Handlers', row.index)), [row]);
+  }
+  const handlerMenuPrevious = await browser.evaluate("latestCommand('handlers').id");
+  await browser.click('#window-label');
+  await clickText('#debugger-menu', ':Show Condition Handlers');
+  assert.deepEqual(ownHandlers(await handlersAfter(handlerMenuPrevious, bodyHandlers[1].index)), [bodyHandlers[1]]);
+  evidence.handlerDisplay.bodyRows = bodyHandlers;
+  evidence.checks.push('Show Condition Handlers completion/menu and All defaults display selected runtime owners, both active handlers, and an explicit empty-frame result');
+  await command(':Set Current Frame ' + bodyFrame);
+  await frame(bodyFrame);
+  await evaluation('(values * / + -)', ['80', '(80 81)', '(VALUES 80 81)', '(VALUES * / + -)']);
+  const handlerStrings = await browser.evaluate("[...document.querySelectorAll('.handlers-result')].map(element => element.textContent)");
+  const handlerCommands = await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)");
+  const handlerOrigin = await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin !== ${handlerOrigin} && document.readyState === 'complete' && connected && !busy`);
+  await stopped(targetJob);
+  await frame(bodyFrame);
+  assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.handlers-result')].map(element => element.textContent)"), handlerStrings);
+  assert.deepEqual(await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)"), handlerCommands);
+  await browser.evaluate("[...document.querySelectorAll('.handlers-result')].find(element => element.textContent.includes('SIMPLE-WARNING:')).scrollIntoView({block:'center'})");
+  await save('condition-handlers-active');
+  evidence.checks.push('Handler inspection preserves selected frame and seeded evaluation history; reload retains its strings without another inspection command');
+  await command(':Proceed');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && !same(listenerDebugger.stop, ${text(controlParent.stop)}) && !busy`, 60);
+  evidence.handlerDisplay.invokedStop = (await stopped(targetJob)).stop;
+  const invokedFrame = await selectTarget('#source', controlInner);
+  evidence.handlerDisplay.invokedAll = await showHandlers(':Show Condition Handlers :All', invokedFrame);
+  const invokedHandlers = ownHandlers(evidence.handlerDisplay.invokedAll);
+  assert.equal(invokedHandlers.length, 2);
+  assert(invokedHandlers[0].line.includes(controlInner) && invokedHandlers[0].line.endsWith(' [inactive]'));
+  assert(invokedHandlers[1].line.includes(controlOuter) && invokedHandlers[1].line.endsWith(' [active]'));
+  assert(invokedHandlers.every(row => row.owner.includes('%HANDLER-BIND')));
+  for (const row of invokedHandlers) {
+    await command(':Set Current Frame ' + row.index);
+    await frame(row.index);
+    assert.deepEqual(ownHandlers(await showHandlers(':Show Condition Handlers', row.index)), [row]);
+  }
+  await browser.evaluate("[...document.querySelectorAll('.handlers-result')].find(element => element.textContent.includes('[inactive]')).scrollIntoView({block:'center'})");
+  await save('condition-handlers-invoked');
+  await command(':Proceed');
+  evidence.handlerDisplay.continued = await completed(targetJob);
+  assert.deepEqual(evidence.handlerDisplay.continued.values, ['42', '1', '1']);
+  evidence.checks.push('Inside an invoked handler, its cluster is inactive and the outer handler remains active; Proceed invokes the outer handler once and returns 42 after one cleanup');
+  const next = await start(`(progn (dolist (name '(${[...symbols, handlerTarget, ...controlSymbols].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
   assert.deepEqual((await completed(next)).values, ['42']);
   evidence.checks.push('Standalone debugger evaluates forms; Proceed observes immediate writes and distinct outer cell, closed stop retains printed history, definition cleanup and next Listener succeed');
 

@@ -61,6 +61,8 @@ The driver compiles and loads the checked-in description fixture.  It checks tha
 
 A separate named target stops inside an application HANDLER-CASE and UNWIND-PROTECT.  Errors from debugger evaluation and description printing must enter children, and typed :Abort must leave the application handler and cleanup counters at zero.  A handler established inside an evaluated form must remain effective.  Proceed raises an application error, which must invoke the restored handler once after one cleanup.
 
+A handler-display target stops first inside nested handler bindings and then inside the invoked inner handler.  :Show Condition Handlers tests completion, menu entry, :All defaults, actual runtime owner-frame selection, active and inactive status, empty-frame output, unchanged selection/history, and retained strings across reload.  Proceed must invoke the remaining outer handler once and return the expected values after one cleanup.
+
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
 ## Object Inspector

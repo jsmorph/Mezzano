@@ -75,6 +75,7 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Show Frame` | Displays the selected function and available locals. |
 | `:Show Arglist` | Displays the selected compiled function's argument list, preserving the active definition after redefinition. |
 | `:Show Bindings` | Displays special-variable bindings established by the selected frame.  :All selects every frame.  :Matching filters symbol names. |
+| `:Show Condition Handlers` | Displays condition handlers established by the selected frame and their active status at stop entry.  :All selects every frame. |
 | `:Show Local All` | Displays the selected frame's local records. |
 | `:Show Local N` | Displays one local by its zero-based index. |
 | `:Show Proceed Options` | Lists restart choices. |
@@ -89,6 +90,8 @@ Each debugger stop has separate `+`, `++`, and `+++` form history, `*`, `**`, an
 :Show Arglist displays the argument list stored with the selected compiled function.  An empty list displays NIL.  Missing metadata produces an explicit unavailable message.  The command preserves frame selection and evaluation history, and its printed result survives reload.
 
 :Show Bindings lists repeated bindings in inner-to-outer order and distinguishes bound NIL from an unbound value.  :All defaults to No.  Mentioning :All without a value selects Yes.  :Matching requires a string and uses a case-sensitive literal substring of the symbol name.  Omitting it selects every name.  The command preserves frame selection and evaluation history.  Unsupported frames, including direct interrupted activations, produce an unavailable message.  Established x86-64 condition-stop frames are supported.  ARM64 binding inspection and :Invisible are unsupported.
+
+:Show Condition Handlers identifies each handler's condition type, function, and active or inactive status when the stop began.  During handler invocation, the selected cluster and inner clusters are inactive.  Remaining outer clusters stay active.  Frame headers identify the runtime frame that established the cluster.  :All defaults to No, and mentioning it without a value selects Yes.  The command preserves frame selection and evaluation history.  Reload retains its printed result.  Empty frames and unavailable handler locations have explicit messages.  Established x86-64 condition-stop frames are supported.  ARM64 reports handler locations unavailable.
 
 The guest retains the current frame for each stop across browser reload and reconnection.  A child stop starts at frame zero and has its own selection.  Clicking a backtrace row selects that frame.  Next and Previous default to one frame.  Zero redisplays the current frame.  A target outside the stack reports an error and preserves the selection.  Repeating an uncertain navigation request with its original command ID moves once.  If printing a frame enters a child debugger, :Abort abandons that inspection and preserves the guest's selected index.  The browser waits for another explicit frame command before retrying the failed inspection.  Selection by another controller updates the highlight.  When the retained result does not match, :Show Frame requests its locals.
 
@@ -167,11 +170,13 @@ When the guest reports an expired session, the browser creates a new session, ar
 
 Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
 
-Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, arglist, and bindings.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
+Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, arglist, bindings, and handlers.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
 
 Arglist takes no argument and returns the guest-formatted signature or unavailable message as a string.
 
 Bindings accepts null for the selected frame without filtering, or `[all, matching]`.  All accepts true, false, or null.  False and null encode Lisp NIL.  Matching is a string.  The result is guest-formatted binding text.  Repeating an accepted command compares a copied argument list and string by EQUAL.
+
+Handlers accepts null or false for the selected frame, or true for all frames.  Its result is guest-formatted handler text, including each handler's active status at stop entry.
 
 Evaluate requires one source string and returns an array of printed values, or null for zero values.  Evaluation and printing errors enter a child debugger.  Repeating an uncertain evaluation with the original command ID and source retrieves that command without evaluating it again.
 
