@@ -699,7 +699,7 @@ function updateJob(job, info, output) {
     + (view.end < info["output-length"] ? " — receiving output (" + view.end + " of "
       + info["output-length"] + " characters)" : "");
   view.inputForm.hidden = info.state !== ":running" || info["input-mode"] !== ":interactive" || info["input-eof-p"];
-  const operationsSignature = JSON.stringify([job.token, info.stops, info.state === ":running", info["interrupt-id"] !== null]);
+  const operationsSignature = JSON.stringify([job.token, info.stops, info.state === ":running", Boolean(info["interruptible-p"])]);
   if (view.operationsSignature === operationsSignature) return;
   view.operationsSignature = operationsSignature;
   view.operations.replaceChildren();
@@ -714,7 +714,7 @@ function updateJob(job, info, output) {
       message("Interrupt request " + id + " accepted.");
       await refresh();
     }, "Mouse-Left: Request a retained debugger stop.");
-    interrupt.disabled = info["interrupt-id"] !== null;
+    interrupt.disabled = !info["interruptible-p"];
     view.operations.append(interrupt);
   } else {
     view.operations.append(button("Release", async () => {

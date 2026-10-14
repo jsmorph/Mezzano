@@ -227,11 +227,22 @@ try {
   await stopped(interactive);
   await clickText('#listener-debugger .restarts', 'USE-VALUE');
   await browser.waitFor(`views.get(${text(interactive)})?.info['input-waiting-p']`);
+  const interactiveParent = await browser.evaluate('listenerDebugger.stop');
+  await browser.waitFor(`views.get(${text(interactive)})?.info['interruptible-p']
+    && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':running'`);
+  await clickText('[data-job="' + interactive + '"] .command-row', 'Interrupt');
+  await stopped(interactive, 2);
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(interactiveParent)}) && !busy`);
+  assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('invoke-restart-interactively'))).state"), ':unwound');
+  await clickText('#listener-debugger .restarts', 'USE-VALUE');
+  await browser.waitFor(`views.get(${text(interactive)})?.info['input-waiting-p']
+    && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':running'`);
   const restartInput = '[data-job="' + interactive + '"] .input-form';
   await fill(restartInput + ' textarea', '35');
   await clickText(restartInput, 'Send Input');
   assert.deepEqual((await completed(interactive)).values, ['42']);
-  evidence.checks.push('Interactive restart button uses retained QUERY-IO and passes entered argument');
+  evidence.checks.push('Blocked restart reader interrupt -> child Abort -> same condition stop -> retry reader and entered argument');
 
   const returning = await start(`(let ((replacement 0) (abort-returned nil) (job-abort (find-restart 'abort))) (restart-bind ((use-value (lambda (value) (setf replacement value)) :report-function (lambda (stream) (write-string "Set the replacement and return to this debugger." stream)) :interactive-function (lambda () (format *query-io* "${marker} returning replacement: ") (list (read *query-io*)))) (no-values (lambda () (values)) :report-function (lambda (stream) (write-string "Return no values to this debugger." stream))) (abort (lambda () (if abort-returned (invoke-restart job-abort) (progn (setf abort-returned t) (values :abort-returned 9)))) :report-function (lambda (stream) (write-string "Return from the captured ABORT restart." stream)))) (cerror "Continue after returning restart." "${marker} returning restart")) replacement)`);
   const returningStop = await stopped(returning);
@@ -255,6 +266,31 @@ try {
   await proceed();
   assert.deepEqual((await completed(returning)).values, ['81']);
   evidence.checks.push('Returning interactive and typed Abort values, including zero values, are visible at the same stop; subsequent CONTINUE observes the entered value');
+  const interrupted = await start(`(restart-bind ((use-value (lambda (value) (values value)) :report-function (lambda (stream) (write-string "Read a value inside the interruption debugger." stream)) :interactive-function (lambda () (format *query-io* "${marker} nested interrupt replacement: ") (list (read *query-io*))))) (read-line) 444)`);
+  await browser.waitFor(`views.get(${text(interrupted)})?.info['input-waiting-p']`);
+  await clickText('[data-job="' + interrupted + '"] .command-row', 'Interrupt');
+  const interruptParent = await stopped(interrupted);
+  const interruptId = await browser.evaluate(`views.get(${text(interrupted)}).info['interrupt-id']`);
+  assert.equal(interruptId, 0);
+  await clickText('#listener-debugger .restarts', 'USE-VALUE');
+  await browser.waitFor(`views.get(${text(interrupted)})?.info['input-waiting-p']
+    && views.get(${text(interrupted)}).info['interruptible-p']
+    && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':running'`);
+  await clickText('[data-job="' + interrupted + '"] .command-row', 'Interrupt');
+  const nestedInterrupt = await stopped(interrupted, 2);
+  assert.notDeepEqual(nestedInterrupt.stop, interruptParent.stop);
+  assert.equal(await browser.evaluate(`views.get(${text(interrupted)}).info['interrupt-id']`), 1);
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(interruptParent.stop)}) && !busy`);
+  assert.equal(await browser.evaluate(`views.get(${text(interrupted)}).info['interrupt-id']`), interruptId);
+  assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('invoke-restart-interactively'))).state"), ':unwound');
+  await proceed();
+  await browser.waitFor(`!listenerDebugger && views.get(${text(interrupted)})?.info['input-waiting-p']`);
+  const originalInput = '[data-job="' + interrupted + '"] .input-form';
+  await fill(originalInput + ' textarea', 'finish');
+  await clickText(originalInput, 'Send Input');
+  assert.deepEqual((await completed(interrupted)).values, ['444']);
+  evidence.checks.push('Restart reader inside interrupt 0 -> interrupt 1 -> child Abort -> interrupt 0 -> CONTINUE and original input');
   await save('completed');
 } catch (error) {
   evidence.failure = error.stack;
@@ -272,6 +308,9 @@ try {
         const token = await browser.evaluate(`state.jobs[${text(name)}]?.token`);
         if (!token) break;
         info = await browser.evaluate(`api('job-information', {job: ${text(token)}})`);
+        if (info.state === ':running' && !info.stops?.length && info['interruptible-p']) {
+          await browser.evaluate(`api('interrupt-job', {job: ${text(token)}, id: ${info['next-interrupt-id']}})`);
+        }
         for (const stop of info.stops || []) {
           const detail = await browser.evaluate(`api('information', {stop: ${text(stop)}})`);
           ownedStops.set(detail.id, stop);
