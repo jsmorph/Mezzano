@@ -16,3 +16,7 @@ Interrupt handler restrictions:
 * No access to special variables. Variables must be either lexical, constant, or global.
 
 Restrictions for interrupt handlers are hard and fast. Your code is broken if it does not follow these restrictions and will cause panics.
+
+The garbage collector excludes stacks of threads at `:SUPERVISOR` and `:IDLE` priority.  An object referenced by one of those threads needs a separately traced owner even when the object occupies wired memory.  The snapshot worker retains its retry timer in a kernel global because a disarmed timer has no active-timer-queue reference.
+
+An ordinary thread that acquires the VM lock must inhibit snapshots while it holds that lock.  Snapshot preparation stops ordinary threads before acquiring the VM lock.  Code and data accessed while holding the lock must also remain resident because the pager needs that lock to resolve faults.

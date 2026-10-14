@@ -55,3 +55,22 @@ Mark bits
 ----------
 Every two words of memory has a mark bit assigned to it so that objects
 do not need to have a mark bit in their header.
+
+Backing-store reservations
+-------------------------
+
+In a writable hosted image, `*STORE-FUDGE-FACTOR*` reserves blocks for mapped pages that may need new backing storage.  Initialization counts the current block map and adds an allowance of 256 blocks for metadata.  Counting all allocated disk blocks would also count old image blocks and deferred allocations that require no new page reservation.
+
+| Page mapping | Reserved blocks |
+|---|---:|
+| Lazy backing block | 1 |
+| Uncommitted backing block | 1 |
+| Wired page with a backing block | 1, including when committed |
+| Committed, pageable backing block | 0 |
+| Transient physical mapping with block ID zero | 0 |
+
+Each mapped page contributes at most one reservation.  Wired pages retain their reservation across snapshot copying.  Clearing their committed bit therefore does not add another reservation.
+
+`MEZZANO.SUPERVISOR::BLOCK-RESERVATION-STATISTICS` returns the computed page reservations, recorded reservation counter, and free backing-store blocks as three values.  The function runs in wired memory, inhibits snapshots, and reads the map and counters under the VM lock.  It returns before the caller allocates or prints.  For a writable hosted image, the counter equals the computed page reservations plus 256.  The read-only and freestanding accounting policies differ.
+
+These counters describe page reservations and allocator capacity.  They do not establish that every allocated disk block remains reachable from the saved image.

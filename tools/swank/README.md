@@ -254,3 +254,26 @@ Within the callback, `request` sends one synchronous debugger RPC.  `send-reques
 Commands that print values execute application printers and can block or enter a child stop.  A client timeout closes its connection while an accepted command can continue in the guest.  Query the recorded outcome before deciding what to submit next.
 
 Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers and executing debugger commands.  Local-variable mutation, lexical frame evaluation, arbitrary frame return or reinvocation, breakpoints, and integrated stepping remain planned for the remote API.  Local-variable availability depends on compiler debug metadata and the selected frame.  The [debugger guide](../../doc/debugger.md) describes those limits and the supported stopping states.
+
+## Snapshot tests
+
+Run the following forms in Mezzano with the source tree available as `SYS:SOURCE;`.  The synchronization fixture inspects kernel queues with interrupts disabled, so its compiled code requires `:WIRED T`.
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SNAPSHOT-SYNC.LISP")
+      :wired t)
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-PAGE-RESERVATIONS.LISP"))
+(lispm-snapshot-sync-test:prepare)
+(lispm-page-reservation-test:run :snapshot t)
+```
+
+The reservation test checks transient mappings and full collection, forces the snapshot worker to use its retry timer after collection, and samples reservations concurrently with the save.  Wait for the evaluation to return before restarting the image.  After restoration:
+
+```lisp
+(assert (mezzano.supervisor:event-state
+         mezzano.supervisor::*snapshot-state*))
+(lispm-snapshot-sync-test:finish)
+(lispm-page-reservation-test:run)
+```
+
+The synchronization test checks notification, timer expiration, mutex reacquisition, and cleanup of its own waiters.  The reservation test requires a writable hosted image.  [Backing-store reservations](../../doc/internals/memory-layout.md#backing-store-reservations) defines the counted states.

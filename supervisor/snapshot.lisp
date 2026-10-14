@@ -7,6 +7,7 @@
 (sys.int::defglobal *snapshot-inhibit*)
 
 (sys.int::defglobal *snapshot-disk-request*)
+(sys.int::defglobal *snapshot-retry-timer*)
 (sys.int::defglobal *snapshot-bounce-buffer-page*)
 (sys.int::defglobal *snapshot-pending-writeback-pages-count*)
 (sys.int::defglobal *snapshot-pending-writeback-pages*)
@@ -87,7 +88,6 @@
                                       sys.int::+block-map-committed+
                                       (logand bme #xFF))
                           (sys.int::memref-unsigned-byte-64 bme-addr 0) bme)
-                    (decf *store-fudge-factor*)
                     (store-deferred-free old-block 1)))))
             :sparse sparse)))
     (alloc-blocks sys.int::*wired-area-base* sys.int::*wired-area-bump*)
@@ -299,7 +299,8 @@ Returns 4 values:
           ;; Uncommit any committed pages.
           (when (block-info-committed-p entry)
             (setf (sys.int::memref-unsigned-byte-64 bml1 i) (logand entry (lognot sys.int::+block-map-committed+)))
-            (incf *store-fudge-factor*))
+            (unless (logtest entry sys.int::+block-map-wired+)
+              (incf *store-fudge-factor*)))
           (incf bml1-count))))
     (cond ((zerop bml1-count)
            ;; No entries, don't bother with this level.
@@ -405,31 +406,28 @@ This event will be signalled when the epoch changes."
   *snapshot-epoch*)
 
 (defun snapshot-thread ()
-  ;; A preallocated timer is required here because the snapshot thread
-  ;; runs at :supervisor priority and must not cons outside of boot.
-  (with-timer (snapshot-retry-timer)
-    (loop
-       ;; Retry occurs when *SNAPSHOT-INHIBIT* is non-zero.
-       (loop
-          while (or (not (eql *snapshot-inhibit* 0))
-                    (eql (take-snapshot) :retry))
-          do (timer-sleep snapshot-retry-timer 0.1))
-       ;; After taking a snapshot, clear *snapshot-in-progress*
-       ;; and go back to sleep.
-       ;; FIXME: There's a race between setting this event and the thread
-       ;; going to sleep. (SETF EVENT-STATE) can't be called with the
-       ;; global thread-lock held.
-       (setf (event-state *snapshot-state*) t)
-       ;; Move to the next epoch.
-       (setf (event-state *snapshot-epoch*) t)
-       (setf *snapshot-epoch* *snapshot-next-epoch*)
-       (%disable-interrupts)
-       (acquire-global-thread-lock)
-       (setf *snapshot-in-progress* nil)
-       (setf (thread-state sys.int::*snapshot-thread*) :sleeping
-             (thread-wait-item sys.int::*snapshot-thread*) "Snapshot")
-       (%run-on-wired-stack-without-interrupts (sp fp)
-         (%reschedule-via-wired-stack sp fp)))))
+  (loop
+     ;; Retry occurs when *SNAPSHOT-INHIBIT* is non-zero.
+     (loop
+        while (or (not (eql *snapshot-inhibit* 0))
+                  (eql (take-snapshot) :retry))
+        do (timer-sleep *snapshot-retry-timer* 0.1))
+     ;; After taking a snapshot, clear *snapshot-in-progress*
+     ;; and go back to sleep.
+     ;; FIXME: There's a race between setting this event and the thread
+     ;; going to sleep. (SETF EVENT-STATE) can't be called with the
+     ;; global thread-lock held.
+     (setf (event-state *snapshot-state*) t)
+     ;; Move to the next epoch.
+     (setf (event-state *snapshot-epoch*) t)
+     (setf *snapshot-epoch* *snapshot-next-epoch*)
+     (%disable-interrupts)
+     (acquire-global-thread-lock)
+     (setf *snapshot-in-progress* nil)
+     (setf (thread-state sys.int::*snapshot-thread*) :sleeping
+           (thread-wait-item sys.int::*snapshot-thread*) "Snapshot")
+     (%run-on-wired-stack-without-interrupts (sp fp)
+       (%reschedule-via-wired-stack sp fp))))
 
 (defun allocate-snapshot-wired-backing-pages (start end &key sparse)
   (map-ptes
@@ -451,13 +449,14 @@ This event will be signalled when the epoch changes."
 (defun initialize-snapshot ()
   (when (not (boundp '*snapshot-state*))
     (setf *snapshot-state* (make-event :name 'snapshot-not-in-progress)))
-  (setf (event-state *snapshot-state*) nil)
+  (setf (event-state *snapshot-state*) t)
   (cond ((boundp '*snapshot-epoch*)
          (setf (event-state *snapshot-epoch*) t)
          (setf *snapshot-epoch* *snapshot-next-epoch*))
         (t
          (setf *snapshot-epoch* (make-event :name 'snapshot-epoch))))
-  (setf *snapshot-disk-request* (make-disk-request))
+  (setf *snapshot-disk-request* (make-disk-request)
+        *snapshot-retry-timer* (make-timer :name 'snapshot-retry))
   (setf *snapshot-in-progress* nil)
   (setf *snapshot-inhibit* 1)
   (setf *enable-snapshot-cow-fast-path* nil)

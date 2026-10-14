@@ -142,6 +142,27 @@ the data. Free the page with FREE-PAGE when done."
   (debug-print-line "Waking pager thread.")
   (wake-thread sys.int::*pager-thread*))
 
+(defun count-block-reservations (&optional (map *bml4*) (level 4))
+  "Count page reservations while the caller holds *VM-LOCK*."
+  (loop for index below 512
+        for entry = (sys.int::memref-signed-byte-64 map index)
+        unless (zerop entry)
+          sum (if (= level 1)
+                  (if (and (not (zerop (block-info-block-id entry)))
+                           (or (block-info-lazy-block-p entry)
+                               (not (block-info-committed-p entry))
+                               (logtest entry sys.int::+block-map-wired+)))
+                      1
+                      0)
+                  (count-block-reservations entry (1- level)))))
+
+(defun block-reservation-statistics ()
+  (with-snapshot-inhibited ()
+    (with-rw-lock-read (*vm-lock*)
+      (values (count-block-reservations)
+              *store-fudge-factor*
+              *store-freelist-n-free-blocks*))))
+
 (defun initialize-hosted-paging-system (disk header)
   (setf *paging-disk* disk)
   (setf *paging-read-only* (or (not (disk-writable-p disk))
@@ -160,7 +181,7 @@ the data. Free the page with FREE-PAGE when done."
              (setf *store-fudge-factor* (- (+ (truncate (physical-memory-statistics) 1.1)
                                               allocated-blocks))))
             (t
-             (setf *store-fudge-factor* (+ allocated-blocks 256))))))
+             (setf *store-fudge-factor* (+ (count-block-reservations) 256))))))
   (debug-print-line "Set fudge factor to " *store-fudge-factor*)
   (debug-print-line "Waking pager thread.")
   (wake-thread sys.int::*pager-thread*))

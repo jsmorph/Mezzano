@@ -23,6 +23,10 @@
       (sleep 0.01))))
 
 (defun inspect-waiter (waiter phase)
+  (let ((address (mezzano.internals::lisp-object-address #'inspect-waiter)))
+    (assert (<= mezzano.internals::*wired-function-area-limit* address
+                (1- mezzano.internals::*function-area-base*)) ()
+            "Load the compiled synchronization fixture with :WIRED T."))
   (mezzano.supervisor::safe-without-interrupts (waiter phase)
     (let ((thread (waiter-thread waiter))
           (cv (waiter-cv waiter))
