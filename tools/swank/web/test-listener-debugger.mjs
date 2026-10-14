@@ -273,6 +273,34 @@ try {
   assert.deepEqual((await completed(afterValues)).values, ['42']);
   evidence.checks.push('Compiled debug-3 frame displays captured NIL and :$INACCESSIBLE-VALUE$ bindings as available, then continuation and Listener reuse return the expected values');
 
+  const localFunction = marker + '-LOCAL-FUNCTION';
+  const functionJob = await start(`(unwind-protect (progn (defun ${localFunction} (captured) (declare (optimize (debug 3) (safety 3) (speed 1))) (let ((helper 41)) (flet ((helper () captured)) (cerror "Continue local-function test." "${marker} local function") (1+ helper)))) (assert (compiled-function-p (symbol-function '${localFunction}))) (${localFunction} 17)) (when (fboundp '${localFunction}) (fmakunbound '${localFunction})) (unintern '${localFunction}))`);
+  await stopped(functionJob);
+  await browser.waitFor('returnedResult("frames") && !stopCommandPending(selectedStop) && !busy');
+  const functionFrame = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(localFunction)}))`);
+  assert(functionFrame > 0);
+  await clickText('#stop-detail', localFunction);
+  await frame(functionFrame);
+  const functionLocals = await browser.evaluate(`returnedFrameInspection().result.locals.filter(local => ['HELPER', '(FUNCTION HELPER)'].includes(local.name))`);
+  assert.equal(functionLocals.length, 2);
+  const functionBinding = functionLocals.find(local => local.name === '(FUNCTION HELPER)');
+  const variableBinding = functionLocals.find(local => local.name === 'HELPER');
+  assert.equal(functionBinding['available-p'], true);
+  assert.match(functionBinding.value, /^#<.*Closure\b/i);
+  assert.equal(variableBinding['available-p'], true);
+  assert.equal(variableBinding.value, '41');
+  for (const local of functionLocals) {
+    assert.equal(await browser.evaluate(`[...document.querySelectorAll('#stop-detail .locals tr')].find(row => row.firstElementChild.textContent.includes(${text('(' + local.name + '):')}))?.lastElementChild.textContent`), local.value);
+  }
+  evidence.localFunctions = functionLocals;
+  await browser.evaluate('document.querySelector("#stop-detail .current-function").scrollIntoView({block: "center"})');
+  await save('available-local-function');
+  await command(':Proceed');
+  assert.deepEqual((await completed(functionJob)).values, ['42']);
+  const afterFunction = await start('(+ 20 22)');
+  assert.deepEqual((await completed(afterFunction)).values, ['42']);
+  evidence.checks.push('Compiled debug-3 frame preserves an unused captured FLET HELPER and a separate variable HELPER as available values, then continuation and Listener reuse return 42');
+
   const abort = await start(`(unwind-protect (cerror "Continue owned test." "${marker} abort") (write-string "${marker} abort cleanup"))`);
   await stopped(abort);
   const abortButton = await browser.evaluate(`(() => {

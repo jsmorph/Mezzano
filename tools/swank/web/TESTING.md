@@ -59,6 +59,8 @@ Frame tests check completion, typed and mouse selection, Next/Previous/Top/Botto
 
 A compiled debug-3 fixture captures NIL and :$INACCESSIBLE-VALUE$ arguments in a reader closure.  Mouse selection checks that both bindings have true availability flags and display their values.  Continuation calls the closure, and another Listener form verifies reuse after the stop closes.
 
+A second named debug-3 fixture contains an unused FLET function HELPER that captures an argument and an ordinary variable HELPER holding 41.  Mouse selection checks separate `(FUNCTION HELPER)` and `HELPER` records, true availability flags, and the displayed closure and integer.  Continuation and another Listener form both return 42.
+
 The driver tests both typed Proceed and the CONTINUE button for continuation.  `PROTECTED_STOP` optionally names a numeric stop ID whose state and next command ID must remain unchanged.  The driver records its session and releases its owned evaluations, stops, and session.
 
 ## Expired sessions

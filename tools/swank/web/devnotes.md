@@ -1,5 +1,14 @@
 # Web UI development journal
 
+## Local function bindings in the browser: 2026-10-13
+
+The compiler increment preserves FLET and LABELS bindings as local records named `(FUNCTION name)`.  The browser already renders the guest's printed names and availability flags.  The recommendation is to add one named, compiled debug-3 fixture to the focused driver.  Its FLET function HELPER captures an argument but is never called, while the ordinary variable HELPER holds 41.  A condition stop and mouse selection will check separate function and variable records, available closure and integer values, continuation, and another Listener evaluation.  This tests preservation of an unused local function and distinction between the two Lisp namespaces.  No product Web change or dependency is expected.
+
+- [x] Wait for the compiled guest prerequisite, then run the focused browser driver.
+- [x] Inspect the local-function display, release owned records, and document the result.
+
+The focused Chromium run passed all eighteen groups against the x86-64 guest with the updated compiler loaded.  The named DEFUN fixture used debug 3, safety 3, and speed 1.  Mouse selection displayed HELPER as 41 and `(FUNCTION HELPER)` as the captured FLET closure, both with true availability flags.  The capture also showed the captured argument as 17.  Proceed and the next Listener evaluation each returned 42.  Existing availability, frame navigation, nested Abort, restart input, and request-replay checks passed.  The driver released seventeen jobs, twenty stops, and its session.  Five intentional HTTP 400 responses and three intentional HTTP 409 responses were the only browser errors.  Evidence is `/tmp/listener-debugger-local-functions/result.json`, its inspected `available-local-function.png` capture, and `/tmp/listener-debugger-local-functions.log`.  No product Web change was required.  This browser case covers FLET in a condition stop after compiler loading.  The run does not test local-function bindings across image restoration.
+
 ## Local values and availability: 2026-10-13
 
 The debugger's old missing-value keyword could also be a program value.  The guest correction separates the value from its availability flag.  The Web renderer already uses that flag.  The recommendation is to add one fixture to the existing focused browser driver: compile a debug-3 function with NIL and :$INACCESSIBLE-VALUE$ arguments captured by a reader closure, stop inside that function, and select its frame by mouse.  The test will check both guest availability flags and displayed values, continue to the closure's returned values, and evaluate another Listener form.  Existing cleanup will release the fixture's records.  No product Web changes or dependencies are required.
