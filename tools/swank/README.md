@@ -446,6 +446,19 @@ It checks EQ identity, cycles, shared objects, NIL, kind and owning-thread valid
 
 For saved-state acceptance, call `(lispm-inspection-reference-test:prepare-restore-test)` before saving and `(lispm-inspection-reference-test:finish-restore-test)` after restoration.  The test rejects old references, obtains fresh references with the preserved object IDs, checks retained sharing and cycles after full GC, continues the stopped computation, and releases its state.
 
+## Inspector tests
+
+Load the debugger-service and frame-evaluation fixtures, then compile and run the Inspector fixture:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-INSPECTOR.LISP"))
+(lispm-inspector-test:run)
+```
+
+The native x86-64 test checks cons, array, symbol, hash-table, CLOS, and structure components, fixed-vector elements, unbound versus NIL, shared identity after full GC, page bounds, shrinking arrays, removed keys, changed classes, read-only fields, and rejected types.  Retained-command tests check selected-frame modification, reader and printer history bindings, duplicate input and command submission, nested type and reader errors, input cleanup after reader Abort, a completed store followed by printer failure, Clear, continuation, and owned cleanup.
+
+For a parked-stop restoration test, call `(lispm-inspector-test:prepare-restore-test)` before saving and `(lispm-inspector-test:finish-restore-test)` after restoration.  It checks historical pages, expired references, prior-command rejection, fresh inspection, full GC, modification through retained input, continuation, and cleanup.
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:

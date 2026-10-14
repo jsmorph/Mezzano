@@ -194,7 +194,14 @@
                 (copy-list (getf scope :optimize)))
           environment)))))
 
-(defun service-evaluate (stop source)
+(defun read-service-expression ()
+  (let ((read-p nil))
+    (unwind-protect
+         (prog1 (let ((*read-eval* nil)) (read *query-io*))
+           (setf read-p t))
+      (unless read-p (clear-input *query-io*)))))
+
+(defun service-evaluate-input (stop reader &optional print-p)
   (let* ((reference (%make-service-frame (service-handle stop)
                                         (service-stop-generation stop)
                                         (service-stop-current-frame stop)))
@@ -203,24 +210,30 @@
          (mezzano.internals::*eval-hook* 'mezzano.full-eval:eval-in-lexenv))
     (progv history-symbols (service-stop-evaluation-history stop)
       (unwind-protect
-           (with-input-from-string (stream source)
-             (let* ((form
-                      (let* ((*read-eval* nil)
-                             (end (list :end))
-                             (form (read stream nil end)))
-                        (when (or (eq form end) (not (eq (read stream nil end) end)))
-                          (service-error :expected-one-form))
-                        form))
-                    (- form)
-                    (values (multiple-value-list
-                             (mezzano.full-eval:eval-in-lexenv form environment))))
-               (declare (special -))
-               (setf +++ ++ ++ + + form
-                     *** ** ** * * (first values)
-                     /// // // / / values)
-               (mapcar #'service-print values)))
+           (let* ((form (funcall reader))
+                  (- form)
+                  (values (multiple-value-list
+                           (mezzano.full-eval:eval-in-lexenv form environment))))
+             (declare (special -))
+             (setf +++ ++ ++ + + form
+                   *** ** ** * * (first values)
+                   /// // // / / values)
+             (if print-p (mapcar #'service-print values) values))
         (setf (service-stop-evaluation-history stop)
               (mapcar #'symbol-value history-symbols))))))
+
+(defun service-evaluate (stop source)
+  (service-evaluate-input
+   stop
+   (lambda ()
+     (with-input-from-string (stream source)
+       (let* ((*read-eval* nil)
+              (end (list :end))
+              (form (read stream nil end)))
+         (when (or (eq form end) (not (eq (read stream nil end) end)))
+           (service-error :expected-one-form))
+         form)))
+   t))
 
 (defun make-debugger-controller ()
   (%make-service-controller :boot (mezzano.supervisor:current-boot-id)))
@@ -395,7 +408,7 @@
            (previous (gethash id (service-stop-commands stop))))
       (when previous
         (unless (and (eq operation (service-command-operation previous))
-                     (if (eq operation :evaluate)
+                     (if (member operation '(:evaluate :inspect :modify))
                          (equal argument (service-command-argument previous))
                          (eql argument (service-command-argument previous)))
                      (eq (service-command-boot previous)
@@ -410,13 +423,15 @@
                 (service-stop-child stop))
         (service-error :stop-busy))
       (case operation
-        ((:frames :restarts :condition :abort :help)
+        ((:frames :restarts :condition :abort :help :clear-inspection)
          (when argument (service-error :unexpected-argument)))
         (:proceed
          (when argument (service-error :unexpected-argument))
          (service-restart stop nil))
         (:invoke-restart-with-arguments (service-restart stop argument))
         (:locals (check-service-frame argument stop))
+        ((:inspect :modify :describe-object)
+         (check-service-inspection-argument stop operation argument))
         (:evaluate
          (unless (stringp argument) (service-error :invalid-source)))
         ((:current-frame :select-frame :next-frame :previous-frame :top-frame :bottom-frame)
@@ -429,9 +444,10 @@
         (otherwise (service-error :unknown-operation)))
       (let ((command (%make-service-command
                       :boot (mezzano.supervisor:current-boot-id)
-                      :operation operation :argument (if (eq operation :evaluate)
-                                                        (copy-seq argument)
-                                                        argument))))
+                      :operation operation :argument (case operation
+                                                       (:evaluate (copy-seq argument))
+                                                       ((:inspect :modify) (copy-list argument))
+                                                       (otherwise argument)))))
         (setf (gethash id (service-stop-commands stop)) command
               (service-stop-pending stop) command
               (mezzano.supervisor:event-state (service-stop-event stop)) t)
@@ -477,6 +493,10 @@
   (ecase (service-command-operation command)
     (:condition (service-print (service-stop-condition stop) t))
     (:evaluate (service-evaluate stop (service-command-argument command)))
+    (:inspect (service-inspect stop (service-command-argument command)))
+    (:modify (service-modify-inspection stop (service-command-argument command)))
+    (:describe-object (service-describe-inspection stop (service-command-argument command)))
+    (:clear-inspection (clear-service-inspection stop))
     (:help (mezzano.command-processor::debugger-help))
     (:abort
      (let ((restart (find 'abort (service-stop-restarts stop) :key #'restart-name)))
@@ -490,7 +510,7 @@
      (let ((restart (service-restart stop (service-command-argument command))))
        (write-string "Restart arguments (Lisp expression returning a list): " *query-io*)
        (finish-output *query-io*)
-       (let* ((form (let ((*read-eval* nil)) (read *query-io*)))
+       (let* ((form (read-service-expression))
               (arguments (eval form)))
          (unless (list-length arguments)
            (error "Restart arguments must be a finite proper list."))

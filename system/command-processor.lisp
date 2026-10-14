@@ -38,6 +38,9 @@
     (:name "Proceed" :id :proceed :type :restart
      :help "Invoke the default CONTINUE restart or a zero-based restart index. :Arguments requests a Lisp expression returning the argument list."
      :keywords (("Arguments" :boolean "No" "Yes")))
+    (:name "Inspect" :id :inspect :help "Inspect the primary value from this debugger level's last successful evaluation.")
+    (:name "Describe Last" :id :describe-last :help "Describe the primary value from this debugger level's last successful evaluation.")
+    (:name "Clear Inspector" :id :clear-inspector :help "Release this debugger level's retained Inspector references.")
     (:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
     (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
     (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
@@ -430,6 +433,9 @@
            ((eq argument :default) (list :operation "proceed" :argument nil))
            (t (list :operation "invoke-restart-interactively" :argument argument))))
     (:help (list :operation "help"))
+    (:inspect (list :operation "inspect" :display :inspector))
+    (:describe-last (list :operation "describe-object" :display :description))
+    (:clear-inspector (list :operation "clear-inspection" :display :inspector))
     (:show-backtrace (list :operation "frames"))
     (:show-proceed-options (list :operation "restarts"))
     (:show-frame (list :operation "current-frame" :display :frame))

@@ -72,6 +72,9 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Proceed Default | Uses the same default selection as :Proceed. |
 | :Proceed index | Invokes the captured restart at that zero-based decimal index interactively. |
 | :Proceed index :Arguments | Prompts for a Lisp expression returning the argument list, then invokes that restart.  An omitted index selects Default. |
+| :Inspect | Inspects the primary value from this debugger level's evaluation history. |
+| :Describe Last | Describes that value without changing the history. |
+| :Clear Inspector | Releases this stop's retained Inspector object and place references. |
 | :Show Backtrace | Lists retained call frames. |
 | :Set Current Frame index | Selects a frame by its zero-based decimal index and displays its available locals. |
 | :Top Of Stack | Selects frame zero, the newest retained frame, and displays its available locals. |
@@ -85,7 +88,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 
 Proceed without an available CONTINUE reports an error while leaving the computation stopped.  An explicit index selects another restart.  A restart can return values and leave the debugger active, or transfer control out of it.  The browser displays returning values.
 
-:Arguments is a Boolean keyword.  Omitted, it defaults to No.  Mentioned without a value, it defaults to Yes.  :Arguments No uses the restart's interactive reader.  :Arguments Yes reads one expression, evaluates it in the stopped thread's current dynamic environment and a null lexical environment, and passes the elements of its primary value to the restart.  The value must be a finite proper list.  For example, entering (list 20 22) supplies two arguments, while NIL supplies none.  Reading disables read-time evaluation.  Reader, evaluation, and argument errors enter a child debugger.  :Abort there abandons the command and returns to the original stop.
+:Arguments is a Boolean keyword.  Omitted, it defaults to No.  Mentioned without a value, it defaults to Yes.  :Arguments No uses the restart's interactive reader.  :Arguments Yes reads one expression, evaluates it in the stopped thread's current dynamic environment and a null lexical environment, and passes the elements of its primary value to the restart.  The value must be a finite proper list.  For example, entering (list 20 22) supplies two arguments, while NIL supplies none.  Reading disables read-time evaluation.  Aborting an unfinished read clears input already buffered on QUERY-IO while preserving the retained input record for replay.  Reader, evaluation, and argument errors enter a child debugger.  :Abort there abandons the command and returns to the original stop.
 
 Selection starts at frame zero and persists across reconnects and image restoration.  Each nested debugger has its own selection.  A mentioned :Nframes requires a value.  Zero displays the current frame.  Movement beyond the retained stack reports an error and preserves selection.  Mouse selection and :Set Current Frame use the same guest operation.
 

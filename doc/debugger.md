@@ -45,7 +45,7 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 | Evaluation | Lisp forms in the selected frame | Implements live bindings, writes, and per-level history through ordinary debugger form input.  Tested in x86-64 compiled condition stops and Chromium. |
 | Environment | Show Bindings; Show Catch Blocks; Show Condition Handlers; Show Lexical Environment; Show Special; Show Standard Value Warnings; Use Dynamic Environment; Use Lexical Environment | Planned. |
 | Recovery choices | Show Proceed Options | Partial: lists captured restart names and reports, marking the default CONTINUE. |
-| Objects | Describe Last; Symeval In Last Instance | Planned.  CLOS adaptation of instance access requires a specified mapping. |
+| Objects | Describe Last; Symeval In Last Instance | Describe Last and retained Inspector navigation and modification passed native x86-64, SWANK, and Chromium tests.  Symeval remains planned. |
 | Source and code | Analyze Frame; Show Source Code; Show Compiled Code; Show Instruction | Planned. |
 | Frame execution | Reinvoke; Return; Throw | Planned. |
 | Call and exit traps | Set Trap On Call; Clear Trap On Call; Proceed Trap On Call; Restart Trap On Call; Set Trap On Exit; Clear Trap On Exit | Planned. |
@@ -86,6 +86,32 @@ A completed capability requires its specified semantics and tests to pass on the
 The user guide will contain executable sessions for finding an error, inspecting and changing state, continuing, aborting nested operations, redefining and reinvoking a function, using breakpoints, and recovering after connection loss.  The command reference will give exact syntax and behavior.  The implementation reference will specify compiler guarantees, stopping states, ownership, object lifetimes, and transport behavior.
 
 Document Examiner will display these checked-in documents.  Interactive help will use guest command definitions.  Product documentation will describe supported behavior and explicit differences.  Research notes and chronological evidence belong in the development journal.
+
+## Object inspection
+
+Each debugger stop retains inspected objects by EQ identity.  `:Inspect` displays the primary value from that stop's evaluation history.  Evaluating a local variable and then entering `:Inspect` opens its value.  `:Describe Last` calls DESCRIBE on that value without changing the history.  `:Clear Inspector` releases that stop's inspection references.
+
+Inspection returns a page of printed components and opaque references to their values and writable places.  A bound NIL has a value reference.  An unbound slot has no value reference and can still have a writable place.  Repeated navigation to an EQ object returns the same object reference within a stop and boot.  Shared and cyclic objects preserve their identity.  Each component observation creates its own place reference.
+
+| Object | Components | Writable places |
+|---|---|---|
+| Cons | CAR and CDR | Both cells |
+| Array | Row-major elements, including elements beyond a fill pointer | Elements, subject to array element type |
+| Symbol | Name, package, value, function or macro, and plist | Value, ordinary function cell, and plist.  Constant values and macro/special-operator function cells are read-only. |
+| Hash table | Alternating key and value rows in table iteration order | Existing values, identified by the retained key |
+| CLOS instance | Effective slots, including unbound slots | Slots, subject to declared type |
+| Structure | Slots, with each fixed-vector element shown separately | Slots and fixed-vector elements, except read-only fields |
+| Other objects | Printed value and type | No component places |
+
+Modify reads a replacement expression through QUERY-IO and evaluates it in the selected frame using the same lexical environment and history as ordinary debugger evaluation.  It stores the primary value, or NIL for zero values, then inspects the containing object again.  A successful expression updates evaluation history even when the subsequent store or printer fails.  A completed store remains effective after a printing failure.  Repeating the accepted command ID retrieves its recorded outcome.
+
+Reader evaluation is disabled while reading the expression.  Reader, evaluation, type, and printer errors can enter a child debugger.  `:Abort` returns to the parent.  When a read unwinds, cleanup clears any input already buffered on QUERY-IO.  The retained input record and its offsets remain available for replay.  The next read waits for fresh input.
+
+Page sizes range from 1 through 64, defaulting to 32.  Positions are zero-based, and the end position is exclusive.  Refreshing after a container shrinks clamps the start to its current total.  A write rejects an out-of-range array index, removed hash key, changed class, or replaced effective slot.  Ordinary Lisp accessors check storage representation and declared types.  Shared objects can change in other threads.  Accessors retain their normal locking behavior.
+
+Clear and stop exit empty the inspection retention tables.  Clear preserves the increasing ID counter, so an old reference cannot name a newly retained value.  Evaluation history and application bindings can retain the same objects independently.  Old references expire on image restoration.  Native x86-64 tests cover restoring a parked condition stop with retained pages and writable components: historical results remain readable, old references and command replay expire, fresh references preserve object identity through GC, and Modify and Proceed succeed.  Restoration during an executing Inspector command remains untested.
+
+The current Inspector attaches to an active debugger stop.  Standalone inspection, compiled-function internals, and Genera locatives remain planned.  The [SWANK API reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) specifies page fields, token types, and errors.
 
 ## Architecture and ownership
 
@@ -155,7 +181,7 @@ The separate :LOCALS operation inspects an opaque frame reference without changi
 
 Command IDs start at zero and increase within each stop.  Acceptance occurs under the service mutex when the command is recorded, queued, and the next ID advances.  A transport reply can be lost after this transition.
 
-A duplicate ID succeeds only when the operation is `EQ`, the argument matches, and the recorded command belongs to the current boot.  Evaluation compares source strings with `EQUAL`; other operations compare arguments with `EQL`.  For a local-inspection command, argument identity means the same opaque frame reference.  A new frame-list command creates new references.  Duplicate recognition precedes the closed/busy checks but still requires a valid control lease.
+A duplicate ID succeeds only when the operation is `EQ`, the argument matches, and the recorded command belongs to the current boot.  Evaluation compares source strings with `EQUAL`.  Inspect and Modify compare copied argument lists with `EQUAL`; other operations compare arguments with `EQL`.  For a local-inspection command, argument identity means the same opaque frame reference.  A new frame-list command creates new references.  Duplicate recognition precedes the closed/busy checks but still requires a valid control lease.
 
 A stop accepts one outstanding command.  A pending command, running command, or child stop causes new submissions to receive `:stop-busy`.  The accepted command may remain pending after its controller closes.  A returning restart leaves the stop active.  A restart that transfers control out of the debugger closes it.
 
@@ -170,9 +196,9 @@ A stop accepts one outstanding command.  A pending command, running command, or 
 
 A failure during command execution can enter a child stop.  The parent command remains running, and new parent commands are rejected until the child resolves.  Each command establishes an ABORT restart with report "Abort this debugger command."  Invoking that captured restart in a child unwinds the parent command, records :unwound, and resumes the parent's command loop.  Its original computation stays stopped.  Client polling needs a deadline and a way to inspect child stops.  The API provides no remote command-cancellation operation.
 
-The operation set is `:evaluate`, `:condition`, `:restarts`, `:frames`, `:locals`, `:current-frame`, `:select-frame`, `:next-frame`, `:previous-frame`, `:top-frame`, `:bottom-frame`, `:abort`, `:proceed`, `:help`, `:invoke-restart`, `:invoke-restart-interactively`, and `:invoke-restart-with-arguments`.  Abort invokes the innermost captured restart named CL:ABORT.  Proceed invokes the innermost captured CL:CONTINUE restart interactively.  If none exists, acceptance rejects :NO-CONTINUE-RESTART without consuming a command ID or entering a child debugger.  The restart listing marks its selected default with :DEFAULT-P.  Help returns the guest command descriptions.  INVOKE-RESTART supplies zero arguments.  INVOKE-RESTART-INTERACTIVELY uses the selected restart's interactive function to obtain arguments.  INVOKE-RESTART-WITH-ARGUMENTS reads and evaluates one expression through QUERY-IO, then applies INVOKE-RESTART to its primary value, a finite proper list.  NIL selects zero arguments.  This operation accepts a restart index or NIL for the default CONTINUE.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#command-results) specifies result fields.
+The operation set is `:inspect`, `:modify`, `:describe-object`, `:clear-inspection`, `:evaluate`, `:condition`, `:restarts`, `:frames`, `:locals`, `:current-frame`, `:select-frame`, `:next-frame`, `:previous-frame`, `:top-frame`, `:bottom-frame`, `:abort`, `:proceed`, `:help`, `:invoke-restart`, `:invoke-restart-interactively`, and `:invoke-restart-with-arguments`.  Abort invokes the innermost captured restart named CL:ABORT.  Proceed invokes the innermost captured CL:CONTINUE restart interactively.  If none exists, acceptance rejects :NO-CONTINUE-RESTART without consuming a command ID or entering a child debugger.  The restart listing marks its selected default with :DEFAULT-P.  Help returns the guest command descriptions.  INVOKE-RESTART supplies zero arguments.  INVOKE-RESTART-INTERACTIVELY uses the selected restart's interactive function to obtain arguments.  INVOKE-RESTART-WITH-ARGUMENTS reads and evaluates one expression through QUERY-IO, then applies INVOKE-RESTART to its primary value, a finite proper list.  NIL selects zero arguments.  This operation accepts a restart index or NIL for the default CONTINUE.  The [protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md#command-results) specifies result fields.
 
-Values are printed on the stopped thread with `*print-readably* NIL`, `*print-circle* T`, `*print-level* 5`, and `*print-length* 20`.  User printers can allocate, block, signal conditions, or enter another stop.  Those bindings do not bound a custom printer's runtime or output.  The returned strings contain representations of objects.  The API provides no retained object references for browsing or editing.
+Values are printed on the stopped thread with `*print-readably* NIL`, `*print-circle* T`, `*print-level* 5`, and `*print-length* 20`.  User printers can allocate, block, signal conditions, or enter another stop.  Those bindings do not bound a custom printer's runtime or output.  Frame-local and evaluation results contain printed representations.  The [Inspector operations](#object-inspection) retain object and component references for navigation and modification.
 
 ### Disconnect and restore
 
