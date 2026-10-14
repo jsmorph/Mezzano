@@ -1,0 +1,129 @@
+(defpackage #:lispm-control-records-test
+  (:use #:cl #:mezzano.debug)
+  (:local-nicknames (#:d #:mezzano.debug) (#:i #:mezzano.internals)
+                    (#:r #:mezzano.runtime) (#:test #:lispm-service-test)
+                    (#:frame #:lispm-frame-evaluation-test))
+  (:export #:run))
+(in-package #:lispm-control-records-test)
+
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+(define-condition probe-condition (condition) ())
+(define-condition probe-subcondition (probe-condition) ())
+(defvar *outer-handler-count* 0)
+
+(defun outer-handler (condition)
+  (declare (ignore condition))
+  (incf *outer-handler-count*))
+
+(defun inner-handler (condition)
+  (declare (ignore condition))
+  (break "Owned selected-handler inspection."))
+
+(defun body-target (mode)
+  (ecase mode
+    (:body (break "Owned control-record inspection."))
+    (:handler (signal 'probe-subcondition)))
+  (values 42 43))
+
+(defun application (mode)
+  (handler-bind ((probe-condition #'outer-handler))
+    (catch 'outer-tag
+      (handler-bind ((probe-subcondition #'inner-handler))
+        (catch 'inner-tag
+          (body-target mode))))))
+
+(defun observe ()
+  (loop for frame across (d::service-stop-frames d::*service-current-stop*)
+        for index from 0
+        append
+        (multiple-value-bind (bindings available-p) (d::service-frame-bindings frame)
+          (declare (ignore available-p))
+          (loop for (symbol bound-p value) in bindings
+                when (and bound-p
+                          (or (and (eq symbol 'r::*active-catch-handlers*)
+                                   (member (svref value 0) '(inner-tag outer-tag)))
+                              (and (eq symbol 'i::*active-handlers*)
+                                   (some (lambda (cluster)
+                                           (some (lambda (handler)
+                                                   (member (car handler) '(probe-condition probe-subcondition)))
+                                                 cluster))
+                                         value))))
+                  collect (list index (i::function-name (nth-value 1 (frame-function frame)))
+                                symbol value)))))
+
+(defun check-records (handler-p)
+  (let* ((rows (observe))
+         (catches (remove 'r::*active-catch-handlers* rows :key #'third :test-not #'eq))
+         (handlers (remove 'i::*active-handlers* rows :key #'third :test-not #'eq))
+         (active (fourth (first handlers)))
+         (types (mapcar (lambda (cluster) (mapcar #'car cluster)) active)))
+    (assert (equal (mapcar (lambda (row) (svref (fourth row) 0)) catches)
+                   '(inner-tag outer-tag)))
+    (assert (every (lambda (row) (functionp (svref (fourth row) 1))) catches))
+    (assert (every (lambda (row) (eq (second row) 'i::%catch)) catches))
+    (let* ((introductions (if handler-p (rest handlers) handlers))
+           (inner (fourth (first introductions)))
+           (outer (fourth (second introductions))))
+      (assert (= (length introductions) 2))
+      (assert (every (lambda (row) (eq (second row) 'i::%handler-bind)) introductions))
+      (assert (eq (cdr inner) outer))
+      (when handler-p
+        (assert (eq (second (first handlers)) 'signal))
+        (assert (eq active outer))))
+
+    (assert (if handler-p
+                (equal types '((probe-condition)))
+                (equal types '((probe-subcondition) (probe-condition))))
+            () "~S" types)
+    (mapcar (lambda (row)
+              (list (first row) (second row)
+                    (if (eq (third row) 'r::*active-catch-handlers*)
+                        (list :catch (svref (fourth row) 0)
+                              (i::function-name (svref (fourth row) 1)))
+                        (list :handlers (mapcar (lambda (cluster) (mapcar #'car cluster))
+                                                (fourth row))))))
+            rows)))
+
+(defun run-case (mode)
+  (setf *outer-handler-count* 0)
+  (let* ((controller (make-debugger-controller))
+         (job (start-evaluation-job
+               (string-downcase (format nil "~32,'0X~32,'0X" (get-universal-time)
+                                        (random most-positive-fixnum)))
+               (format nil "(application ~S)" mode) :package "LISPM-CONTROL-RECORDS-TEST"))
+         (handle nil) (lease nil))
+    (unwind-protect
+         (progn
+           (setf handle (test::await (lambda () (first (getf (evaluation-job-information job) :stops))))
+                 lease (attach-debugger-stop handle controller))
+           (frame::select-function handle lease (if (eq mode :handler) #'inner-handler #'body-target))
+           (let* ((source (format nil "(check-records ~S)" (eq mode :handler)))
+                  (before (test::command handle lease :evaluate source)))
+             (format t "~S records: ~A~%" mode (first before))
+             (mezzano.extensions:gc :full t)
+             (assert (equal before (test::command handle lease :evaluate source))))
+           (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :proceed)
+             (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
+           (let ((info (test::await
+                        (lambda ()
+                          (let ((info (evaluation-job-information job)))
+                            (unless (eq (getf info :state) :running) info))))))
+             (assert (eq (getf info :state) :returned))
+             (assert (equal (getf info :values) '("42" "43")) () "~S" info))
+           (assert (= *outer-handler-count* (if (eq mode :handler) 1 0)))
+           (release-debugger-stop lease)
+           (setf handle nil)
+           (release-evaluation-job job)
+           (setf job nil))
+      (when handle (frame::release-test-stop handle controller))
+      (when job
+        (test::await (lambda () (not (eq (getf (evaluation-job-information job) :state) :running))))
+        (release-evaluation-job job))
+      (close-debugger-controller controller))))
+
+(defun run ()
+  (run-case :body)
+  (run-case :handler)
+  (format t "PASS control-record ownership, active handler contours, catch tags, GC, multiple values, and cleanup.~%")
+  t)

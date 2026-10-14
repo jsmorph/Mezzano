@@ -460,6 +460,15 @@ The handler-scope fixture uses the debugger-service and frame-evaluation helpers
 
 It verifies that application handlers cannot intercept errors from debugger evaluation, printers, or normally returning restart functions.  Handlers installed by evaluated forms remain active.  Nested BREAK, child Abort, continuation, and unwind cleanup test restoration of the original handlers.  These native x86-64 tests use DEBUG 3, SAFETY 3, SPEED 1 and release their owned jobs and stops.
 
+The control-record fixture observes internal catch and handler records through the existing frame-binding reader:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-CONTROL-RECORDS.LISP"))
+(lispm-control-records-test:run)
+```
+
+It checks nested catch tags and exit functions, handler-cluster identity and frame ownership, an ordinary BREAK, a BREAK within a selected handler, full GC, multiple-value continuation, and release of owned jobs and stops.  It uses the same test helpers and native x86-64 DEBUG 3 policy.  Public catch and handler display commands remain planned.  The fixture establishes evidence for their implementation.
+
 ## Inspection reference tests
 
 The reference fixture tests the internal object-retention layer.  Load the debugger-service and frame-evaluation fixtures first:
