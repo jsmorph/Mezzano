@@ -59,6 +59,7 @@ textarea { display: block; border: 0; outline: none; padding: 0; resize: none; f
 .condition { font-weight: bold; margin: 0 0 12px; }
 .restarts { margin: 12px 0; }
 .debugger-transcript { margin: 12px 0; }
+.compiled-code-result, .instruction-result { white-space: pre; overflow-x: auto; }
 #debug-command { display: flex; gap: 8px; margin-top: 12px; }
 #debugger-command { border: 0; outline: none; padding: 0; flex: 1; min-width: 0; }
 .restarts button, .frame { display: block; }

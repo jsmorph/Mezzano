@@ -1087,6 +1087,7 @@ function renderStops() {
     inspect.disabled = !available;
     menuChildren.push(inspect);
     for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
+                        ":Show Function", ":Show Compiled Code", ":Show Instruction",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
                         ":Inspect", ":Describe Last", ":Clear Inspector"]) {
       const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
@@ -1182,10 +1183,11 @@ function renderStops() {
       description.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : label(result?.state), "description-result"));
       detailChildren.push(description);
-    } else if (["arglist", "bindings", "handlers", "catches"].includes(command.command)) {
+    } else if (["arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction"].includes(command.command)) {
       const output = node("div", undefined, "debugger-" + command.command);
       const name = {arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
-        catches: ":Show Catch Blocks"}[command.command];
+        catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
+        instruction: ":Show Instruction"}[command.command];
       output.append(node("pre", "→ " + (command.source ?? name), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : label(result?.state), command.command + "-result"));
       detailChildren.push(output);

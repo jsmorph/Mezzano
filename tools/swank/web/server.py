@@ -393,7 +393,8 @@ def operation_arguments(operation, args, session):
         if command not in ("condition", "restarts", "frames", "locals", "current-frame", "select-frame",
                            "next-frame", "previous-frame", "top-frame", "bottom-frame", "proceed", "invoke-restart",
                            "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "help",
-                           "inspect", "modify", "describe-object", "clear-inspection", "arglist", "bindings", "handlers", "catches"):
+                           "inspect", "modify", "describe-object", "clear-inspection", "arglist", "bindings", "handlers", "catches",
+                           "function", "compiled-code", "instruction"):
             raise ValueError("Unsupported debugger command.")
         argument = args.get("argument")
         if command == "evaluate":

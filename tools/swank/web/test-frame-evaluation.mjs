@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { openBrowser } from './browser-test-support.mjs';
 
@@ -98,6 +98,28 @@ async function selectTarget(selector = '#source', name = marker + '-TARGET') {
   await command(':Set Current Frame ' + index, selector);
   await frame(index);
   return index;
+}
+async function codeCommand(operation, label, completion, menu = false) {
+  const previous = await browser.evaluate(`latestCommand(${text(operation)})?.id ?? -1`);
+  if (menu) {
+    await browser.click('#window-label');
+    await clickText('#debugger-menu', label);
+  } else {
+    await fill('#source', completion);
+    await key(' ', 'Space', 32);
+    await browser.waitFor(`document.querySelector('#source').value.trim() === ${text(label)} && !busy`);
+    await key('Enter', 'Enter', 13);
+  }
+  await browser.waitFor(`latestCommand(${text(operation)})?.id > ${previous}
+    && commandResults.get(commandKey(latestCommand(${text(operation)})))?.state === ':returned' && !busy`, 60);
+  const result = await browser.evaluate(`commandResults.get(commandKey(latestCommand(${text(operation)}))).result`);
+  assert.equal(typeof result, 'string');
+  assert.equal(await browser.evaluate(`[...document.querySelectorAll('.${operation}-result')].at(-1).textContent`), result);
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), evidence.frame);
+  return result;
+}
+async function seedHistory() {
+  for (const value of [11, 21, 31]) await evaluation(`(values ${value} ${value + 1})`, [String(value), String(value + 1)]);
 }
 async function rejected(source, pattern, history = false) {
   const parent = await browser.evaluate('selectedStop');
@@ -261,6 +283,7 @@ try {
   await browser.waitFor("latestCommand('arglist') && commandResults.get(commandKey(latestCommand('arglist')))?.state === ':returned' && !busy");
   assert.equal(await browser.evaluate("document.querySelector('.arglist-result').textContent"), expectedArglist);
   const firstArglist = await browser.evaluate("latestCommand('arglist').id");
+  const originalCode = await codeCommand('compiled-code', ':Show Compiled Code', ':Show Compiled C');
   const replacementJob = randomBytes(32).toString('hex');
   jobs.push(replacementJob);
   await browser.evaluate(`mutate('start-evaluation', ${text({name:replacementJob,
@@ -276,6 +299,62 @@ try {
   await save('arglist-active-definition');
   await evaluation('(values * / + -)', ['10', '(10 20)', '(VALUES 10 20)', '(VALUES * / + -)']);
   evidence.checks.push('Show Arglist completion and typed/menu commands report the active compiled signature after global redefinition without changing selected frame or evaluation history');
+  const history = ['(VALUES 31 32)', '(VALUES 21 22)', '(VALUES 11 12)', '21', '11', '(31 32)', '(21 22)', '(11 12)'];
+  await seedHistory();
+  evidence.code = {compiled: [], instructions: [], functions: []};
+  for (const menu of [false, true]) {
+    const compiled = await codeCommand('compiled-code', ':Show Compiled Code', ':Show Compiled C', menu);
+    assert(compiled.startsWith('Compiled code for '));
+    assert(compiled.includes(target));
+    assert.equal(compiled, originalCode, 'Global redefinition must preserve the selected executing function code');
+    assert.match(compiled, /\n(?: L[0-9]+)? +#x0010: [0-9A-F]/);
+    const labels = new Set([...compiled.matchAll(/^ L([0-9]+)\s+#x/gm)].map(match => match[1]));
+    const branches = [...compiled.matchAll(/\(J[A-Z]+ L([0-9]+)\)/g)].map(match => match[1]);
+    assert(branches.length > 0, 'The target must contain labelled branches');
+    assert(branches.every(label => labels.has(label)), 'Every branch label must have a displayed definition');
+    evidence.code.compiled.push(compiled);
+    const instruction = await codeCommand('instruction', ':Show Instruction', ':Show Instr', menu);
+    assert(instruction.startsWith('Saved caller location in '));
+    assert(instruction.includes(target));
+    assert.match(instruction, /at byte offset #x[0-9A-F]+ \(instruction starts at #x[0-9A-F]+\):\n(?: L[0-9]+)? +#x[0-9A-F]+: /);
+    evidence.code.instructions.push(instruction);
+  }
+  await evaluation('(values * + ++ +++ ** *** / // ///)', ['31', ...history]);
+  evidence.checks.push('Compiled Code and Instruction completion/menu actions display selected executing code and saved caller location after global redefinition, preserving selection and all nine history slots');
+
+  await seedHistory();
+  for (const menu of [false, true]) {
+    const displayed = await codeCommand('function', ':Show Function', ':Show Fun', menu);
+    assert(displayed.startsWith('Function = '));
+    assert(displayed.includes(target));
+    evidence.code.functions.push(displayed);
+  }
+  await evaluation(`(values (functionp *) (eq * (fdefinition '${target})) + ++ +++ ** *** / // ///)`, ['T', 'NIL', ...history]);
+  await codeCommand('function', ':Show Function', ':Show Fun');
+  await command(':Inspect');
+  await browser.waitFor("commandResults.get(commandKey(latestCommand('inspect')))?.state === ':returned' && !busy");
+  evidence.code.inspection = await browser.evaluate("commandResults.get(commandKey(latestCommand('inspect'))).result");
+  assert(evidence.code.inspection.title.includes(target));
+  assert.equal(await browser.evaluate("document.querySelector('.inspection-title').textContent"), evidence.code.inspection.title);
+  evidence.checks.push('Show Function completion/menu assigns the old active function only to *, preserves the other eight history slots, and supplies that object to Inspect');
+  await browser.send('Emulation.setDeviceMetricsOverride', {width: 640, height: 900, deviceScaleFactor: 1, mobile: false});
+  evidence.code.layout = await browser.evaluate(`['compiled-code','instruction'].map(name => {
+    const element = [...document.querySelectorAll('.' + name + '-result')].at(-1);
+    const style = getComputedStyle(element);
+    return {name, whitespace: style.whiteSpace, overflow: style.overflowX, client: element.clientWidth, scroll: element.scrollWidth};
+  })`);
+  for (const layout of evidence.code.layout) {
+    assert.equal(layout.whitespace, 'pre');
+    assert.equal(layout.overflow, 'auto');
+    assert(layout.scroll > layout.client, layout.name + ' must scroll its long code line');
+  }
+  await browser.evaluate("[...document.querySelectorAll('.instruction-result')].at(-1).scrollIntoView({block:'center'})");
+  await save('instruction-horizontal-scroll');
+  await browser.send('Emulation.clearDeviceMetricsOverride');
+  await browser.evaluate("[...document.querySelectorAll('.compiled-code-result')].at(-1).scrollIntoView({block:'start'})");
+  await save('compiled-code');
+  evidence.code.retained = await browser.evaluate("[...document.querySelectorAll('.compiled-code-result,.instruction-result,.function-result')].map(element => element.textContent)");
+  evidence.code.commands = await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop) && ['function','compiled-code','instruction'].includes(command.command)).map(command => command.id)");
   await evaluation('(values)', []);
   await evaluation('(values * /)', ['NIL', 'NIL']);
   const beforeReload = await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)");
@@ -286,6 +365,8 @@ try {
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)"), beforeReload);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.arglist-result')].map(element => element.textContent)"), evidence.arglists);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.bindings-result')].map(element => element.textContent)"), evidence.bindings.retained);
+  assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.compiled-code-result,.instruction-result,.function-result')].map(element => element.textContent)"), evidence.code.retained);
+  assert.deepEqual(await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop) && ['function','compiled-code','instruction'].includes(command.command)).map(command => command.id)"), evidence.code.commands);
   evidence.checks.push('Multiple and zero values, per-stop history, and ordered retained form results survive browser reload');
 
   await rejected('(setq x "wrong")', /FIXNUM/, true);
@@ -358,8 +439,109 @@ try {
   assert.deepEqual(evidence.continued.values, ['42', '42', '42', '37']);
   await browser.waitFor(`stops.find(stop => same(stop.token, ${text(parent.stop)}))?.info.state === ':closed' && !busy`);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)"), beforeProceed);
+  assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.compiled-code-result,.instruction-result,.function-result')].map(element => element.textContent)"), evidence.code.retained);
+  evidence.checks.push('Function/code/instruction results retain columns with horizontal scrolling, survive reload without another command, and remain printed after the stop closes');
   await save('closed-history');
   await switchActivity('listener');
+  const codeTarget = marker + '-CODE-TARGET';
+  targetJob = await start(`(unwind-protect
+    (let ((probe (make-instance 'lispm-describe-test:probe :value 42)))
+      (multiple-value-bind (name warnings failure)
+          (compile '${codeTarget}
+            \`(lambda ()
+               (declare (mezzano.internals::lambda-name ${codeTarget})
+                        (optimize (debug 3) (safety 3) (speed 1)))
+               (let ((probe ',probe))
+                 (break "${marker} code printer")
+                 (values (slot-value probe 'lispm-describe-test::value) 43))))
+        (declare (ignore name))
+        (assert (not (or warnings failure))))
+      (assert (compiled-function-p (fdefinition '${codeTarget})))
+      (funcall (fdefinition '${codeTarget})))
+    (when (fboundp '${codeTarget}) (fmakunbound '${codeTarget}))
+    (unintern '${codeTarget}))`);
+  const codeParent = await stopped(targetJob);
+  const codeFrame = await selectTarget('#source', codeTarget);
+  const codePrinterError = marker + ' code constant printer';
+  await evaluation(`(progn (setf (slot-value probe 'lispm-describe-test::failure)
+    (make-condition 'simple-error :format-control "${codePrinterError}")) (values))`, []);
+  await command(':Show Compiled Code');
+  await stopped(targetJob, 2);
+  assert.equal(await browser.evaluate("returnedResult('condition')"), codePrinterError);
+  await save('code-printer-error');
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(codeParent.stop)}) && !busy`);
+  await stopped(targetJob);
+  assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('compiled-code'))).state"), ':unwound');
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('.compiled-code-result')].at(-1).textContent"), 'unwound');
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), codeFrame);
+  await evaluation("(progn (setf (slot-value probe 'lispm-describe-test::failure) nil) (values))", []);
+  await command(':Show Compiled Code');
+  await browser.waitFor("commandResults.get(commandKey(latestCommand('compiled-code')))?.state === ':returned' && !busy");
+  evidence.code.printerRecovered = await browser.evaluate("commandResults.get(commandKey(latestCommand('compiled-code'))).result");
+  assert(evidence.code.printerRecovered.includes('DESCRIPTION-PROBE'));
+  assert(evidence.code.printerRecovered.includes(codeTarget));
+  await browser.evaluate("[...document.querySelectorAll('.compiled-code-result')].at(-1).scrollIntoView({block:'start'})");
+  await save('code-printer-recovered');
+  await command(':Proceed');
+  assert.deepEqual((await completed(targetJob)).values, ['42', '43']);
+  evidence.checks.push('Compiled constant printer error enters a child; typed Abort preserves the selected parent frame, repair permits code display, and Proceed returns 42/43');
+  const largeTarget = marker + '-LARGE-TARGET', largeSink = marker + '-LARGE-SINK';
+  const largeLast = '*' + marker + '-LARGE-LAST*';
+  targetJob = await start(`(unwind-protect (progn
+    (defparameter ${largeLast} nil)
+    (defun ${largeSink} (value) (setq ${largeLast} value))
+    (multiple-value-bind (name warnings failure)
+        (compile '${largeTarget}
+          \`(lambda ()
+             (declare (mezzano.internals::lambda-name ${largeTarget})
+                      (notinline ${largeSink})
+                      (optimize (debug 3) (safety 3) (speed 1)))
+             (break "${marker} large disassembly")
+             ,@(loop for value below 1000 collect (list '${largeSink} value))
+             (values 42 43)))
+      (declare (ignore name))
+      (assert (not (or warnings failure))))
+    (multiple-value-prog1 (funcall (fdefinition '${largeTarget}))
+      (assert (= ${largeLast} 999))))
+    (dolist (name '(${largeTarget} ${largeSink})) (when (fboundp name) (fmakunbound name)))
+    (when (boundp '${largeLast}) (makunbound '${largeLast}))
+    (dolist (name '(${largeTarget} ${largeSink} ${largeLast})) (unintern name)))`);
+  await stopped(targetJob);
+  const largeFrame = await selectTarget('#source', largeTarget);
+  const expectedLarge = `(let* ((context (mezzano.disassemble:make-disassembler-context (fdefinition '${largeTarget})))
+    (instructions (mezzano.disassemble:context-instructions context)))
+    (values (length instructions) (mezzano.disassemble:inst-offset (aref instructions (1- (length instructions))))))`;
+  await command(expectedLarge);
+  await browser.waitFor("commandResults.get(commandKey(latestCommand('evaluate')))?.state === ':returned' && !busy");
+  const expectedRows = await browser.evaluate("commandResults.get(commandKey(latestCommand('evaluate'))).result.map(Number)");
+  assert(expectedRows.every(value => Number.isSafeInteger(value) && value > 0));
+  await evaluation('(values 81 82)', ['81', '82']);
+  await command(':Show Compiled Code');
+  await browser.waitFor("commandResults.get(commandKey(latestCommand('compiled-code')))?.state === ':returned' && !busy", 60);
+  const largeCode = await browser.evaluate("commandResults.get(commandKey(latestCommand('compiled-code'))).result");
+  assert(largeCode.length > 65536);
+  const largeRows = largeCode.split('\n').filter(line => /^(?: L[0-9]+)? +#x[0-9A-F]+:/.test(line));
+  assert.equal(largeRows.length, expectedRows[0]);
+  assert(largeRows.at(-1).includes('#x' + expectedRows[1].toString(16).toUpperCase().padStart(4, '0') + ':'));
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('.compiled-code-result')].at(-1).textContent"), largeCode);
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), largeFrame);
+  await evaluation(`(values * / + ${largeLast})`, ['81', '(81 82)', '(VALUES 81 82)', 'NIL']);
+  const largeId = await browser.evaluate("latestCommand('compiled-code').id");
+  const largeOrigin = await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin !== ${largeOrigin} && document.readyState === 'complete' && connected && !busy`);
+  await stopped(targetJob);
+  assert.equal(await browser.evaluate("latestCommand('compiled-code').id"), largeId);
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('.compiled-code-result')].at(-1).textContent"), largeCode);
+  await browser.evaluate("[...document.querySelectorAll('.compiled-code-result')].at(-1).scrollIntoView({block:'end'})");
+  await save('large-code-terminal-instruction');
+  await writeFile(join(output, 'large-code.txt'), largeCode);
+  evidence.largeCode = {characters:largeCode.length, rows:largeRows.length, lastOffset:expectedRows[1],
+    terminal:largeRows.at(-1), sha256:createHash('sha256').update(largeCode).digest('hex'), frame:largeFrame, commandId:largeId};
+  await command(':Proceed');
+  assert.deepEqual((await completed(targetJob)).values, ['42', '43']);
+  evidence.checks.push('Disassembly above 64 KiB contains every decoded row and terminal instruction, preserves history and selection, survives reload without another command, and Proceed returns 42/43 after all 1000 sink calls');
   const handlerTarget = marker + '-HANDLER-TARGET';
   const applicationError = marker + ' application error';
   targetJob = await start(`(unwind-protect (progn
@@ -633,7 +815,7 @@ try {
   evidence.catchDisplay.continued = await completed(targetJob);
   assert.deepEqual(evidence.catchDisplay.continued.values, ['42', '43', '1', '1']);
   evidence.checks.push('Catch-tag printer error enters a child and typed Abort permits repair; Proceed throws 42 and 43 through the inner repeated tag with one cleanup and one post-catch execution');
-  const next = await start(`(progn (dolist (name '(${[...symbols, handlerTarget, ...controlSymbols, catchTarget, catchTag].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
+  const next = await start(`(progn (dolist (name '(${[...symbols, codeTarget, largeTarget, largeSink, largeLast, handlerTarget, ...controlSymbols, catchTarget, catchTag].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
   assert.deepEqual((await completed(next)).values, ['42']);
   evidence.checks.push('Standalone debugger evaluates forms; Proceed observes immediate writes and distinct outer cell, closed stop retains printed history, definition cleanup and next Listener succeed');
 

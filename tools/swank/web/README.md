@@ -73,6 +73,9 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Top Of Stack` | Selects frame zero. |
 | `:Bottom Of Stack` | Selects the last frame. |
 | `:Show Frame` | Displays the selected function and available locals. |
+| `:Show Function` | Displays the selected frame's associated function and assigns it to this stop's * history value. |
+| `:Show Compiled Code` | Disassembles the selected frame's executing function. |
+| `:Show Instruction` | Displays the instruction containing the saved caller location or the interrupted program counter. |
 | `:Show Arglist` | Displays the selected compiled function's argument list, preserving the active definition after redefinition. |
 | `:Show Bindings` | Displays special-variable bindings established by the selected frame.  :All selects every frame.  :Matching filters symbol names. |
 | `:Show Condition Handlers` | Displays condition handlers established by the selected frame and their active status at stop entry.  :All selects every frame. |
@@ -80,13 +83,17 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Show Local All` | Displays the selected frame's local records. |
 | `:Show Local N` | Displays one local by its zero-based index. |
 | `:Show Proceed Options` | Lists restart choices. |
-| `:Inspect` | Inspects the primary value in this stop's evaluation history. |
-| `:Describe Last` | Describes that primary value. |
+| `:Inspect` | Inspects this stop's * history value. |
+| `:Describe Last` | Describes this stop's * history value. |
 | `:Clear Inspector` | Releases this stop's Inspector references and clears its displayed inspection history. |
 
 Input without an initial colon evaluates one Lisp form in the selected frame's lexical environment.  For example, `x` reads a binding, `(setq x 42)` writes it, and `(values x (helper))` returns multiple values.  Writes take effect immediately and must satisfy the binding's declared type and storage representation.  :Show Frame refreshes previously printed locals.  Evaluation sources and their printed results remain in command order, including across reload and stop closure.  Zero values display `(No values)`.
 
 Each debugger stop has separate `+`, `++`, and `+++` form history, `*`, `**`, and `***` primary-value history, and `/`, `//`, and `///` lists of returned values.  `-` holds the current form.  An evaluation error enters a child debugger.  Typed :Abort abandons that evaluation and returns to the parent.  Read-time evaluation is disabled, and the source must contain exactly one form.  Frames without lexical scope information reject evaluation.  The stopped thread's current special bindings apply.  Selecting an older frame does not reconstruct its former dynamic bindings.  References to a live frame expire when its stop exits or the image restarts.
+
+:Show Function assigns the associated function object to * without rotating value or form history.  The other eight history slots and frame selection remain unchanged.  :Inspect can then inspect that function.  Unlike Genera, the command does not assign a function locative to +.
+
+:Show Compiled Code and :Show Instruction use the executing function retained by the selected frame, including after its global definition changes.  They preserve history and selection.  Code output covers that one function, with hexadecimal byte offsets from the function object and instruction bytes.  Long lines scroll horizontally.  Unavailable locations produce explicit messages, and undecoded bytes remain visible.  Instruction output labels a saved caller location or an interrupted program counter.  A saved caller location identifies the suspended call, rather than a next instruction under stepping.  These commands take no arguments.  Current execution tests cover x86-64.  ARM64 acceptance remains untested.  Explicit function specifications, PC ranges, More processing, output redirection, Genera accelerators, PC breakpoint mouse actions, and stepping are unsupported.  Printed results survive reload and stop closure.
 
 :Show Arglist displays the argument list stored with the selected compiled function.  An empty list displays NIL.  Missing metadata produces an explicit unavailable message.  The command preserves frame selection and evaluation history, and its printed result survives reload.
 
@@ -106,7 +113,7 @@ Command evaluation, printing, and normally returning restart functions execute w
 
 Printing a condition or value can enter a child stop.  Interrupting a running debugger command also creates a child stop, including when its parent came from an earlier interruption.  The owning Listener follows that child, and :Abort returns to its parent without continuing the original computation.  Parent Stop and Child Stop navigate the relationship in the separate Debugger while the parent command remains running.  Closed stops retain previously queried results until Release Stop.  Closing a stop clears its selected frame and backtrace highlight.  The last returned frame inspection remains labelled as a recorded frame from the closed stop.
 
-The Web debugger exposes condition, frame, local, and restart inspection, interruption, lexical frame evaluation and writes, object inspection and modification, and restart invocation with interactive or explicit arguments.  Source or disassembly views and stepping remain unavailable.
+The Web debugger exposes condition, frame, local, and restart inspection, interruption, lexical frame evaluation and writes, object inspection and modification, and restart invocation with interactive or explicit arguments.  Selected-frame disassembly is available.  Source views and stepping remain unavailable.
 
 ### Object Inspector
 
@@ -173,7 +180,7 @@ When the guest reports an expired session, the browser creates a new session, ar
 
 Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
 
-Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, arglist, bindings, handlers, and catches.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
+Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, arglist, bindings, handlers, catches, function, compiled-code, and instruction.  Function, compiled-code, and instruction take no argument and return strings.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
 
 Arglist takes no argument and returns the guest-formatted signature or unavailable message as a string.
 
@@ -185,7 +192,7 @@ Catches accepts null or false for the selected frame, or true for all frames.  I
 
 Evaluate requires one source string and returns an array of printed values, or null for zero values.  Evaluation and printing errors enter a child debugger.  Repeating an uncertain evaluation with the original command ID and source retrieves that command without evaluating it again.
 
-Inspect accepts null for the primary evaluation-history value, or `[object-token, start, count]`.  Modify requires `[part-token, start, count]`.  Start is nonnegative, and count is from 1 through 64.  The default inspection starts at zero with count 32.  Both return object, title, type, start, end, count, total, and parts.  End is exclusive.  Count preserves the requested size even on a partial page.  Each part supplies label, bound-p, value, object, and part.  Unbound values have null value and object fields.  A part token is present only for writable places.  Object and part tokens use the existing three-element session-token representation.  Describe-object accepts an object token or null and returns a string.  Clear-inspection takes no argument.
+Inspect accepts null for the stop's * history value, or `[object-token, start, count]`.  Modify requires `[part-token, start, count]`.  Start is nonnegative, and count is from 1 through 64.  The default inspection starts at zero with count 32.  Both return object, title, type, start, end, count, total, and parts.  End is exclusive.  Count preserves the requested size even on a partial page.  Each part supplies label, bound-p, value, object, and part.  Unbound values have null value and object fields.  A part token is present only for writable places.  Object and part tokens use the existing three-element session-token representation.  Describe-object accepts an object token or null and returns a string.  Clear-inspection takes no argument.
 
 Invoke-restart and invoke-restart-interactively require a restart index.  Invoke-restart calls the restart with zero arguments.  Invoke-restart-interactively runs its interactive argument reader.  Invoke-restart-with-arguments accepts an index or null for the default and reads an argument-list expression through QUERY-IO.  Abort, Proceed, and Help take no argument.  Proceed selects the first captured CL:CONTINUE restart and invokes it interactively.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
 
