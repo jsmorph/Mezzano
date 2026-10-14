@@ -60,7 +60,7 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 
 - [x] Establish per-command abort boundaries.  Add typed Abort and Help, exact Listener ownership/nesting, completion, prompt restoration, and equivalent button actions.
 - [ ] Complete restart invocation, interactive input, explicit arguments, default proceed selection, restart reports, and normal-return versus nonlocal-exit results.
-- [ ] Complete interruption of debugger operations and correct frame capture for interrupted frameless functions.  Validate caller locals, moving GC, nested interruption, and input recovery in the browser before extending frame evaluation.  Register-local inspection remains separate work.
+- [x] Complete interruption of debugger operations and correct frame capture for interrupted frameless functions.  Validate caller locals, moving GC, nested interruption, and input recovery in the browser before extending frame evaluation.  Register-local inspection remains separate work.
 - [ ] Add guest-owned frame selection and navigation, live frame evaluation and writes, evaluation history, object inspection, and the required compiler metadata.
 - [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.

@@ -1876,8 +1876,8 @@ Tests must interrupt condition printing, an interactive argument read, and a com
 
 - [x] Implement target-thread command boundary and nested interrupt bookkeeping.
 - [x] Compile and test in Mezzano, including the existing interruption suite.
-- [ ] Expose availability and test recovery through Chromium.
-- [ ] Update the reference, review, commit, and push.
+- [x] Expose availability and test recovery through Chromium.
+- [x] Update the reference, review, commit, and push.
 
 ## Interrupted frameless function omitted from backtrace: 2026-10-13
 
@@ -1916,3 +1916,35 @@ The input stream now counts waiting readers.  The extended compiled debugger-int
 All changed Lisp files compiled in Mezzano with warnings NIL and failure NIL.  Existing tests passed SWANK local identity, debugger control, evaluation interruption, binding writes, captured closure writes, local debug policy, debugger service, batch evaluation, and interactive stream behavior.  Evidence in the build directory: debugger-walker-load.log, debugger-frameless-test.log, debugger-input-load-test.log, and debugger-walker-existing.log.  The first input-service reload precheck erroneously examined released interactive jobs whose input streams had been cleared.  Its retained condition reported EVALUATION-INPUT-WAITING-P called with NIL.  Restricted that precheck to running jobs, released the failed runner and stop346, and reran successfully.
 
 Browser tests are running separately.  No VM restart, snapshot restoration, ARM64 execution, saved-register local inspection, or frameless interrupt-return traversal has been tested for this increment.  No SBCL process was used.
+
+The focused Chromium suite passed all nine groups after the guest corrections, including condition-stop and interruption-stop restart readers, nested Interrupt, typed child Abort, parent CONTINUE, restored application input, and evaluation result 444.  Seven owned jobs, ten stops, and the session were released.  The broad suite passed Listener commands/completion, files/history, independent tabs, input/EOF, interruption, debugger inspection and draft recovery across reload, parent/child navigation, closed-stop results, lost-reply recovery, releases, and session replacement.  The focused run recorded four intentional HTTP 400 responses.  The broad run recorded two expected HTTP 409 responses.  Neither run reported an unexpected browser error.  Evidence on the browser host: /tmp/listener-debugger-interrupt-count-final/result.json and /tmp/listener-debugger-broad-interrupt-count-final.log.  User stop165 remained closed with next command ID8.
+
+Guest implementation commit b9065b67, Web commit 7f47167a, and Slime documentation commit e1708d73 are pushed on debugging.  The delivery plan now marks per-command recovery and debugger-operation interruption complete for the documented tested scope.  Explicit restart arguments, default Proceed selection, guest-owned frame navigation, lexical evaluation, object/environment/source inspection, frame control transfers, breakpoints, stepping, monitoring, and background/startup integration remain planned.
+
+## Snapshot failure and thread retention: 2026-10-13
+
+The final save failed after the debugger guest and Chromium tests passed.  Snapshot preparation completed, but a major collection during page writeback panicked with Insufficient space for garbage collection.  The disk header had not yet been updated.  The development guest stopped answering SWANK.  Paused QEMU PID 475778 and preserved the image, serial log, and a host core containing guest RAM under debugger-snapshot-panic-20261013 names.  The original VM remains untouched.
+
+Read-only inspection of the preserved RAM found 621579 free backing-store blocks, reservation counter 588262, and 457566 mapped pages requiring reservations.  All current mapped pages are uncommitted after snapshot preparation.  Ordinary thread-stack regions account for 355760 mapped pages.  These measurements identify retained stack capacity and a separate reservation excess.  They do not yet establish the complete cause of the panic.
+
+Source review found a definite SWANK thread-retention error.  SWANK/MEZZANO::*THREAD-IDS-FOR-EMACS* holds both thread-to-integer and integer-to-thread entries with weakness :KEY-OR-VALUE.  Mezzano's UPDATE-ONE-WEAK-POINTER retains such an entry whenever either member is live.  Immediate integer IDs are always live, so each entry retains its thread.  Recommendation: use :KEY-AND-VALUE, which requires the thread to remain independently reachable.  Preserve existing IDs when replacing the live table.  Test both directions, stable IDs across full collection for a live thread, and collection of an otherwise unreachable completed thread and its stack.  No new dependency is needed.
+
+Recovery will restart the development guest from the last completed snapshot after preserving the failed state.  Restored debugger jobs can predate their latest commands.  Inspect surviving stops before performing any operation on them.  Reload the compiled debugger changes after recovery, test the retention correction, reconcile backing-store reservations, and require successful snapshot and restore tests before claiming persistence works.
+
+- [x] Preserve the failed disk image, console log, and VM memory.
+- [x] Restore remote access and inspect surviving user stops.
+- [x] Correct and test SWANK thread retention.
+- [ ] Explain and correct the reservation discrepancy.
+- [ ] Retest the debugger, snapshot, restoration, and Web access.
+
+The prior snapshot's partition header, block-map tree, and allocation list are readable.  All 439414 distinct referenced page blocks, 1593 map blocks, and eight freelist blocks are allocated.  The allocation list contains 575394 blocks, including 134379 not referenced by those structures.  INITIALIZE-HOSTED-PAGING-SYSTEM reserves allocated blocks plus 256 rather than counting mapped pages.  This explains a large baseline overreservation, but the origin of every unreferenced block remains unverified.  TAKE-SNAPSHOT contains an unresolved FIXME for releasing old block-map and freelist blocks.
+
+Restarting that image reached device initialization and then panicked in SWANK-INDENTATION-CACHE-THREAD.  The captured stack contains STRING-DOWNCASE, MAKE-ARRAY, RAISE-TYPE-ERROR, debugger output, and recursive mutex acquisition.  The panic message was truncated.  Saved its console as debugger-restore-panic-20261013.log.  Recommendation: preserve this VM's memory too and restore a copy of mezzano-debugging-ui-final.image, the previous environment with a recorded successful restoration test, for compiling and testing repairs.  This rolls back guest state from later snapshots.  Host sources and preserved failed images remain available.  The persistence failure remains unresolved.
+
+The tested recovery image restored SWANK access with no debugger stops.  The compiled lifetime fixture then demonstrated the defect: full GC released an unregistered completed thread and its stack, while the registered completed thread and all 32 stack pages remained.  Recompiled and loaded the Mezzano SWANK backend with warnings NIL and failure NIL, then copied the existing ID pairs under its mutex into a :KEY-AND-VALUE table.  After full GC, both completed threads and their stack objects were unreachable and their stack mappings were absent.  A live waiting thread retained its original ID and bidirectional lookup through both collections.  Fixture cleanup completed.  Evidence: thread-ids-prepare.log, thread-ids-before.log, thread-ids-correct.log, and thread-ids-after.log.
+
+A subsequent read-only page audit reports 376374 required page reservations and counter 506878, a difference of 130504.  The SWANK table now contains four live threads and one recently completed thread awaiting collection.  The reservation difference therefore persists independently of the corrected SWANK table.
+
+The reusable test entry point LISPM-THREAD-ID-TEST:RUN compiled with warnings NIL and failure NIL and passed in the recovered guest.  Compile and load tools/swank/test-thread-ids.lisp before calling it.  PREPARE and CHECK-RETAINED also support reproducing the original failure before changing the table.  Failed assertions retain fixture globals for inspection.
+
+Current LLDB, debugger, evaluation, Command Processor, Document Examiner, SWANK contrib, OpenAI, and Listener modules recompiled and loaded with warnings NIL and failure NIL.  Reloaded the documentation catalog.  Browser acceptance tests are running against this recovered state.  The HTTP trace from the later failed image is absent in this recovery image and has not been rearmed.
