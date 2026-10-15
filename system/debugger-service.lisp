@@ -21,7 +21,8 @@
   (evaluation-history (make-list 9))
   (inspection-values (make-hash-table))
   (inspection-identities (make-hash-table :test #'eq))
-  (next-inspection-id 0))
+  (next-inspection-id 0)
+  (evaluation-environment :lexical))
 
 (defstruct (service-handle (:constructor %make-service-handle (boot stop)))
   (boot nil :read-only t)
@@ -205,7 +206,10 @@
   (let* ((reference (%make-service-frame (service-handle stop)
                                         (service-stop-generation stop)
                                         (service-stop-current-frame stop)))
-         (environment (service-frame-environment reference))
+         (environment
+           (ecase (service-stop-evaluation-environment stop)
+             (:lexical (service-frame-environment reference))
+             (:dynamic nil)))
          (history-symbols '(+ ++ +++ * ** *** / // ///))
          (mezzano.internals::*eval-hook* 'mezzano.full-eval:eval-in-lexenv))
     (progv history-symbols (service-stop-evaluation-history stop)
@@ -312,6 +316,11 @@
                             :initial-element (code-char #x2192))
                " "))
 
+(defun service-evaluation-prompt (stop)
+  (ecase (service-stop-evaluation-environment stop)
+    (:lexical "Eval (program): ")
+    (:dynamic "Eval (debugger): ")))
+
 (defun service-thread-current-stop (thread)
   (loop for stop being the hash-values of *service-stops*
         when (and (eq (service-stop-thread stop) thread)
@@ -324,7 +333,9 @@
     (when stop
       (list :stop (service-handle stop)
             :depth (service-stop-depth stop)
-            :prompt (service-stop-prompt stop)))))
+            :prompt (service-stop-prompt stop)
+            :evaluation-environment (service-stop-evaluation-environment stop)
+            :evaluation-prompt (service-evaluation-prompt stop)))))
 
 (defun debugger-stop-information (handle)
   (with-service-lock
@@ -333,6 +344,8 @@
             :state (service-stop-state stop)
             :depth (service-stop-depth stop)
             :prompt (service-stop-prompt stop)
+            :evaluation-environment (service-stop-evaluation-environment stop)
+            :evaluation-prompt (service-evaluation-prompt stop)
             :thread (bounded-display-label
                      (mezzano.supervisor:thread-name (service-stop-thread stop)))
             :parent-id (when (service-stop-parent stop)
@@ -424,7 +437,8 @@
         (service-error :stop-busy))
       (case operation
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
-          :function :compiled-code :instruction :lexical-environment)
+          :function :compiled-code :instruction :lexical-environment
+          :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment)
          (when argument (service-error :unexpected-argument)))
         (:proceed
          (when argument (service-error :unexpected-argument))
@@ -783,6 +797,17 @@
     (:describe-object (service-describe-inspection stop (service-command-argument command)))
     (:clear-inspection (clear-service-inspection stop))
     (:help (mezzano.command-processor::debugger-help))
+    ((:use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment)
+     (with-service-lock
+       (setf (service-stop-evaluation-environment stop)
+             (ecase (service-command-operation command)
+               (:use-dynamic-environment :dynamic)
+               (:use-lexical-environment :lexical)
+               (:toggle-evaluation-environment
+                (ecase (service-stop-evaluation-environment stop)
+                  (:lexical :dynamic)
+                  (:dynamic :lexical)))))
+       (service-evaluation-prompt stop)))
     (:abort
      (let ((restart (find 'abort (service-stop-restarts stop) :key #'restart-name)))
        (unless restart (service-error :no-abort-restart))
@@ -917,7 +942,11 @@
          (stop (%make-service-stop
                 :thread (mezzano.supervisor:current-thread)
                 :condition condition :restarts (compute-restarts condition)
-                :parent *service-current-stop*))
+                :parent *service-current-stop*
+                :evaluation-environment
+                (if *service-current-stop*
+                    (service-stop-evaluation-environment *service-current-stop*)
+                    :lexical)))
          (*service-current-stop* stop)
          (*debugger-hook* #'service-debugger-hook)
          (*global-debugger* #'service-debugger))

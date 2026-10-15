@@ -67,6 +67,12 @@
                (assert (eq (debugger-service-error-reason condition) reason)))
              (test::command child child-lease :condition)
              (when child-history
+               (let ((mode (getf (debugger-stop-information handle) :evaluation-environment)))
+                 (assert (eq (getf (debugger-stop-information child) :evaluation-environment) mode))
+                 (test::command child child-lease :toggle-evaluation-environment)
+                 (assert (not (eq (getf (debugger-stop-information child) :evaluation-environment) mode)))
+                 (assert (eq (getf (debugger-stop-information handle) :evaluation-environment) mode))
+                 (test::command child child-lease :toggle-evaluation-environment))
                (select-function child child-lease #'target)
                (evaluate-source child child-lease "(values * /)" '("NIL" "NIL")))))
       (when child (release-test-stop child controller)))
@@ -93,6 +99,56 @@
                     (type-error () t)))
           (assert (eq before (i::read-frame-slot raw location :value))))))))
 
+(defun check-environment-selection (handle lease controller)
+  (let* ((stop (d::service-handle-stop handle))
+         (selected (d::service-stop-current-frame stop))
+         (value-p (boundp 'x))
+         (value (when value-p (symbol-value 'x)))
+         (function-p (fboundp 'x))
+         (function (when function-p (fdefinition 'x))))
+    (unwind-protect
+         (progn
+           (setf (symbol-value 'x) 91
+                 (fdefinition 'x) (lambda () 92))
+           (dolist (operation '(:use-dynamic-environment :use-lexical-environment
+                                :toggle-evaluation-environment))
+             (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+               (test::expect-error :unexpected-argument
+                                   (lambda () (submit-debugger-command lease id operation t)))
+               (assert (= id (getf (debugger-stop-information handle) :next-command-id)))))
+           (evaluate-source handle lease "(values x (x))" '("38" "38"))
+           (let ((history (copy-list (d::service-stop-evaluation-history stop))))
+             (assert (equal (test::command handle lease :use-dynamic-environment)
+                            "Eval (debugger): "))
+             (assert (equal history (d::service-stop-evaluation-history stop))))
+           (let ((info (debugger-stop-information handle))
+                 (thread-info (d::service-thread-debugger-information
+                               (d::service-stop-thread stop))))
+             (dolist (record (list info thread-info))
+               (assert (eq (getf record :evaluation-environment) :dynamic))
+               (assert (equal (getf record :evaluation-prompt) "Eval (debugger): "))))
+           (evaluate-source handle lease "(values x (x))" '("91" "92"))
+           (rejected-source handle lease controller
+                            "(error \"Owned dynamic evaluation error.\")" 'simple-error nil t)
+           (assert (eq (getf (debugger-stop-information handle) :evaluation-environment) :dynamic))
+           (let* ((id (getf (debugger-stop-information handle) :next-command-id))
+                  (history (copy-list (d::service-stop-evaluation-history stop)))
+                  (result (test::command handle lease :toggle-evaluation-environment)))
+             (assert (equal result "Eval (program): "))
+             (assert (equal history (d::service-stop-evaluation-history stop)))
+             (assert (equal (test::command handle lease :use-dynamic-environment)
+                            "Eval (debugger): "))
+             (submit-debugger-command lease id :toggle-evaluation-environment)
+             (assert (equal (getf (debugger-command-result handle id) :result) result))
+             (assert (eq (getf (debugger-stop-information handle) :evaluation-environment) :dynamic)))
+           (assert (equal (test::command handle lease :use-lexical-environment)
+                          "Eval (program): "))
+           (assert (eq (getf (debugger-stop-information handle) :evaluation-environment) :lexical))
+           (assert (= selected (getf (debugger-stop-information handle) :current-frame)))
+           (evaluate-source handle lease "(values x (x))" '("38" "38")))
+      (if value-p (setf (symbol-value 'x) value) (makunbound 'x))
+      (if function-p (setf (fdefinition 'x) function) (fmakunbound 'x)))))
+
 (defun run-target-test ()
   (let* ((controller (make-debugger-controller))
          (name (symbol-name (gensym "Frame evaluation test ")))
@@ -113,6 +169,8 @@
            (setf handle (test::await (lambda () (test::stop-for-thread name)))
                  lease (attach-debugger-stop handle controller))
            (select-function handle lease #'target)
+           (assert (eq (getf (debugger-stop-information handle) :evaluation-environment) :lexical))
+           (check-environment-selection handle lease controller)
            (evaluate-source handle lease "(values x (x) alias *special-probe* (twice 21) *read-eval*)"
                             '("38" "38" "38" "9" "42" "T"))
            (evaluate-source handle lease "(setq alias 40)" '("40"))
@@ -222,6 +280,11 @@
              (rejected-source handle lease controller "x" 'debugger-service-error :unavailable-binding)
              (setf (nth 10 (i::function-debug-info function)) nil)
              (rejected-source handle lease controller "42"
+                              'debugger-service-error :unavailable-lexical-scope)
+             (test::command handle lease :use-dynamic-environment)
+             (evaluate-source handle lease "42" '("42"))
+             (test::command handle lease :use-lexical-environment)
+             (rejected-source handle lease controller "42"
                               'debugger-service-error :unavailable-lexical-scope)))
       (when handle (release-test-stop handle controller))
       (test::await (lambda () (nth-value 1 (mezzano.supervisor:thread-join thread nil))))
@@ -236,6 +299,19 @@
         (assert (eq (getf plan :kind) :form))
         (assert (equal (getf plan :operation) "evaluate"))
         (assert (equal (getf plan :argument) source))))
+    (dolist (entry '((":Use Dynamic Environment" "use-dynamic-environment")
+                     (":Use Lexical Environment" "use-lexical-environment")))
+      (let* ((source (first entry))
+             (plan (mezzano.command-processor:assistance
+                    listener source (length source) :parse :context :debugger)))
+        (assert (null (getf plan :error)))
+        (assert (getf plan :complete-p))
+        (assert (equal (getf plan :operation) (second entry)))
+        (assert (null (getf plan :argument)))))
+    (let* ((source ":Use Dyn")
+           (reply (mezzano.command-processor:assistance
+                   listener source (length source) :space :context :debugger)))
+      (assert (equal (getf reply :text) ":Use Dynamic ")))
     (let ((plan (mezzano.command-processor:assistance
                  listener ":Abort" 6 :parse :context :debugger)))
       (assert (null (getf plan :error)))
@@ -254,6 +330,7 @@
 (defvar *restore-frame* nil)
 (defvar *restore-index* nil)
 (defvar *restore-command* nil)
+(defvar *restore-mode-command* nil)
 
 (defun prepare-restore-test ()
   (assert (null *restore-state*))
@@ -281,7 +358,10 @@
                           "(setf (aref state 5) (lambda () x))")
            (setf *restore-command*
                  (getf (debugger-stop-information *restore-handle*) :next-command-id))
-           (evaluate-source *restore-handle* lease "(values 17 23)" '("17" "23")))
+           (evaluate-source *restore-handle* lease "(values 17 23)" '("17" "23"))
+           (setf *restore-mode-command*
+                 (getf (debugger-stop-information *restore-handle*) :next-command-id))
+           (test::command *restore-handle* lease :use-dynamic-environment))
       (close-debugger-controller controller)))
   (format t "Prepared selected-frame evaluation state for image restoration.~%")
   t)
@@ -310,7 +390,17 @@
              (assert (equal (getf result :result) '("17" "23")))
              (assert (equal (getf result :source) "(values 17 23)")))
            (assert (= (getf (debugger-stop-information handle) :current-frame) *restore-index*))
+           (assert (eq (getf (debugger-stop-information handle) :evaluation-environment) :dynamic))
+           (assert (equal (getf (debugger-command-result handle *restore-mode-command*) :result)
+                          "Eval (debugger): "))
+           (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+             (test::expect-error :request-conflict
+                                 (lambda ()
+                                   (submit-debugger-command lease *restore-mode-command*
+                                                            :use-dynamic-environment)))
+             (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
            (evaluate-source handle lease "(values * /)" '("17" "(17 23)"))
+           (test::command handle lease :use-lexical-environment)
            (evaluate-source handle lease "(values x (x) alias (funcall (aref state 0)))"
                             '("40" "40" "40" "37"))
            (rejected-source handle lease controller "(funcall (aref state 5))"
@@ -332,7 +422,8 @@
            (setf handle nil)
            (test::expect-error :released-stop (aref *restore-state* 5))
            (setf *restore-state* nil *restore-thread* nil *restore-handle* nil
-                 *restore-frame* nil *restore-index* nil *restore-command* nil)
+                 *restore-frame* nil *restore-index* nil *restore-command* nil
+                 *restore-mode-command* nil)
            (format t "PASS restored frame evaluation, history, expired references, fresh access after GC, shared writes, Proceed, and cleanup.~%")
            t)
       (when handle (release-test-stop handle controller))

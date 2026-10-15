@@ -45,6 +45,10 @@
     (:name "Show Function" :id :show-function :help "Display the selected frame's function and assign it to *.")
     (:name "Show Compiled Code" :id :show-compiled-code :help "Disassemble the selected frame's executing function with hexadecimal byte offsets.")
     (:name "Show Instruction" :id :show-instruction :help "Display the instruction at the selected frame's saved caller location or interrupted program counter.")
+    (:name "Use Dynamic Environment" :id :use-dynamic-environment
+     :help "Evaluate forms in the debugger's global lexical context.")
+    (:name "Use Lexical Environment" :id :use-lexical-environment
+     :help "Evaluate forms in the selected frame's live lexical context.")
     (:name "Show Lexical Environment" :id :show-lexical-environment
      :help "Display inherited lexical bindings of the selected source function. Missing ancestry or values are labelled unavailable.")
     (:name "Show Bindings" :id :show-bindings
@@ -456,6 +460,8 @@
     (:show-function (list :operation "function"))
     (:show-compiled-code (list :operation "compiled-code"))
     (:show-instruction (list :operation "instruction"))
+    (:use-dynamic-environment (list :operation "use-dynamic-environment"))
+    (:use-lexical-environment (list :operation "use-lexical-environment"))
     (:show-lexical-environment (list :operation "lexical-environment"))
     (:show-bindings (list :operation "bindings"
                           :argument (list (cdr (assoc "All" keywords :test #'equal))
