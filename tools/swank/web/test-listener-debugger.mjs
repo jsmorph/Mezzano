@@ -7,8 +7,9 @@ import { openBrowser } from './browser-test-support.mjs';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:8765/';
 const output = resolve(process.argv[3] ?? '/tmp/listener-debugger-test');
-const protectedStop = process.env.PROTECTED_STOP === undefined ? null : Number(process.env.PROTECTED_STOP);
-assert(protectedStop === null || Number.isSafeInteger(protectedStop));
+const protectedStops = (process.env.PROTECTED_STOPS ?? process.env.PROTECTED_STOP ?? '')
+  .split(',').filter(Boolean).map(Number);
+assert(protectedStops.every(id => Number.isSafeInteger(id) && id >= 0));
 const replayIterations = Number(process.env.REPLAY_ITERATIONS ?? 1);
 assert(Number.isSafeInteger(replayIterations) && replayIterations > 0);
 await mkdir(output, {recursive: true});
@@ -108,8 +109,8 @@ try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument', {source: captureFailures});
   await browser.evaluate(captureFailures);
   evidence.session = await browser.evaluate('state.session');
-  originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, next: stop.info["next-command-id"]}))');
-  if (protectedStop !== null) assert(originalStops.some(stop => stop.id === protectedStop), 'Protected stop was not found');
+  originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, generation: stop.info.generation, next: stop.info["next-command-id"]}))');
+  for (const id of protectedStops) assert(originalStops.some(stop => stop.id === id), 'Protected stop was not found: ' + id);
   await browser.evaluate('document.querySelector("#interactive").checked = true');
   const ordinaryDraft = '(+ 90 9)';
   const normal = await start(`(progn (read-line) (cerror "Continue owned Listener test." "${marker} ordinary") 42)`);
@@ -755,14 +756,15 @@ try {
     const original = [];
     for (const token of remaining ?? []) {
       const detail = await browser.evaluate(`api('information', {stop: ${text(token)}})`);
-      if (originalStops.some(stop => stop.id === detail.id)) original.push({id: detail.id, state: detail.state, next: detail['next-command-id']});
+      if (originalStops.some(stop => stop.id === detail.id)) original.push({id: detail.id, state: detail.state, generation: detail.generation, next: detail['next-command-id']});
     }
     await browser.evaluate("api('release-session')");
     evidence.cleanup = 'Owned jobs/stops/session released';
-    if (protectedStop !== null) {
-      assert.deepEqual(original.find(stop => stop.id === protectedStop), originalStops.find(stop => stop.id === protectedStop));
-      evidence.protectedStop = original.find(stop => stop.id === protectedStop);
+    for (const id of protectedStops) {
+      assert.deepEqual(original.find(stop => stop.id === id), originalStops.find(stop => stop.id === id));
     }
+    evidence.protectedStops = original.filter(stop => protectedStops.includes(stop.id));
+    if (protectedStops.length === 1) evidence.protectedStop = evidence.protectedStops[0];
     const expected = browser.errors.filter(error => error.source === 'network' && error.url === new URL('/api', url).href && error.text.includes('status of 400'));
     assert.equal(expected.length, evidence.rejectedArguments ? 5 : 0);
     const missingDefault = browser.errors.filter(error => error.source === 'network' && error.url === new URL('/api', url).href && error.text.includes('status of 409'));

@@ -71,7 +71,7 @@ A catch-display target nests two catches with the same tag and an outer catch wi
 
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
-The frame-evaluation, evaluation-environment, standard-value-warning, Show Special, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
+The Listener debugger, jobless command-I/O, Return, frame-evaluation, evaluation-environment, standard-value-warning, Show Special, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only their recorded jobs and owned stops.
 
 The evaluation-environment driver first compiles one owned DEBUG 3 function whose lexical argument shadows a separately established global value.  It tests typed commands and SPACE completion, distinct lexical/global reads and writes, Control-X I in both debugger editors, draft/cursor retention, arrows and editing prompts, history/selection/reload, child inheritance and independent mode changes, typed Abort, and exact-ID replay after a discarded accepted toggle reply.  Proceed must observe both writes, cleanup must remove the fixture definitions and symbols, and the next Listener must return 42.
 
@@ -333,7 +333,7 @@ node tools/swank/web/test-command-io.mjs \
   http://127.0.0.1:8766/ /tmp/mezzano-jobless-command-io
 ```
 
-Isolated x86-64 browser acceptance passed the jobless driver, Listener/restart driver, batch Inspector driver, and frame-evaluation driver.  Their readers use the command's input/output identity.  Program input remains on the evaluation job.  Coverage includes nested readers and Abort, reload, uncertain submit/input replies, exact replay, returning restart values, and interruption inside an interrupted command.  Native tests separately passed a partially consumed command reader across image restoration.  The intercepted browser fixture tests fresh-handle input for a prior-boot running record.  A browser command reader across an image restart remains untested.
+Isolated and stable x86-64 browser acceptance passed the jobless driver, Listener/restart driver, batch Inspector driver, and frame-evaluation driver.  Their readers use the command's input/output identity.  Program input remains on the evaluation job.  Coverage includes nested readers and Abort, reload, uncertain submit/input replies, exact replay, returning restart values, and interruption inside an interrupted command.  Native tests separately passed a partially consumed command reader across image restoration.  The intercepted browser fixture tests fresh-handle input for a prior-boot running record.  A browser command reader across an image restart remains untested.
 
 ### Publication into an old parked loop
 
@@ -353,6 +353,8 @@ FINISH checks historical command identity, result/replay, I/O-less defaults, sel
 
 The x86-64 rehearsal passed on a working copy of the pre-I/O checkpoint with Mezzano 8619f444 and Slime 98bf7aa6 sources.  Ordinary modules used default LOAD.  RUNTIME/STRUCT used the image builder's wired runtime policy at SAFETY 3, DEBUG 1, SPEED 1.  The current isolated image was checkpointed before rehearsal, restored afterward, and checked through the unchanged HTTP service.  Preserve a separate current-world checkpoint and finish any inherited test fixture before preparing this case.  This test covers a condition stop parked between commands.  Publication with an active or pending old command remains outside its scope.
 
+Stable incremental publication also passed this old-loop fixture with seven unrelated retained stop records.  Native and browser audits preserved those records, their command/Inspector entries, selection and history, application definitions, and runtime/compiler settings.  The final native audit released its separate baseline after browser cleanup.  The journal records one corrected audit assertion: a per-job dynamic *GLOBAL-DEBUGGER* binding had been mistaken for the global cell.  Its pre-publication global-cell identity was not measured.
+
 ## Frame Return
 
 The intercepted Return fixture tests retained cancellation text, the existing command menu/parser path, reload without resubmission, and closed-only Current Stop navigation.  Two active fixture records share a thread display name.  Only the guest-supplied token receives selection and initial inspections.  Reload during an active confirmation also requires completed prior records to load while the reader remains enabled, with unchanged frame, command IDs, input draft/cursor, and submission count.  The existing history fixture retains its fresh-inspection priority assertion when a locally accepted command is beyond a stale monitor counter.
@@ -362,7 +364,7 @@ node tools/swank/web/test-return-fixtures.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-return-fixtures
 ```
 
-The native-backed driver creates its own DEBUG 3, SAFETY 3, SPEED 1 target and caller.  Its batch case covers SPACE completion, lexical/dynamic cancellation, history, reader/evaluator child Abort, seven returned values, draft/confirmation reload, and exact command/input replay.  A jobless invocation raises a cleanup condition after Return, follows Current Stop to that new root, continues cleanup, and checks the caller's values.  The driver releases its recorded state and tests Listener reuse.  The six-group driver passed on the isolated x86-64 guest and released its seven jobs, five stops, and session.  The host fixture separately tests duplicate thread labels.  Browser Return across an image restart remains untested.
+The native-backed driver creates its own DEBUG 3, SAFETY 3, SPEED 1 target and caller.  Its batch case covers SPACE completion, lexical/dynamic cancellation, history, reader/evaluator child Abort, seven returned values, draft/confirmation reload, and exact command/input replay.  A jobless invocation raises a cleanup condition after Return, follows Current Stop to that new root, continues cleanup, and checks the caller's values.  The driver releases its recorded state and tests Listener reuse.  The six-group driver passed on isolated and stable x86-64 guests, releasing its seven jobs, five stops, and session in each run.  The host fixture separately tests duplicate thread labels.  Browser Return across an image restart remains untested.
 
 ```sh
 node tools/swank/web/test-return.mjs \
