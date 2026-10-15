@@ -15,6 +15,8 @@ TEST_STATE_DIR="$(mktemp -d)"
 
 Run guest tests sequentially on a dedicated test VM.  Tests define guest functions and packages, create threads and retained records, and may request full GC.  The evaluation-service fixture tracks its generated job names and checks release of those jobs, so its cleanup assertions preserve unrelated evaluations.  A failure can leave a stopped fixture for inspection.  Restore fixtures share counters and must run separately.  Their host state files must survive the VM restart.
 
+Load ordinary debugger, evaluator, Command Processor, SWANK, and test files with LOAD's default allocation policy.  The image builder uses the same policy for these modules.  Explicit wired loading is reserved for supervisor/runtime code with the residency requirements below.  Forcing ordinary test code and constants into the wired area can exhaust its available blocks despite repeated full collection.
+
 The instruction-position and saved-register tests target x86-64.  Compiler tests select the policies they exercise.  The default running compiler policy is `(safety 3 debug 3 speed 1)` and the image bootstrap policy is `(safety 3 debug 1 speed 1)`.  These tests do not establish ARM64, bare-metal, supervisor-trap, or arbitrary-suspension support.
 
 ## Kernel compilation

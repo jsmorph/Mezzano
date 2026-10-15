@@ -364,6 +364,9 @@
             :evaluation-prompt (service-evaluation-prompt stop)
             :thread (bounded-display-label
                      (mezzano.supervisor:thread-name (service-stop-thread stop)))
+            :thread-stop (when (eq (service-stop-state stop) :closed)
+                           (let ((current (service-thread-current-stop (service-stop-thread stop))))
+                             (when current (service-handle current))))
             :parent-id (when (service-stop-parent stop)
                          (service-stop-id (service-stop-parent stop)))
             :parent (let ((parent (service-stop-parent stop)))

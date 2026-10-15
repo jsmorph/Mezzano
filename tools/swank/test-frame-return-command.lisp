@@ -122,6 +122,9 @@
            (unwind-protect
                 (progn
                   (assert (null (getf (d:debugger-stop-information child) :parent)))
+                  (assert (eq (d::service-handle-stop
+                               (getf (d:debugger-stop-information stop) :thread-stop))
+                              (d::service-handle-stop child)))
                   (assert (search "Owned Return command cleanup."
                                   (test::command child child-lease :condition)))
                   (let ((proceed (getf (d:debugger-stop-information child) :next-command-id)))
@@ -129,7 +132,8 @@
                     (assert (eq (getf (test::completed-command child proceed) :state) :unwound))))
              (lispm-frame-evaluation-test::release-test-stop child controller))))
        (test::await (lambda () (eq (aref state 2) :continued)))
-       (assert (equalp (aref state 0) expected))))
+       (assert (equalp (aref state 0) expected))
+       (assert (null (getf (d:debugger-stop-information stop) :thread-stop)))))
    :depth depth :cleanup-error cleanup-error))
 
 (defun check-recovery ()

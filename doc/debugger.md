@@ -159,7 +159,7 @@ The public functions are exported from `MEZZANO.DEBUG`:
 |---|---|
 | `call-with-debugger-service function` | Establishes condition-stop entry for a dynamic extent. |
 | `debugger-stops &key include-closed` | Returns current-boot handles for registered stops. |
-| `debugger-stop-information handle` | Returns identity, state, thread display label, parent/child, generation, current frame index, evaluation mode/prompt, and next command ID. |
+| `debugger-stop-information handle` | Returns identity, state, thread display label, parent/child, a closed record's current thread stop, generation, current frame index, evaluation mode/prompt, and next command ID. |
 | `make-debugger-controller` | Creates a controller. |
 | `close-debugger-controller controller` | Closes a controller and releases its leases. |
 | `attach-debugger-stop handle controller` | Acquires exclusive control, including for a closed record. |
@@ -425,7 +425,7 @@ Native x86-64 tests use SAFETY 3, DEBUG 3, and SPEED 1.  They cover validity bou
 
 `:Return` returns from the selected activation with values produced by one prompted Lisp expression.  It takes no arguments or options.  The expression uses the selected lexical or dynamic evaluation mode and updates the level's expression/value history.  The command displays all values and asks for confirmation naming the frame.  A negative answer returns `Return cancelled.`, leaving the computation stopped and retaining the successful expression's history and side effects.
 
-An affirmative answer exits the selected activation and its younger activations through normal Lisp unwinding, preserving the original caller's return address.  Cleanup runs with the program's bindings after debugger stream bindings and handler suppression unwind.  The caller receives zero, one, or multiple values.  A cleanup's nonlocal exit can supersede Return.  A cleanup condition can enter a new root debugger after the original stop closes.
+An affirmative answer exits the selected activation and its younger activations through normal Lisp unwinding, preserving the original caller's return address.  Cleanup runs with the program's bindings after debugger stream bindings and handler suppression unwind.  The caller receives zero, one, or multiple values.  A cleanup's nonlocal exit can supersede Return.  A cleanup condition can enter a new root debugger after the original stop closes.  The closed record's `:thread-stop` identifies its thread's current active leaf stop.  This link follows the retained thread object, independently of display names.  It is NIL on active records and when that thread has no active stop.
 
 The command validates the activation before prompting and again before transferring control.  It supports established x86-64 compiled condition-stop frames with instruction-scope metadata.  Frameless frames, missing scope, inactive activations, and frames across an interruption boundary reject the operation before any prompt or unwind.  Native command tests use DEBUG 3, SAFETY 3, and SPEED 1.  ARM64 execution and other compilation policies remain untested.
 
