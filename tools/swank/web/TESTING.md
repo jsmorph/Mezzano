@@ -335,6 +335,24 @@ node tools/swank/web/test-command-io.mjs \
 
 Isolated x86-64 browser acceptance passed the jobless driver, Listener/restart driver, batch Inspector driver, and frame-evaluation driver.  Their readers use the command's input/output identity.  Program input remains on the evaluation job.  Coverage includes nested readers and Abort, reload, uncertain submit/input replies, exact replay, returning restart values, and interruption inside an interrupted command.  Native tests separately passed a partially consumed command reader across image restoration.  The intercepted browser fixture tests fresh-handle input for a prior-boot running record.  A browser command reader across an image restart remains untested.
 
+### Publication into an old parked loop
+
+The native [command-I/O upgrade fixture](../test-command-io-upgrade.lisp) runs in an isolated pre-command-I/O image.  Load the existing service-test helpers, then compile and load this fixture at SAFETY 3, DEBUG 3, SPEED 1 before publishing the new service:
+
+```lisp
+(lispm-command-io-upgrade-test:prepare)
+```
+
+PREPARE retains one batch stop in the old command loop, its selected frame and nine history values, a completed command, and the interpreter dispatch table.  The stop must have no active or pending command during publication.  Publish the tested native prerequisites, service, and adapter, then load the command-I/O test helpers with default LOAD allocation.  Keep the original upgrade fixture compiled before publication:
+
+```lisp
+(lispm-command-io-upgrade-test:finish)
+```
+
+FINISH checks historical command identity, result/replay, I/O-less defaults, selection/history, and interpreter-table identity after full GC.  The same old loop then runs the existing Unicode input/output, offset replay/conflict, independent EOF, and nested Abort checks.  Proceed must return 42, run cleanup once, and restore all seven application streams.  FINISH releases its job, stops, and controller.  CLEANUP releases only its retained fixture state after an interrupted test.
+
+The x86-64 rehearsal passed on a working copy of the pre-I/O checkpoint with Mezzano 8619f444 and Slime 98bf7aa6 sources.  Ordinary modules used default LOAD.  RUNTIME/STRUCT used the image builder's wired runtime policy at SAFETY 3, DEBUG 1, SPEED 1.  The current isolated image was checkpointed before rehearsal, restored afterward, and checked through the unchanged HTTP service.  Preserve a separate current-world checkpoint and finish any inherited test fixture before preparing this case.  This test covers a condition stop parked between commands.  Publication with an active or pending old command remains outside its scope.
+
 ## Frame Return
 
 The intercepted Return fixture tests retained cancellation text, the existing command menu/parser path, reload without resubmission, and closed-only Current Stop navigation.  Two active fixture records share a thread display name.  Only the guest-supplied token receives selection and initial inspections.  Reload during an active confirmation also requires completed prior records to load while the reader remains enabled, with unchanged frame, command IDs, input draft/cursor, and submission count.  The existing history fixture retains its fresh-inspection priority assertion when a locally accepted command is beyond a stale monitor counter.
