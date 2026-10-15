@@ -269,6 +269,17 @@ Runtime and supervisor functions called before paging starts or with interrupts 
 
 Callees invoked in those states also require resident implementations.  Loading boot-required functions into pageable memory can fault before the pager and console initialize.  Snapshot acceptance includes restarting the saved image.
 
+### ATA transfer tests
+
+The x86-64 fixture injects DMA and PIO callback outcomes and uses an owned physical page and wired buffer.  It checks primary status and failure reasons, transfer selection, failed-read buffer preservation, successful bounce reads, and bounce-write data.
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-ATA-TRANSFER.LISP"))
+(lispm-ata-transfer-test:run)
+```
+
+The fixture releases its physical page on completion or unwinding.  Physical PIO transfers, media errors, and disk writes require separate hardware tests.
+
 ## Early panic tests
 
 The early-console panic fixture must compile and load wired before installation:

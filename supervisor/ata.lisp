@@ -570,12 +570,13 @@ This is used to implement the INTRQ_Wait state."
              ;; FIXME: Don't copy a whole page
              (when (eql what :write)
                (sup::%fast-page-copy bounce-virt mem-addr))
-             (funcall dma-fn controller device lba count bounce-phys)
-             (when (eql what :read)
-               (sup::%fast-page-copy mem-addr bounce-virt))))
+             (multiple-value-bind (success reason)
+                 (funcall dma-fn controller device lba count bounce-phys)
+               (when (and success (eql what :read))
+                 (sup::%fast-page-copy mem-addr bounce-virt))
+               (values success reason))))
           (t ;; Give up and do a slow PIO transfer.
-           (funcall pio-fn controller device lba count mem-addr))))
-  t)
+           (funcall pio-fn controller device lba count mem-addr)))))
 
 (defun ata-issue-lba-command (device lba count command28 command48)
   (if (ata-device-lba48-capable device)
@@ -589,7 +590,8 @@ This is used to implement the INTRQ_Wait state."
                                     +ata-command-read-sectors-ext+))
     (return-from ata-read-pio (values nil :device-error)))
   (when (not (ata-pio-data-in device count mem-addr))
-    (return-from ata-read-pio (values nil :device-error))))
+    (return-from ata-read-pio (values nil :device-error)))
+  t)
 
 (defun ata-read-dma (controller device lba count phys-addr)
   (ata-configure-prdt controller phys-addr (* count 512) :read)
@@ -624,7 +626,8 @@ This is used to implement the INTRQ_Wait state."
                                     +ata-command-write-sectors-ext+))
     (return-from ata-write-pio (values nil :device-error)))
   (when (not (ata-pio-data-out device count mem-addr))
-    (return-from ata-write-pio (values nil :device-error))))
+    (return-from ata-write-pio (values nil :device-error)))
+  t)
 
 (defun ata-write-dma (controller device lba count phys-addr)
   (ata-configure-prdt controller phys-addr (* count 512) :write)
