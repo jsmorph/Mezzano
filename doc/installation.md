@@ -75,6 +75,17 @@ env -u CI sbcl --dynamic-space-size 2048 \
 
 Removing `build-x86-64` discards generated compiler output and forces a full build.  The builder writes `mezzano.image`, a five-GiB image, beneath the build directory.  Bootstrap compilation uses `(safety 3 debug 1 speed 1)`.  The running compiler defaults to `(safety 3 debug 3 speed 1)`.  The [compiler guarantees](debugger.md#compiler-guarantees) describe their effect on local inspection.
 
+The host serializer tests check cold function headers, area-buffer padding, and disk layout with unequal area sizes:
+
+```sh
+sbcl --dynamic-space-size 2048 --load ../quicklisp/setup.lisp \
+  --script tools/test-cold-function-metadata.lisp
+sbcl --dynamic-space-size 2048 --load ../quicklisp/setup.lisp \
+  --script tools/test-cold-area-layout.lisp
+```
+
+These commands run from the Mezzano checkout.  The debugger tests in the [remote client guide](../tools/swank/README.md#debugger-frame-tests) execute in the guest.
+
 ## Start the file server and VM
 
 In one terminal, start the file server from the build directory:

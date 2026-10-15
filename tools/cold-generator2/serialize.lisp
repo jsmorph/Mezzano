@@ -846,6 +846,18 @@ Must not call SERIALIZE-OBJECT."))
     sys.int::*function-area-free-bins*
     sys.int::*function-area-usage*))
 
+(defun pad-area-data (area size)
+  (let* ((data (area-data area))
+         (used (length data))
+         (capacity (array-dimension data 0)))
+    (assert (<= used size))
+    (format t "~&;; Area ~A: used ~D, capacity ~D, padded ~D bytes.~%"
+            (area-name area) used capacity size)
+    (when (> size capacity)
+      (adjust-array data size :initial-element 0))
+    (setf (fill-pointer data) size)
+    (fill data 0 :start used :end size)))
+
 (defun finalize-areas (image environment)
   "Build pinned/wired freelists and update GC variables with final area information."
   (let ((wired-free-bins (allocate (1+ 64) image :wired sys.int::+tag-object+))
@@ -874,15 +886,14 @@ Must not call SERIALIZE-OBJECT."))
     ;; Better hope we got this right first try.
     (assert (<= (length (area-data (image-wired-function-area image)))
                 +cold-generator-assumed-wired-function-area-size+))
-    (adjust-array (area-data (image-wired-function-area image))
-                  +cold-generator-assumed-wired-function-area-size+
-                  :fill-pointer t)
+    (pad-area-data (image-wired-function-area image)
+                   +cold-generator-assumed-wired-function-area-size+)
     ;; Align the area sizes up to the minimum alignment.
     (flet ((align (area)
              (let* ((bump (length (area-data area)))
                     (aligned (util:align-up
                               bump sys.int::+allocation-minimum-alignment+)))
-               (adjust-array (area-data area) aligned :fill-pointer t))))
+               (pad-area-data area aligned))))
       (align (image-wired-area image))
       (align (image-pinned-area image))
       (align (image-general-area image))
