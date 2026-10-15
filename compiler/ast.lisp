@@ -39,7 +39,9 @@
    (%environment-layout :initarg :environment-layout :accessor lambda-information-environment-layout)
    (%closure-arg :initarg :closure-arg :accessor lambda-information-closure-arg)
    (%count-arg :initarg :count-arg :accessor lambda-information-count-arg)
-   (%plist :initarg :plist :accessor lambda-information-plist))
+   (%plist :initarg :plist :accessor lambda-information-plist)
+   (%source-parameters :initarg :source-parameters :initform nil
+                       :accessor lambda-information-source-parameters))
   (:default-initargs :name nil
                      :docstring nil
                      :lambda-list '()
@@ -99,6 +101,41 @@
   (or (getf (lexical-variable-plist variable) 'debug-binding)
       (setf (getf (lexical-variable-plist variable) 'debug-binding)
             (vector :binding (debug-variable-name variable)))))
+
+(defun map-parameter-layout (function layout)
+  (when layout
+    (flet ((binding (value) (when value (funcall function value))))
+      (vector :parameters
+              (mapcar function (svref layout 1))
+              (mapcar (lambda (entry) (mapcar #'binding entry)) (svref layout 2))
+              (binding (svref layout 3))
+              (mapcar (lambda (entry)
+                        (list (first entry) (binding (second entry))
+                              (binding (third entry))))
+                      (svref layout 4))
+              (svref layout 5)
+              (svref layout 6)))))
+
+(defun replace-parameter-binding (binding old new)
+  (cond ((eq binding old) new)
+        ((typep binding 'simple-vector)
+         (vector :special
+                 (if (eq (svref binding 1) old) new (svref binding 1))
+                 (if (eq (svref binding 2) old) new (svref binding 2))))
+        (t binding)))
+
+(defun parameter-debug-info (lambda)
+  (when (and (= (optimize-quality lambda 'debug) 3)
+             (not (getf (lambda-information-plist lambda) 'unwind-protect-cleanup)))
+    (map-parameter-layout
+     (lambda (binding)
+       (etypecase binding
+         (lexical-variable (debug-variable-identity binding))
+         (simple-vector
+          (vector :special (name (svref binding 1))
+                  (when (svref binding 2)
+                    (debug-variable-identity (svref binding 2)))))))
+     (lambda-information-source-parameters lambda))))
 
 (defmethod print-object ((object lexical-variable) stream)
   (print-unreadable-object (object stream :type t :identity t)
@@ -384,6 +421,8 @@
                                                     'source-owner :unknown))
                                         (when (preserve-variable-for-debugger-p var)
                                           (list 'preserve-for-debugger t))
+                                        (when (getf (lexical-variable-plist var) 'hide-from-debug-info)
+                                          (list 'hide-from-debug-info t))
                                         (when (getf (lexical-variable-plist var) 'debug-name)
                                           (list 'debug-name
                                                 (getf (lexical-variable-plist var) 'debug-name)))))))
@@ -391,6 +430,11 @@
               (lexical-variable-use-count new) 0
               (lexical-variable-write-count new) 0
               (lexical-variable-used-in new) '())
+        (when (typep *current-lambda* 'lambda-information)
+          (setf (lambda-information-source-parameters *current-lambda*)
+                (map-parameter-layout
+                 (lambda (binding) (replace-parameter-binding binding var new))
+                 (lambda-information-source-parameters *current-lambda*))))
         (push (cons var new) *replacements*)
         new)
       var))
@@ -547,7 +591,8 @@
                               :lambda-list (lambda-information-lambda-list form)
                               :enable-keys (lambda-information-enable-keys form)
                               :allow-other-keys (lambda-information-allow-other-keys form)
-                              :plist (copy-list (lambda-information-plist form))))
+                              :plist (copy-list (lambda-information-plist form))
+                              :source-parameters (lambda-information-source-parameters form)))
          (*current-lambda* info))
     (incf (getf (lambda-information-plist info) 'copy-count 0))
     (push (cons form info) *replacements*)

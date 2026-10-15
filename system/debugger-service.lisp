@@ -701,6 +701,59 @@
   #-x86-64
   (values nil nil))
 
+(defun service-frame-parameter-context (frame)
+  (let ((reason (nth-value 2 (mezzano.internals::frame-return-context frame))))
+    (when reason
+      (return-from service-frame-parameter-context (values nil nil reason))))
+  (let* ((raw (mezzano.internals::frame-raw-data frame))
+         (function (nth-value 1 (mezzano.internals::frame-function frame)))
+         (layout (nth 12 (mezzano.internals::function-debug-info function))))
+    (unless layout
+      (return-from service-frame-parameter-context
+        (values nil nil :unavailable-parameter-data)))
+    (check-type layout (simple-vector 7))
+    (unless (eq (svref layout 0) :parameters)
+      (error "Invalid source parameter debug metadata."))
+    (let ((locals (mezzano.internals::frame-locals raw :show-hidden t)))
+      (labels ((read-local (binding)
+                 (let ((local (when binding (find binding locals :key #'fifth :test #'eq))))
+                   (if local
+                       (mezzano.internals::read-frame-slot raw (third local) (fourth local))
+                       (values nil nil))))
+               (read-binding (binding)
+                 (if (mezzano.internals::debug-binding-p binding)
+                     (read-local binding)
+                     (progn
+                       (check-type binding (simple-vector 3))
+                       (unless (and (eq (svref binding 0) :special)
+                                    (symbolp (svref binding 1))
+                                    (or (null (svref binding 2))
+                                        (mezzano.internals::debug-binding-p (svref binding 2))))
+                         (error "Invalid special parameter debug metadata."))
+                       (multiple-value-bind (cell available) (read-local (svref binding 2))
+                         (when available
+                           (unless (and (mezzano.runtime::symbol-value-cell-p cell)
+                                        (eq (mezzano.runtime::symbol-value-cell-symbol cell)
+                                            (svref binding 1)))
+                             (error "Invalid saved parameter binding cell."))
+                           (when (mezzano.runtime::symbol-value-cell-boundp cell)
+                             (values (mezzano.runtime::symbol-value-cell-value cell) t))))))))
+        (let ((bindings
+                (append (svref layout 1)
+                        (loop for entry in (svref layout 2)
+                              append (destructuring-bind (binding supplied) entry
+                                       (if supplied (list binding supplied) (list binding))))
+                        (when (svref layout 3) (list (svref layout 3)))
+                        (loop for entry in (svref layout 4)
+                              append (destructuring-bind (keyword binding supplied) entry
+                                       (check-type keyword symbol)
+                                       (if supplied (list binding supplied) (list binding)))))))
+          (values layout
+                  (loop for binding in (remove-duplicates bindings :test #'eq)
+                        collect (multiple-value-bind (value available) (read-binding binding)
+                                  (list binding value available)))
+                  nil))))))
+
 (defun service-frame-special-stack-head (frame)
   "Return the physical special-stack head and availability at FRAME."
   (declare (ignorable frame))

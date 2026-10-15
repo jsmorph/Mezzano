@@ -163,6 +163,24 @@
             (setf (lambda-information-closure-arg info) (add-var closure-arg)))
           (when count-arg
             (setf (lambda-information-count-arg info) (add-var count-arg))))
+        (when (= (optimize-quality info 'debug) 3)
+          (setf (lambda-information-source-parameters info)
+                (map-parameter-layout
+                 (lambda (binding)
+                   (if (typep binding 'special-variable)
+                       (vector :special binding nil)
+                       binding))
+                 (vector :parameters
+                         (lambda-information-required-args info)
+                         (mapcar (lambda (entry) (list (first entry) (third entry)))
+                                 (lambda-information-optional-args info))
+                         (lambda-information-rest-arg info)
+                         (mapcar (lambda (entry)
+                                   (list (first (first entry))
+                                         (second (first entry)) (third entry)))
+                                 (lambda-information-key-args info))
+                         (lambda-information-enable-keys info)
+                         (lambda-information-allow-other-keys info)))))
         ;; Add declarations to the environment.
         (let* ((env (extend-environment env
                                         :variables (mapcar (lambda (x)

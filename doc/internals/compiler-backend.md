@@ -288,3 +288,21 @@ The backend function stores its entry record separately from the source AST.  Th
 | 2 | The exact closure callable's binding descriptor, or NIL for the executing nonclosure function |
 
 A NIL record means unavailable entry data, including older compiled functions.  Existing precise debug locations, descriptor identities, constant-pool references, hidden-local filtering, and compiled-file serialization carry the record and its bindings.  The runtime reads through descriptor identity and READ-FRAME-SLOT.  FRAME-ENTRY-CONTEXT validates the live x86-64 frame through FRAME-RETURN-CONTEXT, then returns a copied argument-list spine, the callable, and an unavailability reason.  Zero arguments return NIL with a callable and no reason.  Referenced object mutations remain visible.  Malformed metadata signals an error.
+
+## Source parameter metadata
+
+Function debug-info field 13, at zero-based list index 12, records source parameters at DEBUG 3.  The vector has seven entries:
+
+| Index | Value |
+| --- | --- |
+| 0 | :PARAMETERS |
+| 1 | Required binding descriptors, in source order |
+| 2 | Optional entries: (binding supplied-binding) |
+| 3 | Rest binding descriptor, or NIL |
+| 4 | Keyword entries: (keyword binding supplied-binding) |
+| 5 | Source &KEY enable flag |
+| 6 | Source &ALLOW-OTHER-KEYS flag |
+
+Lexical parameters use existing #(:BINDING name) descriptors.  A special parameter uses #(:SPECIAL symbol cell-binding), whose cell-binding identifies its hidden exact-cell variable.  A missing declared supplied-p variable is NIL.  The emitted record contains descriptors and symbols, with no source AST objects or initializers.  Lower debug policies, older functions, and generated cleanup functions have no record.
+
+The internal service reader returns the layout, (descriptor value available) observations, and a record-level unavailability reason.  It validates the live owning x86-64 frame first and reads through existing locations.  Before binding, missing storage reports an unavailable value.  An unbound special cell also reports an unavailable value.  A bound NIL remains available.  Malformed metadata and accessible-storage errors propagate.  Reading these bindings does not reconstruct a new invocation's argument list.

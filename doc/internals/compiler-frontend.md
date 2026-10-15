@@ -46,3 +46,11 @@ COMPILE and COMPILE-FILE return a primary result, a warning flag, and a failure 
 Each invocation records its own flags.  Nested compilation also contributes to its enclosing invocation.  File-compilation workers share their invocation's flag cells through the compiler's existing initial bindings.  Independent compilation threads retain separate cells.  The file compiler reads the flags after receiving the workers' completion messages.
 
 When COMPILE receives a function name, it installs the result and returns that name, including when the supplied definition is already compiled.  A NIL name returns the compiled function.
+
+## Source parameter identities
+
+At function DEBUG 3, LAMBDA-INFORMATION retains the source required, optional, rest, and keyword bindings separately from the argument slots that lowering rewrites.  The layout also retains declared supplied-p bindings and the keyword/allow-other-keys flags.  Source lexical bindings use the existing preservation policy.
+
+COPY-FORM initializes the copied lambda's layout from the source layout.  COPY-VARIABLE replaces each matching binding by identity in the copied layout when it creates that binding.  This includes parameters lowered into LET nodes, whose replacement-list scope ends before control returns to the lambda copier.  Copies retain hidden-variable flags and receive fresh debug binding descriptors.
+
+For each special parameter, LOWER-SPECIAL-BINDINGS preserves the special-stack cell immediately after its existing %%BIND, through one hidden lexical variable.  The descriptor therefore identifies the parameter's cell despite later rebinding of the same symbol.  Before parameter binding, that location is unavailable.  The additional value uses existing debug liveness and GC roots.  [The backend metadata reference](compiler-backend.md#source-parameter-metadata) describes its emitted representation.

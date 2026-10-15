@@ -1,0 +1,230 @@
+(defpackage #:lispm-parameter-context-test
+  (:use #:cl)
+  (:local-nicknames (#:i #:mezzano.internals)
+                    (#:d #:mezzano.debug)
+                    (#:c #:mezzano.compiler)
+                    (#:e #:lispm-entry-arguments-test))
+  (:export #:run))
+(in-package #:lispm-parameter-context-test)
+
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+(defvar *function*)
+(defvar *probe*)
+(defvar *special* :outer)
+(defvar *supplied* :outer)
+(defvar *rest-value*)
+(defvar *calls* 0)
+(defvar *collect* nil)
+
+(defun binding-name (binding)
+  (svref binding 1))
+
+(defun check-context (expected)
+  (incf *calls*)
+  (let ((frame (e::selected-frame *function*)))
+    (labels ((check ()
+               (multiple-value-bind (layout observations reason)
+                   (d::service-frame-parameter-context frame)
+                 (assert (null reason))
+                 (assert (eq (svref layout 0) :parameters))
+                 (let* ((raw (i::frame-raw-data frame))
+                        (all (i::frame-locals raw :show-hidden t))
+                        (visible (i::frame-locals raw)))
+                   (dolist (observation observations)
+                     (let ((binding (first observation)))
+                       (when (eq (svref binding 0) :special)
+                         (let ((cell-binding (svref binding 2)))
+                           (when (find cell-binding all :key #'fifth :test #'eq)
+                             (assert (not (find cell-binding visible :key #'fifth :test #'eq)))))))))
+                 (dolist (entry expected)
+                   (destructuring-bind (name value available) entry
+                     (let ((matches (remove-if-not
+                                      (lambda (item) (eq name (binding-name (first item))))
+                                      observations)))
+                       (assert (= (length matches) 1))
+                       (assert (eql (third (first matches)) available))
+                       (when available (assert (eq (second (first matches)) value))))))
+                 layout)))
+      (check)
+      (when *collect*
+        (mezzano.extensions:gc :full t)
+        (check)))))
+
+(defun run-case (function arguments &key (calls 1) collect (older 0) (younger 0))
+  (let ((*function* function) (*calls* 0) (*collect* collect)
+        (*probe* (lambda (expected)
+                   (e::with-prompts younger (lambda () (check-context expected))))))
+    (e::with-prompts older
+      (lambda () (apply function (when arguments (cons *probe* (cdr arguments))))))
+    (assert (= *calls* calls))))
+
+(defun zero-target ()
+  (multiple-value-bind (layout observations reason)
+      (d::service-frame-parameter-context (e::selected-frame *function*))
+    (assert (null reason))
+    (assert (null observations))
+    (assert (every #'null (coerce (subseq layout 1) 'list))))
+  (funcall *probe* nil))
+
+(defun required-target (callback value)
+  (setf value :current)
+  (let ((value :inner))
+    (assert (eq value :inner))
+    (funcall callback '((value :current t)))))
+
+(defun optional-target (callback value &optional
+                        (optional (progn (setf value :default-write) :default) supplied))
+  (assert (if supplied (eq optional :supplied) (eq optional :default)))
+  (setf value :current optional nil supplied :changed)
+  (funcall callback '((value :current t) (optional nil t) (supplied :changed t))))
+
+(defun special-target (callback *special*)
+  (setf *special* :parameter)
+  (let ((*special* :inner))
+    (funcall callback '((*special* :parameter t)))))
+
+(defun initializing-target (callback &optional
+                            (*special*
+                              (let ((*special* :initializer))
+                                (funcall callback '((*special* nil nil) (*supplied* nil nil)))
+                                :default)
+                              *supplied*))
+  (setf *special* :parameter *supplied* :changed)
+  (let ((*special* :inner) (*supplied* :inner))
+    (funcall callback '((*special* :parameter t) (*supplied* :changed t)))))
+
+(defun unbound-target (callback *special*)
+  (makunbound '*special*)
+  (funcall callback '((*special* nil nil))))
+
+(defun rest-key-target (callback &rest rest &key (value :default supplied) &allow-other-keys)
+  (declare (dynamic-extent rest))
+  (setf rest *rest-value* value :key-current supplied nil)
+  (funcall callback (list (list 'rest *rest-value* t)
+                          '(value :key-current t) '(supplied nil t))))
+
+(defun make-closure-target (marker)
+  (lambda (callback value)
+    (incf (aref marker 0))
+    (flet ((write-value () (setf value :closure-current)))
+      (funcall #'write-value))
+    (funcall callback '((value :closure-current t)))))
+
+(defun source-form ()
+  '(lambda (callback value &optional
+             (optional (progn (setf value :default-write) :default) supplied)
+             &rest rest &key (key :default key-supplied) &allow-other-keys)
+     (setf value :copy-current optional nil supplied :changed
+           key :key-current key-supplied :changed rest nil)
+     (funcall callback
+              '((value :copy-current t) (optional nil t) (supplied :changed t)
+                (rest nil t) (key :key-current t) (key-supplied :changed t)))))
+
+(defun check-copy (lowered)
+  (let* ((source (if lowered
+                     (c::compile-lambda-1 (source-form))
+                     (c::pass1-lambda (source-form) nil)))
+         (copy (c::copy-form source))
+         (old (c::lambda-information-source-parameters source))
+         (new (c::lambda-information-source-parameters copy)))
+    (assert (not (eq (second (svref old 1)) (second (svref new 1)))))
+    (assert (not (eq (first (first (svref old 2)))
+                     (first (first (svref new 2))))))
+    (when (not lowered) (setf copy (c::compile-lambda-2 copy)))
+    (let ((function (c::codegen-lambda copy)))
+      (run-case function (list *probe* :original) :collect t))))
+
+(defun special-source-form ()
+  '(lambda (callback *special* &optional
+             (*supplied* (progn (setf *special* :default-write) :default)))
+     (setf *special* :copy-special *supplied* :copy-supplied)
+     (let ((*special* :inner) (*supplied* :inner))
+       (funcall callback '((*special* :copy-special t) (*supplied* :copy-supplied t))))))
+
+(defun check-special-copy ()
+  (let* ((source (c::compile-lambda-1 (special-source-form)))
+         (copy (c::copy-form source))
+         (old (svref (second (svref (c::lambda-information-source-parameters source) 1)) 2))
+         (new (svref (second (svref (c::lambda-information-source-parameters copy) 1)) 2)))
+    (assert old)
+    (assert new)
+    (assert (not (eq old new)))
+    (run-case (c::codegen-lambda copy) (list *probe* :original) :collect t)))
+
+(defun check-unavailable (function)
+  (let ((*function* function))
+    (funcall function
+             (lambda ()
+               (multiple-value-bind (layout observations reason)
+                   (d::service-frame-parameter-context (e::selected-frame function))
+                 (assert (null layout))
+                 (assert (null observations))
+                 (assert reason))))))
+
+(defun check-invalid-layout ()
+  (let* ((function (compile nil '(lambda (callback value)
+                                  (declare (ignore value))
+                                  (funcall callback))))
+         (layout (nth 12 (i::function-debug-info function)))
+         (required (svref layout 1)))
+    (unwind-protect
+         (progn
+           (setf (svref layout 1) (list nil))
+           (let ((condition
+                   (handler-case
+                       (funcall function
+                                (lambda ()
+                                  (d::service-frame-parameter-context
+                                   (e::selected-frame function)))
+                                nil)
+                     (error (condition) condition))))
+             (assert (typep condition 'type-error))))
+      (setf (svref layout 1) required))))
+
+(defun check-emission ()
+  (dolist (architecture '(:x86-64 :arm64))
+    (dolist (debug '(0 1 2 3))
+      (let* ((c::*optimize-policy* (list 'debug debug 'safety 3 'speed 1))
+             (function
+               (c::compile-lambda
+                '(lambda (callback *special* &optional (*supplied* nil))
+                   (funcall callback)) nil architecture))
+             (layout (nth 12 (i::function-debug-info function))))
+        (assert (eql (not (null layout)) (= debug 3)))
+        (when layout
+          (assert (eq (svref layout 0) :parameters))
+          (dolist (binding (list (second (svref layout 1))
+                                (first (first (svref layout 2)))))
+            (assert (eq (svref binding 0) :special))
+            (assert (i::debug-binding-p (svref binding 2)))))))))
+
+(defun run (&optional legacy)
+  (let ((*probe* (lambda (expected) (check-context expected))))
+    (run-case #'zero-target nil)
+    (run-case #'required-target (list *probe* (vector :original)) :collect t :older 2 :younger 1)
+    (run-case #'optional-target (list *probe* :original))
+    (run-case #'optional-target (list *probe* :original :supplied))
+    (run-case #'special-target (list *probe* :original) :collect t)
+    (run-case #'initializing-target (list *probe*) :calls 2 :collect t)
+    (run-case #'unbound-target (list *probe* :original))
+    (let ((*rest-value* (list :new-rest (vector :rest))))
+      (run-case #'rest-key-target
+                (list *probe* :value :first :value :duplicate :unknown :permitted)
+                :collect t))
+    (let* ((marker (vector 0)) (function (make-closure-target marker)))
+      (run-case function (list *probe* :original) :collect t)
+      (assert (= (aref marker 0) 1)))
+    (check-copy nil)
+    (check-copy t)
+    (check-special-copy))
+  (assert (eq *special* :outer))
+  (assert (eq *supplied* :outer))
+  (dolist (debug '(0 1 2))
+    (let ((c::*optimize-policy* (list 'debug debug 'safety 3 'speed 1)))
+      (check-unavailable (compile nil '(lambda (callback) (funcall callback))))))
+  (when legacy (check-unavailable legacy))
+  (check-invalid-layout)
+  (check-emission)
+  (format t "PASS current parameter identity, shadowing, defaults, exact special cells, unbound values, closures, AST copies, GC/prompts, policy availability, and target emission.  Legacy supplied: ~S.~%"
+          (not (null legacy)))
+  t)

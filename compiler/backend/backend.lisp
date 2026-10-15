@@ -283,7 +283,8 @@
              (lambda-information-docstring ast-lambda) ; docstring
              nil ; precise debug info
              nil ; instruction source scopes
-             (backend-function-entry-info backend-function)))
+             (backend-function-entry-info backend-function)
+             (mezzano.compiler::parameter-debug-info ast-lambda)))
      nil
      target)))
 

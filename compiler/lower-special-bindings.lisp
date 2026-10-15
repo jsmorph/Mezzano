@@ -108,6 +108,27 @@
             ,(lsb-form (if-else form)))
        form))
 
+(defun parameter-cell-variable (variable)
+  (let ((cell-variable nil))
+    (setf (lambda-information-source-parameters *current-lambda*)
+          (map-parameter-layout
+           (lambda (binding)
+             (if (and (typep binding 'simple-vector)
+                      (eq (svref binding 1) variable))
+                 (progn
+                   (setf cell-variable
+                         (make-instance 'lexical-variable
+                                        :inherit *current-lambda*
+                                        :name (gensym "PARAMETER-CELL-")
+                                        :definition-point *current-lambda*
+                                        :ignore :maybe
+                                        :plist (list 'preserve-for-debugger t
+                                                     'hide-from-debug-info t)))
+                   (vector :special variable cell-variable))
+                 binding))
+           (lambda-information-source-parameters *current-lambda*)))
+    cell-variable))
+
 (defmethod lsb-form ((form ast-let))
   (let ((updated-special-bindings *special-bindings*))
     (labels ((frob (bindings)
@@ -123,13 +144,21 @@
                           (special-variable
                            (push (list :special (first binding))
                                  updated-special-bindings)
-                           (ast `(progn
-                                   (call sys.int::%%bind
-                                         (quote ,(mezzano.runtime::symbol-global-value-cell (name variable)))
-                                         ,(lsb-form init-form))
-                                   (multiple-value-prog1 ,(frob (rest bindings))
-                                     (call sys.int::%%unbind)))
-                                form)))))
+                           (let* ((cell-variable (parameter-cell-variable variable))
+                                  (init (lsb-form init-form))
+                                  (body (ast `(multiple-value-prog1 ,(frob (rest bindings))
+                                                (call sys.int::%%unbind))
+                                             form)))
+                             (ast `(progn
+                                     (call sys.int::%%bind
+                                           (quote ,(mezzano.runtime::symbol-global-value-cell (name variable)))
+                                           ,init)
+                                     ,(if cell-variable
+                                          (ast `(let ((,cell-variable (call sys.int::%%special-stack-pointer)))
+                                                  ,body)
+                                               form)
+                                          body))
+                                  form))))))
                      (t
                       (let ((*special-bindings* updated-special-bindings))
                         (lsb-form (body form)))))))
