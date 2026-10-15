@@ -422,7 +422,7 @@
            (previous (gethash id (service-stop-commands stop))))
       (when previous
         (unless (and (eq operation (service-command-operation previous))
-                     (if (member operation '(:evaluate :inspect :modify :bindings))
+                     (if (member operation '(:evaluate :inspect :modify :bindings :special))
                          (equal argument (service-command-argument previous))
                          (eql argument (service-command-argument previous)))
                      (eq (service-command-boot previous)
@@ -455,6 +455,11 @@
         (:handlers
          (unless (typep argument '(member nil t))
            (service-error :invalid-handler-options)))
+        (:special
+         (unless (typep argument '(cons string (cons (member :program :debugger :streams) null)))
+           (service-error :invalid-special-options))
+         (when (eq (second argument) :streams)
+           (service-error :unsupported-special-environment)))
         (:bindings
          (unless (or (null argument)
                      (typep argument '(cons (member nil t) (cons string null))))
@@ -474,6 +479,8 @@
                       :operation operation :argument (case operation
                                                        (:evaluate (copy-seq argument))
                                                        ((:inspect :modify) (copy-list argument))
+                                                       (:special (list (copy-seq (first argument))
+                                                                       (second argument)))
                                                        (:bindings (when argument
                                                                     (list (first argument)
                                                                           (copy-seq (second argument)))))
@@ -671,6 +678,42 @@ NIL with true availability denotes an absent global cell."
                                     (values nil nil)))))))
     #-x86-64
     (values nil nil)))
+
+(defun service-show-special (stop argument)
+  (destructuring-bind (source environment) argument
+    (let* ((symbol
+             (with-input-from-string (stream source)
+               (let* ((*read-eval* nil)
+                      (end (list :end))
+                      (symbol (read stream nil end)))
+                 (unless (and (symbolp symbol) (eq (read stream nil end) end))
+                   (service-error :expected-one-symbol))
+                 symbol)))
+           (index (service-stop-current-frame stop))
+           (frame (aref (service-stop-frames stop) index)))
+      (multiple-value-bind (value bound-p available-p)
+          (ecase environment
+            (:program
+             (multiple-value-bind (cell available-p) (service-frame-special-cell frame symbol)
+               (let ((bound-p (and available-p cell
+                                   (mezzano.runtime::symbol-value-cell-boundp cell))))
+                 (values (when bound-p (mezzano.runtime::symbol-value-cell-value cell))
+                         bound-p available-p))))
+            (:debugger
+             (let ((history (position symbol '(+ ++ +++ * ** *** / // ///))))
+               (if history
+                   (values (nth history (service-stop-evaluation-history stop)) t t)
+                   (let ((bound-p (boundp symbol)))
+                     (values (when bound-p (symbol-value symbol)) bound-p t))))))
+        (format nil "Special ~A in ~A: ~A."
+                (service-print symbol)
+                (ecase environment
+                  (:program (format nil "Program frame ~D (~A)" index
+                                    (service-print (frame-function frame))))
+                  (:debugger "Debugger"))
+                (cond ((not available-p) "[unavailable]")
+                      ((not bound-p) "[unbound]")
+                      (t (service-print value))))))))
 
 (defun service-frame-bindings (frame)
   (multiple-value-bind (cells available-p) (service-frame-binding-cells frame)
@@ -946,6 +989,7 @@ NIL with true availability denotes an absent global cell."
     (:instruction (service-show-code stop t))
     (:lexical-environment (service-show-lexical-environment stop))
     (:standard-value-warnings (service-show-standard-value-warnings stop))
+    (:special (service-show-special stop (service-command-argument command)))
     (:bindings (service-show-bindings stop (service-command-argument command)))
     (:catches (service-show-catches stop (service-command-argument command)))
     (:handlers (service-show-handlers stop (service-command-argument command)))

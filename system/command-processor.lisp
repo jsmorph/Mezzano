@@ -53,6 +53,9 @@
      :help "Display corrections to invalid or unbound debugger reader and printer controls.")
     (:name "Show Lexical Environment" :id :show-lexical-environment
      :help "Display inherited lexical bindings of the selected source function. Missing ancestry or values are labelled unavailable.")
+    (:name "Show Special" :id :show-special :type :symbol-source
+     :help "Display a symbol's special binding in the selected Program frame or the Debugger. Streams is unsupported."
+     :keywords (("Environment" :special-environment "Program" "Program")))
     (:name "Show Bindings" :id :show-bindings
      :help "Display special bindings established by the selected frame. :All selects all frames. :Matching filters symbol names by a case-sensitive substring."
      :keywords (("All" :boolean "No" "Yes") ("Matching" :string "" nil)))
@@ -175,6 +178,7 @@
                     :test #'string-equal) #'string-lessp))
     (:format '("Brief" "Detailed"))
     (:boolean '("Yes" "No"))
+    (:special-environment '("Program" "Debugger" "Streams"))
     (:local '("All"))
     (:restart '("Default"))))
 
@@ -182,6 +186,7 @@
   (format nil "(~A~@[ [default ~A]~])"
           (case type (:package "A package") ((:pathname :directory) "pathname")
                 (:format "Brief or Detailed") (:boolean "Yes or No") (:string "string")
+                (:symbol-source "symbol") (:special-environment "Program, Debugger, or Streams")
                 (:local "local index or All") (:frame "frame index")
                 (:restart "restart index or Default") (:count "nonnegative frame count"))
           default))
@@ -203,7 +208,11 @@
                     (null (pathname-name pathname)) (null (pathname-type pathname)))
            (setf pathname (make-pathname :name :wild :type :wild :version :wild :defaults pathname)))
          (merge-pathnames pathname (listener-pathname listener))))
-      (:string text)
+      ((:string :symbol-source) text)
+      (:special-environment
+       (cond ((string-equal text "Program") :program)
+             ((string-equal text "Debugger") :debugger)
+             ((string-equal text "Streams") :streams)))
       (:boolean (string-equal text "Yes"))
       (:format (if (string-equal text "Detailed") :detailed :brief))
       ((:frame :local :restart :count)
@@ -466,6 +475,8 @@
     (:use-lexical-environment (list :operation "use-lexical-environment"))
     (:show-lexical-environment (list :operation "lexical-environment"))
     (:show-standard-value-warnings (list :operation "standard-value-warnings"))
+    (:show-special (list :operation "special"
+                        :argument (list argument (cdr (assoc "Environment" keywords :test #'equal)))))
     (:show-bindings (list :operation "bindings"
                           :argument (list (cdr (assoc "All" keywords :test #'equal))
                                           (cdr (assoc "Matching" keywords :test #'equal)))))
