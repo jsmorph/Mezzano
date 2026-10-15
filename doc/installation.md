@@ -73,7 +73,7 @@ env -u CI sbcl --dynamic-space-size 2048 \
   "$build_root/mezzano" > "$build_root/build.log" 2>&1
 ```
 
-Removing `build-x86-64` discards generated compiler output and forces a full build.  The builder writes `mezzano.image`, a five-GiB image, beneath the build directory.  Bootstrap compilation uses `(safety 3 debug 1 speed 1)`.  The running compiler defaults to `(safety 3 debug 3 speed 1)`.  The [compiler guarantees](debugger.md#compiler-guarantees) describe their effect on local inspection.
+Removing `build-x86-64` discards generated compiler output and forces a full build.  The builder writes `mezzano.image`, a five-GiB image, beneath the build directory.  Bootstrap compilation uses `(safety 3 debug 1 speed 1)`.  CLOS discriminator constructors declare DEBUG 3 to retain their owning generic function for debugger inspection.  The running compiler defaults to `(safety 3 debug 3 speed 1)`.  The [compiler guarantees](debugger.md#compiler-guarantees) describe their effect on local inspection.
 
 The host serializer tests check cold function headers, area-buffer padding, and disk layout with unequal area sizes:
 

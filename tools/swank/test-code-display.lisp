@@ -219,6 +219,8 @@
     (let ((history (copy-list (d::service-stop-evaluation-history stop))))
       (check-printer-abort handle lease controller :function generic)
       (setf (fourth history) generic)
+      (mezzano.extensions:gc :full t)
+      (assert (eq (frame-function (selected-frame handle)) generic))
       (assert (equal history (d::service-stop-evaluation-history stop)))
       (assert (search "#<Printable-generic>" (test::command handle lease :function)))
       (assert (equal history (d::service-stop-evaluation-history stop)))
@@ -260,10 +262,11 @@
       (setf (fdefinition 'target) function)))
   (catch-test::run-target "(lispm-code-display-test::invalid-call)"
                           #'i::raise-invalid-argument-error #'check-invalid-call)
-  (setf *cleanup-count* 0)
-  (catch-test::run-target "(lispm-code-display-test::generic-target 0)"
-                          #'generic-inner #'check-generic)
-  (assert (= *cleanup-count* 1))
+  (loop repeat 2
+        do (setf *cleanup-count* 0)
+           (catch-test::run-target "(lispm-code-display-test::generic-target 0)"
+                                   #'generic-inner #'check-generic)
+           (assert (= *cleanup-count* 1)))
   (setf *printer-object* (make-instance 'code-constant)
         *printing-target*
         (compile nil `(lambda ()

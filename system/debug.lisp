@@ -746,6 +746,7 @@ executed, and the offset into it."
       (when (or (and (consp name)
                      (eql (first name) 'mezzano.clos::1-effective-discriminator))
                 (equal name '(lambda :in mezzano.clos::std-compute-discriminating-function))
+                (equal name '(lambda :in mezzano.clos::compute-1-effective-discriminator))
                 (equal name '(lambda :in mezzano.clos::compute-n-effective-discriminator))
                 (equal name '(lambda :in mezzano.clos::compute-reader-discriminator))
                 (equal name '(lambda :in mezzano.clos::compute-writer-discriminator)))

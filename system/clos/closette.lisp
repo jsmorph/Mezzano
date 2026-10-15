@@ -1941,6 +1941,7 @@ has only has class specializer."
 ;;; compute-discriminating-function
 
 (defun compute-reader-discriminator (gf emf-table argument-offset slot-definition)
+  (declare (optimize (debug 3)))
   (lambda (object)
     (let* ((location (single-dispatch-emf-entry-by-object emf-table object)))
       (if location
@@ -1954,6 +1955,7 @@ has only has class specializer."
   type)
 
 (defun compute-writer-discriminator (gf emf-table argument-offset slot-definition)
+  (declare (optimize (debug 3)))
   (lambda (new-value object)
     (let* ((location (single-dispatch-emf-entry-by-object emf-table object)))
       (cond (location
@@ -1967,6 +1969,7 @@ has only has class specializer."
              (slow-single-dispatch-method-lookup* gf argument-offset (list new-value object) :writer emf-table))))))
 
 (defun compute-1-effective-discriminator (gf emf-table argument-offset)
+  (declare (optimize (debug 3)))
   ;; TODO: This table should be a weak-alist, but that's not thread-safe.
   (let ((eql-table (compute-1-effective-eql-table gf argument-offset)))
     ;; Generate specialized dispatch functions for various combinations of
@@ -2040,6 +2043,7 @@ has only has class specializer."
                         (slow-single-dispatch-method-lookup gf args (class-of arg) emf-table))))))))))
 
 (defun compute-n-effective-discriminator (gf emf-table n-required-args)
+  (declare (optimize (debug 3)))
   (lambda (&rest args sys.int::&count arg-count)
     (declare (dynamic-extent args))
     (when (< arg-count n-required-args)
@@ -2205,6 +2209,7 @@ has only has class specializer."
       (generic-function-trace-p generic-function)))
 
 (defun std-compute-discriminating-function (gf)
+  (declare (optimize (debug 3)))
   (lambda (&rest args)
     (apply
      (with-generic-function-lock (gf)

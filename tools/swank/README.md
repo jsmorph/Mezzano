@@ -499,7 +499,16 @@ The function and code-display fixtures require the debugger-service, frame-evalu
 (lispm-large-code-display-test:run)
 ```
 
-The first fixture checks Show Function's isolated * assignment, every branch-label definition, actual call bytes and instruction boundaries, active redefinition, replay, rejected arguments, unchanged selection, generic-associated functions, missing lexical scope, invalid-argument helper identity and bindings, unknown decoding in unexecuted owned code, printer child Abort and repair, moving constants, continuation, cleanup, and release.  Its missing-scope case clears and restores the scope table of its owned TARGET function, checking expression rejection and unchanged function/code/instruction output.  The large fixture checks complete disassembly above 64 KiB through its final instruction, unchanged history, multiple values, and continuation effects.  The existing frameless fixture checks an interrupted instruction's exact saved PC.  Tests execute native x86-64 code at DEBUG 3, SAFETY 3, SPEED 1.  Service compilation uses DEBUG 1 with SAFETY 3 and SPEED 1.
+The first fixture checks Show Function's isolated * assignment, every branch-label definition, actual call bytes and instruction boundaries, active redefinition, replay, rejected arguments, unchanged selection, generic-associated functions, missing lexical scope, invalid-argument helper identity and bindings, unknown decoding in unexecuted owned code, printer child Abort and repair, moving constants, continuation, cleanup, and release.  Its missing-scope case clears and restores the scope table of its owned TARGET function, checking expression rejection and unchanged function/code/instruction output.  The large fixture checks complete disassembly above 64 KiB through its final instruction, unchanged history, multiple values, and continuation effects.  The generic-function cases exercise first and cached calls with full GC.  The existing frameless fixture checks an interrupted instruction's exact saved PC.  Tests execute native x86-64 code at DEBUG 3, SAFETY 3, SPEED 1.  Service compilation uses DEBUG 1 with SAFETY 3 and SPEED 1.
+
+The generic-frame fixture uses the same service, frame-evaluation, and catch-display helpers:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-GENERIC-FRAMES.LISP"))
+(lispm-generic-frame-test:run)
+```
+
+It checks initial, specialized, and six-argument fallback single-dispatch activations, reader slot-unbound entry, writer type errors, cached calls, active global redefinition, full GC, associated generic and executing-code identities, function history, selection, continuation, typed Abort, and release.  CLOS discriminator constructors preserve their bindings at DEBUG 3 even under the bootstrap DEBUG 1 compilation policy.  Recompiling a constructor changes future closures.  A clean rebuild tests the policy throughout the image.
 
 The invalid-argument binding case requires current binding, location, and source metadata.  Tests cover the bootstrap DEBUG 1 helper and DEBUG 3 compilation.  Recompiling an older helper or rebuilding the image replaces its earlier records.  Loading all of system/error.lisp reinitializes debugger-hook globals, so isolated helper recompilation uses its canonical definition and restores its source pathname and top-level-form index.  The [function and instruction reference](../../doc/debugger.md#functions-and-instructions) states the supported behavior and remaining compatibility work.
 
