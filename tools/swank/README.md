@@ -629,7 +629,7 @@ Load the debugger-service and frame-evaluation fixtures, then compile and run th
 
 The native x86-64 test checks cons, array, symbol, hash-table, CLOS, and structure components, fixed-vector elements, unbound versus NIL, shared identity after full GC, page bounds, shrinking arrays, removed keys, changed classes, read-only fields, and rejected types.  Retained-command tests check selected-frame modification, reader and printer history bindings, duplicate input and command submission, nested type and reader errors, input cleanup after reader Abort, a completed store followed by printer failure, Clear, continuation, and owned cleanup.
 
-For a parked-stop restoration test, call `(lispm-inspector-test:prepare-restore-test)` before saving and `(lispm-inspector-test:finish-restore-test)` after restoration.  It checks historical pages, expired references, prior-command rejection, fresh inspection, full GC, modification through retained input, continuation, and cleanup.
+For a parked-stop restoration test, call `(lispm-inspector-test:prepare-restore-test)` before saving and `(lispm-inspector-test:finish-restore-test)` after restoration.  It checks historical pages, expired references, prior-command rejection without command-ID consumption, fresh inspection, full GC, modification through retained input, continuation, and cleanup.
 
 ## CLOS method replacement tests
 

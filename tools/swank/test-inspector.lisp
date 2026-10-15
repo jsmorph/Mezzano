@@ -293,6 +293,7 @@
               :expired-stop
               (lambda () (submit-debugger-command
                           lease id :modify (list (getf (row prior "[65]") :part) 64 8))))
+             (assert (= (getf (debugger-stop-information handle) :next-command-id) id))
              (let* ((current (test::command handle lease :inspect))
                     (reference (getf current :object))
                     (page (test::command handle lease :inspect (list reference 64 8)))
