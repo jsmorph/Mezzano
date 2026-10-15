@@ -148,7 +148,7 @@ Guest handles are opaque Lisp objects.  Stop handles and controllers carry the b
 | Controller | Groups control leases.  Closing it releases ownership of its stops. |
 | Control lease | Grants one controller exclusive command submission and closed-stop release.  Closing the controller invalidates its leases. |
 | Frame reference | Identifies one frame in one stop generation.  It expires on stop exit or boot change. |
-| Command record | Retains acceptance, state, operation, boot identity, and result until explicit stop release. |
+| Command record | Retains acceptance, state, operation, boot identity, result, input, and output until explicit stop release. |
 | Remote session | Associates a client name and token table with one guest boot.  Reconnection creates a new controller. |
 
 Frame capture excludes the retained service's command loop and stack-walking calls, beginning with the caller of SERVICE-DEBUGGER and continuing toward older callers.  Closing a stop increments its generation and clears live condition, frame, and restart references.  A child retains its parent's descriptive ID after parent release, but information returns a parent handle only while the parent remains registered.
@@ -165,9 +165,21 @@ The public functions are exported from `MEZZANO.DEBUG`:
 | `attach-debugger-stop handle controller` | Acquires exclusive control, including for a closed record. |
 | `submit-debugger-command lease id operation &optional argument` | Accepts a new command or recognizes an identical accepted submission. |
 | `debugger-command-result handle id` | Queries a recorded command without requiring control. |
+| `debugger-command-output handle id start &optional end` | Returns copied command output and its ending character offset. |
+| `supply-debugger-command-input lease id offset text &key eof` | Appends or recognizes command input and returns its ending character offset. |
 | `release-debugger-stop lease` | Removes a closed stop and its command records. |
 
 The `:thread` field in stop and evaluation-job information is a display string of at most 160 characters.  Its formatter accepts bounded primitive names without invoking user printers.  ASCII control characters become spaces, unsupported objects appear as `[object]`, and truncated names end with `[truncated]`.  [Peek](peek.md) uses the same label rules.
+
+### Command input and output
+
+Each accepted command owns character input and output.  Standard input reads from that command's input stream.  Standard, error, and trace output share its output stream.  Query, debug, and terminal I/O combine the two.  These bindings apply to commands in batch evaluations, interactive evaluations, and threads without evaluation jobs.  A recursive command has separate streams.  A suspended parent's buffered input and reader remain intact.
+
+`debugger-command-result` reports `:input-length`, `:input-eof-p`, `:input-waiting-p`, and `:output-length`.  Output reads copy the requested character range.  Invalid bounds report `:invalid-output-range`.  Input requires the stop's current control lease and appends at its accepted character offset while the command is pending or running.  An exact retained range recognizes replay after a lost reply, including after command completion.  Conflicting or gapped input reports `:input-conflict`.  New input after EOF or closure reports `:input-closed`.  EOF affects one command.  The next command starts with fresh input.
+
+Command completion, unwinding, cancellation, and expiration close its streams.  Application cleanup runs after the command's stream bindings unwind.  Accepted input and output remain until stop release.  Records created before command I/O retain their results with zero lengths, EOF true, no waiting reader, and empty output.  They reject input with `:input-closed`.
+
+A fresh current-boot handle can address a restored running command's streams without resubmitting the command.  Prior-boot command submission remains rejected.  The native x86-64 restoration test saves a restart-argument reader after consuming a seven-character expression prefix, then resumes the same command through fresh control, verifies exact input replay, appends the suffix, and checks values and single execution/cleanup.  The fixture uses SAFETY 3, DEBUG 3, SPEED 1.  Browser restoration, fresh boot of this addition, ARM64, and other compilation policies require separate acceptance.
 
 ### Current frame
 
@@ -314,7 +326,7 @@ Job information associates stops by their target thread.  Stop ownership and rel
 
 Snapshot restore preserves retained job records and character-stream positions.  The supported restore states are a completed batch job, a condition-stopped batch job after partial input consumption, and an interactive job waiting within a partially read line.  A fresh session obtains current-boot handles for those jobs.  Replaying the original creation request from an earlier boot is rejected.
 
-Interactive input counts active waiting reads.  A debugger's interactive restart reader can wait within an interrupted application read on the same stream.  Aborting that nested reader preserves the application's input-wait state.
+Interactive input counts active waiting reads.  A debugger's interactive restart reader uses its command stream while an interrupted application read retains its job stream.  Aborting that debugger reader preserves the application's input-wait state.
 
 ### Interruption
 
@@ -433,7 +445,7 @@ The x86-64 frame walker uses existing GC metadata to traverse framed calls, fram
 
 An activation without an established frame reports stack-slot values unavailable and rejects stack-slot writes.  Saved-register local inspection and traversal through frameless interrupt-return phases remain unsupported.  The frame walker has no ARM64 execution test.  Restoring an interrupted frameless activation remains untested.
 
-The retained service lists applicable restarts, supports zero-argument calls, invokes their interactive argument readers, and reads explicit argument expressions.  The Web restart controls offer interactive invocation or :Arguments input.  An interactive evaluation supplies QUERY-IO through its retained input and output streams.  The :Arguments operation supports required parameters even when a restart has no interactive function.  It reads with `*READ-EVAL*` NIL and evaluates in the stopped thread's current dynamic environment and a null lexical environment.  It does not expose selected-frame lexical bindings.  Reader, evaluation, argument-list, and invocation errors enter a child debugger.  Aborting that command restores the enclosing stop.  Accepted-command and input replay preserve the original execution.  A nonlocal restart exit follows Common Lisp unwinding rules.  It does not provide arbitrary frame return, frame reinvocation, or a selected-frame THROW operation.
+The retained service lists applicable restarts, supports zero-argument calls, invokes their interactive argument readers, and reads explicit argument expressions.  The Web restart controls offer interactive invocation or :Arguments input.  Each debugger command supplies QUERY-IO through its own retained input and output streams.  The :Arguments operation supports required parameters even when a restart has no interactive function.  It reads with `*READ-EVAL*` NIL and evaluates in the stopped thread's current dynamic environment and a null lexical environment.  It does not expose selected-frame lexical bindings.  Reader, evaluation, argument-list, and invocation errors enter a child debugger.  Aborting that command restores the enclosing stop.  Accepted-command and input replay preserve the original execution.  A nonlocal restart exit follows Common Lisp unwinding rules.  It does not provide arbitrary frame return, frame reinvocation, or a selected-frame THROW operation.
 
 The API does not provide breakpoint management, call/exit traps, instruction or source stepping, location monitoring, or raw-stack modification.  Function-level source information and the separate Lisp disassembler do not provide source display tied to the executing function version through this API.
 

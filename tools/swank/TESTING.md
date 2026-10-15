@@ -219,6 +219,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-lispm-eval.py` | Evaluation, encoding, output, multiple values, errors, flow control, and timeout behavior. |
 | `test-structure-layouts.lisp` | Load as source for sequential redefinition.  Tests inherited access, saved compiled predicates/readers/writers across slot addition and reparenting, object/hash-key identity, and moving GC. |
 | `test-interpreter-source.lisp` | Absent/present interpreter source filenames, captured closures, invalid source errors, and lazy type expansion.  Compile/load and call LISPM-INTERPRETER-SOURCE-TEST:RUN. |
+| `test-command-io.lisp` | Batch/jobless command streams, Unicode input replay/conflicts, output ranges, EOF isolation, nested reader Abort, expired control, closure/restoration of stream bindings, and cleanup.  Load the service fixture helpers, compile/load this fixture, and call LISPM-COMMAND-IO-TEST:RUN. |
 | `test-foothold-gc.lisp` | Movable objects in eight x86-64 data registers across an injected foothold and full GC. |
 | `test-interrupt-return-gc.lisp` | GC and resumption at the observed x86-64 interrupt-return instruction addresses, in full-save state and beneath another foothold. |
 | `test-gc-restart.lisp` | Raw instruction-address rewriting and resumption for an x86-64 GC restart region, in full-save state and beneath a foothold. |

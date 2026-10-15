@@ -46,7 +46,7 @@
   (id 0 :read-only t))
 
 (defstruct (service-command (:constructor %make-service-command))
-  boot operation argument
+  boot operation argument io
   (state :pending)
   result)
 
@@ -431,6 +431,13 @@
       (service-error :invalid-frame))
     index))
 
+(defun close-service-command-io (command)
+  (let ((io (service-command-io command)))
+    (when io
+      (close-evaluation-input (two-way-stream-input-stream io))
+      (setf (mezzano.gray:stream-open-p (two-way-stream-output-stream io)) nil
+            (mezzano.gray:stream-open-p io) nil))))
+
 (defun submit-debugger-command (lease id operation &optional argument)
   (with-service-lock
     (let* ((stop (check-service-lease lease))
@@ -491,6 +498,8 @@
         (otherwise (service-error :unknown-operation)))
       (let ((command (%make-service-command
                       :boot (mezzano.supervisor:current-boot-id)
+                      :io (make-two-way-stream (make-instance 'evaluation-input-stream)
+                                                (make-instance 'evaluation-output-stream))
                       :operation operation :argument (case operation
                                                        (:evaluate (copy-seq argument))
                                                        ((:inspect :modify) (copy-list argument))
@@ -524,7 +533,48 @@
                       (copy-seq (service-command-argument command)))
             :current-boot-p (eq (service-command-boot command)
                                (mezzano.supervisor:current-boot-id))
-            :result (copy-service-result (service-command-result command))))))
+            :result (copy-service-result (service-command-result command))
+            :input-length (let ((io (service-command-io command)))
+                            (if io
+                                (length (evaluation-input-buffer (two-way-stream-input-stream io)))
+                                0))
+            :input-eof-p (let ((io (service-command-io command)))
+                           (or (null io)
+                               (evaluation-input-eof-p (two-way-stream-input-stream io))))
+            :input-waiting-p (let ((io (service-command-io command)))
+                               (and io (evaluation-input-waiting-p (two-way-stream-input-stream io))))
+            :output-length (let ((io (service-command-io command)))
+                             (if io
+                                 (length (evaluation-output-buffer (two-way-stream-output-stream io)))
+                                 0))))))
+
+(defun debugger-command-output (handle id start &optional end)
+  (with-service-lock
+    (let* ((stop (check-service-handle handle))
+           (command (gethash id (service-stop-commands stop))))
+      (unless command (service-error :unknown-command))
+      (let* ((io (service-command-io command))
+             (buffer (if io
+                         (evaluation-output-buffer (two-way-stream-output-stream io))
+                         ""))
+             (end (or end (length buffer))))
+        (unless (and (integerp start) (integerp end) (<= 0 start end (length buffer)))
+          (service-error :invalid-output-range))
+        (values (subseq buffer start end) end)))))
+
+(defun supply-debugger-command-input (lease id offset text &key eof)
+  (check-type text string)
+  (with-service-lock
+    (let* ((stop (check-service-lease lease))
+           (command (gethash id (service-stop-commands stop))))
+      (unless command (service-error :unknown-command))
+      (let ((io (service-command-io command)))
+        (unless io (service-error :input-closed))
+        (supply-evaluation-stream-input
+         (two-way-stream-input-stream io) offset text eof
+         (and (eq (service-stop-state stop) :stopped)
+              (member (service-command-state command) '(:pending :running))))))))
+
 
 (defun service-print (object &optional aesthetic)
   (let ((*print-readably* nil)
@@ -1022,15 +1072,24 @@ NIL with true availability denotes an absent global cell."
   (let ((mezzano.internals::*active-handlers* nil))
     (with-simple-restart (abort "Abort this debugger command.")
       (unwind-protect
-           (let ((result
-                   (let ((*service-current-command* command))
-                     (call-with-service-standard-values
-                      stop (lambda () (execute-service-command stop command))))))
+           (let* ((io (service-command-io command))
+                  (*standard-input* (two-way-stream-input-stream io))
+                  (*standard-output* (two-way-stream-output-stream io))
+                  (*error-output* *standard-output*)
+                  (*trace-output* *standard-output*)
+                  (*terminal-io* io)
+                  (*query-io* io)
+                  (*debug-io* io)
+                  (result
+                    (let ((*service-current-command* command))
+                      (call-with-service-standard-values
+                       stop (lambda () (execute-service-command stop command))))))
              (with-service-lock
                (setf (service-command-result command) result
                      (service-command-state command) :returned
                      (service-stop-active stop) nil)))
         (with-service-lock
+          (close-service-command-io command)
           (when (eq (service-command-state command) :running)
             (setf (service-command-state command) :unwound))
           (setf (service-stop-active stop) nil))))))
@@ -1051,6 +1110,7 @@ NIL with true availability denotes an absent global cell."
                          command)
                         (t
                          (setf (service-command-state command) :expired)
+                         (close-service-command-io command)
                          nil)))))))
       (when command (run-service-command stop command)))))
 
@@ -1058,6 +1118,7 @@ NIL with true availability denotes an absent global cell."
   (with-service-lock
     (dolist (command (list (service-stop-pending stop) (service-stop-active stop)))
       (when command
+        (close-service-command-io command)
         (setf (service-command-state command)
               (if (eq (service-command-state command) :pending)
                   :cancelled

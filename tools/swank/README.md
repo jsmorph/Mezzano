@@ -84,6 +84,8 @@ Output reads use character offsets and preserve storage.  `:job-output` returns 
 
 ### Interactive input
 
+Evaluation input belongs to the application job.  Debugger prompts use a separate stream for each accepted command, including in batch jobs and threads without jobs.  The `:result` fields `:input-length`, `:input-eof-p`, and `:input-waiting-p` describe that command's input.  `:command-output` reads its retained output.  `:command-input` takes the control lease, command ID, accepted offset, text, and optional EOF.  Transient requests use a stop token in place of the lease.  Command EOF leaves later commands' input open.  The [command I/O reference](../../doc/debugger.md#command-input-and-output) specifies lifetime and replay behavior.
+
 Create a job with `:interactive T` to keep input open after its initial text is consumed.  A read then waits for more input or explicit EOF.  Job information reports `:input-length`, `:input-eof-p`, and `:input-waiting-p`.  Connection loss leaves the read pending.
 
 Within a `call-with-session` callback, this call supplies a line and EOF to an interactive job whose input length was zero:

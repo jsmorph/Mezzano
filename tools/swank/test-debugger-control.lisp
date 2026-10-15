@@ -172,8 +172,8 @@
                     (id (submit stop lease :invoke-restart-interactively index)))
                (assert index)
                (await "interactive restart read"
-                      (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-               (supply-evaluation-input job 0 (format nil "27~%"))
+                      (lambda () (getf (debugger-command-result stop id) :input-waiting-p)))
+               (supply-debugger-command-input lease id 0 (format nil "27~%"))
                (let ((result (terminal-command stop id)))
                  (assert (eq (getf result :state) :returned))
                  (assert (equal (getf result :result) '("27" ":RESTART-RESULT"))))
@@ -208,8 +208,8 @@
                            (find "CONTINUE" restarts :key (lambda (entry) (getf entry :name))
                                                     :test #'equal)))
                (await "default restart argument read"
-                      (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-               (supply-evaluation-input job 0 (format nil "39~%"))
+                      (lambda () (getf (debugger-command-result stop id) :input-waiting-p)))
+               (supply-debugger-command-input lease id 0 (format nil "39~%"))
                (let ((result (terminal-command stop id)))
                  (assert (eq (getf result :state) :returned))
                  (assert (equal (getf result :result) '("39" ":INNER"))))
@@ -249,12 +249,12 @@
                     (id (submit stop lease :invoke-restart-with-arguments index)))
                (assert index)
                (await "explicit restart arguments"
-                      (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
+                      (lambda () (getf (debugger-command-result stop id) :input-waiting-p)))
                (let ((input (format nil "(progn
                                           (incf lispm-debugger-control-test::*argument-count*)
                                           (list lispm-debugger-control-test::*argument-value* 12))~%")))
-                 (supply-evaluation-input job 0 input)
-                 (supply-evaluation-input job 0 input))
+                 (supply-debugger-command-input lease id 0 input)
+                 (supply-debugger-command-input lease id 0 input))
                (assert (eq (getf (terminal-command stop id) :state) :unwound))
                (assert (equal (getf (wait-job job :returned) :values) '("42" ":SUPPLIED")))
                (submit-debugger-command lease id :invoke-restart-with-arguments index)
@@ -267,16 +267,14 @@
                                   (error \"Returning explicit arguments.\"))"
                                 :interactive t))
                     (stop (stopped job))
-                    (lease (attach stop))
-                    (offset 0))
+                    (lease (attach stop)))
                (dolist (entry '(("nil" "NIL")
                                 ("(values (list 81) :ignored)" "(81)")))
                  (let ((id (submit stop lease :invoke-restart-with-arguments))
                        (input (format nil "~A~%" (first entry))))
                    (await "explicit default arguments"
-                          (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-                   (supply-evaluation-input job offset input)
-                   (incf offset (length input))
+                          (lambda () (getf (debugger-command-result stop id) :input-waiting-p)))
+                   (supply-debugger-command-input lease id 0 input)
                    (let ((result (terminal-command stop id)))
                      (assert (eq (getf result :state) :returned))
                      (assert (equal (getf result :result) (list (second entry) ":EXPLICIT"))))
@@ -290,8 +288,8 @@
                     (lease (attach stop))
                     (id (submit stop lease :invoke-restart-with-arguments)))
                (await "required parameter input"
-                      (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-               (supply-evaluation-input job 0 (format nil "nil~%"))
+                      (lambda () (getf (debugger-command-result stop id) :input-waiting-p)))
+               (supply-debugger-command-input lease id 0 (format nil "nil~%"))
                (let* ((child (await "missing parameter child"
                                     (lambda () (getf (debugger-stop-information stop) :child))))
                       (child-lease (attach child)))
@@ -299,8 +297,8 @@
                (assert (eq (getf (terminal-command stop id) :state) :unwound))
                (setf id (submit stop lease :invoke-restart-with-arguments))
                (await "replacement parameter input"
-                      (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-               (supply-evaluation-input job 4 (format nil "(list 44)~%"))
+                      (lambda () (getf (debugger-command-result stop id) :input-waiting-p)))
+               (supply-debugger-command-input lease id 0 (format nil "(list 44)~%"))
                (let ((result (terminal-command stop id)))
                  (assert (eq (getf result :state) :returned))
                  (assert (equal (getf result :result) '("45"))))
@@ -317,8 +315,8 @@
                       (lease (attach stop))
                       (id (submit stop lease :invoke-restart-with-arguments)))
                  (await "invalid argument input"
-                        (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-                 (supply-evaluation-input job 0 (format nil "~A~%" input))
+                        (lambda () (getf (debugger-command-result stop id) :input-waiting-p)))
+                 (supply-debugger-command-input lease id 0 (format nil "~A~%" input))
                  (let* ((child (await "argument command child"
                                       (lambda () (getf (debugger-stop-information stop) :child))))
                         (child-lease (attach child)))
@@ -363,7 +361,18 @@
           (list :job job :name (getf (evaluation-job-information job) :name)
                 :stop stop :controller controller :lease lease :id id))
     (await "argument reader before image save"
-           (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
+           (lambda () (getf (debugger-command-result stop id) :input-waiting-p)))
+    (let* ((prefix "(progn ")
+           (command (gethash id (mezzano.debug::service-stop-commands
+                                (mezzano.debug::service-handle-stop stop))))
+           (input (two-way-stream-input-stream (mezzano.debug::service-command-io command))))
+      (setf (getf *argument-restore-state* :input-prefix) prefix)
+      (supply-debugger-command-input lease id 0 prefix)
+      (await "partially consumed argument expression"
+             (lambda ()
+               (and (getf (debugger-command-result stop id) :input-waiting-p)
+                    (mezzano.debug::with-service-lock
+                      (= (mezzano.debug::evaluation-input-position input) (length prefix)))))))
     (assert (eq (getf (debugger-command-result stop id) :state) :running))
     (format t "Prepared a running restart argument reader for restoration.~%"))
   (values))
@@ -399,12 +408,15 @@
                 (progn (submit-debugger-command lease id :invoke-restart-with-arguments) nil)
               (debugger-service-error (condition)
                 (eq (debugger-service-error-reason condition) :request-conflict))))
-           (assert (getf (evaluation-job-information job) :input-waiting-p))
+           (assert (getf (debugger-command-result stop id) :input-waiting-p))
            (mezzano.extensions:gc :full t)
-           (supply-evaluation-input
-            job 0
-            (format nil "(progn (incf lispm-debugger-control-test::*argument-count*)
-                                (list 20 22))~%"))
+           (let ((prefix (getf state :input-prefix)))
+             (assert (= (getf (debugger-command-result stop id) :input-length) (length prefix)))
+             (assert (= (supply-debugger-command-input lease id 0 prefix) (length prefix)))
+             (supply-debugger-command-input
+              lease id (length prefix)
+              (format nil "(incf lispm-debugger-control-test::*argument-count*)
+                           (list 20 22))~%")))
            (let ((result (terminal-command stop id)))
              (assert (eq (getf result :state) :unwound))
              (assert (null (getf result :current-boot-p))))

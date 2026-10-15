@@ -129,22 +129,22 @@
     (break "Owned Inspector test.")
     (values (aref object 65) x *writes* (typep (aref display 0) 'broken-probe))))
 
-(defun rejected-modification (handle lease job controller argument source offset expected-type)
+(defun rejected-modification (handle lease controller argument source expected-type)
   (let ((id (getf (debugger-stop-information handle) :next-command-id))
         (input (format nil "~A~%" source))
         (child nil))
     (unwind-protect
          (progn
            (submit-debugger-command lease id :modify argument)
-           (test::await (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-           (supply-evaluation-input job offset input)
+           (test::await (lambda () (getf (debugger-command-result handle id) :input-waiting-p)))
+           (supply-debugger-command-input lease id 0 input)
            (setf child (test::await (lambda () (getf (debugger-stop-information handle) :child))))
            (assert (typep (d::service-stop-condition (d::service-handle-stop child)) expected-type))
            (test::command child (attach-debugger-stop child controller) :condition))
       (when child (frame::release-test-stop child controller)))
     (assert (eq (getf (test::completed-command handle id) :state) :unwound))
     (submit-debugger-command lease id :modify (copy-list argument))
-    (+ offset (length input))))
+    (values)))
 
 (defun run ()
   (setf *writes* 0)
@@ -178,9 +178,9 @@
              (assert (= id (getf (debugger-stop-information handle) :next-command-id)))
              (submit-debugger-command lease id :modify argument)
              (setf (second argument) 0)
-             (test::await (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-             (supply-evaluation-input job 0 input)
-             (supply-evaluation-input job 0 input)
+             (test::await (lambda () (getf (debugger-command-result handle id) :input-waiting-p)))
+             (supply-debugger-command-input lease id 0 input)
+             (supply-debugger-command-input lease id 0 input)
              (let* ((result (test::completed-command handle id))
                     (page (getf result :result)))
                (assert (eq (getf result :state) :returned))
@@ -194,18 +194,18 @@
              (frame::evaluate-source handle lease "(make-instance 'history-probe)" '("#<HISTORY-PROBE>"))
              (let ((value (fourth (d::service-stop-evaluation-history (d::service-handle-stop handle)))))
                (assert (eq value (slot-value value 'seen))))
-             (let ((offset (length input)))
-               (setf offset (rejected-modification handle lease job controller
-                                                   (list part 64 8) "\"wrong\"" offset 'type-error))
-               (setf offset (rejected-modification handle lease job controller
-                                                   (list part 64 8) "#.(incf *writes*)" offset 'reader-error))
+             (progn
+               (rejected-modification handle lease controller
+                                      (list part 64 8) "\"wrong\"" 'type-error)
+               (rejected-modification handle lease controller
+                                      (list part 64 8) "#.(incf *writes*)" 'reader-error)
                (frame::evaluate-source handle lease "(values (aref object 65) *writes*)" '("42" "1"))
                (test::command handle lease :evaluate "display")
                (let* ((page (test::command handle lease :inspect))
                       (place (getf (row page "[0]") :part)))
                  (rejected-modification
-                  handle lease job controller (list place 0 32)
-                  "(progn (incf *writes*) (make-instance 'broken-probe))" offset 'simple-error)
+                  handle lease controller (list place 0 32)
+                  "(progn (incf *writes*) (make-instance 'broken-probe))" 'simple-error)
                  (frame::evaluate-source
                   handle lease "(values (typep (aref display 0) 'broken-probe) *writes*)" '("T" "2"))))
              (test::command handle lease :clear-inspection)
@@ -305,8 +305,8 @@
                               "(progn (mezzano.extensions:gc :full t) object)")
                (setf id (getf (debugger-stop-information handle) :next-command-id))
                (submit-debugger-command lease id :modify argument)
-               (test::await (lambda () (getf (evaluation-job-information job) :input-waiting-p)))
-               (supply-evaluation-input job 0 (format nil "(+ x 5)~%"))
+               (test::await (lambda () (getf (debugger-command-result handle id) :input-waiting-p)))
+               (supply-debugger-command-input lease id 0 (format nil "(+ x 5)~%"))
                (let ((result (test::completed-command handle id)))
                  (assert (eq (getf result :state) :returned))
                  (assert (equal (getf (row (getf result :result) "[65]") :value) "42")))

@@ -291,6 +291,8 @@
    #:release-debugger-stop
    #:submit-debugger-command
    #:debugger-command-result
+   #:debugger-command-output
+   #:supply-debugger-command-input
    #:start-evaluation-job
    #:evaluation-jobs
    #:evaluation-job-information
