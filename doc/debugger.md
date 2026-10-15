@@ -482,7 +482,9 @@ On x86-64, an intentional INT3 instruction enters ordinary Lisp BREAK through th
 
 Native tests use a fixed INT3 in an owned LAP function.  They verify the saved PC, caller lexical access, exact heap identity through moving GC, Continue and Abort, one cleanup, ordinary/nested prompt stacks, and two parked threads sharing the same trap function.  The resident module compiled at DEBUG 1/SAFETY 3/SPEED 1.  Test Lisp compiled at DEBUG 3/SAFETY 3/SPEED 1.  Traps in interrupt handlers or runtime critical sections, saved trap-stop restoration, a cold boot of this addition, and ARM64 execution remain untested.
 
-Breakpoint installation, original-instruction execution after replacement, concurrent modification/removal, conditions/actions, and instruction stepping remain unimplemented.
+The existing supervisor TF primitive passed separate native tests on owned raw stopped threads: exact PCs for ordinary instructions, taken jumps and CALL/RET, saved registers through moving GC, and return to the original partial/full saved continuation at zero/two prompts.  It enters called functions.  Genera's Single Step steps over calls.  Retained debugger stepping has no command implementation yet.
+
+Breakpoint installation, original-instruction execution after replacement, concurrent modification/removal, and conditions/actions remain unimplemented.
 
 ## Compiler guarantees
 
