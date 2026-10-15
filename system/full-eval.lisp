@@ -77,6 +77,7 @@
         (interpreted-function-name function)
         nil
         nil
+        nil
         (interpreted-function-filename function)
         (interpreted-function-tlf function)
         (second (interpreted-function-lambda function))

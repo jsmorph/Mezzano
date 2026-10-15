@@ -384,7 +384,7 @@ The local-macro fixture exercises enclosing macro and symbol-macro definitions, 
 (lispm-macro-environment-test:run)
 ```
 
-The function-constant fixture saves compiled, lazy, and interpreted functions in a native compiled file.  It checks shared function identity, retained compiled state, interpreted evaluation behavior, nested macro environments, shared lexical cells, source metadata, and full GC:
+The function-constant fixture saves compiled, lazy, and interpreted functions in a native compiled file.  It checks shared function identity, retained compiled state, interpreted evaluation behavior, nested macro environments, shared lexical cells, and full GC.  Direct and serialized interpreted functions must return their stored name, pathname, form number, and lambda list through the shared debug-info readers:
 
 ```lisp
 (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-FUNCTION-CONSTANTS.LISP"))
