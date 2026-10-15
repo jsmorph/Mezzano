@@ -29,10 +29,15 @@ try {
       const {operation,arguments:args}=JSON.parse(options.body);
       fixture.calls.push({operation,...args});store();let result;
       if(['open-session','resume-session'].includes(operation))result={};
-      else if(operation==='monitor-state')result={listener:{package:'CL-USER',prompt:'Command: '},jobs:[],
+      else if(operation==='monitor-state')result={listener:{package:'CL-USER',prompt:'Command: ',
+        ...(fixture.activeReturn?{debugger:{stop:token(2),depth:1,prompt:'→ '}}:{})},jobs:[],
         stops:[1,3,2].map(id=>({token:token(id),information:info(id)}))};
       else if(operation==='information')result=info(args.stop[2]);
       else if(operation==='result')result=fixture.records[args.stop[2]][args.id];
+      else if(operation==='command-output'){
+        const text=fixture.records[args.stop[2]][args.id].text;
+        result={start:args.start,text:Array.from(text).slice(args.start,args.end).join(''),end:args.end};
+      }
       else if(operation==='submit'){
         const records=fixture.records[args.stop[2]],returned=value(args.command,args.stop[2]);
         if(args.id!==records.length||returned===undefined||args.argument!==null)throw Error('Invalid fixture submission');
@@ -71,11 +76,57 @@ try {
   await browser.evaluate('fixture.link=false;void run(()=>selectStop(stops.find(stop=>stop.info.id===1).token))');
   await ready();
   assert.equal(await browser.evaluate(`Boolean(${currentButton})`),false,'A closed record without a link has no Current Stop action');
+  const confirmation=await browser.evaluate(`(()=>{
+    fixture.activeReturn=true;
+    const records=fixture.records[2], start=records.length;
+    records.push({state:':returned',operation:':evaluate',source:'(+ 20 22)',result:['42'],'current-boot-p':true},
+      {state:':returned',operation:':return',result:'Return cancelled.','current-boot-p':true},
+      {state:':running',operation:':return',result:null,'current-boot-p':true,
+        'input-length':12,'input-eof-p':null,'input-waiting-p':true,
+        text:'1 value: 42\\nReturn from frame 0 TARGET-2? (Y or N) ',
+        'output-length':Array.from('1 value: 42\\nReturn from frame 0 TARGET-2? (Y or N) ').length});
+    const stop=stops.find(stop=>stop.info.id===2).token;
+    for(let id=start;id<records.length;id++)state.commands.push({stop,id,command:records[id].operation.slice(1),source:records[id].source});
+    save();return {stop,id:records.length-1,next:records.length,
+      submissions:fixture.calls.filter(call=>call.operation==='submit').length};
+  })()`);
+  await browser.evaluate('void run(()=>selectStop(stops.find(stop=>stop.info.id===2).token))');
+  await browser.waitFor(`document.querySelector('.command-io[data-command-id="${confirmation.id}"] textarea') && !busy && !nextCommandOutput()`);
+  await browser.evaluate(`(()=>{const input=document.querySelector('.command-io[data-command-id="${confirmation.id}"] textarea');
+    input.value='n';input.setSelectionRange(0,1);input.dispatchEvent(new Event('input'))})()`);
+  const origin=await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin!==${origin} && typeof connected!=='undefined' && connected && !busy`);
+  await browser.evaluate('void run(()=>selectStop(stops.find(stop=>stop.info.id===2).token))');
+  await browser.waitFor(`selectedStop?.[2]===2 && !busy && !nextCommandOutput()
+    && state.commands.filter(command=>command.stop[2]===2&&commandResults.has(commandKey(command))).length===${confirmation.next}`,10);
+  const recovered=await browser.evaluate(`(()=>{
+    const command=state.commands.find(command=>command.stop[2]===2&&command.id===${confirmation.id});
+    const input=document.querySelector('.command-io[data-command-id="${confirmation.id}"] textarea');
+    return {info:stops.find(stop=>stop.info.id===2).info,result:commandResults.get(commandKey(command)),
+      ids:state.commands.filter(command=>command.stop[2]===2).map(command=>command.id),
+      draft:[input.value,input.selectionStart,input.selectionEnd],inputEnabled:!input.disabled,
+      sendEnabled:!input.nextElementSibling.disabled,pending:stopCommandPending(selectedStop),
+      history:document.querySelector('#stop-detail').textContent,
+      submissions:fixture.calls.filter(call=>call.operation==='submit').length};
+  })()`);
+  assert.equal(recovered.info['current-frame'],0);
+  assert.equal(recovered.info['next-command-id'],confirmation.next);
+  assert.equal(recovered.result.state,':running');
+  assert.deepEqual(recovered.ids,Array.from({length:confirmation.next},(_,id)=>id));
+  assert.deepEqual(recovered.draft,['n',0,1]);
+  assert(recovered.inputEnabled&&recovered.sendEnabled&&recovered.pending);
+  assert.equal(recovered.submissions,confirmation.submissions);
+  assert(recovered.history.includes('42')&&recovered.history.includes('Return cancelled.'));
+  assert(!recovered.history.includes('Receiving result.'));
+  await browser.evaluate(`document.querySelector('.command-io[data-command-id="${confirmation.id}"]').scrollIntoView({block:'end'})`);
+  await browser.screenshot(output+'/active-return-history.png');
   assert.deepEqual(browser.errors,[]);
   await writeFile(output+'/result.json',JSON.stringify({fixtureOnly:true,guestRequests:0,
     checks:['Retained Return cancellation without resubmission','Exact Current Stop token among duplicate thread labels',
       'Closed-only navigation and initial inspections','Return menu uses existing parser and no-argument submit',
-      'Cancellation survives reload without another execution','Absent thread-stop has no navigation action'],
+      'Cancellation survives reload without another execution','Absent thread-stop has no navigation action','Reloaded completed history during active Return preserves reader, frame, IDs, draft and execution count'],
+    confirmation,recovered,
     fixture:await browser.evaluate('fixture'),errors:browser.errors},null,2));
   console.log('PASS Return rendering/menu/reload and closed-only exact Current Stop navigation; zero guest requests');
 } catch(error) {

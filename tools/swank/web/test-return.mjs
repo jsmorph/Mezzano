@@ -191,6 +191,8 @@ async function abortChild(id) {
   assert.equal((await request('information',{stop:parent})).state,':stopped');
 }
 async function reloadAtReader(id,text,start,end) {
+  const before=await request('information',{stop:parent});
+  const prior=await request('result',{stop:parent,id});
   await browser.evaluate(`(()=>{const input=document.querySelector(${q(inputSelector(id))});input.value=${q(text)};
     input.setSelectionRange(${start},${end});input.dispatchEvent(new Event('input'));input.focus()})()`);
   const origin=await browser.evaluate('performance.timeOrigin');
@@ -198,6 +200,17 @@ async function reloadAtReader(id,text,start,end) {
   await browser.waitFor(`performance.timeOrigin!==${origin} && typeof connected!=='undefined' && connected && !busy`);
   await select(parent);
   await waiting(id);
+  await browser.waitFor(`state.commands.filter(command=>same(command.stop,${q(parent)})
+    && commandResults.has(commandKey(command))).length===${before['next-command-id']} && !busy && !nextCommandOutput()`,30);
+  const after=await request('information',{stop:parent});
+  const restored=await request('result',{stop:parent,id});
+  assert.deepEqual([after['current-frame'],after['next-command-id']],
+    [before['current-frame'],before['next-command-id']]);
+  assert.equal(restored.state,':running');
+  assert.equal(restored['input-length'],prior['input-length']);
+  assert.equal(await browser.evaluate("document.querySelector('#stop-detail').textContent.includes('Receiving result.')"),false);
+  evidence.reloads??=[];
+  evidence.reloads.push({stop:parent,id,frame:after['current-frame'],next:after['next-command-id'],inputLength:restored['input-length']});
   assert.deepEqual(await browser.evaluate(`(()=>{const input=document.querySelector(${q(inputSelector(id))});
     return [input.value,input.selectionStart,input.selectionEnd]})()`),[text,start,end]);
 }

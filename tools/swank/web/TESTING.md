@@ -337,7 +337,7 @@ Isolated x86-64 browser acceptance passed the jobless driver, Listener/restart d
 
 ## Frame Return
 
-The intercepted Return fixture tests retained cancellation text, the existing command menu/parser path, reload without resubmission, and closed-only Current Stop navigation.  Two active fixture records share a thread display name.  Only the guest-supplied token receives selection and initial inspections.
+The intercepted Return fixture tests retained cancellation text, the existing command menu/parser path, reload without resubmission, and closed-only Current Stop navigation.  Two active fixture records share a thread display name.  Only the guest-supplied token receives selection and initial inspections.  Reload during an active confirmation also requires completed prior records to load while the reader remains enabled, with unchanged frame, command IDs, input draft/cursor, and submission count.  The existing history fixture retains its fresh-inspection priority assertion when a locally accepted command is beyond a stale monitor counter.
 
 ```sh
 node tools/swank/web/test-return-fixtures.mjs \

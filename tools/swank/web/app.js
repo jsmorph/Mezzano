@@ -935,8 +935,10 @@ function nextHistoricalCommand() {
         && same(record.arguments.stop, selectedStop) && record.arguments.id < selected.info["next-command-id"]
         && !commandResults.has(commandKey(record.arguments)));
       if (uncertain) return {stop: selectedStop, id: uncertain.arguments.id};
-      if (stopCommandPending(selectedStop)
-          || (selected.info.state === ":stopped" && !selected.info.child && nextStopInspection(selectedStop))) return null;
+      if (state.commands.some(command => same(command.stop, selectedStop)
+          && command.id >= selected.info["next-command-id"] && !commandResults.has(commandKey(command)))) return null;
+      if (!stopCommandPending(selectedStop) && selected.info.state === ":stopped"
+          && !selected.info.child && nextStopInspection(selectedStop)) return null;
       const known = new Set(state.commands.filter(command => same(command.stop, selectedStop)
         && commandResults.has(commandKey(command))).map(command => command.id));
       for (let id = selected.info["next-command-id"] - 1; id >= 0; id--) {
