@@ -119,7 +119,8 @@
         (if (char= (char source position) #\")
             (let ((*read-eval* nil))
               (handler-case
-                  (multiple-value-bind (value end) (read-from-string source t nil :start position)
+                  (multiple-value-bind (value end)
+                      (read-from-string source t nil :start position :preserve-whitespace t)
                     (unless (or (= end (length source)) (whitespacep (char source end)))
                       (input-error "A quoted argument must end before a space."))
                     (push (make-lexeme :value value :start start :end end :quoted-p t) tokens)
