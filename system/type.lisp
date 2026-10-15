@@ -953,15 +953,10 @@
                        ',(mezzano.runtime::%make-instance-header
                           (mezzano.clos:class-layout struct-type)))))
               `(let ((,object-sym ,object))
-                 (or
-                  (and (%value-has-tag-p ,object-sym ,+tag-object+)
-                       (%fast-instance-layout-eq-p
-                        ,object-sym
-                        ',(mezzano.runtime::%make-instance-header
-                           (mezzano.clos:class-layout struct-type))))
-                   (structure-layout-compatible-p
-                    ,object-sym
-                    ',(mezzano.clos:class-layout struct-type)))))))))
+                 (and (instance-p ,object-sym)
+                      (or (eq (layout-class (%instance-layout ,object-sym))
+                              ',struct-type)
+                          (structure-type-p ,object-sym ',struct-type)))))))))
   (when (eql type-specifier 'sequence)
     ;; Open-code parts the sequence type check.
     ;; This is a performance hack that replaces the old DEFTYPE SEQUENCE,
