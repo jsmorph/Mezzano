@@ -1,5 +1,33 @@
 # Web UI development journal
 
+## Stable selected-special evaluation acceptance: 2026-10-15
+
+Root loaded core 0c19c860 into stable SWANK 4006 and passed strict compilation plus a fresh seven-record migration audit.  HTTP 8765 remains pinned to Web 6842d68c, with unchanged app/server hashes 5172ca77/e8a70605 and no service restart.  Run the requested suites sequentially: environment 11 groups, frame evaluation 28, Show Special 8, standard-value warnings 7, Inspector 9, HTTPS 7, then product documentation/Peek/completion/Listener.  Every driver must protect IDs 178, 656, 657, 658, 699, 700, and 701.  Preserve each run's evidence and cleanup and stop on failure.  Root performs the final native identity/table-entry audit after browser traffic ends.
+
+Reviewed the updated debugger guide before changing the product check.  Its former sentence saying historical special evaluation remains unfinished is now obsolete.  Copy the existing private product driver to `/tmp/verify-special-context-product.mjs`, replace that sentence with the current Streams/ARM64 limitation, and add exact assertions for selected original cells, compiled callees, LET/PROGV lifetime, NIL/unbound values, debugger-owned bindings, unavailable-environment rejection, child error context, dynamic-mode context, and native restoration coverage/limits.  Capture the new selected-special paragraph rather than only the older Show Special section.  Retain catalog reload, existing command documentation assertions, protected-record checks, Peek, completion, Listener evaluation, and owned cleanup.  This is a test expectation update for reviewed documentation, with no product or native edit.
+
+All seven sequential runs passed on the unchanged stable Web deployment.  The six functional suites retained their existing assertions and request deadlines.  Their evidence directories begin `/tmp/web-stable-special-context-`, with a matching `.log` for each run:
+
+| Suffix | Acceptance | Owned cleanup | HTTP/browser errors |
+|---|---|---|---|
+| modes | 11 environment groups | 4 jobs, stops 1425–1429, session | None |
+| frames | 28 frame-evaluation groups | 10 jobs, stops 1430–1449, session | None |
+| special | 8 Show Special groups | 2 jobs, stops 1450–1453, session | One expected Streams rejection and its browser network entry |
+| warnings | 7 standard-value-warning groups | 2 jobs, stops 1454–1455, session | None |
+| inspector | 9 Inspector groups | 3 jobs, stops 1456–1460, session | One expected released-reference rejection and its browser network entry |
+| https | 7 COMPLETE/CURL cases | 7 jobs, no stops, session | None |
+| product | 30 documentation excerpts, Peek, completion, Listener | 2 jobs, no stops, session | None |
+
+The new historical-special groups reproduced the isolated results through stable HTTP 8765: outer/inner writes remained distinct, compiled callees used the selected original cells, LET/PROGV shadowing unwound, and child Abort preserved the parent bindings, controls, selection, and all nine history values.  Mutation command 74 replayed once after its accepted reply was discarded.  Reload retained its source and results, and Proceed returned 42/24/14/8/6/1.  The frame suite retained 366,868 characters of disassembly across reload, including all 3,015 decoded rows and the terminal RET.  The Show Special rejection was :unsupported-special-environment at command 44.  The Inspector rejection was :released-inspection-reference at command 41.  Both returned HTTP 409 with uncertain false and preserved the unaccepted command ID.  No unexpected HTTP or browser error occurred.
+
+The product check reloaded the catalog and verified twenty-three debugger-guide excerpts and seven Command Processor excerpts.  Its debugger-guide.png centers the new original-special-cell paragraph and shows the parked-restoration result and remaining limits.  Peek displayed thirty-one processes.  SPACE/Tab completion produced Set Package, and Listener evaluation returned 42.  Reviewed the historical child/replay, code, lexical display, retained Show Special/warning, three-pane Inspector, COMPLETE, documentation, Peek, and Listener captures.  Exact driver/support/product bytes and SHA-256 values are in `/tmp/web-stable-special-context-sources`.
+
+Each driver preserved protected 178 at stopped generation 0/counter 0 and 656, 657, 658, 699, 700, and 701 at closed generation 1/counter 5.  The seven runs released thirty owned jobs, thirty-six stops, and seven sessions, then stopped guest traffic for root's final native audit.  These browser runs exercised fresh x86-64 condition stops and same-boot replay/reload.  Stable image restoration did not run.  Root's separate native clean-build and parked-restoration evidence supplies that stated scope.  The earlier initial-SWANK-REQUIRE timeout remains unresolved.
+
+Root reported the final native marker :STABLE-SPECIAL-EVALUATION-WEB-ACCEPTED-AND-OWNED-BASELINE-RELEASED after browser cleanup.  Its fresh baseline audit passed, and Web PID 772350 plus the app/server bytes matched the prior release without a restart.  Native deployment, clean-build/restoration, process, and audit artifacts are archived separately by root.
+
+The mode-0600 archive `/tmp/debugger-web-stable-special-context-evidence.tar.gz` contains 109 files, with all 108 payload hashes verified.  It preserves all seven browser runs, exact drivers/support/product sources, test documentation, the acceptance summary, and reviewed captures.  SHA-256: `3cc26b7262b52824c468416419b8b87e9ab866784517adfdacbd9ecfc819af94`.  Its manifest is `/tmp/debugger-web-stable-special-context-evidence/MANIFEST.json`.  The archived journal snapshot precedes this archive paragraph.
+
 ## Historical special evaluation: 2026-10-15
 
 Reviewed Genera's [evaluation bindings and recursive debugger description](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf#page=206), printed pages 200–201, the existing environment-mode driver, and the Show Special fixture.  The manual selects the current frame's special bindings when inheriting its lexical environment and point-of-error bindings otherwise, with debugger-specific history, control, stream, and handler overrides.  The existing Web evaluate operation, mode commands, selected frame, printed results, and retained replay need no product or protocol change.
