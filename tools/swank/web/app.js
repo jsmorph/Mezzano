@@ -105,8 +105,10 @@ function run(action) {
   const perform = async () => {
     busy = true;
     updateStatus();
+    let completed = false;
     try {
       await action();
+      completed = true;
     } catch (error) {
       report(error);
       if (error.reason === ":expired-session") {
@@ -120,6 +122,9 @@ function run(action) {
     } finally {
       busy = false;
       updateStatus();
+      if (completed && nextHistoricalCommand()) setTimeout(() => {
+        if (connected && !busy && nextHistoricalCommand()) run(loadHistoricalCommand);
+      }, 0);
     }
   };
   actions = actions.then(perform, perform);
@@ -768,10 +773,15 @@ async function refresh() {
   if (selectedStop && !stops.some(stop => same(stop.token, selectedStop))) {
     selectedStop = null;
   }
-  for (const command of state.commands) {
+  const selectedCommands = state.commands.filter(command => same(command.stop, selectedStop));
+  const priority = new Set([selectedCommands.at(-1),
+    ...["frames", "restarts", "condition"].map(name => selectedCommands.findLast(command => command.command === name)),
+    selectedCommands.findLast(command => frameCommands.includes(command.command))]);
+  for (const command of new Set([...priority, ...state.commands])) {
+    if (!command) continue;
     const key = commandKey(command);
     const prior = commandResults.get(key);
-    if (!prior || prior.state === ":pending" || prior.state === ":running") {
+    if ((!prior && priority.has(command)) || prior?.state === ":pending" || prior?.state === ":running") {
       commandResults.set(key, await api("result", {stop: command.stop, id: command.id}));
     }
   }
@@ -810,12 +820,13 @@ function renderListenerState() {
   } else action?.remove();
 }
 function stopCommandPending(stop) {
+  const next = stops.find(item => same(item.token, stop))?.info["next-command-id"];
   return state.pending.some(record => record.operation === "submit" && record.status !== "rejected"
       && same(record.arguments.stop, stop))
     || state.commands.some(command => {
       if (!same(command.stop, stop)) return false;
       const result = commandResults.get(commandKey(command));
-      return !result || result.state === ":pending" || result.state === ":running";
+      return (!result && command.id >= (next ?? 0) - 1) || result?.state === ":pending" || result?.state === ":running";
     });
 }
 async function inspectSelectedStop() {
@@ -823,11 +834,57 @@ async function inspectSelectedStop() {
   if (!(activity === "debugger" || (activity === "listener" && listenerDebugger))
       || !selected || selected.info.state !== ":stopped"
       || selected.info.child || stopCommandPending(selectedStop)) return;
-  let command = ["frames", "restarts", "condition"].find(name => !latestCommand(name));
-  const frameCommand = state.commands.findLast(item => same(item.stop, selectedStop) && frameCommands.includes(item.command));
-  if (!command && !frameCommand) command = "current-frame";
+  const command = nextStopInspection(selectedStop);
   if (command) await mutate("submit", {stop: selectedStop,
     id: selected.info["next-command-id"], command, argument: null});
+}
+function nextStopInspection(stop) {
+  const current = state.commands.filter(command => same(command.stop, stop)
+    && commandResults.get(commandKey(command))?.["current-boot-p"] === true);
+  return ["frames", "restarts", "condition"].find(name => !current.some(command => command.command === name))
+    || (!current.some(command => frameCommands.includes(command.command)) ? "current-frame" : null);
+}
+function nextHistoricalCommand() {
+  if (!connected) return null;
+  if (activity === "debugger" || (activity === "listener" && listenerDebugger)) {
+    const selected = stops.find(stop => same(stop.token, selectedStop));
+    if (selected) {
+      if (stopCommandPending(selectedStop)
+          || (selected.info.state === ":stopped" && !selected.info.child && nextStopInspection(selectedStop))) return null;
+      const known = new Set(state.commands.filter(command => same(command.stop, selectedStop)
+        && commandResults.has(commandKey(command))).map(command => command.id));
+      for (let id = selected.info["next-command-id"] - 1; id >= 0; id--) {
+        if (!known.has(id)) return {stop: selectedStop, id};
+      }
+    }
+  }
+  const missing = state.commands.findLast(command => !commandResults.has(commandKey(command)));
+  return missing ? {stop: missing.stop, id: missing.id} : null;
+}
+async function loadHistoricalCommand() {
+  const request = nextHistoricalCommand();
+  if (!request) return;
+  const result = await api("result", request);
+  if (typeof result.operation !== "string" || !result.operation.startsWith(":")) {
+    throw new Error("Invalid retained debugger operation.");
+  }
+  let command = state.commands.find(item => same(item.stop, request.stop) && item.id === request.id);
+  const recovered = {...request, command: result.operation.slice(1)};
+  if (recovered.command === "evaluate") {
+    if (typeof result.source !== "string") throw new Error("Retained evaluation source is unavailable.");
+    recovered.source = result.source;
+  }
+  if (!command) {
+    command = recovered;
+    const position = state.commands.findIndex(item => same(item.stop, request.stop) && item.id > request.id);
+    if (position < 0) state.commands.push(command);
+    else state.commands.splice(position, 0, command);
+  }
+  commandResults.set(commandKey(command), result);
+  save();
+  renderStops();
+  renderPending();
+  updateTracks();
 }
 function renderJobs() {
   $("jobs").replaceChildren();
@@ -886,7 +943,8 @@ function returnedInspections(stop = selectedStop) {
   return commands.filter(command => (!cleared || command.id > cleared.id)
     && ["inspect", "modify"].includes(command.command)
     && commandResults.get(commandKey(command))?.state === ":returned")
-    .map(command => ({command, result: commandResults.get(commandKey(command)).result}));
+    .map(command => ({command, result: commandResults.get(commandKey(command)).result,
+      currentBoot: commandResults.get(commandKey(command))["current-boot-p"] === true}));
 }
 function inspectionRange(result) {
   return result.start === result.end ? "No components on this page (" + result.total + " total)"
@@ -904,9 +962,9 @@ function renderInspector(stop, info, available, control, controls) {
     controls.set(key, result);
     return result;
   }
-  function action(key, title, command, argument, help) {
+  function action(key, title, command, argument, help, currentBoot = true) {
     const result = control(prefix + key, title, () => submit(stop, command, argument), help);
-    result.disabled = !available;
+    result.disabled = !available || !currentBoot;
     return result;
   }
   const panel = element("panel", "section", "inspector");
@@ -914,9 +972,9 @@ function renderInspector(stop, info, available, control, controls) {
   const header = element("header", "div", "inspector-header");
   const history = element("history", "div", "inspector-history");
   history.setAttribute("aria-label", "Inspector history");
-  const entries = records.map(({command, result}) => action("history:" + command.id,
+  const entries = records.map(({command, result, currentBoot}) => action("history:" + command.id,
     inspectionRange(result) + ": " + result.title, "inspect", [result.object, result.start, result.count],
-    "Mouse-Left: Inspect this object and recorded component range again."));
+    "Mouse-Left: Inspect this object and recorded component range again.", currentBoot));
   reconcileChildren(history, [node("h3", "History"), ...entries]);
   const menu = element("menu", "div", "inspector-menu");
   reconcileChildren(menu, [
@@ -927,7 +985,7 @@ function renderInspector(stop, info, available, control, controls) {
   reconcileChildren(header, [history, menu]);
   const children = [node("h3", info.state === ":closed" ? "Inspector: recorded objects from this closed stop" : "Inspector"), header];
   if (!records.length) children.push(node("p", "No retained Inspector objects."));
-  for (const {command, result} of records.slice(-3)) {
+  for (const {command, result, currentBoot} of records.slice(-3)) {
     const key = "page:" + command.id;
     const pane = element(key, "section", "inspection-pane");
     pane.dataset.commandId = command.id;
@@ -935,16 +993,16 @@ function renderInspector(stop, info, available, control, controls) {
     const toolbar = element(key + ":toolbar", "div", "inspection-toolbar");
     const previous = action(key + ":previous", "More Above", "inspect",
       [result.object, Math.max(0, result.start - result.count), result.count],
-      "Mouse-Left: Inspect the preceding component page.");
+      "Mouse-Left: Inspect the preceding component page.", currentBoot);
     previous.disabled ||= result.start === 0;
     const next = action(key + ":next", "More Below", "inspect",
-      [result.object, result.end, result.count], "Mouse-Left: Inspect the following component page.");
+      [result.object, result.end, result.count], "Mouse-Left: Inspect the following component page.", currentBoot);
     next.disabled ||= result.end >= result.total;
     reconcileChildren(toolbar, [
       action(key + ":refresh", "Refresh", "inspect", [result.object, result.start, result.count],
-        "Mouse-Left: Read this object and component range again."),
+        "Mouse-Left: Read this object and component range again.", currentBoot),
       action(key + ":describe", "Describe", "describe-object", result.object,
-        "Mouse-Left: Describe this retained object."), previous, next,
+        "Mouse-Left: Describe this retained object.", currentBoot), previous, next,
       node("span", inspectionRange(result))
     ]);
     const table = element(key + ":parts", "table", "inspection-parts");
@@ -955,18 +1013,19 @@ function renderInspector(stop, info, available, control, controls) {
       const value = element(partKey + ":value", "td");
       reconcileChildren(value, part["bound-p"] && part.object != null
         ? [action(partKey + ":inspect", part.value, "inspect", [part.object, 0, result.count],
-          "Mouse-Left: Inspect this component value.")]
+          "Mouse-Left: Inspect this component value.", currentBoot)]
         : [node("span", part["bound-p"] ? part.value : "<unbound>")]);
       const modify = element(partKey + ":modify", "td");
       reconcileChildren(modify, part.part == null ? [] : [action(partKey + ":write", "Modify", "modify",
-        [part.part, result.start, result.count], "Mouse-Left: Read a Lisp expression for this component's new value.")]);
+        [part.part, result.start, result.count], "Mouse-Left: Read a Lisp expression for this component's new value.", currentBoot)]);
       reconcileChildren(row, [node("th", part.label), value, modify]);
       return row;
     });
     reconcileChildren(table, rows);
     const contents = element(key + ":contents", "div", "inspection-contents");
     reconcileChildren(contents, [table]);
-    reconcileChildren(pane, [node("pre", result.title, "inspection-title"), node("pre", result.type), toolbar, contents]);
+    reconcileChildren(pane, [node("pre", result.title, "inspection-title"), node("pre", result.type),
+      ...(currentBoot ? [] : [node("p", "Recorded before this boot.", "historical-command")]), toolbar, contents]);
     children.push(pane);
   }
   reconcileChildren(panel, children);
@@ -1068,6 +1127,11 @@ function renderStops() {
   $("debug-command").hidden = inline;
   if (!inline) useEditorDraft($("debugger-command"), debuggerDraftKey(selectedStop));
   const info = selected.info;
+  const received = state.commands.filter(command => same(command.stop, selectedStop)
+    && commandResults.has(commandKey(command))).length;
+  if (received < info["next-command-id"]) {
+    detailChildren.push(node("p", "Receiving retained command history (" + received + " of " + info["next-command-id"] + ").", "history-progress"));
+  }
   $("debugger-prompt").textContent = info.prompt || "→";
   const available = info.state === ":stopped" && !info.child && !stopCommandPending(selectedStop);
   $("debugger-command").disabled = info.state !== ":stopped";
@@ -1087,7 +1151,7 @@ function renderStops() {
     inspect.disabled = !available;
     menuChildren.push(inspect);
     for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
-                        ":Show Function", ":Show Compiled Code", ":Show Instruction",
+                        ":Show Function", ":Show Compiled Code", ":Show Instruction", ":Show Lexical Environment",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
                         ":Inspect", ":Describe Last", ":Clear Inspector"]) {
       const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
@@ -1171,28 +1235,32 @@ function renderStops() {
   }
   for (const command of state.commands.filter(item => same(item.stop, selectedStop))) {
     const result = commandResults.get(commandKey(command));
+    const status = result ? label(result.state) : "Receiving result.";
+    let output;
     if (command.command === "evaluate") {
-      const evaluation = node("div", undefined, "debugger-evaluation");
-      evaluation.append(node("pre", "→ " + (command.source ?? command.argument), "debugger-transcript"));
+      output = node("div", undefined, "debugger-evaluation");
+      output.append(node("pre", "→ " + (command.source ?? command.argument), "debugger-transcript"));
       const values = result?.result || [];
-      evaluation.append(node("pre", result?.state === ":returned"
-        ? (values.length ? values.join("\n") : "(No values)") : label(result?.state), "evaluation-values"));
-      detailChildren.push(evaluation);
+      output.append(node("pre", result?.state === ":returned"
+        ? (values.length ? values.join("\n") : "(No values)") : status, "evaluation-values"));
     } else if (command.command === "describe-object") {
-      const description = node("div", undefined, "debugger-description");
-      description.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
-        node("pre", result?.state === ":returned" ? result.result : label(result?.state), "description-result"));
-      detailChildren.push(description);
-    } else if (["arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction"].includes(command.command)) {
-      const output = node("div", undefined, "debugger-" + command.command);
+      output = node("div", undefined, "debugger-description");
+      output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
+        node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
+    } else if (["arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment"].includes(command.command)) {
+      output = node("div", undefined, "debugger-" + command.command);
       const name = {arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
-        instruction: ":Show Instruction"}[command.command];
+        instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment"}[command.command];
       output.append(node("pre", "→ " + (command.source ?? name), "debugger-transcript"),
-        node("pre", result?.state === ":returned" ? result.result : label(result?.state), command.command + "-result"));
-      detailChildren.push(output);
+        node("pre", result?.state === ":returned" ? result.result : status, command.command + "-result"));
     } else if (!result || result.state === ":pending" || result.state === ":running") {
-      detailChildren.push(node("p", command.command + ": " + label(result?.state)));
+      detailChildren.push(node("p", command.command + ": " + status));
+    }
+    if (output) {
+      output.dataset.commandId = command.id;
+      if (result && !result["current-boot-p"]) output.append(node("p", "Recorded before this boot.", "historical-command"));
+      detailChildren.push(output);
     }
   }
   reconcileChildren(menu, menuChildren);

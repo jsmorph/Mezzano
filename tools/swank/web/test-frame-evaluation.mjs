@@ -7,8 +7,9 @@ import { openBrowser } from './browser-test-support.mjs';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:8765/';
 const output = resolve(process.argv[3] ?? '/tmp/frame-evaluation-test');
-const protectedStop = process.env.PROTECTED_STOP === undefined ? null : Number(process.env.PROTECTED_STOP);
-assert(protectedStop === null || Number.isSafeInteger(protectedStop));
+const protectedStops = (process.env.PROTECTED_STOPS ?? process.env.PROTECTED_STOP ?? '')
+  .split(',').filter(Boolean).map(Number);
+assert(protectedStops.every(id => Number.isSafeInteger(id) && id >= 0));
 await mkdir(output, {recursive: true});
 const browser = await openBrowser('about:blank');
 const marker = 'FRAME-EVAL-' + randomBytes(6).toString('hex').toUpperCase();
@@ -160,7 +161,7 @@ try {
   evidence.session = await browser.evaluate('state.session');
   evidence.rejections = [];
   originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, next: stop.info["next-command-id"]}))');
-  if (protectedStop !== null) assert(originalStops.some(stop => stop.id === protectedStop));
+  for (const id of protectedStops) assert(originalStops.some(stop => stop.id === id), 'Protected stop missing: ' + id);
   const setup = await start('(progn (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DESCRIBE.LISP")) :description-fixture-loaded)');
   assert.deepEqual((await completed(setup)).values, [':DESCRIPTION-FIXTURE-LOADED']);
   await browser.evaluate('document.querySelector("#interactive").checked = true');
@@ -368,6 +369,7 @@ try {
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${origin} && document.readyState === 'complete' && connected && !busy`);
   await stopped(targetJob);
+  await browser.waitFor("!document.querySelector('#stop-detail .history-progress') && !nextHistoricalCommand() && !busy");
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation')].map(row => row.textContent)"), beforeReload);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.arglist-result')].map(element => element.textContent)"), evidence.arglists);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.bindings-result')].map(element => element.textContent)"), evidence.bindings.retained);
@@ -538,6 +540,7 @@ try {
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${largeOrigin} && document.readyState === 'complete' && connected && !busy`);
   await stopped(targetJob);
+  await browser.waitFor("!document.querySelector('#stop-detail .history-progress') && !nextHistoricalCommand() && !busy");
   assert.equal(await browser.evaluate("latestCommand('compiled-code').id"), largeId);
   assert.equal(await browser.evaluate("[...document.querySelectorAll('.compiled-code-result')].at(-1).textContent"), largeCode);
   await browser.evaluate("[...document.querySelectorAll('.compiled-code-result')].at(-1).scrollIntoView({block:'end'})");
@@ -681,6 +684,7 @@ try {
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${handlerOrigin} && document.readyState === 'complete' && connected && !busy`);
   await stopped(targetJob);
+  await browser.waitFor("!document.querySelector('#stop-detail .history-progress') && !nextHistoricalCommand() && !busy");
   await frame(bodyFrame);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.handlers-result')].map(element => element.textContent)"), handlerStrings);
   assert.deepEqual(await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)"), handlerCommands);
@@ -798,6 +802,7 @@ try {
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${catchOrigin} && document.readyState === 'complete' && connected && !busy`);
   await stopped(targetJob);
+  await browser.waitFor("!document.querySelector('#stop-detail .history-progress') && !nextHistoricalCommand() && !busy");
   await frame(catchFrame);
   assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.catches-result')].map(element => element.textContent)"), catchStrings);
   assert.deepEqual(await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)"), catchCommands);
@@ -821,7 +826,108 @@ try {
   evidence.catchDisplay.continued = await completed(targetJob);
   assert.deepEqual(evidence.catchDisplay.continued.values, ['42', '43', '1', '1']);
   evidence.checks.push('Catch-tag printer error enters a child and typed Abort permits repair; Proceed throws 42 and 43 through the inner repeated tag with one cleanup and one post-catch execution');
-  const next = await start(`(progn (dolist (name '(${[...symbols, codeTarget, largeTarget, largeSink, largeLast, handlerTarget, ...controlSymbols, catchTarget, catchTag].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
+  const lexicalMaker = marker + '-LEXICAL-MAKER';
+  const ancestor = marker + '-ANCESTOR', inheritedProbe = marker + '-INHERITED-PROBE';
+  const inheritedHelper = marker + '-INHERITED-HELPER', lexicalCleanups = marker + '-LEXICAL-CLEANUPS';
+  const current = marker + '-CURRENT', currentReader = marker + '-CURRENT-READER';
+  const cleanupCell = marker + '-CLEANUP-CELL', returnedValues = marker + '-RETURNED-VALUES';
+  const lexicalSymbols = [lexicalMaker, ancestor, inheritedProbe, inheritedHelper, lexicalCleanups,
+    current, currentReader, cleanupCell, returnedValues];
+  targetJob = await start(`(unwind-protect (progn
+    (defun ${lexicalMaker} (${ancestor} ${inheritedProbe} ${lexicalCleanups})
+      (declare (optimize (debug 3) (safety 3) (speed 1)))
+      (flet ((${inheritedHelper} () ${ancestor}))
+        (lambda (${current})
+          (declare (notinline ${inheritedHelper}))
+          (let ((${currentReader} (lambda () (incf ${current}))))
+            (unwind-protect
+                 (progn
+                   (break "${marker} inherited lexical environment")
+                   (values ${ancestor} (funcall ${currentReader}) (${inheritedHelper})
+                           (null (slot-value ${inheritedProbe} 'lispm-describe-test::failure))))
+              (incf (car ${lexicalCleanups})))))))
+    (assert (compiled-function-p (symbol-function '${lexicalMaker})))
+    (let ((${cleanupCell} (list 0)))
+      (multiple-value-call
+          (lambda (&rest ${returnedValues})
+            (values-list (append ${returnedValues} (list (car ${cleanupCell})))))
+        (funcall (${lexicalMaker} 37 (make-instance 'lispm-describe-test:probe) ${cleanupCell}) 41))))
+    (when (fboundp '${lexicalMaker}) (fmakunbound '${lexicalMaker}))
+    (dolist (name '(${lexicalSymbols.join(' ')})) (unintern name)))`);
+  const lexicalParent = await stopped(targetJob);
+  const lexicalFrames = await browser.evaluate(`returnedResult('frames').map((frame, index) => ({frame, index}))
+    .filter(item => item.frame.function.includes(${text(lexicalMaker)}))`);
+  assert.equal(lexicalFrames.length, 1, 'Expected the returned closure activation after its maker exited');
+  const lexicalFrame = lexicalFrames[0].index;
+  await command(':Set Current Frame ' + lexicalFrame);
+  await frame(lexicalFrame);
+  const lexicalLocals = await browser.evaluate('returnedFrameInspection().result.locals');
+  assert(lexicalLocals.some(local => local.name === current && local['available-p'] && local.value === '41'));
+  evidence.lexicalEnvironment = {stop:lexicalParent.stop, frame:lexicalFrame, locals:lexicalLocals};
+  async function lexicalEnvironmentAfter(previous) {
+    await browser.waitFor(`latestCommand('lexical-environment')?.id > ${previous}
+      && commandResults.get(commandKey(latestCommand('lexical-environment')))?.state === ':returned' && !busy`);
+    const value = await browser.evaluate("commandResults.get(commandKey(latestCommand('lexical-environment'))).result");
+    assert.equal(await browser.evaluate("[...document.querySelectorAll('.lexical-environment-result')].at(-1).textContent"), value);
+    assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), lexicalFrame);
+    assert.equal(await browser.evaluate("latestCommand('lexical-environment').argument"), null);
+    assert(value.startsWith('Lexically inherited variables:\n'));
+    const rows = value.split('\n');
+    assert(rows.includes('  ' + ancestor + ': 37'));
+    assert(rows.includes('  ' + inheritedProbe + ': #<DESCRIPTION-PROBE>'));
+    assert(rows.some(row => row.startsWith('  (FUNCTION ' + inheritedHelper + '): ')));
+    assert(!rows.some(row => row.startsWith('  ' + current + ': ') || row.startsWith('  ' + currentReader + ': ')));
+    return value;
+  }
+  await seedHistory();
+  await fill('#source', ':Show Lexical Env');
+  await key(' ', 'Space', 32);
+  await browser.waitFor("document.querySelector('#source').value.trim() === ':Show Lexical Environment' && !busy");
+  await key('Enter', 'Enter', 13);
+  evidence.lexicalEnvironment.typed = await lexicalEnvironmentAfter(-1);
+  const lexicalPrevious = await browser.evaluate("latestCommand('lexical-environment').id");
+  await browser.click('#window-label');
+  await clickText('#debugger-menu', ':Show Lexical Environment');
+  evidence.lexicalEnvironment.menu = await lexicalEnvironmentAfter(lexicalPrevious);
+  evidence.checks.push('Show Lexical Environment completion and menu display inherited variables/functions while excluding a current captured parameter and reader');
+  const lexicalStrings = await browser.evaluate("[...document.querySelectorAll('.lexical-environment-result')].map(element => element.textContent)");
+  const lexicalCommands = await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)");
+  const lexicalOrigin = await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin !== ${lexicalOrigin} && document.readyState === 'complete' && connected && !busy`);
+  await stopped(targetJob);
+  await browser.waitFor("!document.querySelector('#stop-detail .history-progress') && !nextHistoricalCommand() && !busy");
+  await frame(lexicalFrame);
+  assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.lexical-environment-result')].map(element => element.textContent)"), lexicalStrings);
+  assert.deepEqual(await browser.evaluate("state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)"), lexicalCommands);
+  await evaluation('(values * + ++ +++ ** *** / // ///)', ['31', ...history]);
+  await browser.evaluate("[...document.querySelectorAll('.lexical-environment-result')].at(-1).scrollIntoView({block:'center'})");
+  await save('lexically-inherited-bindings');
+  evidence.checks.push('Lexical environment display preserves selected frame and all nine history slots; reload retains its text without another command');
+  const lexicalPrinterError = marker + ' inherited printer error';
+  await evaluation(`(progn (setf (slot-value ${inheritedProbe} 'lispm-describe-test::failure)
+    (make-condition 'simple-error :format-control "${lexicalPrinterError}")) (values))`, []);
+  await seedHistory();
+  await command(':Show Lexical Environment');
+  await stopped(targetJob, 2);
+  evidence.lexicalEnvironment.printerCondition = await browser.evaluate("returnedResult('condition')");
+  assert.match(evidence.lexicalEnvironment.printerCondition, new RegExp(lexicalPrinterError));
+  await save('lexical-environment-printer-error');
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(lexicalParent.stop)}) && !busy`);
+  await frame(lexicalFrame);
+  assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('lexical-environment'))).state"), ':unwound');
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('.lexical-environment-result')].at(-1).textContent"), 'unwound');
+  await evaluation('(values * + ++ +++ ** *** / // ///)', ['31', ...history]);
+  await evaluation(`(progn (setf (slot-value ${inheritedProbe} 'lispm-describe-test::failure) nil) (values))`, []);
+  const lexicalUnwound = await browser.evaluate("latestCommand('lexical-environment').id");
+  await command(':Show Lexical Environment');
+  evidence.lexicalEnvironment.repaired = await lexicalEnvironmentAfter(lexicalUnwound);
+  await command(':Proceed');
+  evidence.lexicalEnvironment.continued = await completed(targetJob);
+  assert.deepEqual(evidence.lexicalEnvironment.continued.values, ['37', '42', '37', 'T', '1']);
+  evidence.checks.push('Inherited printer failure enters a child; typed Abort preserves parent selection/history, repair succeeds, and Proceed observes captured values after one cleanup');
+  const next = await start(`(progn (dolist (name '(${[...symbols, codeTarget, largeTarget, largeSink, largeLast, handlerTarget, ...controlSymbols, catchTarget, catchTag, ...lexicalSymbols].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
   assert.deepEqual((await completed(next)).values, ['42']);
   evidence.checks.push('Standalone debugger evaluates forms; Proceed observes immediate writes and distinct outer cell, closed stop retains printed history, definition cleanup and next Listener succeed');
 
@@ -875,10 +981,11 @@ try {
     }
     await browser.evaluate("api('release-session')");
     evidence.cleanup = 'Owned jobs/stops/session released';
-    if (protectedStop !== null) {
-      assert.deepEqual(original.find(stop => stop.id === protectedStop), originalStops.find(stop => stop.id === protectedStop));
-      evidence.protectedStop = original.find(stop => stop.id === protectedStop);
+    for (const id of protectedStops) {
+      assert.deepEqual(original.find(stop => stop.id === id), originalStops.find(stop => stop.id === id));
     }
+    evidence.protectedStops = original.filter(stop => protectedStops.includes(stop.id));
+    if (protectedStops.length === 1) evidence.protectedStop = evidence.protectedStops[0];
     assert.deepEqual(browser.errors, []);
   } catch (cleanupError) {
     evidence.cleanupFailure = cleanupError.stack;

@@ -7,8 +7,9 @@ import { openBrowser } from './browser-test-support.mjs';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:8765/';
 const output = resolve(process.argv[3] ?? '/tmp/inspector-test');
-const protectedStop = process.env.PROTECTED_STOP === undefined ? null : Number(process.env.PROTECTED_STOP);
-assert(protectedStop === null || Number.isSafeInteger(protectedStop));
+const protectedStops = (process.env.PROTECTED_STOPS ?? process.env.PROTECTED_STOP ?? '')
+  .split(',').filter(Boolean).map(Number);
+assert(protectedStops.every(id => Number.isSafeInteger(id) && id >= 0));
 await mkdir(output, {recursive: true});
 const browser = await openBrowser(url);
 const marker = 'INSPECTOR-' + randomBytes(6).toString('hex').toUpperCase();
@@ -174,7 +175,7 @@ try {
   evidence.session = await browser.evaluate('state.session');
   evidence.children = [];
   originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, next: stop.info["next-command-id"]}))');
-  if (protectedStop !== null) assert(originalStops.some(stop => stop.id === protectedStop));
+  for (const id of protectedStops) assert(originalStops.some(stop => stop.id === id), 'Protected stop missing: ' + id);
   const setup = await start('(progn (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DESCRIBE.LISP")) :description-fixture-loaded)');
   assert.deepEqual((await completed(setup)).values, [':DESCRIPTION-FIXTURE-LOADED']);
   await browser.evaluate('document.querySelector("#interactive").checked = true');
@@ -240,6 +241,7 @@ try {
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${origin} && document.readyState === 'complete' && connected && !busy`);
   await stopped(targetJob);
+  await browser.waitFor('!document.querySelector("#stop-detail .history-progress") && !busy', 60);
   assert.deepEqual(await browser.evaluate('returnedInspections()'), beforeReload);
   evidence.checks.push('Typed completion, bounded pages, three inspection panes, history, and reload preserve retained observations');
 
@@ -252,6 +254,7 @@ try {
   page = await pageAfter(previous);
   assert.deepEqual([page.start, page.end, page.count, page.parts[0].value], [64, 70, 32, '42']);
   await evaluation('(aref vector 64)', ['42']);
+  await browser.waitFor('!document.querySelector("#stop-detail .history-progress") && !busy', 60);
   const historyPrevious = await browser.evaluate('returnedInspections().at(-1).command.id');
   await browser.click('.inspector-history button:nth-of-type(2)');
   page = await pageAfter(historyPrevious);
@@ -407,6 +410,27 @@ try {
   assert.match(await browser.evaluate('document.querySelector(".inspector > h3").textContent'), /recorded objects from this closed stop/);
   await browser.evaluate('document.querySelector(".inspector").scrollIntoView({block:"start"})');
   await save('closed-inspector');
+  await switchActivity('requests');
+  await browser.waitFor('state.commands.every(command => commandResults.has(commandKey(command))) && !busy');
+  const requestHistory = await browser.evaluate(`({commands:state.commands,
+    rows:[...document.querySelectorAll('#pending .command-row')].map(row => row.textContent),
+    counters:stops.filter(stop => state.commands.some(command => same(command.stop,stop.token)))
+      .map(stop => [stop.info.id,stop.info['next-command-id']])})`);
+  const historyOrigin = await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin !== ${historyOrigin} && document.readyState === 'complete' && connected && !busy`);
+  assert.equal(await browser.evaluate('selectedStop'), null);
+  await switchActivity('requests');
+  await browser.waitFor('state.commands.every(command => commandResults.has(commandKey(command))) && !busy', 60);
+  const recoveredHistory = await browser.evaluate(`({commands:state.commands,
+    rows:[...document.querySelectorAll('#pending .command-row')].map(row => row.textContent),
+    counters:stops.filter(stop => state.commands.some(command => same(command.stop,stop.token)))
+      .map(stop => [stop.info.id,stop.info['next-command-id']])})`);
+  assert.equal(await browser.evaluate('selectedStop'), null);
+  assert.deepEqual(recoveredHistory, requestHistory);
+  evidence.unselectedHistory = recoveredHistory;
+  await save('unselected-request-history');
+  evidence.checks.push('Reload with no selected stop recovers every known Request History result without changing visible rows, command identities, or guest command counters');
   await switchActivity('listener');
   const next = await start(`(progn (assert (null (find-symbol "${target}" "CL-USER"))) (assert (null (find-symbol "${type}" "CL-USER"))) (+ 20 22))`);
   assert.deepEqual((await completed(next)).values, ['42']);
@@ -461,10 +485,11 @@ try {
     }
     await browser.evaluate("api('release-session')");
     evidence.cleanup = 'Owned jobs/stops/session released';
-    if (protectedStop !== null) {
-      assert.deepEqual(original.find(stop => stop.id === protectedStop), originalStops.find(stop => stop.id === protectedStop));
-      evidence.protectedStop = original.find(stop => stop.id === protectedStop);
+    for (const id of protectedStops) {
+      assert.deepEqual(original.find(stop => stop.id === id), originalStops.find(stop => stop.id === id));
     }
+    evidence.protectedStops = original.filter(stop => protectedStops.includes(stop.id));
+    if (protectedStops.length === 1) evidence.protectedStop = evidence.protectedStops[0];
     assert.equal(browser.errors.length, evidence.stale ? 1 : 0);
     for (const error of browser.errors) assert.match(error.text, /409/);
   } catch (cleanupError) {

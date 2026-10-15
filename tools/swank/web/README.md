@@ -27,6 +27,8 @@ The browser address for that configuration is `http://127.0.0.1:8765/`.  The SWA
 
 Network access uses a listening address such as `0.0.0.0` and an allowed browser hostname, for example `--allow-host lispm.example.net`.  The corresponding browser address is `http://lispm.example.net:8765/`.  The allowlist includes `localhost`, `127.0.0.1`, the server's hostname, and its fully qualified hostname.  Additional addresses require an explicit `--allow-host`.  Every request's Host header must include the HTTP listening port.
 
+The server reads static assets from its script directory on each request.  A persistent deployment uses a pinned revision directory so its Python code and assets remain at one revision while development continues.  The [installation guide](../../../doc/installation.md#pinned-web-deployment) describes preparing and selecting that directory and coordinating guest and client updates.
+
 ### Access restrictions
 
 Access to the HTTP service grants Lisp evaluation and debugger control in the guest.  The server provides no account authentication or TLS.  Host and Origin checks restrict browser request origins.  Network access controls determine which clients can use the service.
@@ -76,6 +78,7 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Show Function` | Displays the selected frame's associated function and assigns it to this stop's * history value. |
 | `:Show Compiled Code` | Disassembles the selected frame's executing function. |
 | `:Show Instruction` | Displays the instruction containing the saved caller location or the interrupted program counter. |
+| `:Show Lexical Environment` | Displays bindings inherited from lexical ancestors of the selected frame. |
 | `:Show Arglist` | Displays the selected compiled function's argument list, preserving the active definition after redefinition. |
 | `:Show Bindings` | Displays special-variable bindings established by the selected frame.  :All selects every frame.  :Matching filters symbol names. |
 | `:Show Condition Handlers` | Displays condition handlers established by the selected frame and their active status at stop entry.  :All selects every frame. |
@@ -94,6 +97,8 @@ Each debugger stop has separate `+`, `++`, and `+++` form history, `*`, `**`, an
 :Show Function assigns the associated function object to * without rotating value or form history.  The other eight history slots and frame selection remain unchanged.  :Inspect can then inspect that function.  Unlike Genera, the command does not assign a function locative to +.
 
 :Show Compiled Code and :Show Instruction use the executing function retained by the selected frame, including after its global definition changes.  They preserve history and selection.  Code output covers that one function, with hexadecimal byte offsets from the function object and instruction bytes.  Long lines scroll horizontally.  Unavailable locations produce explicit messages, and undecoded bytes remain visible.  Instruction output labels a saved caller location or an interrupted program counter.  A saved caller location identifies the suspended call, rather than a next instruction under stepping.  These commands take no arguments.  Current execution tests cover x86-64.  ARM64 acceptance remains untested.  Explicit function specifications, PC ranges, More processing, output redirection, Genera accelerators, PC breakpoint mouse actions, and stepping are unsupported.  Printed results survive reload and stop closure.
+
+:Show Lexical Environment takes no arguments.  It displays inherited variable and function bindings, excluding bindings established by the selected activation.  A current local captured by an inner closure remains a current binding.  Known-empty ancestry reports `This frame was not lexically called.`  Missing ancestry metadata reports `Lexical ancestry unavailable.`, and a binding without accessible storage displays `[unavailable]`.  The command preserves selection and evaluation history.  Printing errors enter a child debugger, and typed :Abort returns to the parent.  Reload and stop closure retain the printed output.  Unused outer capture after the defining activation returns remains a compiler limitation.
 
 :Show Arglist displays the argument list stored with the selected compiled function.  An empty list displays NIL.  Missing metadata produces an explicit unavailable message.  The command preserves frame selection and evaluation history, and its printed result survives reload.
 
@@ -153,6 +158,10 @@ For an uncertain release, Check Release Outcome queries the original object.  A 
 
 When the guest reports an expired session, the browser creates a new session, archives request and debugger-command records under their original session, and discovers retained jobs and stops through new tokens.  Input history and Document Examiner viewers remain stored.  The current activity refreshes after connection.  Recovery preserves prior requests in Request History and requires a new submission to evaluate an expression again.  Transport failures retain the existing session identity for Connect / Resume.  New Session also permits explicit replacement while disconnected.  Release Session requires unresolved requests to be resolved or archived.
 
+Select a retained job's Debugger action to recover its command history.  The browser reads accepted command results from the guest without resubmitting commands.  Fresh stack, restart, condition, and current-frame inspections precede historical loading.  Older results arrive one at a time, with live actions taking priority.  A received/total count remains visible until loading completes, including after page reload.  Evaluation captions use the guest's retained source.  Other recovered commands use their canonical names.  Known command records also receive their results in Request History after reload.  The guest preserves frame selection and expression/value history.
+
+Results recorded before image restoration are labelled `Recorded before this boot.`  Their Inspector values remain readable, with reference actions disabled.  Fresh Inspect commands create current references.  A replacement session has its own Listener, so a retained active evaluation remains accessible through its Debugger action.
+
 ## HTTP API
 
 `POST /api` takes `session`, `operation`, and optional `arguments` fields.  Session and job names are 64 lowercase hexadecimal digits.  Job, stop, and frame tokens belong to the request's session.
@@ -180,7 +189,9 @@ When the guest reports an expired session, the browser creates a new session, ar
 
 Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
 
-Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, arglist, bindings, handlers, catches, function, compiled-code, and instruction.  Function, compiled-code, and instruction take no argument and return strings.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
+Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, arglist, bindings, handlers, catches, function, compiled-code, instruction, and lexical-environment.  Function, compiled-code, instruction, and lexical-environment take no argument and return strings.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
+
+Result returns state, operation, current-boot-p, result, and source.  Source is the copied accepted string for evaluate and null for other operations.  Reading a result preserves command identity and does not execute the command again.
 
 Arglist takes no argument and returns the guest-formatted signature or unavailable message as a string.
 

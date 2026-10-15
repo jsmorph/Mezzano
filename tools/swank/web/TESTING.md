@@ -57,6 +57,8 @@ The target has required, optional, and keyword parameters.  :Show Arglist comple
 
 The same stopped target exercises :Show Function, :Show Compiled Code, and :Show Instruction after global redefinition.  Completion and menu actions must preserve selected-frame state.  Code captured before redefinition must remain identical afterward, and code inspection must preserve all nine history slots.  Show Function must assign the old active function only to *, leave the other eight slots unchanged, and make that function available to :Inspect.  The established caller must report Saved caller location.  A narrow viewport must preserve code columns and scroll long lines horizontally.  Reload must retain printed output without another command, and stop closure must preserve the text.  A second named function embeds an owned description probe as a compiled constant.  Its printer error must enter a child during disassembly.  Typed Abort, repair, another display, and Proceed must succeed.  Branch labels must have definitions in the code output.  A large owned function makes 1000 calls to an owned sink after its stop.  Its disassembly must exceed 64 KiB, retain every decoded row and the terminal instruction, match the displayed text before and after reload, and preserve history and selection.  Proceed must return 42/43 after recording the final sink argument 999.  Exact decoded bytes, interruption PCs, and unsupported code locations require the native fixtures.
 
+An owned DEBUG 3 maker returns a closure with an inherited variable, function binding, and printer probe.  Its current parameter is captured by a mutating inner reader.  :Show Lexical Environment completion and menu actions must show the inherited bindings and exclude the current captured parameter.  Selection and all nine history slots must remain unchanged.  Reload must retain output without another command.  Arming the inherited probe after initial frame inspection must produce a child printer error.  Typed :Abort preserves the parent and selected frame, repair permits another display, and Proceed must return the expected captured values after one cleanup.  The next Listener form verifies definition cleanup and reuse.  This case uses ancestor bindings retained for subsequent execution.
+
 The target and its caller establish special bindings with repeated shadowed values, bound NIL, and an unbound cell.  :Show Bindings tests typed completion and menu entry, selected/all-frame output, explicit keyword defaults, literal case-sensitive filtering, unchanged selection/history, and retained results across reload.  A binding with a failing printer must enter a child debugger.  Typed :Abort must return to the parent, and replacing that value with NIL must permit another inspection.
 
 The driver compiles and loads the checked-in description fixture.  It checks that object and slot-value printer failures in DESCRIBE enter child debuggers, typed :Abort returns to the parent, and a subsequent description prints its slot value and returns zero values.  The reusable native fixture definitions remain loaded.
@@ -69,9 +71,11 @@ A catch-display target nests two catches with the same tag and an outer catch wi
 
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
+The frame-evaluation and Inspector drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
+
 ## Object Inspector
 
-The Inspector driver compiles a named DEBUG 3 target and navigates its arrays, cyclic cons cells, and instance slots through the browser.  It tests command completion, three retained panes, pagination and partial pages, history, reload, lexical replacement expressions, unbound slots, type and reader errors, interrupted input, and typed Abort.  Lost submission and input replies must replay once.  A completed store followed by a printer failure must remain effective without repeating its expression.  Refresh after an array shrinks must permit backward navigation.  Clear must expire old references while preserving the session and command ID, and a closed stop must retain disabled recorded panes.  Proceed and the following Listener expression must return the expected values.  Layout assertions require full local and component labels to fit on one line while long values wrap.  Disabled recorded values retain their readable text without action-button strike-through.
+The Inspector driver compiles a named DEBUG 3 target and navigates its arrays, cyclic cons cells, and instance slots through the browser.  It tests command completion, three retained panes, pagination and partial pages, history, reload, lexical replacement expressions, unbound slots, type and reader errors, interrupted input, and typed Abort.  Lost submission and input replies must replay once.  A completed store followed by a printer failure must remain effective without repeating its expression.  Refresh after an array shrinks must permit backward navigation.  Clear must expire old references while preserving the session and command ID, and a closed stop must retain disabled recorded panes.  Proceed and the following Listener expression must return the expected values.  Layout assertions require full local and component labels to fit on one line while long values wrap.  Disabled recorded values retain their readable text without action-button strike-through.  After the owned stop closes, reload without selecting a stop must recover its known Request History results with unchanged visible rows, command identities, and guest command counters.
 
 ```sh
 node tools/swank/web/test-inspector.mjs \
@@ -243,17 +247,26 @@ FINISH requires a new boot.  It checks saved sleeping-state and queue relationsh
 
 ### Browser restoration
 
-The browser driver retains a session, a completed counter evaluation, and input history while the operator saves and restarts the VM.  Use a fresh output directory:
+The browser driver retains a session, a completed counter evaluation, and an active DEBUG 3 returned closure while the operator saves and restarts the VM.  The closure has inherited variable/function bindings, a current captured parameter, a once-written ancestor, and an unwind cleanup counter.  Before READY, the driver selects its frame, creates an Inspector page, and records lexical output and all nine expression/value histories.  Use a fresh output directory:
 
 ```sh
 node tools/swank/web/test-image-restore.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-image-restore-test
 ```
 
-After READY appears, save the guest, wait for snapshot completion, stop QEMU, and restart the saved image.  Once SWANK responds, signal the driver from another terminal:
+Before READY, Release Session and New Session must recover the same active stop and its visible history with current references.  At READY, the driver suspends browser requests while retaining its session storage.  Save the guest, wait for snapshot completion, stop QEMU, and restart the saved image.  Once SWANK responds and any separate native restoration checks finish, signal the driver from another terminal:
 
 ```sh
 touch /tmp/mezzano-image-restore-test/restored
 ```
 
-The driver reloads the browser and checks session replacement, retained result/history, an unchanged counter value, current documentation, and live Processes data.  It removes its counter symbol, jobs, and session.  Expected HTTP errors during the deliberate outage and expired-session recovery are recorded separately from subsequent browser operations.  The driver requires restart confirmation within 15 minutes.
+The driver reloads the browser, selects the retained job's Debugger action, and checks visible command history before requesting a new lexical display.  It requires original command IDs and evaluation source, prior-boot labels, disabled historical Inspector actions, fresh inspection controls, preserved frame selection and all nine histories, and the once-only ancestor write.  Proceed must return the expected captured values after one cleanup.  A new Listener input returns 42, the completed counter remains one, and documentation and Peek remain usable.  The driver releases its stop, jobs, definitions, symbols, and session.  Expected HTTP errors during the deliberate outage and expired-session recovery are recorded separately from subsequent browser operations.  The driver requires restart confirmation within 15 minutes.
+
+The history fixture supplies every API response locally and makes no guest requests:
+
+```sh
+node tools/swank/web/test-debugger-history-fixtures.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-debugger-history-fixtures
+```
+
+It tests one hundred retained records, fresh inspection priority, queued live actions between history reads, a failed read followed by reconnect, exact source and ID ordering, historical Inspector actions, partial reload, and suppression of a failed current-boot printer retry.  Pending-state cases include command 0 with cached next ID 0, a later accepted command beyond that cached counter, and an older historical command whose result has not arrived.  It also tests result recovery for known command records when no debugger stop is selected.  Existing live reload tests wait for the history-complete indicator before comparing retained text.
