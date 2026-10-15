@@ -841,6 +841,27 @@ mapped, then the entry will be NIL."
           (+ (ash sys.int::+address-tag-stack+ sys.int::+address-tag-shift+)
              (* 512 1024 1024 1024)))))
 
+(defun disk-page-in-count (address block-info max-pages)
+  (when (or (not (block-info-present-p block-info))
+            (block-info-zero-fill-p block-info)
+            (block-info-lazy-block-p block-info))
+    (return-from disk-page-in-count 1))
+  (let* ((limit (min 16 max-pages))
+         (block (block-info-block-id block-info))
+         (count 1))
+    (loop for index from 1 below limit
+          for next-address = (+ address (* index +4k-page-size+))
+          for next-info = (block-info-for-virtual-address next-address)
+          for next-pte = (get-pte-for-address next-address nil)
+          while (and next-info next-pte
+                     (block-info-present-p next-info)
+                     (not (block-info-zero-fill-p next-info))
+                     (not (block-info-lazy-block-p next-info))
+                     (= (block-info-block-id next-info) (+ block index))
+                     (not (page-present-p next-pte)))
+          do (incf count))
+    (ash 1 (1- (integer-length count)))))
+
 (defun wait-for-page-unlocked (address writep)
   (when (address-in-non-faulting-range-p address)
     (debug-print-line "Fault on non-faulting address " address)
@@ -888,47 +909,65 @@ mapped, then the entry will be NIL."
               (not (block-info-present-p block-info)))
       #+(or)(debug-print-line "WFP " address " not present")
       (return-from wait-for-page-unlocked nil))
-    ;; No page allocated. Allocate a page and read the data.
-    (let* ((frame (pager-allocate-page))
-           (addr (convert-to-pmap-address (ash frame 12)))
+    ;; No page allocated. Allocate frames and read the data.
+    (let* ((base (logand address (lognot (1- +4k-page-size+))))
+           (count (if (or (block-info-zero-fill-p block-info)
+                          (eql *paging-disk* :freestanding))
+                      1
+                      (disk-page-in-count
+                       base block-info
+                       (truncate (* (disk-max-transfer *paging-disk*)
+                                    (disk-sector-size *paging-disk*))
+                                 +4k-page-size+))))
+           (frame (when (> count 1)
+                    (allocate-physical-pages count :type :active)))
            (is-zero-page nil))
-      (setf (physical-page-frame-block-id frame) (block-info-block-id block-info)
-            (physical-page-virtual-address frame) (logand address (lognot (1- +4k-page-size+))))
-      (when t;(not *page-replacement-list-head*)
-        (pager-log "addr " address " vaddr " (physical-page-virtual-address frame) " frame " frame " pteA " (get-pte-for-address address #+(or)(physical-page-virtual-address frame) nil) " pteB " (get-pte-for-address (physical-page-virtual-address frame) nil)))
-      (append-to-page-replacement-list frame)
-      (cond ((block-info-zero-fill-p block-info)
-             ;; Block is zero-filled.
-             (setf is-zero-page t)
-             (zeroize-page addr)
-             ;; Clear the zero-fill flag.
-             (set-address-flags address (logand block-info
-                                                sys.int::+block-map-flag-mask+
-                                                (lognot sys.int::+block-map-zero-fill+))))
-            (t ;; Block must be read from disk.
-             (when (eql *paging-disk* :freestanding)
-               (panic "Unable to satisfy paging request for page " address " while running freestanding"))
-             (disk-submit-request *pager-disk-request*
-                                  *paging-disk*
-                                  :read
-                                  (* (block-info-block-id block-info)
-                                     (ceiling +4k-page-size+ (disk-sector-size *paging-disk*)))
-                                  (ceiling +4k-page-size+ (disk-sector-size *paging-disk*))
-                                  addr)
-             (unless (disk-await-request *pager-disk-request*)
-               (panic "Unable to read page from disk"))))
+      (unless frame
+        (setf count 1
+              frame (pager-allocate-page)))
+      (let ((addr (convert-to-pmap-address (ash frame 12))))
+        (cond ((block-info-zero-fill-p block-info)
+               (setf is-zero-page t)
+               (zeroize-page addr)
+               (set-address-flags address (logand block-info
+                                                  sys.int::+block-map-flag-mask+
+                                                  (lognot sys.int::+block-map-zero-fill+))))
+              (t
+               (when (eql *paging-disk* :freestanding)
+                 (panic "Unable to satisfy paging request for page " address " while running freestanding"))
+               (disk-submit-request *pager-disk-request*
+                                    *paging-disk*
+                                    :read
+                                    (* (block-info-block-id block-info)
+                                       (ceiling +4k-page-size+ (disk-sector-size *paging-disk*)))
+                                    (* count
+                                       (ceiling +4k-page-size+ (disk-sector-size *paging-disk*)))
+                                    addr)
+               (multiple-value-bind (success reason)
+                   (disk-await-request *pager-disk-request*)
+                 (unless success
+                   (panic "Unable to read page from disk: " reason))))))
+      (dotimes (index count)
+        (let* ((current-frame (+ frame index))
+               (current-address (+ base (* index +4k-page-size+)))
+               (info (block-info-for-virtual-address current-address)))
+          (setf (physical-page-frame-type current-frame) :active
+                (physical-page-frame-block-id current-frame) (block-info-block-id info)
+                (physical-page-virtual-address current-frame) current-address)
+          (append-to-page-replacement-list current-frame)))
       (begin-tlb-shootdown)
-      (setf (page-table-entry pte) (make-pte frame
-                                             :writable (and (block-info-writable-p block-info)
-                                                            (not (block-info-track-dirty-p block-info)))
-                                             ;; Mark the page dirty to make sure the snapshotter & swap code know to swap it out.
-                                             ;; The zero fill flag in the block map was cleared, but the on-disk data doesn't reflect that.
-                                             :dirty is-zero-page))
-      (flush-tlb-single address)
-      (tlb-shootdown-single address)
-      (finish-tlb-shootdown)
-      #+(or)
-      (debug-print-line "WFP " address " block " block-info " mapped to " (page-table-entry pte 0))))
+      (dotimes (index count)
+        (let* ((current-address (+ base (* index +4k-page-size+)))
+               (info (block-info-for-virtual-address current-address))
+               (current-pte (get-pte-for-address current-address nil)))
+          (setf (page-table-entry current-pte)
+                (make-pte (+ frame index)
+                          :writable (and (block-info-writable-p info)
+                                         (not (block-info-track-dirty-p info)))
+                          :dirty is-zero-page))
+          (flush-tlb-single current-address)))
+      (tlb-shootdown-range base (* count +4k-page-size+))
+      (finish-tlb-shootdown)))
   t)
 
 (defun wait-for-page (address writep)

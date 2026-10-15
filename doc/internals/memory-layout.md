@@ -74,3 +74,10 @@ Each mapped page contributes at most one reservation.  Wired pages retain their 
 `MEZZANO.SUPERVISOR::BLOCK-RESERVATION-STATISTICS` returns the computed page reservations, recorded reservation counter, and free backing-store blocks as three values.  The function runs in wired memory, inhibits snapshots, and reads the map and counters under the VM lock.  It returns before the caller allocates or prints.  For a writable hosted image, the counter equals the computed page reservations plus 256.  The read-only and freestanding accounting policies differ.
 
 These counters describe page reservations and allocator capacity.  They do not establish that every allocated disk block remains reachable from the saved image.
+
+Disk page-in
+------------
+
+A demand fault can read up to sixteen consecutive 4-KiB pages in one disk request.  The run stops at a nonconsecutive backing block, absent block-map or page-table entry, resident page, zero-fill page, or lazy backing block.  The disk's maximum transfer also limits the run.  The pager chooses a power-of-two page count for the physical buddy allocator.  If a contiguous allocation fails, the existing single-page allocation and reclamation path handles the demanded page.
+
+The pager completes the read before installing mappings.  It records each frame's active type, virtual address, backing block, and replacement-list links, and preserves each page's write and dirty-tracking flags.  One TLB rendezvous covers the range.  Disk-read failure enters the existing panic path with the disk's reported reason.  Zero-fill and resident copy-on-write faults retain their single-page behavior.  Prefetching committed pageable pages does not add backing-store reservations.

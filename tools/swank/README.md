@@ -280,6 +280,21 @@ The x86-64 fixture injects DMA and PIO callback outcomes and uses an owned physi
 
 The fixture releases its physical page on completion or unwinding.  Physical PIO transfers, media errors, and disk writes require separate hardware tests.
 
+### Disk page-in tests
+
+The fixture requires a writable isolated image and wired test code:
+
+```lisp
+(let ((mezzano.compiler::*optimize-policy* '(safety 3 debug 1 speed 1)))
+  (multiple-value-bind (file warnings failure)
+      (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-PAGE-IN.LISP")
+    (assert (and file (not warnings) (not failure)))
+    (load file :wired t)))
+(lispm-page-in-test:run)
+```
+
+The test checks run selection, transfer limits, mapping boundaries, zero-fill, permissions, frame bookkeeping, and release.  Its disk-read cases write patterns to newly allocated backing blocks, erase the temporary buffer, and verify the paged-in contents.  The allocation test temporarily reserves free sixteen-page physical blocks to force single-page fallback.  The fixture inhibits snapshots during these operations and releases its own memory and backing blocks on completion or unwinding.  It writes no existing image block.  Physical media errors and ARM64 execution require separate tests.
+
 ## Early panic tests
 
 The early-console panic fixture must compile and load wired before installation:
