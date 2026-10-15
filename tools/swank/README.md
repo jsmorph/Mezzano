@@ -498,6 +498,8 @@ Load the debugger-service, frame-evaluation, control-records, and catch-display 
 
 It checks environment extension, copied binding identities, shadowed ancestors, variable/function namespaces, current captured-local exclusion, both emitters, native compiled-file scopes, inlining and lambda lifting, empty and legacy metadata, unavailable storage, parser/completion, rejected arguments, exact retained replay, history and selection, printer child Abort/repair, full GC, continuation, cleanup, and release.  Ownership executes on x86-64 with DEBUG 0/3 and COMPILATION-SPEED 1/3, SAFETY 3, and SPEED 1.  Retained-command value checks use DEBUG 3.  The fixture does not require unused outer capture.  ARM64 execution remains untested.
 
+For a parked-stop restoration test, call `(lispm-lexical-environment-test:prepare-restore-test)` before saving and `(lispm-lexical-environment-test:finish-restore-test)` after restoration.  It checks retained prior-boot text and replay rejection, old-handle expiry, selected frame and history, fresh inherited values through full GC, printer child Abort/repair, continuation, cleanup, and release.  This test does not restore an executing display command.
+
 ## Frame evaluation tests
 
 The frame-evaluation fixture tests the retained service against compiled stopped functions:

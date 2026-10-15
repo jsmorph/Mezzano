@@ -6,7 +6,7 @@
                     (#:arm #:mezzano.compiler.backend.arm64)
                     (#:frame #:lispm-frame-evaluation-test)
                     (#:catch-test #:lispm-catch-display-test))
-  (:export #:run))
+  (:export #:run #:prepare-restore-test #:finish-restore-test))
 (in-package #:lispm-lexical-environment-test)
 
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
@@ -264,3 +264,74 @@
   (assert (= *cleanup-count* 1))
   (format t "PASS lexical ancestry ownership, shadowing, copying, inlining, native scope/storage identities, no-argument parsing, empty/legacy metadata, unavailable values, replay, history, selection, printer child Abort/repair, full GC, continuation, cleanup, and release.~%")
   t)
+
+(defvar *restore-thread* nil)
+(defvar *restore-handle* nil)
+(defvar *restore-view* nil)
+(defvar *restore-result* nil)
+
+(defun prepare-restore-test ()
+  (assert (and (null *restore-thread*) (null *target*)))
+  (setf *cleanup-count* 0 *print-count* 0 *fail-print* nil
+        *restore-result* nil
+        *target* (make-target 35 (make-instance 'print-probe))
+        *restore-thread*
+        (mezzano.supervisor:make-thread
+         (lambda ()
+           (call-with-debugger-service
+            (lambda ()
+              (with-simple-restart (abort "Abort the owned lexical restoration test.")
+                (setf *restore-result* (multiple-value-list (funcall *target*)))))))
+         :name "Lexical ancestry restoration test")
+        *restore-handle*
+        (test::await (lambda () (test::stop-for-thread "Lexical ancestry restoration test"))))
+  (let* ((controller (make-debugger-controller))
+         (lease (attach-debugger-stop *restore-handle* controller)))
+    (unwind-protect
+         (progn
+           (frame::select-function *restore-handle* lease (i::%closure-function *target*))
+           (frame::evaluate-source *restore-handle* lease "(values 17 18)" '("17" "18"))
+           (let ((id (getf (debugger-stop-information *restore-handle*) :next-command-id))
+                 (stop (d::service-handle-stop *restore-handle*)))
+             (setf *restore-view*
+                   (list :command id
+                         :text (test::command *restore-handle* lease :lexical-environment)
+                         :index (d::service-stop-current-frame stop)
+                         :history (copy-list (d::service-stop-evaluation-history stop))))))
+      (close-debugger-controller controller)))
+  (format t "Prepared inherited bindings, selection, history, and retained text for restoration.~%")
+  t)
+
+(defun finish-restore-test ()
+  (test::expect-error :expired-stop (lambda () (debugger-stop-information *restore-handle*)))
+  (let* ((controller (make-debugger-controller))
+         (handle (test::stop-for-thread "Lexical ancestry restoration test"))
+         (lease (attach-debugger-stop handle controller)))
+    (unwind-protect
+         (progn
+           (assert (= (getf (debugger-stop-information handle) :id)
+                      (d::service-stop-id (d::service-handle-stop *restore-handle*))))
+           (let* ((stop (d::service-handle-stop handle))
+                  (id (getf *restore-view* :command))
+                  (old (debugger-command-result handle id)))
+             (assert (eq (getf old :state) :returned))
+             (assert (not (getf old :current-boot-p)))
+             (assert (equal (getf old :result) (getf *restore-view* :text)))
+             (assert (= (d::service-stop-current-frame stop) (getf *restore-view* :index)))
+             (assert (equal (d::service-stop-evaluation-history stop) (getf *restore-view* :history)))
+             (test::expect-error :request-conflict
+                                 (lambda () (submit-debugger-command lease id :lexical-environment))))
+           (check-output handle lease controller)
+           (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :proceed)
+             (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
+           (test::await (lambda () (nth-value 1 (mezzano.supervisor:thread-join *restore-thread* nil))))
+           (assert (equal *restore-result* '(42 43)))
+           (assert (= *cleanup-count* 1))
+           (release-debugger-stop lease)
+           (setf handle nil *target* nil *restore-thread* nil *restore-handle* nil
+                 *restore-view* nil *restore-result* nil *fail-print* nil)
+           (format t "PASS restored lexical ancestry, selection/history, retained text, old-handle expiry, prior-boot replay rejection, fresh values, GC, printer child Abort/repair, continuation, cleanup, and release.~%")
+           t)
+      (when handle (frame::release-test-stop handle controller))
+      (close-debugger-controller controller))))
