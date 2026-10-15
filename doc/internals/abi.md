@@ -245,6 +245,14 @@ Mezzano currently implements `exit-extent:medium`, but this may change.
 `block`/`return-from` may use a more optimized value passing convention depending
 on the number of values expected at the block exit.
 
+### Debugger frame return
+
+The internal x86-64 frame-return helper uses the selected activation's established frame pointer and its saved caller return address.  It validates a live frame on the calling thread, requires compiler source-scope metadata, and rejects a crossed interruption boundary.  The retained debugger must validate its stop and frame generation before calling the helper.  Raw frame objects have no activation-generation token.
+
+Before transferring, the helper validates the finite value list and its length against MULTIPLE-VALUES-LIMIT.  It retains that list and the current stack object while %%UNWIND-TO removes the selected activation's special-stack entries.  Cleanup can signal a condition or supersede the transfer.  VALUES-LIST then establishes the normal multiple-value convention.  The LAP epilogue loads the selected activation's frame pointer into RBP with an empty established-frame GC layout, executes LEAVE, and uses the ordinary frameless multiple-value RET layout.  The caller removes stack arguments through its existing continuation.
+
+R13 keeps the original stack object live from the RBP change through LEAVE.  A prompt unwind can detach that stack from the thread before the processor stops using its stack pointer.  This root protects the detached stack if an interrupt and collection occur during that interval.
+
 ### CATCH and THROW.
 
 `catch` and `throw` are implemented using `block` and `return-from`, similar to

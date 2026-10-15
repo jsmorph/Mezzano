@@ -108,6 +108,93 @@ Returns NIL if the function captures no variables."
           (return-address-to-function (frame-code-address frame))
         (nth-value 0 (gc-info-for-function-offset function offset)))))
 
+(defun special-stack-head-at-boundary (boundary)
+  (let ((stack (mezzano.supervisor::thread-stack (mezzano.supervisor:current-thread)))
+        (on-selected nil))
+    (labels ((contains-boundary-p ()
+               (<= (mezzano.supervisor::stack-base stack) boundary
+                   (1- (+ (mezzano.supervisor::stack-base stack)
+                          (mezzano.supervisor::stack-size stack))))))
+      (setf on-selected (contains-boundary-p))
+      (loop for cell = (%%special-stack-pointer) then (%object-ref-t cell 0)
+            while cell
+            do (when (and on-selected
+                          (> (- (lisp-object-address cell) +tag-object+) boundary))
+                 (return (values cell t)))
+               (when (mezzano.delimited-continuations:prompt-tag-p (%object-ref-t cell 1))
+                 (when on-selected (return (values cell t)))
+                 (setf stack (%object-ref-t cell 3)
+                       on-selected (contains-boundary-p)))
+            finally (return (values nil on-selected))))))
+
+(defun frame-return-context (frame)
+  (check-type frame frame)
+  #+x86-64
+  (block context
+    (let ((interrupted nil))
+      (map-backtrace
+       (lambda (current)
+         (when (frame-interrupted-p current) (setf interrupted t))
+         (when (and (= (frame-fp current) (frame-fp frame))
+                    (eql (frame-pc-slot current) (frame-pc-slot frame)))
+           (when interrupted
+             (return-from context (values nil nil :interrupt-boundary)))
+           (unless (frame-stack-available-p (frame-raw-data current))
+             (return-from context (values nil nil :frameless-frame)))
+           (multiple-value-bind (function offset) (function-from-frame (frame-raw-data current))
+             (let ((scope (source-scope-at-offset function offset)))
+               (when (member scope '(nil :unknown))
+                 (return-from context (values nil nil :unavailable-source-scope)))))
+           (let ((fp (memref-unsigned-byte-64 (frame-fp current))))
+             (multiple-value-bind (head available) (special-stack-head-at-boundary fp)
+               (unless (and available (zerop (mod fp 16))
+                            (not (zerop (memref-unsigned-byte-64 fp 1))))
+                 (return-from context (values nil nil :unavailable-return-address)))
+               (return-from context (values fp head nil))))))))
+    (values nil nil :inactive-frame))
+  #-x86-64
+  (values nil nil :unsupported-architecture))
+
+#+x86-64
+(define-lap-function %return-values-from-frame ((frame-pointer values stack))
+  (:gc :no-frame :layout #*0)
+  (sys.lap-x86:push :rbp)
+  (:gc :no-frame :layout #*00)
+  (sys.lap-x86:mov64 :rbp :rsp)
+  (:gc :frame)
+  (sys.lap-x86:sub64 :rsp 16)
+  (sys.lap-x86:mov64 (:stack 0) :r8)
+  (:gc :frame :layout #*1)
+  (sys.lap-x86:mov64 (:stack 1) :r10)
+  (:gc :frame :layout #*11)
+  (sys.lap-x86:mov64 :r8 :r9)
+  (sys.lap-x86:mov32 :ecx #.(ash 1 +n-fixnum-bits+))
+  (sys.lap-x86:call (:named-call values-list))
+  (:gc :frame :layout #*11 :multiple-values 0)
+  ;; Keep the detached prompt stack alive through LEAVE.
+  (sys.lap-x86:mov64 :r13 (:stack 1))
+  (sys.lap-x86:mov64 :rax (:stack 0))
+  (sys.lap-x86:sar64 :rax #.+n-fixnum-bits+)
+  (sys.lap-x86:mov64 :rbp :rax)
+  (:gc :frame :multiple-values 0)
+  (sys.lap-x86:leave)
+  (:gc :no-frame :layout #*0 :multiple-values 0)
+  (sys.lap-x86:ret))
+
+(defun return-from-frame (frame values)
+  (declare (suppress-ssp-checking))
+  (let ((count (list-length values)))
+    (unless (and count (<= count multiple-values-limit))
+      (error "Frame return requires a finite list of at most ~D values."
+             multiple-values-limit)))
+  (multiple-value-bind (fp head reason) (frame-return-context frame)
+    (declare (ignorable fp head))
+    (when reason (error "Cannot return from frame: ~S." reason))
+    #+x86-64
+    (let ((stack (mezzano.supervisor::thread-stack (mezzano.supervisor:current-thread))))
+      (%%unwind-to head)
+      (%return-values-from-frame fp values stack))))
+
 (defun function-from-frame (frame)
   (let ((return-address (- (frame-code-address frame)
                            (if (sixth frame) 0 1))))
@@ -650,6 +737,7 @@ Returns NIL if the function captures no variables."
 (defun backtrace-next-frame (thread stack-pointer frame-pointer return-address)
   "Return the caller's SP, FP, PC, saved-PC slot, frame link, and interrupted-PC flag.
 The frame link is NIL when this transition leaves FP unchanged."
+  (declare (ignore thread))
   (multiple-value-bind (fn fn-offset)
       (safe-return-address-to-function return-address)
     (multiple-value-bind (framep interruptp pushed-values pushed-values-register
@@ -766,6 +854,7 @@ executed, and the offset into it."
 (defgeneric function-source-location (function &key))
 
 (defmethod function-source-location ((function compiled-function) &key (offset 0))
+  (declare (ignore offset))
   (let* ((info (function-debug-info function))
          (pathname (mezzano.internals::debug-info-source-pathname info))
          (tlf (mezzano.internals::debug-info-source-top-level-form-number info)))

@@ -656,28 +656,8 @@
     (unless (and (mezzano.internals::frame-stack-available-p raw)
                  (not (mezzano.internals::frame-interrupted-p frame)))
       (return-from service-frame-special-stack-head (values nil nil)))
-    (let* ((boundary (mezzano.internals::frame-fp frame))
-           (stack (mezzano.supervisor::thread-stack (mezzano.supervisor:current-thread)))
-           (on-selected nil))
-      (flet ((contains-boundary-p (stack)
-               (<= (mezzano.supervisor::stack-base stack) boundary
-                   (1- (+ (mezzano.supervisor::stack-base stack)
-                          (mezzano.supervisor::stack-size stack))))))
-        (setf on-selected (contains-boundary-p stack))
-        (loop for cell = (mezzano.internals::%%special-stack-pointer)
-                then (mezzano.internals::%object-ref-t cell 0)
-              while cell
-              do (when (and on-selected
-                            (> (- (mezzano.internals::lisp-object-address cell)
-                                  mezzano.internals::+tag-object+)
-                               boundary))
-                   (return (values cell t)))
-                 (when (mezzano.delimited-continuations:prompt-tag-p
-                        (mezzano.internals::%object-ref-t cell 1))
-                   (when on-selected (return (values cell t)))
-                   (setf stack (mezzano.internals::%object-ref-t cell 3)
-                         on-selected (contains-boundary-p stack)))
-              finally (return (values nil on-selected))))))
+    (mezzano.internals::special-stack-head-at-boundary
+     (mezzano.internals::frame-fp frame)))
   #-x86-64
   (values nil nil))
 
