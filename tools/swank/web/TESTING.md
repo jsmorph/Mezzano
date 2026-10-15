@@ -71,7 +71,7 @@ A catch-display target nests two catches with the same tag and an outer catch wi
 
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
-The frame-evaluation, evaluation-environment, standard-value-warning, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
+The frame-evaluation, evaluation-environment, standard-value-warning, Show Special, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
 
 The evaluation-environment driver compiles one owned DEBUG 3 function whose lexical argument shadows a separately established global value.  It tests typed commands and SPACE completion, distinct lexical/global reads and writes, Control-X I in both debugger editors, draft/cursor retention, arrows and editing prompts, history/selection/reload, child inheritance and independent mode changes, typed Abort, and exact-ID replay after a discarded accepted toggle reply.  Proceed must observe both writes, cleanup must remove the fixture definitions and symbols, and the next Listener must return 42.
 
@@ -97,6 +97,19 @@ node tools/swank/web/test-standard-value-warnings.mjs \
 ```
 
 The driver removes its class, printer method, named target, and symbols, then releases its jobs, stops, and session.  It creates a fresh condition stop.  Migration of an existing stop, other valid nondefault controls, and saved-stop restoration require the native fixtures.
+
+## Show Special
+
+The Show Special driver compiles owned DEBUG 3 inner and outer functions with repeated special bindings, bound NIL, an unbound cell, a global value, and a printable object.  It tests SPACE completion, a menu action that requests the required symbol argument without submitting, omitted and mentioned Program defaults, selected-frame versus Debugger observations, and independence from evaluation mode.  Nine retained histories and the current dynamic minus binding must remain distinct.  A changed debugger package, a qualified name, escaped Unicode spelling, NIL, T, and a keyword exercise symbol-source transport.  Streams must reject without accepting a command ID or replacing the session.
+
+Reload must retain printed results and command order.  Replaying a discarded accepted reply must print the object once.  Read-time evaluation must fail without its proposed side effect.  Reader and printer children must recover through typed Abort.  A child entered during evaluation must report the enclosing current form through minus.  Repair, a fresh display, Proceed with unchanged program values and one cleanup, and Listener 42 must succeed.
+
+```sh
+node tools/swank/web/test-show-special.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-show-special
+```
+
+The driver removes its functions, class/printer method, special symbols, and package, then releases its jobs, stops, and session.  It accepts the same protected-record options as the other focused drivers.  The sole expected HTTP error is the unsupported Streams response.  Native fixtures cover continuation-stack cell identity, moving GC, and unsupported layouts.  This driver tests browser reload within one boot.  Show Special across image restoration remains untested.
 
 ## Object Inspector
 

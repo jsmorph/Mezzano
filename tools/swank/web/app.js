@@ -1207,6 +1207,14 @@ function renderStops() {
       command.disabled = !available;
       menuChildren.push(command);
     }
+    const special = control(prefix + ":Show Special", ":Show Special", debuggerAction(() => {
+      const editor = activity === "listener" ? $("source") : $("debugger-command");
+      const text = ":Show Special ";
+      setEditor(editor, text, text.length);
+      scheduleAssistance(editor, "inspect");
+    }));
+    special.disabled = !available;
+    menuChildren.push(special);
   }
   const help = returnedResult("help");
   if (help !== null) detailChildren.push(node("pre", help, "debugger-help"));
@@ -1296,13 +1304,13 @@ function renderStops() {
       output = node("div", undefined, "debugger-description");
       output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
-    } else if (["arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings",
+    } else if (["arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                 "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
       output = node("div", undefined, "debugger-" + command.command);
       const name = {arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
         instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
-        "standard-value-warnings": ":Show Standard Value Warnings",
+        "standard-value-warnings": ":Show Standard Value Warnings", special: ":Show Special",
         "use-dynamic-environment": ":Use Dynamic Environment", "use-lexical-environment": ":Use Lexical Environment",
         "toggle-evaluation-environment": "Control-X I"}[command.command];
       output.append(node("pre", "→ " + (command.source ?? name), "debugger-transcript"),

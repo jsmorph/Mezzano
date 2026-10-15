@@ -405,12 +405,18 @@ def operation_arguments(operation, args, session):
                            "next-frame", "previous-frame", "top-frame", "bottom-frame", "proceed", "invoke-restart",
                            "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "help",
                            "inspect", "modify", "describe-object", "clear-inspection", "arglist", "bindings", "handlers", "catches",
-                           "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings",
+                           "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                            "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"):
             raise ValueError("Unsupported debugger command.")
         argument = args.get("argument")
         if command == "evaluate":
             argument = string(argument)
+        elif command == "special":
+            if not isinstance(argument, list) or len(argument) != 2:
+                raise ValueError("Expected symbol source and an environment.")
+            if argument[1] not in (":program", ":debugger", ":streams"):
+                raise ValueError("Expected Program, Debugger, or Streams environment.")
+            argument = [string(argument[0]), Symbol(argument[1])]
         elif command in ("handlers", "catches"):
             argument = boolean(False if argument is None else argument)
         elif command == "bindings":

@@ -108,6 +108,27 @@ class ProtocolTests(unittest.TestCase):
                     connect.assert_not_called()
                     self.assertEqual(connection.socket.mock_calls, [])
 
+    def test_special_symbol_source(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        for source in ("CL:*PACKAGE*", "NIL", "T", "|mixed name λ|", ':keyword', '#.(error "unread")'):
+            for environment in (":program", ":debugger", ":streams"):
+                with self.subTest(source=source, environment=environment):
+                    result = server.operation_arguments("submit", {
+                        "stop": stop, "id": 0, "command": "special",
+                        "argument": [source, environment]}, session)
+                    self.assertEqual(result[3], [source, server.Symbol(environment)])
+                    self.assertNotIsInstance(result[3][0], server.Symbol)
+                    self.assertIsInstance(result[3][1], server.Symbol)
+                    self.assertEqual(server.parse(server.lisp(result)), result)
+        for argument in (None, [], ["x"], ["x", ":program", 1],
+                         [False, ":program"], [1, ":program"], ["x", None],
+                         ["x", False], ["x", "Program"], ["x", ":unknown"]):
+            with self.subTest(argument=argument), self.assertRaises(ValueError):
+                server.operation_arguments("submit", {
+                    "stop": stop, "id": 0, "command": "special",
+                    "argument": argument}, session)
+
     def test_typed_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]
