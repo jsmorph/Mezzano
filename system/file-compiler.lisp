@@ -848,7 +848,7 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
       (when verbose
         (format t ";; Compiling file ~S.~%" input-file))
       (let* ((start-time (get-internal-run-time))
-             (mezzano.fast-eval:*lazy-lambda-evaluation* t)
+             (mezzano.fast-eval:*lazy-lambda-evaluation* nil)
              (*package* *package*)
              (*readtable* *readtable*)
              (*compile-verbose* verbose)
