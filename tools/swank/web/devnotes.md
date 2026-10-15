@@ -1,5 +1,21 @@
 # Web UI development journal
 
+## Stable client acceptance: 2026-10-15
+
+Root updated the existing guest on SWANK 4006 and selected pinned Web revision 829e6e54 for HTTP 8765.  QEMU remained PID 697273.  The HTTP service became MainPID 744190 with the preserved arguments and access restrictions.  The application digest matched `1d88253a864e64c3c3ce3b202b24089485e14776cb2e0fb6030de653d72fb32b`.  The browser runs used test revision bef7e789 and the documented protected-record assertions.  Root sent no concurrent guest requests during these four sequential runs.
+
+All twenty-eight frame-evaluation groups passed, including compiled DEBUG 3 lexical writes, inherited bindings, nine histories, typed child Abort, printer recovery, code and control-record displays, lost-reply replay, reload, and Listener reuse.  The large disassembly contained 366,868 bytes through its terminal instruction.  Ten owned jobs, twenty stops, and the session were released.  Browser errors, failed HTTP responses, and cleanup failures were empty.  Result: `/tmp/web-stable-history-frame-evaluation/result.json`.
+
+Product acceptance passed twenty-six excerpts across the debugger, Command Processor, and native test guides after catalog reload.  Peek displayed thirty-one processes, SPACE/Tab completed Set Package, and the Listener returned 42.  Both owned jobs and the session were released without browser or HTTP errors.  Result: `/tmp/web-stable-history-product/result.json`.
+
+All nine Inspector groups passed, including navigation, pages, mutation, input replay, reader/type/printer child errors, Abort, Clear, continuation, and closed panes.  Reload with no selected stop recovered sixty-four known results with identical visible Request History rows and unchanged command counters.  The single HTTP error was the intended 409 `:released-inspection-reference`, with uncertain false and no command-ID advance.  Three owned jobs, five stops, and the session were released.  Result: `/tmp/web-stable-history-inspector/result.json`.
+
+All seven HTTPS cases passed through the stable Listener.  Simple completion, structured messages/schema, forced tool call, explicit tool-result continuation, and a handled API error completed in 5,655, 4,554, 5,071, 3,722, and 1,459 milliseconds respectively.  CURL text and unauthenticated API GET cases completed in 1,445 and 1,471 milliseconds.  These times cover submission through displayed results.  Every case returned with no debugger stop, visible values matched guest results, and browser errors were empty.  Seven owned jobs and the session were released.  Results and cleanup are under `/tmp/web-stable-history-https/`.
+
+Every suite preserved all seven original ID/state/generation/next-counter records.  Stop 178 remained stopped at generation 0 and counter 0.  Stops 656, 657, 658, 699, 700, and 701 remained closed at generation 1 and counter 5.  Across the four runs, twenty-two owned jobs, twenty-five stops, and four sessions were released.  Reviewed the inherited-binding transcript, disassembly columns, Document Examiner text, three Inspector panes, and HTTPS output captures.  Browser traffic then stopped.  Root's final native audit preserved the original stop/frame identities, selection/history, COMPLETE/CURL definitions, and interpreter table, and released its owned baseline symbol.  Its marker is `:STABLE-WEB-ACCEPTED-AND-OWNED-BASELINE-RELEASED`.
+
+The mode-0600 archive `/tmp/debugger-web-stable-history-evidence.tar.gz` preserves all browser results/captures and exact drivers, deployed Web revision 829e6e54, native update/failure/acceptance/final-audit logs, deployment verification, and native production/fixture sources from f40f5d68.  SHA-256: `1110c7d7a9fbd21669e8a50a227d796cda4271baa75bccc2a8d48852526a3d60`.  The stable deployment now has browser acceptance for this increment.  Its guest received compiled updates without a VM restart.  The clean isolated-image restoration evidence remains separate.  The older unexplained monitor timeout and extra 409 remain unresolved.
+
 ## Stable client acceptance preparation: 2026-10-15
 
 The stable HTTP service now serves its pinned prior revision.  Prepare revision 829e6e54 in a separate directory with Git archive and Python's existing ZIP extraction, then compare every deployed Web file with its committed bytes and modes.  Leave the service configuration unchanged.  Root will install the compatible guest definitions before selecting the new client revision.
@@ -97,7 +113,7 @@ The mode-0600 archive `/tmp/debugger-web-history-clean-evidence.tar.gz` contains
 - [x] Run the active-stop browser case across a coordinated VM restart.
 - [x] Test the final unselected-record correction against the clean guest.
 - [x] Repeat combined parked-stop restoration on the clean image.
-- [ ] Publish compatible stable assets and test preserved user state.
+- [x] Publish compatible stable assets and test preserved user state.
 
 ## Lexical environment display review: 2026-10-14
 
@@ -112,7 +128,7 @@ Reuse the description-probe fixture for printing failure, arming it only after i
 - [x] Review Genera semantics and current Web submission, validation, and rendering.
 - [x] Wait for tested ownership metadata and the native command API.
 - [x] Implement and test the bounded existing-renderer additions in the isolated Web copy.
-- [ ] Publish the Web source together with compatible stable-guest deployment.
+- [x] Publish the Web source together with compatible stable-guest deployment.
 
 No product source or runtime changed during this review, and no guest request was sent.
 
