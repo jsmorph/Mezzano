@@ -94,11 +94,22 @@ async function evaluation(source, expected, selector = '#source') {
   return result;
 }
 async function selectTarget(selector = '#source', name = marker + '-TARGET') {
-  const index = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(name + ' ')}))`);
+  const index = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.includes(${text(name)}))`);
   assert(index >= 0, 'Compiled target frame was not found');
   await command(':Set Current Frame ' + index, selector);
   await frame(index);
   return index;
+}
+
+async function special(name, environment, expected) {
+  const previous = await browser.evaluate("latestCommand('special')?.id ?? -1");
+  await command(':Show Special ' + name + ' :Environment ' + environment);
+  await browser.waitFor(`latestCommand('special')?.id > ${previous}
+    && commandResults.get(commandKey(latestCommand('special')))?.state === ':returned' && !busy`, 60);
+  const result = await browser.evaluate("returnedResult('special')");
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('#stop-detail .special-result')].at(-1)?.textContent"), result);
+  if (expected !== undefined) assert(result.endsWith(': ' + expected + '.'), 'Unexpected special display: ' + result);
+  return result;
 }
 
 async function idle() {
@@ -140,6 +151,70 @@ async function setSelection(selector, start, end, direction) {
 let targetJob;
 const target = marker + '-TARGET', binding = marker + '-X';
 const names = [target, binding];
+const inner = marker + '-INNER', outer = marker + '-OUTER';
+const reader = marker + '-READ', writer = marker + '-WRITE', fail = marker + '-FAIL';
+const historical = '*' + marker + '-SPECIAL*', nilValue = '*' + marker + '-NIL*';
+const unboundValue = '*' + marker + '-UNBOUND*', globalValue = '*' + marker + '-GLOBAL*';
+const writes = '*' + marker + '-WRITES*';
+const specialNames = [historical, nilValue, unboundValue, globalValue, writes];
+const historicalNames = [inner, outer, reader, writer, fail, ...specialNames];
+const historicalSetup = `(let ((cleanup (list 0)) (answer nil))
+  (declare (special ${specialNames.join(' ')}))
+  (unwind-protect
+       (progn
+         (setf (symbol-value '${historical}) 0
+               (symbol-value '${nilValue}) t
+               (symbol-value '${unboundValue}) 77
+               (symbol-value '${globalValue}) 7
+               (symbol-value '${writes}) 0)
+         (compile (defun ${reader} ()
+           (declare (optimize (debug 3) (safety 3) (speed 1)) (special ${historical}))
+           ${historical}))
+         (compile (defun ${writer} (value)
+           (declare (optimize (debug 3) (safety 3) (speed 1)) (special ${historical} ${writes}))
+           (incf ${writes})
+           (setq ${historical} value)))
+         (compile (defun ${fail} ()
+           (declare (optimize (debug 3) (safety 3) (speed 1)))
+           (error "${marker} historical child")))
+         (compile (defun ${inner} (cleanup)
+           (declare (optimize (debug 3) (safety 3) (speed 1)))
+           (let ((${historical} 22) (${nilValue} t) (${unboundValue} 88))
+             (declare (special ${historical} ${nilValue} ${unboundValue}))
+             (unwind-protect
+                  (progn
+                    (assert (= (symbol-value '${historical}) 22))
+                    (break "${marker} historical-special stop")
+                    (assert (= ${historical} 24))
+                    (assert (and ${nilValue} (= ${unboundValue} 88)))
+                    ${historical})
+               (incf (car cleanup))))))
+         (compile (defun ${outer} (cleanup)
+           (declare (optimize (debug 3) (safety 3) (speed 1))
+                    (notinline ${inner}) (special ${globalValue} ${writes}))
+           (let ((${historical} 11) (${nilValue} nil) (${unboundValue} t)
+                 (*print-base* 16) (- :program-minus))
+             (declare (special ${historical} ${nilValue} ${unboundValue} -))
+             (makunbound '${unboundValue})
+             (assert (= (symbol-value '${historical}) 11))
+             (let ((inner-value (${inner} cleanup)))
+               (assert (= ${historical} 14))
+               (assert (and (null ${nilValue}) (not (boundp '${unboundValue}))))
+               (assert (and (= *print-base* 16) (eq - :program-minus)))
+               (values 42 inner-value ${historical} ${globalValue} ${writes})))))
+         (dolist (name '(${[inner, outer, reader, writer, fail].join(' ')}))
+           (assert (compiled-function-p (fdefinition name))))
+         (setf answer (multiple-value-list (${outer} cleanup)))
+         (assert (and (zerop ${historical}) ${nilValue} (= ${unboundValue} 77)
+                      (= ${globalValue} 8) (= ${writes} 6))))
+    (dolist (name '(${historicalNames.map(name => '"' + name + '"').join(' ')}))
+      (let ((symbol (find-symbol name "CL-USER")))
+        (when symbol
+          (when (fboundp symbol) (fmakunbound symbol))
+          (when (boundp symbol) (makunbound symbol))
+          (unintern symbol "CL-USER")))))
+  (assert (= (car cleanup) 1))
+  (values-list (append answer (list (car cleanup)))))`;
 try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument', {source:`(() => {
     const original = window.fetch;
@@ -323,6 +398,184 @@ try {
   assert.deepEqual((await completed(next)).values, ['42']);
   await save('continued-listener');
   evidence.checks.push('Proceed observes lexical/global writes, cleanup runs once and removes fixture symbols, and the next Listener returns 42');
+
+  targetJob = await start(historicalSetup);
+  const historicalParent = await stopped(targetJob);
+  await idle();
+  const outerFrame = await selectTarget('#source', outer);
+  await mode('lexical');
+  await evaluation(`(progn (setq *package* (find-package "CL-USER") *read-base* #10r10
+    *print-base* #10r10 *read-default-float-format* 'single-float)
+    (values (eq *package* (find-package "CL-USER")) *read-base* *print-base* *read-default-float-format*))`,
+    ['T', '10', '10', 'SINGLE-FLOAT']);
+  await evaluation(`(values ${historical} (${reader}) (symbol-value '${historical}))`, ['11', '11', '11']);
+  await special(historical, 'Program', '11');
+  await special(historical, 'Debugger', '22');
+  await evaluation(`(setq ${historical} 12)`, ['12']);
+  await evaluation(`(${writer} 13)`, ['13']);
+  await special(historical, 'Program', '13');
+  await special(historical, 'Debugger', '22');
+  await command(':Use Dynamic Environment');
+  await mode('dynamic');
+  await evaluation(`(values ${historical} (${reader}))`, ['22', '22']);
+  await evaluation(`(setq ${historical} 23)`, ['23']);
+  await evaluation(`(${writer} 24)`, ['24']);
+  await special(historical, 'Program', '13');
+  await special(historical, 'Debugger', '24');
+  await command(':Use Lexical Environment');
+  await mode('lexical');
+  const innerFrame = await selectTarget('#source', inner);
+  await evaluation(`(values ${historical} (${reader}))`, ['24', '24']);
+  await command(':Set Current Frame ' + outerFrame);
+  await frame(outerFrame);
+  await evaluation(`(values ${historical} (${reader}))`, ['13', '13']);
+  evidence.historical = {job: targetJob, parent: historicalParent, outerFrame, innerFrame};
+  await special(historical, 'Program', '13');
+  await special(historical, 'Debugger', '24');
+  await save('historical-program-and-debugger');
+  evidence.checks.push('Lexical direct/compiled reads and writes use the selected outer or inner original cell; dynamic mode uses the point-of-error cell, as Show Special confirms');
+
+  await evaluation(`(values ${nilValue} (boundp '${unboundValue}) ${globalValue})`, ['NIL', 'NIL', '7']);
+  await special(nilValue, 'Program', 'NIL');
+  await special(unboundValue, 'Program', '[unbound]');
+  await special(unboundValue, 'Debugger', '88');
+  await evaluation(`(setq ${globalValue} 8)`, ['8']);
+  await evaluation(`(let ((${historical} 91)) (declare (special ${historical}))
+    (values (${reader}) (${writer} 92) ${historical}))`, ['91', '92', '92']);
+  await evaluation(`(progv '(${historical}) '(93) (values (${reader}) (${writer} 94) ${historical}))`, ['93', '94', '94']);
+  await evaluation(`(progv '(${historical}) nil
+    (values (boundp '${historical}) (progn (set '${historical} 95) (${reader}))))`, ['NIL', '95']);
+  await evaluation(`(${reader})`, ['13']);
+  await evaluation(`(progn (makunbound '${historical}) (boundp '${historical}))`, ['NIL']);
+  await special(historical, 'Program', '[unbound]');
+  await special(historical, 'Debugger', '24');
+  await command(`(${reader})`);
+  const unboundChild = await stopped(targetJob, 2);
+  await idle();
+  const unboundCondition = await browser.evaluate("returnedResult('condition')");
+  assert.match(unboundCondition, /unbound/i);
+  assert(unboundCondition.includes(historical), 'Unbound condition names another symbol: ' + unboundCondition);
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(historicalParent.stop)}) && !busy`);
+  await idle();
+  await frame(outerFrame);
+  await mode('lexical');
+  await evaluation(`(${writer} 13)`, ['13']);
+  await special(historical, 'Program', '13');
+  await special(historical, 'Debugger', '24');
+  evidence.historical.unboundChild = unboundChild;
+  evidence.checks.push('LET/PROGV bindings shadow original cells and unwind independently; NIL, unbound, global writes, and typed Abort after an unbound compiled read preserve the other cells');
+
+  for (const value of [11, 21, 31]) await evaluation(`(values ${value} ${value + 1})`, [String(value), String(value + 1)]);
+  const history = [['*', '31'], ['+', '(VALUES 31 32)'], ['++', '(VALUES 21 22)'], ['+++', '(VALUES 11 12)'],
+    ['**', '21'], ['***', '11'], ['/', '(31 32)'], ['//', '(21 22)'], ['///', '(11 12)']];
+  for (const [name, value] of history) await special(name, 'Debugger', value);
+  await special('*print-base*', 'Program', '16');
+  await special('*print-base*', 'Debugger', '10');
+  await special('*read-base*', 'Debugger', '10');
+  await special('*read-default-float-format*', 'Debugger', 'SINGLE-FLOAT');
+  await special('-', 'Debugger', ':PROGRAM-MINUS');
+  const nestedSource = `(let ((${historical} 55)) (declare (special ${historical})) (${fail}))`;
+  await command(nestedSource);
+  const historicalChild = await stopped(targetJob, 2);
+  await idle();
+  await mode('lexical', 2);
+  const errorFrame = await selectTarget('#source', fail);
+  await evaluation(`(values ${historical} (${reader}))`, ['55', '55']);
+  await special(historical, 'Program', '55');
+  await special('-', 'Debugger', nestedSource.toUpperCase());
+  await command(':Use Dynamic Environment');
+  await mode('dynamic', 2);
+  await evaluation(`(${reader})`, ['55']);
+  await command(':Use Lexical Environment');
+  await mode('lexical', 2);
+  await selectTarget('#source', inner);
+  await evaluation(`(values ${historical} (${reader}))`, ['24', '24']);
+  await selectTarget('#source', outer);
+  await evaluation(`(values ${historical} (${reader}))`, ['13', '13']);
+  await command(':Set Current Frame ' + errorFrame);
+  await frame(errorFrame);
+  await command(':Use Dynamic Environment');
+  await mode('dynamic', 2);
+  await evaluation('(setq *read-base* #10r16)', ['16']);
+  await special('*read-base*', 'Debugger', '16');
+  await special(historical, 'Debugger', '55');
+  await save('historical-child-context');
+  await command(':Abort');
+  await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(historicalParent.stop)}) && !busy`);
+  await idle();
+  await frame(outerFrame);
+  await mode('lexical');
+  assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('evaluate'))).state"), ':unwound');
+  for (const [name, value] of history) await special(name, 'Debugger', value);
+  await special('*print-base*', 'Program', '16');
+  await special('*print-base*', 'Debugger', '10');
+  await special('*read-base*', 'Debugger', '10');
+  await special('*read-default-float-format*', 'Debugger', 'SINGLE-FLOAT');
+  await special('-', 'Debugger', ':PROGRAM-MINUS');
+  evidence.historical.child = historicalChild;
+  evidence.checks.push('A child sees its evaluation-time binding and original inner/outer frames; independent child mode/control edits and Abort preserve parent selection, all nine histories, controls, and current-form binding');
+
+  const mutation = `(progn (${writer} (1+ ${historical})) (values ${historical} ${writes}))`;
+  await browser.evaluate(`(() => {
+    const original = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await original(...args);
+      const request = args[1]?.body && JSON.parse(args[1].body);
+      if (request?.operation === 'submit' && request.arguments.command === 'evaluate'
+          && request.arguments.argument === ${text(mutation)}) {
+        window.fetch = original;
+        await response.arrayBuffer();
+        throw new TypeError('Browser test discarded the accepted historical-write reply');
+      }
+      return response;
+    };
+  })()`);
+  await fill('#source', mutation);
+  await key('Enter', 'Enter', 13);
+  await browser.waitFor('!connected && !busy && state.pending.some(record => record.arguments.command === "evaluate" && record.status === "outcome unknown")');
+  const mutationReceipt = await browser.evaluate('state.pending.find(record => record.arguments.command === "evaluate" && record.status === "outcome unknown")');
+  await browser.click('#window-label');
+  await browser.click('#resume-session');
+  await browser.waitFor('connected && !busy');
+  assert.equal(await browser.evaluate('state.session'), evidence.session);
+  await switchActivity('requests');
+  await browser.evaluate(`[...document.querySelectorAll('#pending .command-row')].find(row => row.textContent.includes(${text(JSON.stringify(mutationReceipt.arguments))})).querySelector('button').dataset.focusedTest = 'historical-replay'`);
+  await browser.click('[data-focused-test="historical-replay"]');
+  await browser.waitFor(`!state.pending.some(record => record.id === ${text(mutationReceipt.id)}) && !busy`);
+  await switchActivity('listener');
+  await idle();
+  await browser.waitFor(`latestCommand('evaluate')?.argument === ${text(mutation)} && commandResults.get(commandKey(latestCommand('evaluate')))?.state === ':returned' && !busy`);
+  assert.deepEqual(await browser.evaluate("returnedResult('evaluate')"), ['14', '6']);
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), mutationReceipt.arguments.id + 1);
+  await fill('#source', `(values ${historical})`);
+  const historicalDraft = await draft('#source');
+  const historicalCommands = await browser.evaluate('state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)');
+  const historicalOrigin = await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin !== ${historicalOrigin} && document.readyState === 'complete' && typeof connected !== 'undefined' && connected && !busy`);
+  await stopped(targetJob);
+  await idle();
+  await browser.waitFor("!document.querySelector('#stop-detail .history-progress') && !nextHistoricalCommand() && !busy");
+  await frame(outerFrame);
+  await mode('lexical');
+  assert.deepEqual(await draft('#source'), historicalDraft);
+  assert.deepEqual(await browser.evaluate('state.commands.filter(command => same(command.stop, selectedStop)).map(command => command.id)'), historicalCommands);
+  assert.deepEqual(await browser.evaluate("returnedResult('evaluate')"), ['14', '6']);
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('#stop-detail .evaluation-values')].at(-1)?.textContent"), '14\n6');
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('#stop-detail .debugger-evaluation .debugger-transcript')].at(-1)?.textContent"), '→ ' + mutation);
+  await special(writes, 'Debugger', '6');
+  await special(historical, 'Program', '14');
+  await special(historical, 'Debugger', '24');
+  await save('historical-replayed-write');
+  evidence.historical.replay = mutationReceipt;
+  await command(':Proceed');
+  evidence.historical.continued = await completed(targetJob);
+  assert.deepEqual(evidence.historical.continued.values, ['42', '24', '14', '8', '6', '1']);
+  const historicalNext = await start(`(progn (dolist (name '(${historicalNames.map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
+  assert.deepEqual((await completed(historicalNext)).values, ['42']);
+  await save('historical-continued-listener');
+  evidence.checks.push('A discarded historical-write reply replays once, reload preserves visible source/results/order, Proceed observes original-cell writes and one cleanup, and Listener reuse returns 42');
   assert.deepEqual(await browser.evaluate("JSON.parse(sessionStorage.getItem('environment-http-failures') || '[]')"), []);
 } catch (error) {
   evidence.failure = error.stack;
