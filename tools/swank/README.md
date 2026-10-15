@@ -560,14 +560,29 @@ The dynamic-binding fixture uses the same helpers:
 
 It checks per-frame ownership, shadowed values, bound NIL and unbound cells, selected/all-frame output, case-sensitive name filtering, parser defaults, invalid options, copied request strings, replay, unchanged history and selection, printer failure with nested Abort, full GC, continuation, and cleanup.  Its compiled condition-stop scope is x86-64 at DEBUG 3, SAFETY 3, SPEED 1.  See [special bindings](../../doc/debugger.md#special-bindings).
 
-The selected-special-cell fixture tests the internal lookup used for planned selected-frame special inspection:
+The selected-special-cell fixture tests the internal lookup used by Show Special:
 
 ```lisp
 (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SELECTED-SPECIALS.LISP"))
 (lispm-selected-special-test:run)
 ```
 
-It checks original binding cells across ordinary and nested continuation stacks, inherited values, NIL/unbound/global states, absent global cells, identity through GC, an unavailable interrupted frame, history/selection, continuation, and cleanup.  Its supported test policy is SAFETY 3, DEBUG 3, SPEED 1 on x86-64.  The [test guide](TESTING.md#transport-and-guest-tests) specifies loading prerequisites.  It does not establish historical special-variable evaluation.
+It checks original binding cells across ordinary and nested continuation stacks, inherited values, NIL/unbound/global states, absent global cells, identity through GC, an unavailable interrupted frame, history/selection, continuation, and cleanup.  Its supported test policy is SAFETY 3, DEBUG 3, SPEED 1 on x86-64.  The [test guide](TESTING.md#transport-and-guest-tests) specifies loading prerequisites.  It tests read-only lookup.  The special-evaluation fixture below tests expression execution.
+
+The special-binding-context fixture tests runtime cell selection and cache transitions.  The special-evaluation fixture tests the retained debugger against compiled stopped functions.  Load the debugger-service and frame-evaluation helpers first.
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SPECIAL-BINDING-CONTEXT.LISP"))
+(lispm-special-binding-context-test:run)
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SPECIAL-EVALUATION.LISP"))
+(lispm-special-evaluation-test:run)
+```
+
+The runtime fixture checks original-cell reads and writes, new LET/PROGV bindings, NIL/unbound/global values, empty and nested intervals, invalid endpoints, deliberate cache collisions, normal and nonlocal exits, full GC, continuation stacks, queued footholds at entry/exit, active callback binding, and owned-thread cleanup.  It temporarily wraps the cache-clearing helper and restores that definition on exit.  Run it on a dedicated guest.
+
+The debugger fixture checks interpreted and compiled selected-frame access, immediate SETQ and compiled writes, MAKUNBOUND, shadowing and unbinding, mode changes, child point-of-error bindings, selection of original frames within a child, parent history/selection preservation after Abort, synthetic unavailable-frame rejection, full GC, continuation, and cleanup at zero, one, and two prompt levels.  Tests execute established x86-64 condition frames at SAFETY 3, DEBUG 3, SPEED 1.  Compile runtime changes at the kernel policy and load wired, as specified in the [test guide](TESTING.md#kernel-compilation).  Arbitrary supervisor exceptions, executing-command restoration, and ARM64 execution remain untested.
+
+For the parked-restoration test, LISPM-SPECIAL-EVALUATION-TEST:PREPARE-RESTORE-TEST retains an owned stop under two continuation prompts with its outer cell changed to 12.  After a saved-image restart, FINISH-RESTORE-TEST checks old-handle expiration and prior-boot replay rejection, retained selection/history, original-cell identity through GC, fresh lexical/dynamic reads, nested Abort, Proceed, the final (33 12), and cleanup.  This test saves a parked stop with no executing debugger evaluation.
 
 The handler-scope fixture uses the debugger-service and frame-evaluation helpers:
 

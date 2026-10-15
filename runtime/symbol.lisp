@@ -169,19 +169,49 @@
   (sys.int::%type-check symbol sys.int::+object-tag-symbol+ 'symbol)
   (%symbol-value-cell-by-cell (symbol-global-value-cell symbol)))
 
-(defun %symbol-value-cell-by-cell (symbol-value-cell)
-  (let ((symbol (symbol-value-cell-symbol symbol-value-cell)))
-    (when (symbol-global-p symbol)
-      (return-from %symbol-value-cell-by-cell
-        symbol-value-cell))
-    ;; Walk the special stack, looking for an associated binding.
-    (do ((ssp (sys.int::%%special-stack-pointer)
-              (sys.int::%object-ref-t ssp 0)))
-        ((null ssp)
-         ;; Fall back on the global cell.
-         symbol-value-cell)
-      (when (eq (sys.int::%object-ref-t ssp 1) symbol-value-cell)
-        (return ssp)))))
+(defvar *special-binding-lookup-interval* nil)
+
+(declaim (inline %symbol-value-cell-from-stack))
+(defun %symbol-value-cell-from-stack (global head)
+  (when (symbol-global-p (symbol-value-cell-symbol global))
+    (return-from %symbol-value-cell-from-stack global))
+  (let ((marker (symbol-global-value-cell '*special-binding-lookup-interval*))
+        (start nil) (end nil))
+    (do ((cell head (sys.int::%object-ref-t cell 0)))
+        ((null cell) global)
+      (when (eq cell start)
+        (setf cell end)
+        (unless cell (return global)))
+      (let ((tag (sys.int::%object-ref-t cell 1)))
+        (when (eq tag global) (return cell))
+        (when (eq tag marker)
+          (let ((interval (symbol-value-cell-value cell)))
+            (setf start (car interval) end (cdr interval))))))))
+
+(defun %symbol-value-cell-by-cell (global)
+  (%symbol-value-cell-from-stack global (sys.int::%%special-stack-pointer)))
+
+(defun clear-symbol-binding-cache (thread)
+  (declare (type mezzano.supervisor:thread thread))
+  (dotimes (index mezzano.supervisor::+thread-symbol-cache-size+)
+    (declare (type fixnum index))
+    (setf (mezzano.supervisor::thread-symbol-cache thread index)
+          (sys.int::%symbol-binding-cache-sentinel))))
+
+(defun call-with-special-binding-interval (start end function)
+  (let ((found nil))
+    (loop for cell = (sys.int::%%special-stack-pointer) then (sys.int::%object-ref-t cell 0)
+          do (when (eq cell start) (setf found t))
+             (when (and found (eq cell end)) (return))
+             (when (null cell) (error "Invalid special-binding lookup interval."))))
+  (let ((interval (cons start end))
+        (thread (mezzano.supervisor:current-thread)))
+    (mezzano.supervisor:without-footholds
+      (unwind-protect
+           (let ((*special-binding-lookup-interval* interval))
+             (clear-symbol-binding-cache thread)
+             (mezzano.supervisor::with-local-footholds (funcall function)))
+        (clear-symbol-binding-cache thread)))))
 
 (defun symbol-value (symbol)
   (symbol-value-cell-value (symbol-value-cell symbol)))

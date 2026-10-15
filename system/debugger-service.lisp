@@ -204,28 +204,38 @@
       (unless read-p (clear-input *query-io*)))))
 
 (defun service-evaluate-input (stop reader &optional print-p)
-  (let* ((reference (%make-service-frame (service-handle stop)
-                                        (service-stop-generation stop)
-                                        (service-stop-current-frame stop)))
-         (environment
-           (ecase (service-stop-evaluation-environment stop)
-             (:lexical (service-frame-environment reference))
-             (:dynamic nil)))
+  (let* ((reference (%make-service-frame
+                     (service-handle stop)
+                     (service-stop-generation stop)
+                     (service-stop-current-frame stop)))
+         (lexical (ecase (service-stop-evaluation-environment stop)
+                    (:lexical t) (:dynamic nil)))
+         (environment (when lexical (service-frame-environment reference)))
          (history-symbols '(+ ++ +++ * ** *** / // ///))
          (mezzano.internals::*eval-hook* 'mezzano.full-eval:eval-in-lexenv))
-    (progv history-symbols (service-stop-evaluation-history stop)
-      (unwind-protect
-           (let* ((form (funcall reader))
-                  (- form)
-                  (values (multiple-value-list
-                           (mezzano.full-eval:eval-in-lexenv form environment))))
-             (declare (special -))
-             (setf +++ ++ ++ + + form
-                   *** ** ** * * (first values)
-                   /// // // / / values)
-             (if print-p (mapcar #'service-print values) values))
-        (setf (service-stop-evaluation-history stop)
-              (mapcar #'symbol-value history-symbols))))))
+    (flet ((evaluate-form ()
+             (progv history-symbols (service-stop-evaluation-history stop)
+               (unwind-protect
+                    (let* ((form (funcall reader))
+                           (- form)
+                           (values (multiple-value-list
+                                    (mezzano.full-eval:eval-in-lexenv form environment))))
+                      (declare (special -))
+                      (setf +++ ++ ++ + + form
+                            *** ** ** * * (first values)
+                            /// // // / / values)
+                      (if print-p (mapcar #'service-print values) values))
+                 (setf (service-stop-evaluation-history stop)
+                       (mapcar #'symbol-value history-symbols))))))
+      (if lexical
+          (multiple-value-bind (start start-available)
+              (service-frame-special-stack-head (aref (service-stop-frames stop) 0))
+            (multiple-value-bind (end end-available)
+                (service-frame-special-stack-head (check-service-frame reference stop))
+              (unless (and start-available end-available)
+                (service-error :unavailable-special-environment))
+              (mezzano.runtime::call-with-special-binding-interval start end #'evaluate-form)))
+          (evaluate-form)))))
 
 (defun service-evaluate (stop source)
   (service-evaluate-input
@@ -633,51 +643,48 @@
   #-x86-64
   (values nil nil))
 
+(defun service-frame-special-stack-head (frame)
+  "Return the physical special-stack head and availability at FRAME."
+  (declare (ignorable frame))
+  #+x86-64
+  (let ((raw (mezzano.internals::frame-raw-data frame)))
+    (unless (and (mezzano.internals::frame-stack-available-p raw)
+                 (not (mezzano.internals::frame-interrupted-p frame)))
+      (return-from service-frame-special-stack-head (values nil nil)))
+    (let* ((boundary (mezzano.internals::frame-fp frame))
+           (stack (mezzano.supervisor::thread-stack (mezzano.supervisor:current-thread)))
+           (on-selected nil))
+      (flet ((contains-boundary-p (stack)
+               (<= (mezzano.supervisor::stack-base stack) boundary
+                   (1- (+ (mezzano.supervisor::stack-base stack)
+                          (mezzano.supervisor::stack-size stack))))))
+        (setf on-selected (contains-boundary-p stack))
+        (loop for cell = (mezzano.internals::%%special-stack-pointer)
+                then (mezzano.internals::%object-ref-t cell 0)
+              while cell
+              do (when (and on-selected
+                            (> (- (mezzano.internals::lisp-object-address cell)
+                                  mezzano.internals::+tag-object+)
+                               boundary))
+                   (return (values cell t)))
+                 (when (mezzano.delimited-continuations:prompt-tag-p
+                        (mezzano.internals::%object-ref-t cell 1))
+                   (when on-selected (return (values cell t)))
+                   (setf stack (mezzano.internals::%object-ref-t cell 3)
+                         on-selected (contains-boundary-p stack)))
+              finally (return (values nil on-selected))))))
+  #-x86-64
+  (values nil nil))
+
 (defun service-frame-special-cell (frame symbol)
   "Return SYMBOL's live cell and availability at FRAME on the stopped thread.
 NIL with true availability denotes an absent global cell."
-  (declare (ignorable frame))
   (check-type symbol symbol)
   (let ((global (mezzano.runtime::symbol-global-value-cell symbol nil)))
     (when (or (null global) (mezzano.runtime::symbol-global-p symbol))
       (return-from service-frame-special-cell (values global t)))
-    #+x86-64
-    (let ((raw (mezzano.internals::frame-raw-data frame)))
-      (unless (and (mezzano.internals::frame-stack-available-p raw)
-                   (not (mezzano.internals::frame-interrupted-p frame)))
-        (return-from service-frame-special-cell (values nil nil)))
-      (let* ((boundary (mezzano.internals::frame-fp frame))
-             (stack (mezzano.supervisor::thread-stack
-                     (mezzano.supervisor:current-thread)))
-             (on-selected-stack-p nil)
-             (visible nil))
-        (flet ((contains-boundary-p (stack)
-                 (<= (mezzano.supervisor::stack-base stack)
-                     boundary
-                     (1- (+ (mezzano.supervisor::stack-base stack)
-                            (mezzano.supervisor::stack-size stack))))))
-          (setf on-selected-stack-p (contains-boundary-p stack))
-          (loop for cell = (mezzano.internals::%%special-stack-pointer)
-                  then (mezzano.internals::%object-ref-t cell 0)
-                while cell
-                do (when (and on-selected-stack-p
-                              (> (- (mezzano.internals::lisp-object-address cell)
-                                    mezzano.internals::+tag-object+)
-                                 boundary))
-                     (setf visible t))
-                   (when (and visible (mezzano.runtime::symbol-value-cell-p cell)
-                              (eq (mezzano.runtime::symbol-value-cell-symbol cell) symbol))
-                     (return-from service-frame-special-cell (values cell t)))
-                   (when (mezzano.delimited-continuations:prompt-tag-p
-                          (mezzano.internals::%object-ref-t cell 1))
-                     (when on-selected-stack-p (setf visible t))
-                     (setf stack (mezzano.internals::%object-ref-t cell 3)
-                           on-selected-stack-p (contains-boundary-p stack)))
-                finally (return (if (or visible on-selected-stack-p)
-                                    (values global t)
-                                    (values nil nil)))))))
-    #-x86-64
-    (values nil nil)))
+    (multiple-value-bind (head available) (service-frame-special-stack-head frame)
+      (values (when available (mezzano.runtime::%symbol-value-cell-from-stack global head)) available))))
 
 (defun service-show-special (stop argument)
   (destructuring-bind (source environment) argument
