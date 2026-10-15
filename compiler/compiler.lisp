@@ -33,10 +33,27 @@ Currently disabled by default as it has a severe performance impact.")
                    *verify-special-stack*
                    *constprop-lambda-copy-limit*
                    *the-checks-types*
-                   *max-optimizer-iterations*)))
+                   *max-optimizer-iterations*
+                   *compilation-results*)))
     (loop
        for sym in symbols
        collect (list sym (symbol-value sym)))))
+
+(defvar *compilation-results* nil)
+
+(defun note-compilation-condition (condition)
+  (dolist (result *compilation-results*)
+    (setf (car result) t)
+    (unless (typep condition 'style-warning)
+      (setf (cdr result) t))))
+
+(defun call-with-compilation-results (thunk)
+  (let* ((result (cons nil nil))
+         (*compilation-results* (cons result *compilation-results*)))
+    (handler-bind ((warning #'note-compilation-condition)
+                   (error #'note-compilation-condition))
+      (let ((primary (funcall thunk)))
+        (values primary (car result) (cdr result))))))
 
 (defvar *compilation-unit-active* nil)
 
@@ -125,34 +142,34 @@ Currently disabled by default as it has a severe performance impact.")
   `(quote ,(eval form)))
 
 (defun compile (name &optional definition)
-  (with-compilation-unit ()
-    (unless definition
-      (setf definition (or (when (symbolp name) (macro-function name))
-                           (fdefinition name))))
-    (when (functionp definition)
-      (when (or (compiled-function-p definition)
-                ;; ###: Should generic functions be compiled functions?
-                (typep definition 'generic-function))
-        (return-from compile
-          (values definition nil nil)))
-      (multiple-value-bind (lambda-expression env)
-          (function-lambda-expression definition)
-        (when (null lambda-expression)
-          (error "No source information available for ~S." definition))
-        (when env
-          (error "TODO: cannot compile functions defined outside the null lexical environment."))
-        (setf definition lambda-expression)))
-    (with-compilation-unit ()
-      (multiple-value-bind (fn warnings-p errors-p)
-          (let ((*load-time-value-hook* 'eval-load-time-value)
-                (*gensym-counter* 0))
-            (compile-lambda definition))
-        (cond (name
-               (if (and (symbolp name) (macro-function name))
-                   (setf (macro-function name) fn)
-                   (setf (fdefinition name) fn))
-               (values name warnings-p errors-p))
-              (t (values fn warnings-p errors-p)))))))
+  (call-with-compilation-results
+   (lambda ()
+     (with-compilation-unit ()
+       (unless definition
+         (setf definition (or (when (symbolp name) (macro-function name))
+                              (fdefinition name))))
+       (unless (and (functionp definition)
+                    (or (compiled-function-p definition)
+                        (typep definition 'generic-function)))
+         (when (functionp definition)
+           (multiple-value-bind (lambda-expression env)
+               (function-lambda-expression definition)
+             (when (null lambda-expression)
+               (error "No source information available for ~S." definition))
+             (when env
+               (error "TODO: cannot compile functions defined outside the null lexical environment."))
+             (setf definition lambda-expression)))
+         (setf definition
+               (let ((*load-time-value-hook* 'eval-load-time-value)
+                     (*gensym-counter* 0))
+                 (compile-lambda definition))))
+       (if name
+           (progn
+             (if (and (symbolp name) (macro-function name))
+                 (setf (macro-function name) definition)
+                 (setf (fdefinition name) definition))
+             name)
+           definition)))))
 
 (defvar *current-lambda* nil
   "A lambda-information struct for the lambda currently being translated.")

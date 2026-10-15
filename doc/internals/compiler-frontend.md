@@ -38,3 +38,11 @@ At speed 3 with nonzero safety, the array transforms specialize one-dimensional 
 The element-accessor table covers T, FIXNUM, signed and unsigned 8-, 16-, 32-, and 64-bit integers, SINGLE-FLOAT, and DOUBLE-FLOAT.  Character and bit arrays use the existing paths.  The specialized transforms register after the general AREF transforms because the compiler tries the most recently registered transform first.
 
 [The array tests](../../tools/test-array-transforms.lisp) compare compiled reads and stores with functions captured before a compiler update.  [The long-division report](../../tools/long-division.md#checked-array-specialization) records the measured effect and test limits.
+
+## Compilation results
+
+COMPILE and COMPILE-FILE return a primary result, a warning flag, and a failure flag.  A WARNING or ERROR sets the warning flag.  An ERROR or a WARNING other than STYLE-WARNING also sets the failure flag.  Diagnostic observation preserves condition signaling, handlers, restarts, and nonlocal exits.
+
+Each invocation records its own flags.  Nested compilation also contributes to its enclosing invocation.  File-compilation workers share their invocation's flag cells through the compiler's existing initial bindings.  Independent compilation threads retain separate cells.  The file compiler reads the flags after receiving the workers' completion messages.
+
+When COMPILE receives a function name, it installs the result and returns that name, including when the supplied definition is already compiled.  A NIL name returns the compiled function.
