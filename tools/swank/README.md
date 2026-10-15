@@ -560,6 +560,15 @@ The dynamic-binding fixture uses the same helpers:
 
 It checks per-frame ownership, shadowed values, bound NIL and unbound cells, selected/all-frame output, case-sensitive name filtering, parser defaults, invalid options, copied request strings, replay, unchanged history and selection, printer failure with nested Abort, full GC, continuation, and cleanup.  Its compiled condition-stop scope is x86-64 at DEBUG 3, SAFETY 3, SPEED 1.  See [special bindings](../../doc/debugger.md#special-bindings).
 
+The selected-special-cell fixture tests the internal lookup used for planned selected-frame special inspection:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SELECTED-SPECIALS.LISP"))
+(lispm-selected-special-test:run)
+```
+
+It checks original binding cells across ordinary and nested continuation stacks, inherited values, NIL/unbound/global states, absent global cells, identity through GC, an unavailable interrupted frame, history/selection, continuation, and cleanup.  Its supported test policy is SAFETY 3, DEBUG 3, SPEED 1 on x86-64.  The [test guide](TESTING.md#transport-and-guest-tests) specifies loading prerequisites.  It does not establish historical special-variable evaluation.
+
 The handler-scope fixture uses the debugger-service and frame-evaluation helpers:
 
 ```lisp
