@@ -22,7 +22,7 @@ Virtual memory layout for the x86-64 target
 0000580000000000 - 0000600000000000  General old generation (semispace B)
 0000600000000000 - 0000680000000000  Cons young generation (semispace A)
 0000680000000000 - 0000700000000000  Cons old generation (semispace A)
-0000700000000000 - 0000680000000000  Cons young generation (semispace B)
+0000700000000000 - 0000780000000000  Cons young generation (semispace B)
 0000780000000000 - 0000800000000000  Cons old generation (semispace B)
 0000800000000000 - FFFF800000000000  x86-64 non-canonical region
 FFFF800000000000 - FFFF808000000000  Linear map of physical memory
