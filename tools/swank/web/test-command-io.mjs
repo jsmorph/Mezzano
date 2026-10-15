@@ -8,7 +8,7 @@ const output=process.argv[3]??'/tmp/mezzano-command-io';
 const protectedIds=(process.env.PROTECTED_STOPS??process.env.PROTECTED_STOP??'').split(',').filter(Boolean).map(Number);
 assert(protectedIds.every(id=>Number.isSafeInteger(id)&&id>=0));
 await mkdir(output,{recursive:true});
-const browser=await openBrowser(url);
+const browser=await openBrowser('about:blank');
 const q=JSON.stringify;
 const marker='WEB-COMMAND-IO-'+randomBytes(6).toString('hex').toUpperCase();
 const target=marker+'-TARGET', stateName='*'+marker+'-STATE*', threadName='*'+marker+'-THREAD*';
@@ -130,8 +130,25 @@ async function releaseOwned() {
   }
   await request('release-session');
   evidence.cleaned=true;
+  evidence.jobs=[...jobs];
+  evidence.stops=[...owned.keys()];
+  evidence.http=await browser.evaluate('commandIORequests');
 }
 try {
+  await browser.send('Page.addScriptToEvaluateOnNewDocument',{source:`
+    window.commandIORequests=JSON.parse(sessionStorage.getItem('command-io-http')||'[]');
+    const originalFetch=window.fetch;
+    window.fetch=async (...args)=>{
+      const request=args[1]?.body&&JSON.parse(args[1].body);
+      const response=await originalFetch(...args);
+      if(['command-output','command-input'].includes(request?.operation)) {
+        commandIORequests.push({time:Date.now(),request,status:response.status,body:await response.clone().json()});
+        sessionStorage.setItem('command-io-http',JSON.stringify(commandIORequests));
+      }
+      return response;
+    };`});
+  await browser.send('Page.navigate',{url});
+  await browser.waitFor("document.readyState==='complete' && typeof connected!=='undefined'");
   await ready();
   evidence.session=await browser.evaluate('state.session');
   for(const id of protectedIds) {
@@ -226,6 +243,7 @@ try {
   console.log('PASS jobless command I/O: '+evidence.checks.length+' groups; owned state released');
 } catch(error) {
   evidence.error=error.stack;
+  evidence.http=await browser.evaluate('commandIORequests');
   await browser.screenshot(output+'/failure.png');
   await writeFile(output+'/failure.json',JSON.stringify({...evidence,jobs,stops:[...owned],state:await browser.evaluate('state'),errors:browser.errors},null,2));
   try {await releaseOwned();} catch(cleanupError) {evidence.cleanupError=cleanupError.stack;}

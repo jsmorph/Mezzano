@@ -118,7 +118,7 @@ async function inspect(source) {
   return pageAfter(previous);
 }
 async function input(source) {
-  await browser.waitFor(`commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
+  await browser.waitFor(`latestCommand('modify') && commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
   await fill('#stop-detail .command-io .input-form:not([hidden]) textarea', source);
   await clickText('#stop-detail .command-io .input-form:not([hidden])', 'Send Input');
 }
@@ -246,7 +246,7 @@ try {
   evidence.checks.push('Typed completion, bounded pages, three inspection panes, history, and reload preserve retained observations');
 
   const previous = await modify('[64]');
-  await browser.waitFor(`commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
+  await browser.waitFor(`latestCommand('modify') && commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
   const readerOrigin = await browser.evaluate('performance.timeOrigin');
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${readerOrigin} && document.readyState === 'complete' && connected && !busy`);
@@ -301,7 +301,7 @@ try {
   await abortChild();
   await evaluation('counter', ['0']);
   await modify('VALUE');
-  await browser.waitFor(`commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
+  await browser.waitFor(`latestCommand('modify') && commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
   await clickText(`[data-job="${targetJob}"]`, 'Interrupt');
   await abortChild();
   await modify('VALUE', '(+ x 2)');

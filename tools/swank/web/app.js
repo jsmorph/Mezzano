@@ -773,15 +773,17 @@ function updateJob(job, info, output) {
     + (view.end < info["output-length"] ? " — receiving output (" + view.end + " of "
       + info["output-length"] + " characters)" : "");
   view.inputForm.hidden = info.state !== ":running" || info["input-mode"] !== ":interactive" || info["input-eof-p"];
-  const operationsSignature = JSON.stringify([job.token, info.stops, info.state === ":running", Boolean(info["interruptible-p"])]);
+  if (view.interrupt) view.interrupt.disabled = !info["interruptible-p"];
+  const operationsSignature = JSON.stringify([job.token, info.stops, info.state === ":running"]);
   if (view.operationsSignature === operationsSignature) return;
   view.operationsSignature = operationsSignature;
   view.operations.replaceChildren();
+  view.interrupt = null;
   for (const stop of info.stops || []) {
     view.operations.append(button("Debugger", () => selectStop(stop), "Mouse-Left: Select this evaluation's debugger stop."));
   }
   if (info.state === ":running") {
-    const interrupt = button("Interrupt", async () => {
+    const interrupt = view.interrupt = button("Interrupt", async () => {
       const current = await api("job-information", {job: job.token});
       const id = current["next-interrupt-id"];
       await mutate("interrupt-job", {job: job.token, id});
@@ -929,6 +931,10 @@ function nextHistoricalCommand() {
   if (activity === "debugger" || (activity === "listener" && listenerDebugger)) {
     const selected = stops.find(stop => same(stop.token, selectedStop));
     if (selected) {
+      const uncertain = state.pending.find(record => record.operation === "submit" && record.status === "outcome unknown"
+        && same(record.arguments.stop, selectedStop) && record.arguments.id < selected.info["next-command-id"]
+        && !commandResults.has(commandKey(record.arguments)));
+      if (uncertain) return {stop: selectedStop, id: uncertain.arguments.id};
       if (stopCommandPending(selectedStop)
           || (selected.info.state === ":stopped" && !selected.info.child && nextStopInspection(selectedStop))) return null;
       const known = new Set(state.commands.filter(command => same(command.stop, selectedStop)
@@ -1064,9 +1070,9 @@ function commandIOView(command) {
   return view;
 }
 function renderCommandIO(command, result, info) {
-  const key = commandKey(command);
-  if (!commandIOViews.has(key) && !(result?.["output-length"] > 0)
-      && !(result?.["input-length"] !== undefined && !result["input-eof-p"])) return null;
+  if (!(result?.["output-length"] > 0)
+      && !([":pending", ":running"].includes(result?.state)
+        && result["input-length"] !== undefined && !result["input-eof-p"])) return null;
   const view = commandIOView(command);
   view.output.textContent = view.text;
   view.status.textContent = label(result?.state) + (result?.["input-waiting-p"] ? " — awaiting input" : "")

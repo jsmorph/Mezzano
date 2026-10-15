@@ -319,7 +319,7 @@ It tests one hundred retained records, fresh inspection priority, queued live ac
 
 ## Debugger command I/O
 
-The intercepted command-I/O fixture serves the Web sources locally and replaces every API request.  It requires no guest.  It checks Unicode character offsets across bounded output reads, queued-action priority, the shared Listener/standalone input element, draft/cursor reload, accepted input reply loss and exact replay, separate parent/child drafts, fresh input after EOF, invalid output-range rejection, and disabled closed input.
+The intercepted command-I/O fixture serves the Web sources locally and replaces every API request.  It requires no guest.  It checks Unicode character offsets across bounded output reads, queued-action priority, the shared Listener/standalone input element, draft/cursor reload, accepted input reply loss and exact replay, separate parent/child drafts, fresh input after EOF, invalid output-range rejection, and disabled closed input.  Returned commands with zero output and EOF NIL have no empty input panel.  Changing job interruptibility preserves the neighboring Debugger button.  A lost accepted-submit reply recovers the running reader from its guest ID, permits input before exact submit replay, and preserves one execution across reload and replay.
 
 ```sh
 node tools/swank/web/test-command-io-fixtures.mjs \
@@ -333,4 +333,4 @@ node tools/swank/web/test-command-io.mjs \
   http://127.0.0.1:8766/ /tmp/mezzano-jobless-command-io
 ```
 
-Native-backed command-I/O acceptance is pending.  Existing restart-argument, Inspector replacement, and evaluated-reader tests will use the command's input/output identity.  Program input remains on the evaluation job.  Batch and jobless debugger stops, recursive readers, and restored running commands require the new guest service and adapter.
+Isolated x86-64 browser acceptance passed the jobless driver, Listener/restart driver, batch Inspector driver, and frame-evaluation driver.  Their readers use the command's input/output identity.  Program input remains on the evaluation job.  Coverage includes nested readers and Abort, reload, uncertain submit/input replies, exact replay, returning restart values, and interruption inside an interrupted command.  Native tests separately passed a partially consumed command reader across image restoration.  The intercepted browser fixture tests fresh-handle input for a prior-boot running record.  A browser command reader across an image restart remains untested.

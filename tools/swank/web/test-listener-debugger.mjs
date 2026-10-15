@@ -130,6 +130,7 @@ try {
   await command(':Help');
   await browser.waitFor('document.querySelector("#listener-debugger .debugger-help")?.textContent.includes("Abort")');
   const spanningClick = await browser.evaluate(`(() => {
+    window.spanningBefore = {signature: views.get(${text(normal)}).operationsSignature, info: views.get(${text(normal)}).info};
     window.spanningButton = views.get(${text(normal)}).operations.querySelector('button');
     spanningButton.scrollIntoView({block: 'center'});
     const bounds = spanningButton.getBoundingClientRect();
@@ -137,7 +138,8 @@ try {
   })()`);
   await browser.send('Input.dispatchMouseEvent', {type: 'mousePressed', button: 'left', clickCount: 1, ...spanningClick});
   await browser.evaluate('run(refresh)');
-  assert(await browser.evaluate('spanningButton.isConnected'));
+  evidence.spanningRefresh = await browser.evaluate(`({before: spanningBefore, after: {signature: views.get(${text(normal)}).operationsSignature, info: views.get(${text(normal)}).info}, connected: spanningButton.isConnected})`);
+  assert(evidence.spanningRefresh.connected);
   await browser.send('Input.dispatchMouseEvent', {type: 'mouseReleased', button: 'left', clickCount: 1, ...spanningClick});
   await browser.waitFor('activity === "debugger" && !busy');
   evidence.checks.push('Native Debugger button click spanning refresh retains its target and selects the activity');
@@ -247,11 +249,13 @@ try {
   await browser.evaluate('run(refresh)');
   assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), externalSelectionId + 1);
   assert.equal(await browser.evaluate('document.querySelector("#stop-detail .frame.selected")?.textContent.split("  ")[0]'), '2');
-  assert(await browser.evaluate('document.querySelector("#stop-detail").textContent.includes("Frame 2 selected. Use :Show Frame to inspect its locals.")'));
+  await frame(2);
+  assert.equal(await browser.evaluate('returnedFrameInspection().command.id'), externalSelectionId);
+  assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), externalSelectionId + 1);
   await command(':Show Frame');
   await frame(2);
   await save('frame-motion-restored');
-  evidence.checks.push('Frame completion, relative and endpoint motion, zero movement, rejected bounds without ID advance, once-only lost-reply replay, selection across reconnect/reload, and external selection without automatic inspection followed by explicit Show Frame');
+  evidence.checks.push('Frame completion, relative and endpoint motion, zero movement, rejected bounds without ID advance, once-only lost-reply replay, selection across reconnect/reload, and external selection recovered from retained history without another submission, followed by explicit Show Frame');
   const defaultRestart = await browser.evaluate('returnedResult("restarts").filter(restart => restart["default-p"])');
   assert.equal(defaultRestart.length, 1);
   assert.equal(defaultRestart[0].name, 'CONTINUE');
@@ -686,7 +690,7 @@ try {
   const interruptId = await browser.evaluate(`views.get(${text(interrupted)}).info['interrupt-id']`);
   assert.equal(interruptId, 0);
   await clickText('#listener-debugger .restarts', 'USE-VALUE');
-  await browser.waitFor(`commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.['input-waiting-p']
+  await browser.waitFor(`latestCommand('invoke-restart-interactively') && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.['input-waiting-p']
     && views.get(${text(interrupted)}).info['interruptible-p']
     && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':running'`);
   await clickText('[data-job="' + interrupted + '"] .command-row', 'Interrupt');

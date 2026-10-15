@@ -22,7 +22,7 @@ try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument', {source:`
     window.fixture=JSON.parse(sessionStorage.getItem('command-io-fixture')||'null');
     const name='a'.repeat(64), token=id=>[':stop',name,id];
-    const empty={state:':returned','current-boot-p':true,'input-length':0,'input-eof-p':true,'input-waiting-p':null,'output-length':0};
+    const empty={state:':returned','current-boot-p':true,'input-length':0,'input-eof-p':null,'input-waiting-p':null,'output-length':0};
     const running=(text,source)=>({state:':running',operation:':evaluate',source,
       'current-boot-p':true,'input-length':0,'input-eof-p':null,'input-waiting-p':true,
       'output-length':Array.from(text).length,result:null,text,input:'',reads:0});
@@ -39,8 +39,10 @@ try {
       'next-command-id':id===1?fixture.results.length:1,
       ...(id===1&&fixture.child?{child:token(2)}:{}),...(id===2?{parent:token(1)}:{})});
     if(!sessionStorage.getItem('mezzano-monitor-v1')) sessionStorage.setItem('mezzano-monitor-v1',JSON.stringify({
-      session:name,attempted:true,commands:fixture.results.map((result,id)=>({stop:token(1),id,
-        command:result.operation.slice(1),...(result.source?{source:result.source}:{})}))}));
+      session:name,attempted:true,commands:fixture.results.slice(0,4).map((result,id)=>({stop:token(1),id,
+        command:result.operation.slice(1),...(result.source?{source:result.source}:{})})),
+      pending:[{id:'lost-submit-reply',session:name,operation:'submit',status:'outcome unknown',
+        arguments:{stop:token(1),id:4,command:'evaluate',argument:fixture.results[4].source}}]}));
     window.fetch=async(url,options)=>{
       if(url!=='/api')throw Error('Unexpected fixture URL '+url);
       const {operation,arguments:args}=JSON.parse(options.body);
@@ -51,6 +53,10 @@ try {
         jobs:[],stops:[{token:token(1),information:info(1)},...(fixture.child?[{token:token(2),information:info(2)}]:[])]};
       else if(operation==='information')value=info(args.stop[2]);
       else if(operation==='result')value=args.stop[2]===2?fixture.childResult:fixture.results[args.id];
+      else if(operation==='submit'){
+        if(args.id!==4||args.command!=='evaluate'||args.argument!==fixture.results[4].source)throw Error('Unexpected replay');
+        fixture.submitReplays=(fixture.submitReplays||0)+1;store();value=4;
+      }
       else if(operation==='command-output'){
         const result=args.stop[2]===2?fixture.childResult:fixture.results[args.id];
         value={start:args.start,text:Array.from(result.text).slice(args.start,args.end).join(''),end:args.end};
@@ -76,11 +82,13 @@ try {
   await browser.waitFor("typeof releaseOutput==='function'");
   await browser.evaluate("void run(()=>api('listener-assistance',{source:':Help',cursor:5,action:'help',context:'debugger'}));releaseOutput()");
   await ready();
-  const initial=await browser.evaluate(`({text:document.querySelector('.command-output').textContent,calls:fixture.calls,
+  const initial=await browser.evaluate(`({text:document.querySelector('.command-io[data-command-id="4"] .command-output').textContent,calls:fixture.calls,
     inline:!!document.querySelector('#listener-debugger .command-io'),jobs:Object.keys(state.jobs).length})`);
   assert.equal(initial.text,'λ中文😀'.repeat(16385)+'\nFirst input: ');
   assert.equal(initial.inline,true);
   assert.equal(initial.jobs,0,'Command I/O must not require an evaluation job');
+  assert.equal(await browser.evaluate("document.querySelectorAll('.command-io').length"),1,
+    'Terminal zero-output commands need no I/O panel when EOF was not supplied');
   const outputCalls=initial.calls.filter(call=>call.operation==='command-output');
   assert.deepEqual(outputCalls.map(call=>call.start),[0,65536]);
   assert(initial.calls.findIndex(call=>call.operation==='listener-assistance')
@@ -97,6 +105,10 @@ try {
   await ready();
   saved=await snapshot();
   assert.deepEqual([saved.text,saved.start,saved.end],['(values λ 😀)',2,6]);
+  assert.equal(await browser.evaluate("state.pending.find(record=>record.id==='lost-submit-reply').status"),'outcome unknown');
+  assert.equal(await browser.evaluate('stopCommandPending(selectedStop)'),true);
+  assert.equal(await browser.evaluate('state.commands.find(command=>command.id===4).source'),'(read-line *query-io*)');
+
   assert.equal(await browser.evaluate("fixture.calls.some(call=>call.operation==='submit')"),false);
 
   await draft('λ😀');
@@ -115,6 +127,13 @@ try {
   assert.equal((await snapshot()).text,'');
   assert.equal(await browser.evaluate('fixture.results[4].reads'),1);
   assert.equal(await browser.evaluate('fixture.results[4]["input-length"]'),3);
+  await browser.evaluate("void run(()=>replay(state.pending.find(record=>record.id==='lost-submit-reply')))");
+  await ready();
+  assert.equal(await browser.evaluate('fixture.submitReplays'),1);
+  assert.equal(await browser.evaluate('fixture.results.length'),5);
+  assert.equal(await browser.evaluate('fixture.results[4].reads'),1);
+  assert.equal(await browser.evaluate("state.pending.some(record=>record.id==='lost-submit-reply')"),false);
+
 
   await draft('parent draft',3,8);
   await browser.evaluate(`fixture.child=true;fixture.inline=false;
@@ -176,9 +195,28 @@ try {
     void run(refresh)`);
   await ready();
   assert.equal(await browser.evaluate("[...document.querySelectorAll('.command-io textarea')].every(input=>input.disabled)"),true);
+  const jobOperations=await browser.evaluate(`(()=>{
+    const name='b'.repeat(64), job={name,token:[':job',state.session,99],source:'Fixture job'};
+    const info={name,state:':running',stops:[[':stop',state.session,1]],'current-boot-p':true,
+      'output-length':0,'input-mode':':batch','input-eof-p':true,'interruptible-p':true};
+    updateJob(job,info,{start:0,text:'',end:0});
+    const view=views.get(name), debuggerButton=view.operations.firstElementChild,
+      interruptButton=view.operations.lastElementChild;
+    const enabled=!interruptButton.disabled;
+    updateJob(job,{...info,'interruptible-p':null},{start:0,text:'',end:0});
+    const disabled=view.operations.lastElementChild.disabled;
+    const sameDisabled=debuggerButton===view.operations.firstElementChild&&debuggerButton.isConnected;
+    updateJob(job,info,{start:0,text:'',end:0});
+    const sameEnabled=debuggerButton===view.operations.firstElementChild&&debuggerButton.isConnected;
+    const reenabled=!view.operations.lastElementChild.disabled;
+    view.element.remove();views.delete(name);
+    return {enabled,disabled,sameDisabled,sameEnabled,reenabled};
+  })()`);
+  assert.deepEqual(jobOperations,{enabled:true,disabled:true,sameDisabled:true,sameEnabled:true,reenabled:true},
+    'Interrupt availability must preserve the unchanged Debugger button');
   assert.deepEqual(browser.errors,[]);
   const result=await browser.evaluate('({calls:fixture.calls,reads:fixture.results[4].reads,drafts:state.drafts})');
-  await writeFile(output+'/result.json',JSON.stringify({fixtureOnly:true,guestRequests:0,initial,receipt,result,errors:browser.errors},null,2));
+  await writeFile(output+'/result.json',JSON.stringify({fixtureOnly:true,guestRequests:0,initial,receipt,result,jobOperations,errors:browser.errors},null,2));
   console.log('PASS command I/O Unicode ranges/action priority, shared views/draft reload, lost input reply/replay, child drafts, command EOF isolation, range rejection and closed input; zero guest requests');
 } catch(error) {
   await browser.screenshot(output+'/failure.png');
