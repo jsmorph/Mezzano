@@ -268,8 +268,8 @@ the server instead of reconnecting for each operation.")
                                   (invoke-restart 'retry))))
                              (simple-file-error
                               (lambda (c)
-                                ;; Error occured during command, just return NIL
-                                (return NIL))))
+                                (declare (ignore c))
+                                (return nil))))
                           (command pathname con `(:probe ,path))))
                       :ok))
         (ecase if-does-not-exist
