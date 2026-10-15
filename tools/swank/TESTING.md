@@ -206,7 +206,7 @@ CI=true sbcl --dynamic-space-size 2048 \
   > "$MBUILD_ROOT/ci-build.log" 2>&1
 ```
 
-The file server must remain available.  It serves one VM connection at a time.  Pause the Web server and other development SWANK traffic during CI boot so another guest cannot retain that connection.  Resume those clients after the CI VM exits, including after a failed boot.
+The file server must remain available.  Its SBCL backend accepts concurrent clients with independent file handles.  The [host file-server tests](../../file-server/TESTING.md) specify that backend's acceptance.  Concurrent service for the non-SBCL backend remains untested.
 
 On an x86-64 host with KVM:
 
@@ -238,7 +238,7 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-interrupt-return-gc.lisp` | GC and resumption at the observed x86-64 interrupt-return instruction addresses, in full-save state and beneath another foothold. |
 | `test-gc-restart.lisp` | Raw instruction-address rewriting and resumption for an x86-64 GC restart region, in full-save state and beneath a foothold. |
 | `test-cons-allocation-gc.lisp` | The observed instruction addresses on the x86-64 DO-CONS success path in both saved states, with restart-address checks and relocated CAR/CDR values after resumption. |
-| `test-remote-eof.lisp` | Remote OPEN recovery after orderly TCP EOF during its initial probe, the one-retry limit, and EOF after CREATE without replay.  Compile/load the fixture and call LISPM-REMOTE-EOF-TEST:RUN.  Uses a test-owned loopback peer. |
+| `test-remote-eof.lisp` | Remote OPEN recovery from stale CLOSE-WAIT and orderly EOF, safe PROBE retry limits, and unreplayed CREATE.  Checks cache eligibility, original condition identity outside the host mutex, explicit RETRY, automatic TCP retry limits, semantic server replies, multiple values/nonlocal exits, and abort-close failures.  Compile/load and call LISPM-REMOTE-EOF-TEST:RUN.  PREPARE-PARKED-FAILURE starts an owned EOF probe for fresh-client debugger inspection/Abort.  FINISH-PARKED-FAILURE checks and releases its resources afterward.  Both helpers are internal to that package. |
 | `test-frame-locals.lisp` | Distinct SWANK local IDs and lookup. |
 | `test-frameless-backtrace.lisp` | Deterministic x86-64 frameless interruption, adjacent debug-3 caller, unavailable callee stack slots, caller locals, moving GC, continuation, and cleanup.  Load the control fixture first, compile/load this file, and call LISPM-FRAMELESS-TEST:RUN. |
 | `test-debugger.lisp` | SLDB inspection, function repair, restart values, concurrent evaluation, and cleanup on one connection. |
