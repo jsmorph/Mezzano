@@ -33,6 +33,27 @@
       (arm::emit-debug-info nil spills layouts scope)
       (assert (eq (third (first arm::*emitted-lap*)) scope)))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun make-legacy-environment ()
+    (let ((environment (make-instance 'c::lexical-environment)))
+      (slot-makunbound environment 'c::%source-owner)
+      environment)))
+
+(defmacro saved-legacy-environment ()
+  (list 'quote (make-legacy-environment)))
+
+(defparameter *legacy-environment* (saved-legacy-environment))
+
+(defun check-legacy-environment ()
+  (assert (not (slot-boundp *legacy-environment* 'c::%source-owner)))
+  (dolist (environment (list *legacy-environment*
+                             (c::map-environment-bindings #'identity *legacy-environment*)
+                             (c::extend-environment *legacy-environment*
+                                                    :declarations '((optimize (debug 3))))))
+    (assert (eq (c::debug-lexical-ancestry environment) :unknown))
+    (assert (eq (getf (c::debug-source-scope environment) :lexical-environment) :unknown)))
+  (assert (not (slot-boundp *legacy-environment* 'c::%source-owner))))
+
 (defun check-metadata ()
   (let* ((a (gensym)) (b (gensym)) (current (gensym))
          (outer (make-instance 'c::lexical-variable :name 'x
@@ -243,6 +264,9 @@
 
 (defun run ()
   (check-metadata)
+  (check-legacy-environment)
+  (mezzano.extensions:gc :full t)
+  (check-legacy-environment)
   (check-source-owners)
   (dolist (debug '(0 3))
     (dolist (compilation-speed '(1 3))

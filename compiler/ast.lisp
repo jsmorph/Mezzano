@@ -177,7 +177,7 @@
               definition)))))
 
 (defun debug-lexical-ancestry (environment)
-  (let ((owner (slot-value environment '%source-owner))
+  (let ((owner (source-owner-in-environment environment))
         (seen nil)
         (result nil))
     (when (eq owner :unknown)
