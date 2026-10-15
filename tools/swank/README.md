@@ -450,7 +450,7 @@ The target-macro fixture checks shared definition constants, target compilation 
 (lispm-debug-macro-target-test:run)
 ```
 
-Reload its compiled file before each RUN.  It selects both architectures but executes x86-64 functions.  Host cross-build acceptance remains untested.
+Reload its compiled file before each RUN.  It selects both architectures but executes x86-64 functions.  Host execution of this fixture remains untested.
 
 The emitted-scope fixture resolves compiled source scopes from live call addresses and matches visible binding descriptors to local storage:
 
