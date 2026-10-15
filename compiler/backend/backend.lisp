@@ -18,7 +18,8 @@
 (defclass backend-function ()
   ((%ast-lambda :initarg :ast-lambda :reader ast)
    (%first-instruction :initform nil)
-   (%last-instruction :initform nil)))
+   (%last-instruction :initform nil)
+   (%entry-info :initform nil :accessor backend-function-entry-info)))
 
 (defun backend-function-name (backend-function)
   (lambda-information-name (ast backend-function)))
@@ -281,7 +282,8 @@
              (lambda-information-lambda-list ast-lambda) ; lambda-list
              (lambda-information-docstring ast-lambda) ; docstring
              nil ; precise debug info
-             nil)) ; instruction source scopes
+             nil ; instruction source scopes
+             (backend-function-entry-info backend-function)))
      nil
      target)))
 

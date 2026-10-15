@@ -63,8 +63,9 @@
 ;; TODO: Sort the layout so stack slots for values are all together and trim
 ;; the gc layout bitvector. #*111 instead of #*0010101
 (defun compute-stack-layout (backend-function spill-locations stack-layout)
-  (when (ir:argument-setup-rest (ir:first-instruction backend-function))
-    ;; Reserve slot 0 for the saved argument count. Required for &rest list generation.
+  (when (or (ir:argument-setup-rest (ir:first-instruction backend-function))
+            (ir::argument-setup-original (ir:first-instruction backend-function)))
+    ;; Slot 0 holds the incoming count during stack argument-list construction.
     (loop
        for vreg being the hash-keys of spill-locations
        do (incf (gethash vreg spill-locations)))
@@ -182,7 +183,10 @@
 
 (defmethod lap-prepass (backend-function (instruction ir:argument-setup-instruction) uses defs)
   (when (ir:argument-setup-rest instruction)
-    (setf (gethash instruction *prepass-data*) (allocate-stack-slots 1))))
+    (setf (gethash instruction *prepass-data*) (allocate-stack-slots 1)))
+  (when (ir::argument-setup-original instruction)
+    (setf (gethash (ir::argument-setup-original instruction) *prepass-data*)
+          (allocate-stack-slots 1))))
 
 (defmethod emit-lap (backend-function (instruction ir:argument-setup-instruction) uses defs)
   ;; Check the argument count.
@@ -237,6 +241,12 @@
            (or (typep reg 'mezzano.compiler.backend.register-allocator::physical-register)
                (not (endp (gethash reg uses)))
                (gethash reg *spill-locations*))))
+    (when (and (ir::argument-setup-original instruction)
+               (usedp (ir::argument-setup-original instruction)))
+      (emit-dx-argument-list
+       0 (gethash (ir::argument-setup-original instruction) *prepass-data*))
+      (emit `(lap:mov64 ,(effective-address (ir::argument-setup-original instruction)) :r13)
+            `(lap:mov64 :rcx (:stack 0))))
     (when (usedp (ir:argument-setup-count instruction))
       (emit `(lap:mov64 ,(effective-address (ir:argument-setup-count instruction)) :rcx)))
     ;; Arguments are delivered in registers, and then on the caller's stack.
@@ -275,19 +285,19 @@
     (when (and (ir:argument-setup-rest instruction)
                (usedp (ir:argument-setup-rest instruction)))
       ;; Only emit when used.
-      (emit-dx-rest-list instruction)
+      (emit-dx-argument-list
+       (+ (length (ir:argument-setup-required instruction))
+          (length (ir:argument-setup-optional instruction)))
+       (gethash instruction *prepass-data*))
       (emit `(lap:mov64 ,(effective-address (ir:argument-setup-rest instruction)) :r13)))))
 
-(defun emit-dx-rest-list (argument-setup)
-  (let* ((regular-argument-count (+ (length (ir:argument-setup-required argument-setup))
-                                    (length (ir:argument-setup-optional argument-setup))))
-         (rest-clear-loop-head (mezzano.lap:make-label :rest-clear-loop-head))
+(defun emit-dx-argument-list (regular-argument-count rest-dx-root)
+  (let* ((rest-clear-loop-head (mezzano.lap:make-label :rest-clear-loop-head))
          (rest-loop-head (mezzano.lap:make-label :rest-loop-head))
          (rest-loop-end (mezzano.lap:make-label :rest-loop-end))
          (rest-list-done (mezzano.lap:make-label :rest-list-done))
          ;; Number of arguments processed and total number of arguments.
-         (saved-argument-count 0)
-         (rest-dx-root (gethash argument-setup *prepass-data*)))
+         (saved-argument-count 0))
     ;; Assemble the rest list into R13.
     ;; RCX holds the argument count.
     ;; R13 is free. Argument registers may or may not be free

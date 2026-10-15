@@ -233,6 +233,42 @@ Returns NIL if the function captures no variables."
       (%%unwind-to head)
       (%reinvoke-frame fp function arguments stack))))
 
+(defun frame-entry-context (frame)
+  (let ((reason (nth-value 2 (frame-return-context frame))))
+    (when reason (return-from frame-entry-context (values nil nil reason))))
+  (let* ((raw (frame-raw-data frame))
+         (function (nth-value 1 (frame-function frame)))
+         (record (nth 11 (function-debug-info function))))
+    (unless record
+      (return-from frame-entry-context (values nil nil :unavailable-entry-data)))
+    (check-type record (simple-vector 3))
+    (unless (and (eq (svref record 0) :entry-arguments)
+                 (debug-binding-p (svref record 1))
+                 (or (null (svref record 2)) (debug-binding-p (svref record 2))))
+      (error "Invalid function entry debug metadata."))
+    (let ((locals (frame-locals raw :show-hidden t)))
+      (flet ((read-binding (binding)
+               (let ((local (find binding locals :key #'fifth :test #'eq)))
+                 (if local
+                     (read-frame-slot raw (third local) (fourth local))
+                     (values nil nil)))))
+        (multiple-value-bind (arguments available) (read-binding (svref record 1))
+          (unless available
+            (return-from frame-entry-context
+              (values nil nil :unavailable-original-arguments)))
+          (multiple-value-bind (callable callable-available)
+              (if (svref record 2)
+                  (read-binding (svref record 2))
+                  (values function t))
+            (unless callable-available
+              (return-from frame-entry-context
+                (values nil nil :unavailable-entry-callable)))
+            (check-type callable function)
+            (let ((count (list-length arguments)))
+              (unless (and count (< count call-arguments-limit))
+                (error "Invalid saved entry argument list.")))
+            (values (copy-list arguments) callable nil)))))))
+
 (defun function-from-frame (frame)
   (let ((return-address (- (frame-code-address frame)
                            (if (sixth frame) 0 1))))

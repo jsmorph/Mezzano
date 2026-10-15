@@ -66,26 +66,52 @@
                   (and (lexical-variable-p arg)
                        (localp arg))))))
 
+(defun make-entry-debug-variable (lambda name)
+  (make-instance 'lexical-variable
+                 :inherit lambda
+                 :name (gensym name)
+                 :definition-point lambda
+                 :ignore :maybe
+                 :plist (list 'mezzano.compiler::preserve-for-debugger t
+                              'mezzano.compiler::hide-from-debug-info t)))
+
 (defun emit-argument-setup-code (lambda)
-  (let ((closure-reg (make-instance 'virtual-register :name :closure))
-        (count-reg (make-instance 'virtual-register :name :count))
-        (required-regs (loop
-                          for i from 0
-                          for arg in (lambda-information-required-args lambda)
-                          collect (make-instance 'virtual-register :name `(:required ,i))))
-        (optional-regs (loop
-                          for i from 0
-                          for arg in (lambda-information-optional-args lambda)
-                          collect (make-instance 'virtual-register :name `(:optional ,i))))
-        (rest-reg (if (lambda-information-rest-arg lambda)
-                      (make-instance 'virtual-register :name :rest)
-                      nil)))
+  (let* ((capture-entry
+           (and (= (mezzano.compiler::optimize-quality lambda 'debug) 3)
+                (not (getf (lambda-information-plist lambda)
+                           'mezzano.compiler::unwind-protect-cleanup))))
+         (original-variable
+           (when capture-entry (make-entry-debug-variable lambda "ORIGINAL-ARGUMENTS-")))
+         (callable-variable
+           (when (and capture-entry (lambda-information-environment-arg lambda))
+             (make-entry-debug-variable lambda "ENTRY-CALLABLE-")))
+         (closure-reg (make-instance 'virtual-register :name :closure))
+         (count-reg (make-instance 'virtual-register :name :count))
+         (required-regs (loop
+                           for i from 0
+                           for arg in (lambda-information-required-args lambda)
+                           collect (make-instance 'virtual-register :name `(:required ,i))))
+         (optional-regs (loop
+                           for i from 0
+                           for arg in (lambda-information-optional-args lambda)
+                           collect (make-instance 'virtual-register :name `(:optional ,i))))
+         (rest-reg (when (lambda-information-rest-arg lambda)
+                     (make-instance 'virtual-register :name :rest)))
+         (original-reg (when capture-entry
+                         (make-instance 'virtual-register :name :original-arguments))))
     (emit (make-instance 'argument-setup-instruction
                          :closure closure-reg
                          :count count-reg
                          :required required-regs
                          :optional optional-regs
-                         :rest rest-reg))
+                         :rest rest-reg
+                         :original original-reg))
+    (when capture-entry
+      (setf (mezzano.compiler.backend::backend-function-entry-info *backend-function*)
+            (vector :entry-arguments
+                    (mezzano.compiler::debug-variable-identity original-variable)
+                    (when callable-variable
+                      (mezzano.compiler::debug-variable-identity callable-variable)))))
     ;; Bind arguments to registers.
     (flet ((frob-arg (variable register)
              (when variable
@@ -94,6 +120,8 @@
                                           :value register)))
                  (emit inst)
                  (setf (gethash variable *variable-registers*) inst)))))
+      (frob-arg original-variable original-reg)
+      (frob-arg callable-variable closure-reg)
       (frob-arg (lambda-information-closure-arg lambda) closure-reg)
       (frob-arg (lambda-information-count-arg lambda) count-reg)
       (let ((env-arg (lambda-information-environment-arg lambda)))

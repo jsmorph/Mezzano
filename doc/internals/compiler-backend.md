@@ -79,6 +79,7 @@ Scoping of `make-dx-<foo>` instructions...
     * Outputs the required arguments as a list of values.
     * Outputs the optional arguments as a list of values.
     * Outputs the `&rest` value.
+    * Optionally outputs the original supplied-argument snapshot.
 * `bind-local-instruction` - Establish a new lexical binding, with an initial value.
     * Inputs the initial value.
     * Multiple-value safe.
@@ -271,3 +272,19 @@ completely eliminated at that IR level, being fully implicit.
 
 `instruction-inputs`/`instruction-outputs` cons up fresh lists each call. A better
 representation of operands and outputs would reduce allocation in the compiler.
+
+## Entry argument metadata
+
+At function DEBUG 3, argument setup preserves every supplied argument before optional/default/key processing.  It reuses the target's stack rest-list builder with a zero fixed-argument prefix, gives the snapshot its own DX root, and restores the incoming count before ordinary argument setup.  The program's rest spine is separate.  Snapshot construction adds O(argument count) stack work and storage.  Original argument references remain live through the activation.
+
+ARGUMENT-SETUP-INSTRUCTION's optional ORIGINAL output defaults to NIL.  Both target emitters include it in data flow and reserve the incoming-count slot when either argument list needs construction.  Preserved hidden debug bindings retain that output and an ordinary closure's exact incoming callable.  Lower debug levels use the existing entry path.  Compiler-generated unwind cleanup functions use a separate environment convention and receive no entry record.
+
+The backend function stores its entry record separately from the source AST.  The assembler retains it as function debug-info field 12, whose zero-based list index is 11:
+
+| Vector index | Value |
+| --- | --- |
+| 0 | :ENTRY-ARGUMENTS |
+| 1 | The original-argument snapshot's existing binding descriptor |
+| 2 | The exact closure callable's binding descriptor, or NIL for the executing nonclosure function |
+
+A NIL record means unavailable entry data, including older compiled functions.  Existing precise debug locations, descriptor identities, constant-pool references, hidden-local filtering, and compiled-file serialization carry the record and its bindings.  The runtime reads through descriptor identity and READ-FRAME-SLOT.  FRAME-ENTRY-CONTEXT validates the live x86-64 frame through FRAME-RETURN-CONTEXT, then returns a copied argument-list spine, the callable, and an unavailability reason.  Zero arguments return NIL with a callable and no reason.  Referenced object mutations remain visible.  Malformed metadata signals an error.

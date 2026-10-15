@@ -7,7 +7,8 @@
    (%count :initarg :count :accessor argument-setup-count)
    (%required :initarg :required :accessor argument-setup-required)
    (%optional :initarg :optional :accessor argument-setup-optional)
-   (%rest :initarg :rest :accessor argument-setup-rest)))
+   (%rest :initarg :rest :accessor argument-setup-rest)
+   (%original :initarg :original :initform nil :accessor argument-setup-original)))
 
 (defmethod instruction-inputs ((instruction argument-setup-instruction))
   (list))
@@ -19,7 +20,9 @@
           (argument-setup-optional instruction)
           (if (argument-setup-rest instruction)
               (list (argument-setup-rest instruction))
-              (list))))
+              (list))
+          (when (argument-setup-original instruction)
+            (list (argument-setup-original instruction)))))
 
 (defmethod replace-all-registers ((instruction argument-setup-instruction) substitution-function)
   (setf (argument-setup-closure instruction) (funcall substitution-function (argument-setup-closure instruction)))
@@ -27,7 +30,10 @@
   (setf (argument-setup-required instruction) (mapcar substitution-function (argument-setup-required instruction)))
   (setf (argument-setup-optional instruction) (mapcar substitution-function (argument-setup-optional instruction)))
   (when (argument-setup-rest instruction)
-    (setf (argument-setup-rest instruction) (funcall substitution-function (argument-setup-rest instruction)))))
+    (setf (argument-setup-rest instruction) (funcall substitution-function (argument-setup-rest instruction))))
+  (when (argument-setup-original instruction)
+    (setf (argument-setup-original instruction)
+          (funcall substitution-function (argument-setup-original instruction)))))
 
 (defmethod print-instruction ((instruction argument-setup-instruction))
   (format t "   ~S~%"
@@ -35,7 +41,8 @@
                             ,(argument-setup-count instruction)
                             ,(argument-setup-required instruction)
                             ,(argument-setup-optional instruction)
-                            ,(argument-setup-rest instruction))))
+                            ,(argument-setup-rest instruction)
+                            ,(argument-setup-original instruction))))
 
 (defclass bind-local-instruction (backend-instruction)
   ((%ast :initarg :ast :accessor bind-local-ast)

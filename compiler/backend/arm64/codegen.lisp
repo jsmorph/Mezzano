@@ -54,8 +54,9 @@
 ;; TODO: Sort the layout so stack slots for values are all together and trim
 ;; the gc layout bitvector. #*111 instead of #*0010101
 (defun compute-stack-layout (backend-function spill-locations stack-layout)
-  (when (ir:argument-setup-rest (ir:first-instruction backend-function))
-    ;; Reserve slot 0 for the saved argument count. Required for &rest list generation.
+  (when (or (ir:argument-setup-rest (ir:first-instruction backend-function))
+            (ir::argument-setup-original (ir:first-instruction backend-function)))
+    ;; Slot 0 holds the incoming count during stack argument-list construction.
     (loop
        for vreg being the hash-keys of spill-locations
        do (incf (gethash vreg spill-locations)))
@@ -257,7 +258,10 @@
 
 (defmethod lap-prepass (backend-function (instruction ir:argument-setup-instruction) uses defs)
   (when (ir:argument-setup-rest instruction)
-    (setf (gethash instruction *prepass-data*) (allocate-stack-slots 1))))
+    (setf (gethash instruction *prepass-data*) (allocate-stack-slots 1)))
+  (when (ir::argument-setup-original instruction)
+    (setf (gethash (ir::argument-setup-original instruction) *prepass-data*)
+          (allocate-stack-slots 1))))
 
 
 ;;  '((:eq  :ne lap:b.eq lap:csel.eq)
@@ -287,6 +291,12 @@
            (if (typep reg-or-stack 'ir:virtual-register)
                (emit-stack-store source (vreg-stack-slot reg-or-stack))
                (emit `(lap:mov ,reg-or-stack ,source)))))
+    (when (and (ir::argument-setup-original instruction)
+               (usedp (ir::argument-setup-original instruction)))
+      (emit-dx-argument-list
+       0 (gethash (ir::argument-setup-original instruction) *prepass-data*))
+      (store-arg :x7 (ir::argument-setup-original instruction))
+      (emit-stack-load :x5 0))
     (when (usedp (ir:argument-setup-count instruction))
       (store-arg :x5 (ir:argument-setup-count instruction)))
     ;; Arguments are delivered in registers, and then on the caller's stack.
@@ -342,7 +352,10 @@
     (when (and (ir:argument-setup-rest instruction)
                (usedp (ir:argument-setup-rest instruction)))
       ;; Only emit when used.
-      (emit-dx-rest-list instruction)
+      (emit-dx-argument-list
+       (+ (length (ir:argument-setup-required instruction))
+          (length (ir:argument-setup-optional instruction)))
+       (gethash instruction *prepass-data*))
       (store-arg :x7 (ir:argument-setup-rest instruction)))))
 
 (defun emit-argument-check (backend-function instruction)
@@ -405,16 +418,13 @@
              (emit `(lap:cbz :x5 ,args-ok))
              (emit-arg-error))))))
 
-(defun emit-dx-rest-list (argument-setup)
-  (let* ((regular-argument-count (+ (length (ir:argument-setup-required argument-setup))
-                                    (length (ir:argument-setup-optional argument-setup))))
-         (rest-clear-loop-head (gensym "REST-CLEAR-LOOP-HEAD"))
+(defun emit-dx-argument-list (regular-argument-count rest-dx-root)
+  (let* ((rest-clear-loop-head (gensym "REST-CLEAR-LOOP-HEAD"))
          (rest-loop-head (gensym "REST-LOOP-HEAD"))
          (rest-loop-end (gensym "REST-LOOP-END"))
          (rest-list-done (gensym "REST-LIST-DONE"))
          ;; Number of arguments processed and total number of arguments.
-         (saved-argument-count 0)
-         (rest-dx-root (gethash argument-setup *prepass-data*)))
+         (saved-argument-count 0))
     ;; Assemble the rest list into X7.
     ;; X5 holds the argument count.
     ;; X6 and X7 are free. Argument registers may or may not be free
