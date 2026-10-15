@@ -131,6 +131,21 @@ uv run --no-python-downloads --python python3 tools/swank/web/server.py \
 
 Replace `lispm.example.net` with the hostname clients use to reach the host.  Open `http://lispm.example.net:8765/`.  The [Web guide](../tools/swank/web/README.md#access-restrictions) specifies host checks, browser-origin checks, and access restrictions.  The HTTP service grants guest evaluation and debugger control and provides no account authentication or TLS.
 
+### Pinned Web deployment
+
+The server reads static files from its script directory on each request.  A persistent service can use a revision-named deployment directory so development edits do not change the served client.  This example runs from the Mezzano checkout and creates the deployment beside it:
+
+```sh
+web_revision="$(git rev-parse HEAD)"
+web_release="$PWD/../web-releases/$web_revision"
+mkdir -p "$web_release"
+git archive --format=zip --output="$web_release.zip" \
+  "$web_revision" tools/swank/web
+python3 -m zipfile -e "$web_release.zip" "$web_release"
+```
+
+A systemd service selects this directory through `WorkingDirectory` and retains the relative `tools/swank/web/server.py` command and its access and SWANK options.  Backend updates precede a client revision that depends on new guest operations or result fields.  Activating another Web revision changes the working directory and restarts the HTTP service.  Accepted jobs and debugger commands remain in the guest.  Tabs resume their guest sessions after the transport reconnects.
+
 ## Snapshots and restarts
 
 A snapshot saves guest memory and execution state in the running image.  From the Mezzano checkout:
