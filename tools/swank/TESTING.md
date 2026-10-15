@@ -129,6 +129,8 @@ For queued-command expiration, use `prepare-queued-restore-test` and `finish-que
 
 For standard-value restoration, load those three native fixtures and call `(lispm-standard-values-test:prepare-restore-test)` on a dedicated VM with no retained stops.  Save a snapshot and wait for completion, then stop and restart that VM from the saved image.  Call `(lispm-standard-values-test:finish-restore-test)` after boot.  It checks retained nondefault controls, four correction warnings, history/selection/mode, retained text, expired old handles, prior-boot replay rejection, fresh evaluation and full GC, original program bindings after Proceed, one cleanup, and stop release.  This fixture covers a parked raw-thread condition stop.  Restoration during an executing warning command remains untested.
 
+For frame-backed binding restoration, compile/load the service and frame-evaluation fixtures and follow the [frame-evaluation restore procedure](README.md#frame-evaluation-tests).  The parked helpers test a retained Lisp closure while rejecting old client frame handles.  The active helpers save an expression suspended in a continuable child debugger, defaulting to two continuation prompts.  Complete one restored copy with the default Proceed outcome and another with `:outcome :abort`.  Each completion checks original binding access, fresh-client requirements, prior-boot replay rejection, selection/history, GC, shared writes, cleanup counts, and release.  These tests require a dedicated guest and SAFETY 3, DEBUG 3, SPEED 1 compilation.
+
 ### Remote session restore
 
 The host state file must survive the VM restart:

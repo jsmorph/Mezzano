@@ -3,7 +3,8 @@
   (:local-nicknames (#:c #:mezzano.compiler) (#:i #:mezzano.internals)
                     (#:f #:mezzano.full-eval) (#:d #:mezzano.debug)
                     (#:test #:lispm-service-test))
-  (:export #:run #:prepare-restore-test #:finish-restore-test))
+  (:export #:run #:prepare-restore-test #:finish-restore-test
+           #:prepare-active-restore-test #:finish-active-restore-test))
 (in-package #:lispm-frame-evaluation-test)
 
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
@@ -332,9 +333,24 @@
 (defvar *restore-command* nil)
 (defvar *restore-mode-command* nil)
 
-(defun prepare-restore-test ()
+(defvar *restore-cleanup-count* 0)
+(defvar *active-restore-fixture* nil)
+(defvar *active-restore-phase* nil)
+(defvar *active-expression-cleanup-count* 0)
+
+(defun call-with-frame-test-prompts (depth function)
+  (if (zerop depth)
+      (funcall function)
+      (mezzano.delimited-continuations:call-with-prompt
+       (mezzano.delimited-continuations:make-prompt-tag "frame-evaluation-restore")
+       (lambda () (call-with-frame-test-prompts (1- depth) function))
+       (lambda (&rest values) (error "Unexpected prompt abort: ~S." values)))))
+
+(defun prepare-restore-test (&optional (prompt-depth 0))
+  (check-type prompt-depth (integer 0))
   (assert (null *restore-state*))
   (assert (null (test::stop-for-thread "Frame evaluation restore test")))
+  (setf *restore-cleanup-count* 0)
   (setf *restore-state* (make-array 6 :initial-element nil)
         *restore-thread*
         (mezzano.supervisor:make-thread
@@ -343,7 +359,9 @@
              (call-with-debugger-service
               (lambda ()
                 (with-simple-restart (abort "Abort the owned restoration test.")
-                  (target *restore-state*))))))
+                  (unwind-protect
+                       (call-with-frame-test-prompts prompt-depth (lambda () (target *restore-state*)))
+                    (incf *restore-cleanup-count*)))))))
          :name "Frame evaluation restore test")
         *restore-handle*
         (test::await (lambda () (test::stop-for-thread "Frame evaluation restore test"))))
@@ -403,8 +421,7 @@
            (test::command handle lease :use-lexical-environment)
            (evaluate-source handle lease "(values x (x) alias (funcall (aref state 0)))"
                             '("40" "40" "40" "37"))
-           (rejected-source handle lease controller "(funcall (aref state 5))"
-                            'debugger-service-error :expired-stop)
+           (evaluate-source handle lease "(funcall (aref state 5))" '("40"))
            (evaluate-source handle lease
                             "(progn (mezzano.extensions:gc :full t) (setq alias 42))" '("42"))
            (test::command handle lease :evaluate "(setf (aref state 5) (lambda () x))")
@@ -415,6 +432,7 @@
            (test::await
             (lambda () (nth-value 1 (mezzano.supervisor:thread-join *restore-thread* nil))))
            (assert (equal (aref *restore-state* 3) '(42 42 42)))
+           (assert (= *restore-cleanup-count* 1))
            (assert (= (aref *restore-state* 4) (funcall (aref *restore-state* 0)) 37))
            (assert (= (funcall (aref *restore-state* 1)) 42))
            (test::expect-error :expired-frame (aref *restore-state* 5))
@@ -423,8 +441,139 @@
            (test::expect-error :released-stop (aref *restore-state* 5))
            (setf *restore-state* nil *restore-thread* nil *restore-handle* nil
                  *restore-frame* nil *restore-index* nil *restore-command* nil
-                 *restore-mode-command* nil)
+                 *restore-mode-command* nil *restore-cleanup-count* 0)
            (format t "PASS restored frame evaluation, history, expired references, fresh access after GC, shared writes, Proceed, and cleanup.~%")
            t)
       (when handle (release-test-stop handle controller))
       (close-debugger-controller controller))))
+
+(defparameter *active-restore-source*
+  "(let ((*special-probe* 55) (scratch 77))
+     (unwind-protect
+          (progn
+            (incf x)
+            (setf *active-restore-phase* :child)
+            (cerror \"Resume the owned active evaluation.\" \"Owned active frame restoration.\")
+            (setf *active-restore-phase* :continued)
+            (mezzano.extensions:gc :full t)
+            (incf x)
+            (values x (x) (funcall (aref state 5)) *special-probe* scratch))
+       (incf *active-expression-cleanup-count*)))")
+
+(defun prepare-active-restore-test (&key (prompt-depth 2))
+  (assert (null *active-restore-fixture*))
+  (assert (null *restore-state*))
+  (setf *active-restore-phase* nil *active-expression-cleanup-count* 0)
+  (prepare-restore-test prompt-depth)
+  (let* ((controller (make-debugger-controller))
+         (handle *restore-handle*)
+         (lease (attach-debugger-stop handle controller)))
+    (unwind-protect
+         (progn
+           (test::command handle lease :use-lexical-environment)
+           (let* ((stop (d::service-handle-stop handle))
+                  (history (copy-list (d::service-stop-evaluation-history stop)))
+                  (id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :evaluate *active-restore-source*)
+             (let ((child (test::await (lambda () (getf (debugger-stop-information handle) :child)))))
+               (assert (eq *active-restore-phase* :child))
+               (assert (zerop *active-expression-cleanup-count*))
+               (assert (= (funcall (aref *restore-state* 1)) 41))
+               (setf *active-restore-fixture*
+                     (list :child child :command id :history history)))))
+      (unless *active-restore-fixture*
+        (release-test-stop handle controller))
+      (close-debugger-controller controller)))
+  :active-frame-evaluation-prepared)
+
+(defun finish-active-restore-test (&key (outcome :proceed))
+  (check-type outcome (member :proceed :abort))
+  (assert *active-restore-fixture*)
+  (test::expect-error :expired-stop
+                      (lambda () (debugger-stop-information *restore-handle*)))
+  (test::expect-error :expired-stop
+                      (lambda () (debugger-stop-information (getf *active-restore-fixture* :child))))
+  (let* ((controller (make-debugger-controller))
+         (handle (test::stop-for-thread "Frame evaluation restore test"))
+         (lease (attach-debugger-stop handle controller))
+         (child (getf (debugger-stop-information handle) :child))
+         (child-lease (attach-debugger-stop child controller))
+         (id (getf *active-restore-fixture* :command)))
+    (unwind-protect
+         (progn
+           (assert (eq (d::service-handle-stop handle) (d::service-handle-stop *restore-handle*)))
+           (assert (eq (d::service-handle-stop child)
+                       (d::service-handle-stop (getf *active-restore-fixture* :child))))
+           (test::expect-error :foreign-frame-thread (aref *restore-state* 5))
+           (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+             (test::expect-error :stop-busy
+                                 (lambda () (submit-debugger-command lease next :locals *restore-frame*)))
+             (test::expect-error :request-conflict
+                                 (lambda () (submit-debugger-command lease id :evaluate *active-restore-source*)))
+             (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
+           (test::command child child-lease :use-dynamic-environment)
+           (evaluate-source child child-lease
+                            "(progn (mezzano.extensions:gc :full t) *special-probe*)" '("55"))
+           (select-function child child-lease #'target)
+           (test::command child child-lease :use-lexical-environment)
+           (evaluate-source child child-lease
+                            "(values x (x) (funcall (aref state 5)) *special-probe*)"
+                            '("41" "41" "41" "9"))
+           (assert (equal (d::service-stop-evaluation-history (d::service-handle-stop handle))
+                          (getf *active-restore-fixture* :history)))
+           (let ((child-id (getf (debugger-stop-information child) :next-command-id)))
+             (submit-debugger-command child-lease child-id outcome)
+             (assert (eq (getf (test::completed-command child child-id) :state) :unwound)))
+           (let ((result (test::completed-command handle id))
+                 (stop (d::service-handle-stop handle)))
+             (assert (null (getf result :current-boot-p)))
+             (assert (equal (getf result :source) *active-restore-source*))
+             (assert (null (getf (debugger-stop-information handle) :child)))
+             (assert (= (d::service-stop-current-frame stop) *restore-index*))
+             (assert (eq (d::service-stop-evaluation-environment stop) :lexical))
+             (assert (= *active-expression-cleanup-count* 1))
+             (ecase outcome
+               (:proceed
+                (assert (eq (getf result :state) :returned))
+                (assert (equal (getf result :result) '("42" "42" "42" "55" "77")))
+                (assert (eq *active-restore-phase* :continued))
+                (evaluate-source handle lease "(values * /)" '("42" "(42 42 42 55 77)")))
+               (:abort
+                (assert (eq (getf result :state) :unwound))
+                (assert (eq *active-restore-phase* :child))
+                (assert (equal (d::service-stop-evaluation-history stop)
+                               (getf *active-restore-fixture* :history))))))
+           (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+             (test::expect-error :expired-stop
+                                 (lambda () (submit-debugger-command lease next :locals *restore-frame*)))
+             (test::expect-error :request-conflict
+                                 (lambda () (submit-debugger-command lease id :evaluate *active-restore-source*)))
+             (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
+           (evaluate-source handle lease "(values x (x) (funcall (aref state 5)) *special-probe*)"
+                            (if (eq outcome :proceed) '("42" "42" "42" "9") '("41" "41" "41" "9")))
+           (evaluate-source handle lease
+                            "(progn (setq alias 43) (values (funcall (aref state 5)) (x)))"
+                            '("43" "43"))
+           (let ((proceed-id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease proceed-id :proceed)
+             (assert (eq (getf (test::completed-command handle proceed-id) :state) :unwound)))
+           (test::await (lambda () (nth-value 1 (mezzano.supervisor:thread-join *restore-thread* nil))))
+           (assert (equal (aref *restore-state* 3) '(43 43 43)))
+           (assert (= (aref *restore-state* 4) 37))
+           (assert (= *restore-cleanup-count* 1))
+           (test::expect-error :expired-frame (aref *restore-state* 5))
+           (release-debugger-stop lease)
+           (setf handle nil)
+           (test::expect-error :released-stop (aref *restore-state* 5)))
+      (when handle (release-test-stop handle controller))
+      (let ((stop (d::service-handle-stop child)))
+        (when (gethash (d::service-stop-id stop) d::*service-stops*)
+          (release-debugger-stop child-lease)))
+      (close-debugger-controller controller)))
+  (setf *restore-state* nil *restore-thread* nil *restore-handle* nil
+        *restore-frame* nil *restore-index* nil *restore-command* nil
+        *restore-mode-command* nil *restore-cleanup-count* 0
+        *active-restore-fixture* nil *active-restore-phase* nil
+        *active-expression-cleanup-count* 0)
+  (assert (= *special-probe* 1))
+  :active-frame-evaluation-restored-and-owned-state-released)

@@ -112,11 +112,16 @@
 
 (defun service-frame-for-access (reference)
   (with-service-lock
-    (let* ((stop (check-service-handle (service-frame-handle reference)))
-           (frame (check-service-frame reference stop)))
+    (unless (service-frame-p reference) (service-error :expired-frame))
+    (let ((stop (service-handle-stop (service-frame-handle reference))))
+      (unless (eq (gethash (service-stop-id stop) *service-stops*) stop)
+        (service-error :released-stop))
+      (unless (and (eql (service-frame-generation reference) (service-stop-generation stop))
+                   (eq (service-stop-state stop) :stopped))
+        (service-error :expired-frame))
       (unless (eq (mezzano.supervisor:current-thread) (service-stop-thread stop))
         (service-error :foreign-frame-thread))
-      frame)))
+      (aref (service-stop-frames stop) (service-frame-index reference)))))
 
 (defun service-variable-location (variable)
   (let* ((frame (service-frame-for-access (service-variable-reference variable)))
