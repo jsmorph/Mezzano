@@ -1,5 +1,16 @@
 # Web UI development journal
 
+## Restoration and installation documentation: 2026-10-14
+
+Reviewed the updated debugger restoration paragraph, parked-control fixture instructions, and installation guide's host serializer commands.  The recommendation is to reuse the existing Chromium catalog-reload and Show Documentation flow, restricted to these three additions.  Check their rendered text and both complete serializer commands, capture each view, and release the owned catalog job and session.  The existing browser25 and product99 results remain applicable to unchanged implementation behavior.  This documentation check requires no service restart, VM change, host Lisp invocation, or additional dependency.
+
+The focused Chromium check passed all twelve exact text assertions across the three guides, including both complete host serializer commands.  The catalog reload returned :CATALOG-RELOADED.  Result: `/tmp/web-restoration-docs/result.json`.  Reviewed debugger-restore.png, parked-control.png, and host-serializer.png in that directory.  The initial HTTP request returned 200.  Browser errors and failed HTTP responses were empty.  The catalog job and session were released, Chromium closed, and guest traffic stopped before reporting snapshot readiness.
+
+The mode-0600 archive `/tmp/debugger-web-restoration-docs-evidence.tar.gz` contains the exact external driver, browser support, result, captures, log, and runtime metadata.  Its SHA-256 is `6d199f1e49e74456fefdd13c4c50e4ce35ea4c2e695fd9a059e8f70a3c631e19`.  This run verifies documentation rendering.  It does not execute the documented host commands or repeat debugger behavior tests.
+
+- [x] Refresh the guest catalog and verify the three additions in Document Examiner.
+- [x] Review captures, release owned state, and report snapshot readiness.
+
 ## Code-view acceptance after restoration: 2026-10-14
 
 Reviewed the Web guide, test guide, image-restoration driver, and session-recovery driver.  The recommendation is to rerun the unchanged committed 25-group frame-evaluation driver after the core agent confirms native restoration, followed by the existing 99-excerpt product checker.  Use fresh evidence directories and preserve request failures, results, screenshots, and exact driver copies.  The existing command IDs and retained results already test code-view reload, closed-stop history, large output, printer-child Abort and repair, continuation, and Listener reuse.  No product code, transport, timeout, or acceptance threshold change is needed.
