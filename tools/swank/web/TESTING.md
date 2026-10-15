@@ -289,20 +289,24 @@ FINISH requires a new boot.  It checks saved sleeping-state and queue relationsh
 
 ### Browser restoration
 
-The browser driver retains a session, a completed counter evaluation, and an active DEBUG 3 returned closure while the operator saves and restarts the VM.  The closure has inherited variable/function bindings, a current captured parameter, a once-written ancestor, and an unwind cleanup counter.  Before READY, the driver selects its frame, creates an Inspector page, and records lexical output and all nine expression/value histories.  Use a fresh output directory:
+The browser driver retains a session, a completed counter evaluation, and a DEBUG 3 returned closure while the operator saves and restarts the VM.  The closure has inherited variable/function bindings, a current captured parameter, a compiled reader, and an unwind cleanup counter.  The driver selects its frame, creates an Inspector page, and records lexical output and all nine expression/value histories.  It then submits a parent expression that saves an inherited value in a new LET local, increments the original inherited cell, and enters a continuable child through CERROR.  The parent command remains running at READY.  This test requires an isolated guest whose native frame-binding lifetime correction has passed its restoration tests.  Use a fresh output directory:
 
 ```sh
 node tools/swank/web/test-image-restore.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-image-restore-test
 ```
 
-Before READY, Release Session and New Session must recover the same active stop and its visible history with current references.  At READY, the driver suspends browser requests while retaining its session storage.  Save the guest, wait for snapshot completion, stop QEMU, and restart the saved image.  Once SWANK responds and any separate native restoration checks finish, signal the driver from another terminal:
+Before submitting the suspended expression, Release Session and New Session must recover the same active stop and its visible history with current references.  At READY, the driver records both owned stop IDs and the parent's accepted command ID/source, then suspends browser requests while retaining its session storage.  Save the guest, wait for snapshot completion, stop QEMU, and restart the saved image.  Once SWANK responds and any separate native restoration checks finish, signal the driver from another terminal:
 
 ```sh
 touch /tmp/mezzano-image-restore-test/restored
 ```
 
-The driver reloads the browser, selects the retained job's Debugger action, and checks visible command history before requesting a new lexical display.  It requires original command IDs and evaluation source, prior-boot labels, disabled historical Inspector actions, fresh inspection controls, preserved frame selection and all nine histories, and the once-only ancestor write.  Proceed must return the expected captured values after one cleanup.  A new Listener input returns 42, the completed counter remains one, and documentation and Peek remain usable.  The driver releases its stop, jobs, definitions, symbols, and session.  Expected HTTP errors during the deliberate outage and expired-session recovery are recorded separately from subsequent browser operations.  The driver requires restart confirmation within 15 minutes.
+The driver reloads the browser and recovers the same job and two stops through a replacement session and fresh tokens.  Its Debugger actions select the recorded owned IDs.  Fresh child inspections must work while the parent still displays its original source and running command ID with a prior-boot label.  Typed child Proceed must continue that same command through a retained lexical write and the compiled reader, returning 38/39/42/43 once without another child.  The parent remains stopped at its selected frame.  Full parent history loading follows command completion.  Printed lexical/Inspector history, original IDs/source, prior-boot labels, disabled historical Inspector actions, and fresh controls must remain available.  The nine histories must advance once for the completed expression.  Fresh access observes inherited 39 and current 43.  Final program Proceed returns 39/44/39/1 after one cleanup.
+
+Old-session tokens must reject at the HTTP boundary.  A current-session token for a historical frame must still reject native access, and prior-boot resubmission of the running expression must reject rather than execute again.  Each rejection preserves the command counter.  The driver captures those three expected error responses separately from session-expiry/outage recovery and rejects later unexpected browser errors.  It never renews old references or repeats the expression as part of recovery.
+
+A new Listener input returns 42, the completed counter remains one, and documentation and Peek remain usable.  The driver releases both closed stops, its jobs, definitions, symbols, and session.  Failure evidence retains the owned identities and condition for coordinated cleanup.  The driver requires restart confirmation within 15 minutes.  This case tests a parent suspended at CERROR, rather than arbitrary execution positions or external I/O.
 
 The history fixture supplies every API response locally and makes no guest requests:
 
