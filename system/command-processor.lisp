@@ -35,6 +35,9 @@
 (defparameter *debugger-commands*
   '((:name "Abort" :id :abort :help "Invoke this stop's innermost ABORT restart.")
     (:name "Help" :id :help :help "List the supported debugger commands.")
+    (:name "Reinvoke" :id :reinvoke
+     :help "Reinvoke the selected frame using current arguments after confirmation. :New Args prompts for a list. :Original Args uses the original supplied sequence."
+     :keywords (("New Args" :boolean "No" "Yes") ("Original Args" :boolean "No" "Yes")))
     (:name "Return" :id :return
      :help "Return from the selected frame with the values of a prompted expression, after confirmation.")
     (:name "Proceed" :id :proceed :type :restart
@@ -460,6 +463,12 @@
 (defun debugger-plan (command argument keywords)
   (case (getf command :id)
     (:abort (list :operation "abort"))
+    (:reinvoke
+     (let ((original (cdr (assoc "Original Args" keywords :test #'equal)))
+           (new (cdr (assoc "New Args" keywords :test #'equal))))
+       (when (and original new)
+         (input-error ":Original Args and :New Args cannot both be Yes."))
+       (list :operation "reinvoke" :argument (list original new))))
     (:return (list :operation "return"))
     (:proceed
      (cond ((cdr (assoc "Arguments" keywords :test #'equal))

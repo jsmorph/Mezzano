@@ -447,7 +447,7 @@
            (previous (gethash id (service-stop-commands stop))))
       (when previous
         (unless (and (eq operation (service-command-operation previous))
-                     (if (member operation '(:evaluate :inspect :modify :bindings :special))
+                     (if (member operation '(:evaluate :inspect :modify :bindings :special :reinvoke))
                          (equal argument (service-command-argument previous))
                          (eql argument (service-command-argument previous)))
                      (eq (service-command-boot previous)
@@ -467,6 +467,10 @@
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
           :standard-value-warnings :return)
          (when argument (service-error :unexpected-argument)))
+        (:reinvoke
+         (unless (and (typep argument '(cons (member nil t) (cons (member nil t) null)))
+                      (not (and (first argument) (second argument))))
+           (service-error :invalid-reinvoke-options)))
         (:proceed
          (when argument (service-error :unexpected-argument))
          (service-restart stop nil))
@@ -505,7 +509,7 @@
                                                 (make-instance 'evaluation-output-stream))
                       :operation operation :argument (case operation
                                                        (:evaluate (copy-seq argument))
-                                                       ((:inspect :modify) (copy-list argument))
+                                                       ((:inspect :modify :reinvoke) (copy-list argument))
                                                        (:special (list (copy-seq (first argument))
                                                                        (second argument)))
                                                        (:bindings (when argument
@@ -1111,11 +1115,59 @@ NIL with true availability denotes an absent global cell."
            (service-frame-for-access reference) values)
           "Return cancelled."))))
 
+(defun service-reinvoke (stop options)
+  (destructuring-bind (original-p new-p) options
+    (let* ((index (service-stop-current-frame stop))
+           (reference (%make-service-frame (service-handle stop)
+                                           (service-stop-generation stop) index))
+           (frame (service-frame-for-access reference)))
+      (multiple-value-bind (original executing reason)
+          (mezzano.internals::frame-entry-context frame)
+        (when reason (service-error reason))
+        (multiple-value-bind (function provenance reason)
+            (mezzano.internals::reinvoke-callable executing)
+          (declare (ignore provenance))
+          (when reason (service-error reason))
+          (let* ((source (cond (new-p "New") (original-p "Original") (t "Current")))
+                 (arguments
+                   (cond (new-p
+                          (write-string "Reinvoke arguments (Lisp expression returning a list): "
+                                        *query-io*)
+                          (finish-output *query-io*)
+                          (first (service-evaluate-input stop #'read-service-expression)))
+                         (original-p original)
+                         (t
+                          (multiple-value-bind (layout observations reason)
+                              (service-frame-parameter-context frame)
+                            (when reason (service-error reason))
+                            (multiple-value-bind (arguments reason binding)
+                                (service-reinvoke-arguments layout observations original)
+                              (when reason
+                                (format *query-io* "~&Current argument ~A is unavailable.~%"
+                                        (service-print (svref binding 1)))
+                                (service-error reason))
+                              arguments)))))
+                 (count (list-length arguments)))
+            (unless (and count (< count call-arguments-limit))
+              (error "Reinvocation requires a finite argument list shorter than ~D."
+                     call-arguments-limit))
+            (setf arguments (copy-list arguments))
+            (format *query-io* "~&Frame ~D: ~A~%Callable: ~A~%~A arguments (~D):~%"
+                    index (service-print (frame-function frame))
+                    (service-print function) source count)
+            (loop for value in arguments for position from 0
+                  do (format *query-io* "  ~D: ~A~%" position (service-print value)))
+            (if (y-or-n-p "Reinvoke frame ~D?" index)
+                (mezzano.internals::reinvoke-frame
+                 (service-frame-for-access reference) function arguments)
+                "Reinvoke cancelled.")))))))
+
 (defun execute-service-command (stop command)
   (ecase (service-command-operation command)
     (:condition (service-print (service-stop-condition stop) t))
     (:evaluate (service-evaluate stop (service-command-argument command)))
     (:return (service-return stop))
+    (:reinvoke (service-reinvoke stop (service-command-argument command)))
     (:inspect (service-inspect stop (service-command-argument command)))
     (:modify (service-modify-inspection stop (service-command-argument command)))
     (:describe-object (service-describe-inspection stop (service-command-argument command)))
