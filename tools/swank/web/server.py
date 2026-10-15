@@ -398,6 +398,17 @@ def operation_arguments(operation, args, session):
     if operation == "result":
         fields(args, ("stop", "id"))
         return [token(args["stop"], "stop", session), integer(args["id"])]
+    if operation == "command-output":
+        fields(args, ("stop", "id", "start"), ("end",))
+        values = [token(args["stop"], "stop", session), integer(args["id"]), integer(args["start"])]
+        if "end" in args:
+            values.append(integer(args["end"]))
+        return values
+    if operation == "command-input":
+        fields(args, ("stop", "id", "offset", "text"), ("eof",))
+        return [token(args["stop"], "stop", session), integer(args["id"]),
+                integer(args["offset"]), string(args["text"]),
+                Symbol(":eof"), boolean(args.get("eof", False))]
     if operation == "submit":
         fields(args, ("stop", "id", "command"), ("argument",))
         command = string(args["command"])

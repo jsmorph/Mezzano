@@ -531,7 +531,7 @@ try {
   const useValue = await browser.evaluate('returnedResult("restarts").find(restart => restart.name === "USE-VALUE")');
   await command(':Proceed ' + useValue.index);
   assert.equal(await browser.evaluate('latestCommand("invoke-restart-interactively").argument'), useValue.index);
-  await browser.waitFor(`views.get(${text(interactive)})?.info['input-waiting-p']`);
+  await browser.waitFor(`state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])`);
   const interactiveParent = await browser.evaluate('listenerDebugger.stop');
   await browser.waitFor(`views.get(${text(interactive)})?.info['interruptible-p']
     && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':running'`);
@@ -541,9 +541,9 @@ try {
   await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(interactiveParent)}) && !busy`);
   assert.equal(await browser.evaluate("commandResults.get(commandKey(latestCommand('invoke-restart-interactively'))).state"), ':unwound');
   await command(':Proceed ' + useValue.index);
-  await browser.waitFor(`views.get(${text(interactive)})?.info['input-waiting-p']
+  await browser.waitFor(`state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])
     && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':running'`);
-  const restartInput = '[data-job="' + interactive + '"] .input-form';
+  const restartInput = '#stop-detail .command-io .input-form:not([hidden])';
   await fill(restartInput + ' textarea', '35');
   await clickText(restartInput, 'Send Input');
   assert.deepEqual((await completed(interactive)).values, ['42']);
@@ -553,8 +553,8 @@ try {
   const returningProceed = await start(`(restart-bind ((continue (lambda (value) (values value :continued)) :report-function (lambda (stream) (write-string "Return the entered value to this debugger." stream)) :interactive-function (lambda () (format *query-io* "${marker} proceed replacement: ") (list (read *query-io*))))) (error "${marker} returning Proceed"))`);
   const returningProceedStop = await stopped(returningProceed);
   await clickText('#listener-debugger .restarts', ':Proceed');
-  await browser.waitFor(`views.get(${text(returningProceed)})?.info['input-waiting-p']`);
-  const proceedInput = '[data-job="' + returningProceed + '"] .input-form';
+  await browser.waitFor(`state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])`);
+  const proceedInput = '#stop-detail .command-io .input-form:not([hidden])';
   await fill(proceedInput + ' textarea', '81');
   await clickText(proceedInput, 'Send Input');
   await browser.waitFor(`document.querySelector('#listener-debugger .restart-values')?.textContent === ${text('Restart returned:\n81\n:CONTINUED')} && !busy`);
@@ -573,23 +573,23 @@ try {
   const explicitParent = await stopped(explicitArguments);
   await browser.waitFor('returnedResult("restarts") && !stopCommandPending(listenerDebugger.stop) && !busy');
   const explicitIndex = await browser.evaluate('returnedResult("restarts").find(restart => restart.name === "USE-VALUE").index');
-  const explicitInput = '[data-job="' + explicitArguments + '"] .input-form';
+  const explicitInput = '#stop-detail .command-io .input-form:not([hidden])';
   const explicitButton = ':Proceed ' + explicitIndex + ' :Arguments';
   await clickText('#listener-debugger .restarts', explicitButton);
-  await browser.waitFor(`views.get(${text(explicitArguments)})?.info['input-waiting-p']`);
+  await browser.waitFor(`state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])`);
   const argumentsOrigin = await browser.evaluate('performance.timeOrigin');
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${argumentsOrigin} && document.readyState === 'complete'`);
   await browser.waitFor(`connected && !busy
     && same(listenerDebugger?.stop, ${text(explicitParent.stop)})
-    && views.get(${text(explicitArguments)})?.info['input-waiting-p']`);
+    && state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])`);
   await clickText('[data-job="' + explicitArguments + '"] .command-row', 'Interrupt');
   await stopped(explicitArguments, 2);
   await command(':Abort');
   await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(explicitParent.stop)}) && !busy`);
   assert.equal(await browser.evaluate('commandResults.get(commandKey(latestCommand("invoke-restart-with-arguments"))).state'), ':unwound');
   await command(explicitButton + ' Yes');
-  await browser.waitFor(`views.get(${text(explicitArguments)})?.info['input-waiting-p']`);
+  await browser.waitFor(`state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])`);
   await fill(explicitInput + ' textarea', `(error "${marker} argument expression error")`);
   await clickText(explicitInput, 'Send Input');
   await stopped(explicitArguments, 2);
@@ -599,7 +599,7 @@ try {
   await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(explicitParent.stop)}) && !busy`);
   assert.equal(await browser.evaluate('commandResults.get(commandKey(latestCommand("invoke-restart-with-arguments"))).state'), ':unwound');
   await clickText('#listener-debugger .restarts', explicitButton);
-  await browser.waitFor(`views.get(${text(explicitArguments)})?.info['input-waiting-p']`);
+  await browser.waitFor(`state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])`);
   await fill(explicitInput + ' textarea', '(list (+ 30 5))');
   await clickText(explicitInput, 'Send Input');
   assert.deepEqual((await completed(explicitArguments)).values, ['42']);
@@ -633,12 +633,12 @@ try {
     assert.equal(argumentReceipt.arguments.argument, null);
     await browser.click('#window-label');
     await browser.click('#resume-session');
-    await browser.waitFor(`connected && !busy && views.get(${text(replayArguments)})?.info['input-waiting-p']`);
+    await browser.waitFor(`connected && !busy && state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])`);
     assert.equal(await browser.evaluate('state.session'), argumentReceipt.session);
-    const replayInput = '[data-job="' + replayArguments + '"] .input-form';
+    const replayInput = '#stop-detail .command-io .input-form:not([hidden])';
     await fill(replayInput + ' textarea', `(locally (declare (special ${argumentEvaluations})) (incf ${argumentEvaluations}) (list (* 6 7)))`);
     await clickText(replayInput, 'Send Input');
-    await browser.waitFor(`!views.get(${text(replayArguments)})?.info['input-waiting-p'] && !busy`);
+    await browser.waitFor(`!state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p']) && !busy`);
     await switchActivity('requests');
     await browser.evaluate(`[...document.querySelectorAll('#pending .command-row')].find(row => row.textContent.includes(${text(JSON.stringify(argumentReceipt.arguments))})).querySelector('button').dataset.focusedTest = 'argument-replay'`);
     await browser.click('[data-focused-test="argument-replay"]');
@@ -660,8 +660,8 @@ try {
   const returning = await start(`(let ((replacement 0) (abort-returned nil) (job-abort (find-restart 'abort))) (restart-bind ((use-value (lambda (value) (setf replacement value)) :report-function (lambda (stream) (write-string "Set the replacement and return to this debugger." stream)) :interactive-function (lambda () (format *query-io* "${marker} returning replacement: ") (list (read *query-io*)))) (no-values (lambda () (values)) :report-function (lambda (stream) (write-string "Return no values to this debugger." stream))) (abort (lambda () (if abort-returned (invoke-restart job-abort) (progn (setf abort-returned t) (values :abort-returned 9)))) :report-function (lambda (stream) (write-string "Return from the captured ABORT restart." stream)))) (cerror "Continue after returning restart." "${marker} returning restart")) replacement)`);
   const returningStop = await stopped(returning);
   await clickText('#listener-debugger .restarts', 'USE-VALUE');
-  await browser.waitFor(`views.get(${text(returning)})?.info['input-waiting-p']`);
-  const returningInput = '[data-job="' + returning + '"] .input-form';
+  await browser.waitFor(`state.commands.some(item => same(item.stop, listenerDebugger?.stop) && commandResults.get(commandKey(item))?.['input-waiting-p'])`);
+  const returningInput = '#stop-detail .command-io .input-form:not([hidden])';
   await fill(returningInput + ' textarea', '81');
   await clickText(returningInput, 'Send Input');
   await browser.waitFor("commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':returned' && !busy");
@@ -686,7 +686,7 @@ try {
   const interruptId = await browser.evaluate(`views.get(${text(interrupted)}).info['interrupt-id']`);
   assert.equal(interruptId, 0);
   await clickText('#listener-debugger .restarts', 'USE-VALUE');
-  await browser.waitFor(`views.get(${text(interrupted)})?.info['input-waiting-p']
+  await browser.waitFor(`commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.['input-waiting-p']
     && views.get(${text(interrupted)}).info['interruptible-p']
     && commandResults.get(commandKey(latestCommand('invoke-restart-interactively')))?.state === ':running'`);
   await clickText('[data-job="' + interrupted + '"] .command-row', 'Interrupt');

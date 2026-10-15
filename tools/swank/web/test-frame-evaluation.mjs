@@ -430,8 +430,8 @@ try {
   await rejected(`(describe (make-instance 'lispm-describe-test:probe :failure (make-condition 'simple-error :format-control "${marker} top description")))`, new RegExp(marker + ' top description'));
   await rejected(`(describe (make-instance 'lispm-describe-test:probe :value (make-instance 'lispm-describe-test:probe :failure (make-condition 'simple-error :format-control "${marker} slot description"))))`, new RegExp(marker + ' slot description'));
   await evaluation("(describe (make-instance 'lispm-describe-test:probe :value 42))", []);
-  await browser.waitFor(`views.get(${text(targetJob)}).text.includes('VALUE <- 42') && !busy`);
-  evidence.descriptionOutput = await browser.evaluate(`views.get(${text(targetJob)}).text`);
+  await browser.waitFor(`commandIOViews.get(commandKey(latestCommand('evaluate')))?.text.includes('VALUE <- 42') && !busy`);
+  evidence.descriptionOutput = await browser.evaluate("commandIOViews.get(commandKey(latestCommand('evaluate'))).text");
   assert(evidence.descriptionOutput.includes('DESCRIPTION-PROBE'));
   assert(!evidence.descriptionOutput.includes('<<error printing object>>'));
   await save('description-recovered');

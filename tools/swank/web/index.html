@@ -160,9 +160,9 @@
           <p>A stopped Listener directs input to its innermost debugger. Each level preserves its
             draft and cursor. :Abort leaves that level, and :Help displays guest command help.
             Debugger lists retained stops. Select a stop, inspect its condition, frames, and
-            locals, or invoke a restart interactively. Restart argument readers use the evaluation's
-            input controls. Interrupt requests a stop in a running evaluation. A printer can enter
-            a child stop. Parent Stop and Child Stop navigate those stops.
+            locals, or invoke a restart interactively. Debugger commands retain their own output
+            and input controls in both debugger views. Interrupt requests a stop in a running evaluation.
+            A printer can enter a child stop. Parent Stop and Child Stop navigate those stops.
             Typed commands include :Show Backtrace, :Show Proceed Options,
             :Set Current Frame N, :Show Frame, :Show Local N, and :Show Local All.
             Queried results remain available after a stop closes, until Release Stop.

@@ -84,7 +84,7 @@ node tools/swank/web/test-evaluation-environments.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-evaluation-environments
 ```
 
-The separate intercepted-response fixture makes no guest requests.  It holds a completed automatic inspection's HTTP reply while the enabled editor receives the shortcut, then requires exactly one queued toggle and unchanged draft/cursor after release.  It also tests a completed chord across an activity change, repeated keys, unfinished-prefix cancellation, nested arrows, reload, and an older backend without evaluation-prompt.  A long backtrace must keep the focused standalone editor visible after toggle output.  Refresh must preserve manual scrolling when that editor is unfocused or already outside the viewport.
+The separate intercepted-response fixture makes no guest requests.  It holds a completed automatic inspection's HTTP reply while the enabled editor receives the shortcut, then requires exactly one queued toggle and unchanged draft/cursor after release.  It also tests a completed chord across an activity change, repeated keys, unfinished-prefix cancellation, nested arrows, reload, and an older backend without evaluation-prompt.  A long backtrace must keep the focused standalone editor visible after toggle output.  Refresh must preserve manual scrolling when that editor is unfocused or already outside the viewport.  Held automatic-assistance replies test those same two conditions.
 
 ```sh
 node tools/swank/web/test-evaluation-environment-fixtures.mjs \
@@ -117,7 +117,7 @@ The driver removes its functions, class/printer method, special symbols, and pac
 
 ## Object Inspector
 
-The Inspector driver compiles a named DEBUG 3 target and navigates its arrays, cyclic cons cells, and instance slots through the browser.  It tests command completion, three retained panes, pagination and partial pages, history, reload, lexical replacement expressions, unbound slots, type and reader errors, interrupted input, and typed Abort.  Lost submission and input replies must replay once.  A completed store followed by a printer failure must remain effective without repeating its expression.  Refresh after an array shrinks must permit backward navigation.  Clear must expire old references while preserving the session and command ID, and a closed stop must retain disabled recorded panes.  Proceed and the following Listener expression must return the expected values.  Layout assertions require full local and component labels to fit on one line while long values wrap.  Disabled recorded values retain their readable text without action-button strike-through.  After the owned stop closes, reload without selecting a stop must recover its known Request History results with unchanged visible rows, command identities, and guest command counters.
+The Inspector driver starts its named DEBUG 3 target as a batch evaluation and navigates its arrays, cyclic cons cells, and instance slots through the browser.  It tests command completion, three retained panes, pagination and partial pages, history, reload, lexical replacement expressions, unbound slots, type and reader errors, interrupted input, and typed Abort.  Lost submission and input replies must replay once.  A completed store followed by a printer failure must remain effective without repeating its expression.  Refresh after an array shrinks must permit backward navigation.  Clear must expire old references while preserving the session and command ID, and a closed stop must retain disabled recorded panes.  Proceed and the following Listener expression must return the expected values.  Layout assertions require full local and component labels to fit on one line while long values wrap.  Disabled recorded values retain their readable text without action-button strike-through.  After the owned stop closes, reload without selecting a stop must recover its known Request History results with unchanged visible rows, command identities, and guest command counters.
 
 ```sh
 node tools/swank/web/test-inspector.mjs \
@@ -128,7 +128,7 @@ The driver releases its named function and class, jobs, stops, and session.  It 
 
 ## Listener debugger input
 
-The focused debugger driver tests inline and standalone Help, completion and contextual help, guest nesting prompts, ordinary and nested Abort, and interactive restart arguments through retained evaluation input.  It tests SPACE completion of :Proceed, omitted and explicit Default selection, the Proceed button, restart indices and the default marker, and missing-default rejection followed by explicit interactive selection in the same session.  It distinguishes a restart that exits the stop from one that returns a command result while the stop remains active, including visible values, zero values, and normally returning Proceed and typed Abort operations.  Native mouse clicks spanning a monitor refresh check that unchanged Debugger and restart actions retain their DOM elements and receive the click.  The restart test also renders a pending replacement query and changes an unrelated stop row while the mouse button is pressed.  A held action queue tests immediate debugger-menu dismissal.  Its nested operation-error case reloads at the child stop, aborts that command, verifies the restored outer draft and selection, and continues the original computation.  It interrupts blocked restart argument readers from a condition stop and from an earlier interruption stop, aborts each child, and completes the original computation.  It checks that invalid no-argument and restart-index requests return HTTP 400 without advancing the stop's command ID.
+The focused debugger driver tests inline and standalone Help, completion and contextual help, guest nesting prompts, ordinary and nested Abort, and interactive restart arguments through retained command input.  It tests SPACE completion of :Proceed, omitted and explicit Default selection, the Proceed button, restart indices and the default marker, and missing-default rejection followed by explicit interactive selection in the same session.  It distinguishes a restart that exits the stop from one that returns a command result while the stop remains active, including visible values, zero values, and normally returning Proceed and typed Abort operations.  Native mouse clicks spanning a monitor refresh check that unchanged Debugger and restart actions retain their DOM elements and receive the click.  The restart test also renders a pending replacement query and changes an unrelated stop row while the mouse button is pressed.  A held action queue tests immediate debugger-menu dismissal.  Its nested operation-error case reloads at the child stop, aborts that command, verifies the restored outer draft and selection, and continues the original computation.  It interrupts blocked restart argument readers from a condition stop and from an earlier interruption stop, aborts each child, and completes the original computation.  It checks that invalid no-argument and restart-index requests return HTTP 400 without advancing the stop's command ID.
 
 ```sh
 node tools/swank/web/test-listener-debugger.mjs \
@@ -316,3 +316,21 @@ node tools/swank/web/test-debugger-history-fixtures.mjs \
 ```
 
 It tests one hundred retained records, fresh inspection priority, queued live actions between history reads, a failed read followed by reconnect, exact source and ID ordering, historical Inspector actions, partial reload, and suppression of a failed current-boot printer retry.  Pending-state cases include command 0 with cached next ID 0, a later accepted command beyond that cached counter, and an older historical command whose result has not arrived.  It also tests result recovery for known command records when no debugger stop is selected.  Existing live reload tests wait for the history-complete indicator before comparing retained text.
+
+## Debugger command I/O
+
+The intercepted command-I/O fixture serves the Web sources locally and replaces every API request.  It requires no guest.  It checks Unicode character offsets across bounded output reads, queued-action priority, the shared Listener/standalone input element, draft/cursor reload, accepted input reply loss and exact replay, separate parent/child drafts, fresh input after EOF, invalid output-range rejection, and disabled closed input.
+
+```sh
+node tools/swank/web/test-command-io-fixtures.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-command-io-fixtures
+```
+
+The separate jobless-stop driver creates one uniquely named thread with an owned debugger and ABORT restart.  Its Listener setup finishes before the standalone stop is selected.  It checks evaluated READ-LINE output/input, Unicode offsets, a draft/cursor across reload, independent nested command input, typed child Abort, per-command EOF, fresh input, program continuation, and Listener reuse.  It releases only its owned thread's stops, setup/cleanup jobs, symbols, function, and session.
+
+```sh
+node tools/swank/web/test-command-io.mjs \
+  http://127.0.0.1:8766/ /tmp/mezzano-jobless-command-io
+```
+
+Native-backed command-I/O acceptance is pending.  Existing restart-argument, Inspector replacement, and evaluated-reader tests will use the command's input/output identity.  Program input remains on the evaluation job.  Batch and jobless debugger stops, recursive readers, and restored running commands require the new guest service and adapter.

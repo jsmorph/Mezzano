@@ -118,9 +118,9 @@ async function inspect(source) {
   return pageAfter(previous);
 }
 async function input(source) {
-  await browser.waitFor(`views.get(${text(targetJob)})?.info['input-waiting-p'] && !busy`);
-  await fill(`[data-job="${targetJob}"] .input-form textarea`, source);
-  await clickText(`[data-job="${targetJob}"] .input-form`, 'Send Input');
+  await browser.waitFor(`commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
+  await fill('#stop-detail .command-io .input-form:not([hidden]) textarea', source);
+  await clickText('#stop-detail .command-io .input-form:not([hidden])', 'Send Input');
 }
 async function modify(label, expression) {
   const previous = await browser.evaluate('returnedInspections().at(-1).command.id');
@@ -178,7 +178,7 @@ try {
   for (const id of protectedStops) assert(originalStops.some(stop => stop.id === id), 'Protected stop missing: ' + id);
   const setup = await start('(progn (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DESCRIBE.LISP")) :description-fixture-loaded)');
   assert.deepEqual((await completed(setup)).values, [':DESCRIPTION-FIXTURE-LOADED']);
-  await browser.evaluate('document.querySelector("#interactive").checked = true');
+  await browser.evaluate('document.querySelector("#interactive").checked = false');
   const target = marker + '-TARGET', type = marker + '-OBJECT';
   targetJob = await start(`(unwind-protect (progn
     (defclass ${type} () ((empty :initform nil) (unset) (value :initform 0 :type fixnum)))
@@ -246,7 +246,7 @@ try {
   evidence.checks.push('Typed completion, bounded pages, three inspection panes, history, and reload preserve retained observations');
 
   const previous = await modify('[64]');
-  await browser.waitFor(`views.get(${text(targetJob)}).info['input-waiting-p'] && !busy`);
+  await browser.waitFor(`commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
   const readerOrigin = await browser.evaluate('performance.timeOrigin');
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${readerOrigin} && document.readyState === 'complete' && connected && !busy`);
@@ -301,7 +301,7 @@ try {
   await abortChild();
   await evaluation('counter', ['0']);
   await modify('VALUE');
-  await browser.waitFor(`views.get(${text(targetJob)}).info['input-waiting-p'] && !busy`);
+  await browser.waitFor(`commandResults.get(commandKey(latestCommand('modify')))?.['input-waiting-p'] && !busy`);
   await clickText(`[data-job="${targetJob}"]`, 'Interrupt');
   await abortChild();
   await modify('VALUE', '(+ x 2)');
@@ -330,7 +330,7 @@ try {
     window.fetch = async (...args) => {
       const response = await original(...args);
       const request = args[1]?.body && JSON.parse(args[1].body);
-      if (request?.operation === 'job-input') {
+      if (request?.operation === 'command-input') {
         window.fetch = original;
         await response.arrayBuffer();
         throw new TypeError('Browser test discarded the accepted Inspector input reply');
@@ -339,8 +339,8 @@ try {
     };
   })()`);
   await input('(progn (incf counter) (+ x 3))');
-  await browser.waitFor('!connected && !busy && state.pending.some(record => record.operation === "job-input" && record.status === "outcome unknown")');
-  const inputReceipt = await browser.evaluate('state.pending.find(record => record.operation === "job-input" && record.status === "outcome unknown")');
+  await browser.waitFor('!connected && !busy && state.pending.some(record => record.operation === "command-input" && record.status === "outcome unknown")');
+  const inputReceipt = await browser.evaluate('state.pending.find(record => record.operation === "command-input" && record.status === "outcome unknown")');
   await replayReceipt(inputReceipt);
   await pageAfter(modifyReceipt.arguments.id - 1);
   await evaluation("(values counter (slot-value object 'value))", ['1', '43']);

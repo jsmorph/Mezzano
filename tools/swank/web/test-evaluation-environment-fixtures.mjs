@@ -56,6 +56,7 @@ try {
         if(name==='toggle-evaluation-environment'&&fixture.holdNext){fixture.holdNext=false;store();await new Promise(resolve=>window.releaseToggle=resolve);}
       }else if(operation==='result')value=fixture.results[args.id];
       else if(operation==='listener-assistance'){
+        if(args.action==='inspect'&&fixture.holdAssistance){fixture.holdAssistance=false;await new Promise(resolve=>window.releaseAssistance=resolve);}
         const trimmed=args.source.trim();
         const command={':Use Dynamic Environment':'use-dynamic-environment',':Use Lexical Environment':'use-lexical-environment'}[trimmed];
         value=args.action==='parse'?{kind:command?':debugger-command':':form',operation:command||'evaluate',argument:command?null:args.source,display:command?':text':':values','complete-p':true}
@@ -130,11 +131,19 @@ try {
   await writeFile(output+'/standalone-bounds.json',JSON.stringify({before:beforeBounds,after:afterBounds},null,2));
   assert(afterBounds.top>=afterBounds.pageTop&&afterBounds.bottom<=afterBounds.pageBottom,'Focused editor left viewport after toggle');
   await browser.screenshot(output+'/standalone-dynamic-draft.png');
+  await browser.evaluate("fixture.holdAssistance=true;scheduleAssistance(document.querySelector('#debugger-command'),'inspect')");
+  await browser.waitFor("typeof releaseAssistance==='function'");
   await browser.evaluate("document.querySelector('#page').focus();document.querySelector('#page').scrollTop=80");
   const manual=await browser.evaluate("document.querySelector('#page').scrollTop");
+  await browser.evaluate('releaseAssistance();delete window.releaseAssistance');await ready();
+  assert.equal(await browser.evaluate("document.querySelector('#page').scrollTop"),manual,'Background assistance moved an unfocused editor');
   await browser.evaluate("run(()=>submit(selectedStop,'use-dynamic-environment')).then(()=>true)");await ready();
   assert.equal(await browser.evaluate("document.querySelector('#page').scrollTop"),manual,'Unfocused editor changed manual scroll');
   await browser.evaluate("document.querySelector('#debugger-command').focus({preventScroll:true});document.querySelector('#page').scrollTop=0");
+  await browser.evaluate("fixture.holdAssistance=true;scheduleAssistance(document.querySelector('#debugger-command'),'inspect')");
+  await browser.waitFor("typeof releaseAssistance==='function'");
+  await browser.evaluate('releaseAssistance();delete window.releaseAssistance');await ready();
+  assert.equal(await browser.evaluate("document.querySelector('#page').scrollTop"),0,'Background assistance moved an invisible editor');
   await browser.evaluate("run(()=>submit(selectedStop,'use-dynamic-environment')).then(()=>true)");await ready();
   assert.equal(await browser.evaluate("document.querySelector('#page').scrollTop"),0,'Invisible editor changed manual scroll');
 

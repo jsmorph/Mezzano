@@ -283,6 +283,38 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(command=command, argument=argument), self.assertRaises(ValueError):
                 submit(command, argument)
 
+    def test_command_io_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        encoded = [server.Symbol(":stop"), session, 1]
+        self.assertEqual(server.operation_arguments("command-output",
+            {"stop": stop, "id": 3, "start": 2}, session), [encoded, 3, 2])
+        self.assertEqual(server.operation_arguments("command-output",
+            {"stop": stop, "id": 3, "start": 2, "end": 5}, session), [encoded, 3, 2, 5])
+        self.assertEqual(server.operation_arguments("command-input",
+            {"stop": stop, "id": 3, "offset": 2, "text": "λ中文\n", "eof": True}, session),
+            [encoded, 3, 2, "λ中文\n", server.Symbol(":eof"), True])
+        for operation, arguments in (
+                ("command-output", {"stop": stop, "id": 3, "start": 0, "end": 5}),
+                ("command-input", {"stop": stop, "id": 3, "offset": 0, "text": ""})):
+            for field in ("id", "start" if operation == "command-output" else "offset"):
+                for value in (None, True, -1, "0", 1.5):
+                    with self.subTest(operation=operation, field=field, value=value), self.assertRaises(ValueError):
+                        server.operation_arguments(operation, {**arguments, field: value}, session)
+            for token in ([":job", session, 1], [":stop", "b" * 64, 1]):
+                with self.subTest(token=token), self.assertRaises(ValueError):
+                    server.operation_arguments(operation, {**arguments, "stop": token}, session)
+            with self.assertRaises(ValueError):
+                server.operation_arguments(operation, {**arguments, "unexpected": True}, session)
+        for value in (None, False, 42, []):
+            with self.subTest(text=value), self.assertRaises(ValueError):
+                server.operation_arguments("command-input",
+                    {"stop": stop, "id": 3, "offset": 0, "text": value}, session)
+        for value in (None, True, -1, "5"):
+            with self.subTest(end=value), self.assertRaises(ValueError):
+                server.operation_arguments("command-output",
+                    {"stop": stop, "id": 3, "start": 0, "end": value}, session)
+
     def test_optional_argument_types(self):
         name = "a" * 64
         job = [":job", name, 1]
@@ -291,6 +323,7 @@ class ProtocolTests(unittest.TestCase):
             ("start-listener", {"name": name, "source": "(values)"}, "interactive"),
             ("start-evaluation", {"name": name, "source": "(values)"}, "interactive"),
             ("job-input", {"job": job, "offset": 0, "text": ""}, "eof"),
+            ("command-input", {"stop": [":stop", name, 1], "id": 0, "offset": 0, "text": ""}, "eof"),
             ("document-query", {"action": "search", "query": "Lisp"}, "adjacent"),
         ]
         for operation, arguments, field in cases:

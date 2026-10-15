@@ -35,6 +35,7 @@ let evaluationPrefix = null;
 const assistanceTimers = new Map();
 const views = new Map();
 const commandResults = new Map();
+const commandIOViews = new Map();
 let stopControls = new Map();
 
 function save() {
@@ -123,8 +124,12 @@ function run(action) {
     } finally {
       busy = false;
       updateStatus();
-      if (completed && nextHistoricalCommand()) setTimeout(() => {
-        if (connected && !busy && nextHistoricalCommand()) run(loadHistoricalCommand);
+      if (completed && (nextCommandOutput() || nextHistoricalCommand())) setTimeout(() => {
+        if (connected && !busy) {
+          const output = nextCommandOutput();
+          if (output) run(() => loadCommandOutput(output));
+          else if (nextHistoricalCommand()) run(loadHistoricalCommand);
+        }
       }, 0);
     }
   };
@@ -187,6 +192,8 @@ async function newSession() {
   state.commands = [];
   selectedStop = null;
   commandResults.clear();
+  for (const view of commandIOViews.values()) editorDraftKeys.delete(view.input);
+  commandIOViews.clear();
   views.clear();
   $("transcript").replaceChildren();
   for (const job of Object.values(state.jobs)) job.token = null;
@@ -225,7 +232,18 @@ function applyMutation(record, result) {
     }
   } else if (record.operation === "release-job") {
     removeJob(args.job);
+  } else if (record.operation === "command-input") {
+    const key = record.inputDraftKey;
+    if (key && state.drafts[key]?.text === record.inputDraftText) {
+      state.drafts[key] = {text: "", start: 0, end: 0};
+      const view = commandIOViews.get(JSON.stringify([args.stop, args.id]));
+      if (view?.input.value === record.inputDraftText) view.input.value = "";
+    }
   } else if (record.operation === "release-stop") {
+    const id = stops.find(stop => same(stop.token, args.stop))?.info.id;
+    for (const key of Object.keys(state.drafts)) {
+      if (id !== undefined && key.startsWith("command-input:" + id + ":")) delete state.drafts[key];
+    }
     state.commands = state.commands.filter(command => !same(command.stop, args.stop));
     if (same(selectedStop, args.stop)) selectedStop = null;
   } else if (record.operation === "release-session") {
@@ -414,6 +432,7 @@ function clearAssistance(editor) {
   assistancePanel(editor).replaceChildren();
 }
 function renderAssistance(editor, result, source, cursor, action) {
+  const position = editorPosition(editor);
   const panel = assistancePanel(editor);
   panel.replaceChildren();
   if (result.prompt) {
@@ -437,7 +456,8 @@ function renderAssistance(editor, result, source, cursor, action) {
     panel.append(choice);
   }
   updateTracks();
-  if (!editor.closest(".activity")?.hidden) editor.scrollIntoView({block: "nearest"});
+  if (action === "inspect") restoreEditorPosition(position);
+  else if (!editor.closest(".activity")?.hidden) editor.scrollIntoView({block: "nearest"});
 }
 function scheduleAssistance(editor, action, presentation) {
   clearTimeout(assistanceTimers.get(editor));
@@ -777,16 +797,24 @@ function updateJob(job, info, output) {
     }, "Mouse-Left: Release this completed evaluation and its output."));
   }
 }
+function editorPosition(editor = document.activeElement?.matches(".command-io textarea")
+    ? document.activeElement : activity === "debugger" ? $("debugger-command") : $("source")) {
+  const editorBounds = editor.getBoundingClientRect();
+  const pageBounds = $("page").getBoundingClientRect();
+  return {editor, draft: editorDraftKeys.get(editor), visible: document.activeElement === editor
+    && editorBounds.top >= pageBounds.top && editorBounds.bottom <= pageBounds.bottom};
+}
+function restoreEditorPosition({editor, draft, visible}) {
+  if (["listener", "debugger"].includes(activity) && document.activeElement === editor
+      && (visible || draft !== editorDraftKeys.get(editor))) {
+    editor.scrollIntoView({block: "nearest"});
+  }
+}
 async function refresh() {
   if (!connected) return;
   const offsets = [...views.entries()].map(([name, view]) => ({name, start: view.end}));
   const sample = await api("monitor-state", {offsets});
-  const editor = activity === "debugger" ? $("debugger-command") : $("source");
-  const priorDraft = editorDraftKeys.get(editor);
-  const editorBounds = editor.getBoundingClientRect();
-  const pageBounds = $("page").getBoundingClientRect();
-  const editorVisible = document.activeElement === editor
-    && editorBounds.top >= pageBounds.top && editorBounds.bottom <= pageBounds.bottom;
+  const position = editorPosition();
   const listenerInfo = sample.listener;
   activeListenerJob = listenerInfo["active-job"] ?? null;
   listenerDebugger = listenerInfo.debugger || null;
@@ -818,6 +846,13 @@ async function refresh() {
   }
   for (const [name, view] of views) view.element.hidden = Boolean(state.jobs[name]?.hidden);
   state.commands = state.commands.filter(command => stops.some(stop => same(stop.token, command.stop)));
+  const commandKeys = new Set(state.commands.map(commandKey));
+  for (const [key, view] of commandIOViews) {
+    if (!commandKeys.has(key)) {
+      editorDraftKeys.delete(view.input);
+      commandIOViews.delete(key);
+    }
+  }
   if (selectedStop && !stops.some(stop => same(stop.token, selectedStop))) {
     selectedStop = null;
   }
@@ -844,10 +879,7 @@ async function refresh() {
   renderPending();
   updateStatus();
   updateTracks();
-  if (["listener", "debugger"].includes(activity) && document.activeElement === editor
-      && (editorVisible || priorDraft !== editorDraftKeys.get(editor))) {
-    editor.scrollIntoView({block: "nearest"});
-  }
+  restoreEditorPosition(position);
 }
 function renderListenerState() {
   const panel = $("listener-state");
@@ -953,6 +985,101 @@ function renderJobs() {
 }
 function commandKey(command) {
   return JSON.stringify([command.stop, command.id]);
+}
+function nextCommandOutput() {
+  const commands = [...state.commands.filter(command => same(command.stop, selectedStop)).reverse(),
+    ...state.commands.filter(command => !same(command.stop, selectedStop)).reverse()];
+  return commands.find(command => {
+    const result = commandResults.get(commandKey(command));
+    return (result?.["output-length"] || 0) > (commandIOViews.get(commandKey(command))?.end || 0);
+  });
+}
+async function loadCommandOutput(command) {
+  const result = commandResults.get(commandKey(command));
+  const view = commandIOView(command);
+  const start = view.end;
+  const output = await api("command-output", {stop: command.stop, id: command.id,
+    start, end: Math.min(start + 65536, result["output-length"])});
+  if (output.start !== start || !Number.isSafeInteger(output.end) || output.end <= start
+      || output.end > result["output-length"] || typeof output.text !== "string"
+      || Array.from(output.text).length !== output.end - start) {
+    throw new Error("Invalid retained command output range.");
+  }
+  const position = editorPosition();
+  view.text += output.text;
+  view.end = output.end;
+  renderStops();
+  updateTracks();
+  restoreEditorPosition(position);
+}
+function commandIOView(command) {
+  const key = commandKey(command);
+  let view = commandIOViews.get(key);
+  if (view) return view;
+  const stop = stops.find(stop => same(stop.token, command.stop));
+  if (!stop) throw new Error("Debugger stop is unavailable.");
+  const element = node("section", undefined, "command-io");
+  element.dataset.commandId = command.id;
+  element.setAttribute("aria-label", "Input and output for debugger command " + command.id);
+  const output = node("pre", "", "command-output");
+  const status = node("p", "", "command-io-state");
+  const inputForm = node("div", undefined, "input-form");
+  const input = node("textarea");
+  input.rows = 1;
+  input.spellcheck = false;
+  input.setAttribute("aria-label", "Input for debugger command " + command.id);
+  const draftKey = "command-input:" + stop.info.id + ":" + command.id;
+  editorDraftKeys.set(input, draftKey);
+  const draft = state.drafts[draftKey];
+  input.value = draft?.text || "";
+  input.setSelectionRange(draft?.start || 0, draft?.end || 0, draft?.direction || "none");
+  for (const event of ["input", "select", "click", "keyup"]) {
+    input.addEventListener(event, () => storeEditorDraft(input));
+  }
+  view = {element, output, status, inputForm, input, text: "", end: 0};
+  const send = async eof => {
+    const result = commandResults.get(key);
+    const text = input.value + (input.value ? "\n" : "");
+    storeEditorDraft(input);
+    view.send.disabled = view.eof.disabled = true;
+    try {
+      await mutate("command-input", {stop: command.stop, id: command.id,
+        offset: result["input-length"], text, eof}, {inputDraftKey: draftKey, inputDraftText: input.value});
+      await refresh();
+    } finally {
+      renderStops();
+    }
+  };
+  view.send = button("Send Input", () => send(false));
+  view.eof = button("EOF", () => send(true));
+  input.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (!view.send.disabled) run(() => send(false));
+    }
+  });
+  inputForm.append(node("label", "Input:"), input, view.send, view.eof);
+  element.append(node("p", "Command " + command.id + ": " + command.command), output, status, inputForm);
+  commandIOViews.set(key, view);
+  return view;
+}
+function renderCommandIO(command, result, info) {
+  const key = commandKey(command);
+  if (!commandIOViews.has(key) && !(result?.["output-length"] > 0)
+      && !(result?.["input-length"] !== undefined && !result["input-eof-p"])) return null;
+  const view = commandIOView(command);
+  view.output.textContent = view.text;
+  view.status.textContent = label(result?.state) + (result?.["input-waiting-p"] ? " — awaiting input" : "")
+    + (view.end < result?.["output-length"]
+      ? " — receiving output (" + view.end + " of " + result["output-length"] + " characters)" : "")
+    + (result && !result["current-boot-p"] ? " — accepted before this boot" : "");
+  const open = result?.state === ":running" && !result["input-eof-p"] && info.state === ":stopped";
+  const pending = state.pending.some(record => record.operation === "command-input"
+    && record.status !== "rejected" && same(record.arguments.stop, command.stop) && record.arguments.id === command.id);
+  view.inputForm.hidden = !open;
+  view.input.disabled = !open || Boolean(info.child);
+  view.send.disabled = view.eof.disabled = !open || Boolean(info.child) || pending || !connected;
+  return view.element;
 }
 async function submit(stop, command, argument = null, metadata = {}) {
   const info = await api("information", {stop});
@@ -1323,6 +1450,8 @@ function renderStops() {
       if (result && !result["current-boot-p"]) output.append(node("p", "Recorded before this boot.", "historical-command"));
       detailChildren.push(output);
     }
+    const io = renderCommandIO(command, result, info);
+    if (io) detailChildren.push(io);
   }
   reconcileChildren(menu, menuChildren);
   reconcileChildren(detail, detailChildren);
@@ -1334,7 +1463,7 @@ function renderPending() {
   for (const record of state.pending) {
     const row = node("div", undefined, "command-row");
     row.append(node("pre", record.operation + ": " + record.status + (record.error ? "\n" + record.error : "")));
-    if (["start-evaluation", "start-listener", "save-private-document", "job-input", "interrupt-job", "submit"].includes(record.operation)) {
+    if (["start-evaluation", "start-listener", "save-private-document", "job-input", "command-input", "interrupt-job", "submit"].includes(record.operation)) {
       row.append(button("Repeat Original Request", async () => {
         await replay(record);
         await refresh();
