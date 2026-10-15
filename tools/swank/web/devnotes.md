@@ -1,5 +1,25 @@
 # Web UI development journal
 
+## Coalesced page-in browser acceptance: 2026-10-14
+
+The metered failure established a major collection longer than the HTTP deadline.  Core now has a bounded page-in correction and a separate ATA transfer-error correction.  Native tests passed before this browser interval.  The recommendation is to restore the original private normal baseline, load only the five compiled definitions prepared in the warm guest, and verify that loading and the normal-restore audit do not collect.  Root owns that setup and the independent guest/host meters.
+
+Repeat the unchanged 25-group Chromium driver through the existing isolated phase wrapper on HTTP 8766 and SWANK 4007.  Preserve its fifteen-second request deadline, result assertions, and owned-record cleanup.  Compare the measured collection and request durations with the failed baseline.  After a passing run, use the prepared bounded catalog, Peek, completion, and Listener check.  Preserve any failure and stop traffic before root changes the guest.  This tests corrected definitions loaded into a restored image.  Acceptance of a new clean image remains a separate subsequent test.  No Web product change or new dependency is proposed.
+
+- [x] Run the original Chromium driver after corrected-baseline readiness.
+- [x] Run the bounded product check and release all owned records.
+- [x] Review captures and counter traces, archive results, and report the exact tested image scope.
+
+The corrected baseline, QEMU 720585, loaded the three ATA and two pager functions from `debugger-paging-correction-native.llf` with `:WIRED T`.  Loading and the normal-restore audit left GC cycles at 118 and accumulated GC time at 309.720001 seconds.  The compiled file SHA-256 was `eb00ad158fb64e147b5ef777fded9c1471e6bd3e960714ac17ff42691752b6a1`.  No compilation, forced collection, or native fixture ran in that restored VM before the browser test.
+
+The unchanged 25-group driver passed through the external phase wrapper with the original fifteen-second deadline.  It released nine jobs, eighteen stops, and its session.  Browser errors, failed HTTP responses, and cleanup failures were empty.  The large code result contained 366,868 characters and 3,015 decoded rows through RET at #x3EC5, survived reload, and returned 42/43 after all 1,000 sink calls.  The driver SHA-256 remains `40681c5ed8e0a80833014d90dd347afea8d52eace2a6523c9884dd3dbb086c69`.
+
+The first 200-sample guest meter observed a 0.339996-second minor collection.  The second observed a major collection lasting 5.869995 seconds, with a 6.17-second sample gap and 2.580894 seconds of collector runtime.  That major collection coincided with successful submit request 3298, command 3 for stop 76.  Its RPC took 5.910760 seconds, including 5.910408 seconds waiting for the reply header and 0.605 milliseconds of host thread CPU.  The longest host session-lock wait was 77 microseconds.  Every other RPC completed within 0.344736 seconds.  The corrected major collection occurred later in the same full-driver workload than the earlier 18.989990-second failure.  The heap states at those collection points differ, so these measurements do not establish an identical-heap speedup.  The watcher warning was retrieved after request 3298 had completed and was recorded as a past delay.
+
+The bounded product check passed seventeen exact excerpts across the debugger and test guides after catalog reload, displayed twenty-five Peek processes, completed `Set Package ` with SPACE and Tab, and evaluated 42 in the Listener.  It released its catalog job, evaluation job, and session.  Its browser errors and failed HTTP responses were empty.  Reviewed the terminal instruction, compiler capture-limit paragraph, and populated Peek screenshots.  All owned traffic stopped before root resumed native tests.  HTTP 8765 and SWANK 4006 remained unchanged.
+
+Results are `/tmp/web-paging-corrected-frame-evaluation/result.json` and `/tmp/web-paging-corrected-product/result.json`.  The mode-0600 archive `/tmp/debugger-web-paging-corrected-evidence.tar.gz` contains both runs, exact driver and product source copies, phase-wrapper and watcher source, captures, disassembly, both guest meter segments and source, the 240-sample host meter, and the corrected-baseline restore log.  SHA-256: `c238b959be80f6c60f33525355cc86c224d21454fe6394cea2907e222aa2b79a`.  Acceptance covers the compiled correction loaded into the restored baseline.  A new clean build and its browser acceptance remain pending.  The historical monitor 502 and extra 409 retain their separately recorded unresolved causes.
+
 ## Isolated cold-image browser acceptance: 2026-10-14
 
 Reviewed commits ead436e4 and de694126, the current Web guide, and the browser's unavailable-scope test.  The allocator now limits debug locations to their live ranges.  The cold boot establishes standard streams and loads the shared frame walker before use.  BREAK and the CLOS discriminator can contain valid lexical scope tables in this image, so the browser's assumption that BREAK lacks scope information is invalid.
