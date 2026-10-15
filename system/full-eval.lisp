@@ -166,7 +166,7 @@
                                   :name name
                                   :lambda lambda
                                   :env outer-env
-                                  :filename (ignore-errors (namestring *load-truename*))
+                                  :filename (when *load-truename* (namestring *load-truename*))
                                   :tlf sys.int::*top-level-form-number*)))
             (mezzano.clos:set-funcallable-instance-function x #'interpret-function)
             x))))))
