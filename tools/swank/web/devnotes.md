@@ -1,5 +1,21 @@
 # Web UI development journal
 
+## Isolated cold-image browser acceptance: 2026-10-14
+
+Reviewed commits ead436e4 and de694126, the current Web guide, and the browser's unavailable-scope test.  The allocator now limits debug locations to their live ranges.  The cold boot establishes standard streams and loads the shared frame walker before use.  BREAK and the CLOS discriminator can contain valid lexical scope tables in this image, so the browser's assumption that BREAK lacks scope information is invalid.
+
+The recommendation is to reuse the frame driver's uniquely named caller as a legacy-metadata fixture.  Save that owned function's scope table, clear it around its invocation, and restore it through UNWIND-PROTECT before removing the definition.  Select that caller for the unavailable-scope rejection, then return to the ordinary compiled target.  Preserve every shared system and CLOS function's metadata.  This follows the native owned-function tests and requires no product behavior change.
+
+Run the 25-group driver against an independent HTTP server on 8766 with SWANK 4007, leaving 8765/4006 unchanged.  The initial test image is QEMU 706325 with native lifetime corrections and restored parked-stop acceptance.  It remains an interim image.  Repeat relevant acceptance on the final clean build after native readiness.  Preserve failures and captures, release only owned state, and report the traffic-free VM before root replaces it.  Keep the temporary server idle for final-image acceptance, with the test session released.
+
+Interim isolated acceptance passed all 25 Chromium groups in `/tmp/web-cold-interim-frame-evaluation/result.json`.  The owned caller rejected evaluation without scope metadata, child Abort returned to the target, and invocation cleanup restored the saved table.  Code display retained 366,868 characters and 3,015 rows through RET at #x3EC5, including across browser reload, then returned 42/43 with the expected sink effects.  Nine jobs, eighteen stops, and the session were released.  Browser errors and failed HTTP responses were empty.  Reviewed missing-scope child, code columns, terminal instruction, catch rows, and invoked-handler captures.  HTTP 8766, PID 706917, remains idle for final-image acceptance.  Browser and guest traffic stopped before reporting replacement readiness.  Stable HTTP 8765 and SWANK 4006 were unchanged.
+
+The mode-0600 archive `/tmp/debugger-web-cold-interim-evidence.tar.gz` preserves exact driver/support copies, results, captures, full disassembly, log, and runtime metadata.  SHA-256: `ce579a5c48ae4a4cc820beac93749644197240c2744e4463ebf5843447189dec`.  This is interim-image acceptance.  The final clean-build test remains pending.
+
+- [x] Replace the stale shared-BREAK assumption with an owned scope-table fixture.
+- [x] Run isolated Chromium acceptance and release owned state.
+- [ ] Repeat relevant acceptance on the final clean image after readiness.
+
 ## Normal-snapshot Web smoke test: 2026-10-14
 
 The development guest has restarted from a normal snapshot as QEMU 697273 on SWANK 4006.  The recommendation is one bounded Chromium session using the existing browser driver and owned-record cleanup: Listener 42, SPACE completion, one populated Document Examiner topic, populated Peek, and one condition stop with automatically loaded frames and restarts.  Typed :Abort must end that owned evaluation, and another Listener evaluation must return 42.  Release all owned jobs, the closed stop, and the session.  Preserve unrelated clients.  No full suite, catalog refresh, service change, or request to the separate cold-build guest is needed.

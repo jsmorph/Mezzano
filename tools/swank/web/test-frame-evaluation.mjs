@@ -191,7 +191,13 @@ try {
         (multiple-value-prog1 (${target} 1 2 :key 3) (assert (= ${binding} 11)))))
     (assert (and (compiled-function-p (symbol-function '${target}))
                  (compiled-function-p (symbol-function '${caller}))))
-    (${caller}))
+    (let* ((info (mezzano.internals::function-debug-info (symbol-function '${caller})))
+           (scopes (nth 10 info)))
+      (assert scopes)
+      (unwind-protect
+           (progn (setf (nth 10 info) nil) (${caller}))
+        (setf (nth 10 info) scopes)
+        (assert (eq (nth 10 info) scopes)))))
     (dolist (name '(${target} ${caller})) (when (fboundp name) (fmakunbound name)))
     (dolist (name '(${binding} ${nilBinding} ${unbound} ${printer})) (assert (not (boundp name))))
     (dolist (name '(${symbols.join(' ')})) (unintern name)))`);
@@ -377,14 +383,14 @@ try {
   await evaluation('x', ['41']);
   evidence.checks.push('Type and reader errors enter child stops; typed Abort preserves the parent, history, and unchanged binding');
 
-  const unavailable = await browser.evaluate("returnedResult('frames').findIndex(frame => /Compiled-Function BREAK /.test(frame.function))");
-  assert(unavailable >= 0, 'BREAK frame was not found');
+  const unavailable = await browser.evaluate(`returnedResult('frames').findIndex(frame => frame.function.startsWith(${text('#<Compiled-Function ' + caller + ' ')}))`);
+  assert(unavailable >= 0, 'Owned caller with missing scope metadata was not found');
   await command(':Set Current Frame ' + unavailable);
   await frame(unavailable);
   await rejected('42', /UNAVAILABLE-LEXICAL-SCOPE/);
   await selectTarget();
   await evaluation('x', ['41']);
-  evidence.checks.push('A frame without scope information rejects evaluation and permits recovery to the compiled target');
+  evidence.checks.push('Owned caller with cleared scope metadata rejects evaluation and permits recovery to the compiled target; unwind cleanup restores its metadata');
 
   await browser.evaluate(`(() => {
     const original = window.fetch;
