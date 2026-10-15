@@ -22,7 +22,8 @@
   (inspection-values (make-hash-table))
   (inspection-identities (make-hash-table :test #'eq))
   (next-inspection-id 0)
-  (evaluation-environment :lexical))
+  (evaluation-environment :lexical)
+  standard-values standard-value-warnings)
 
 (defstruct (service-handle (:constructor %make-service-handle (boot stop)))
   (boot nil :read-only t)
@@ -438,7 +439,8 @@
       (case operation
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
           :function :compiled-code :instruction :lexical-environment
-          :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment)
+          :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
+          :standard-value-warnings)
          (when argument (service-error :unexpected-argument)))
         (:proceed
          (when argument (service-error :unexpected-argument))
@@ -518,6 +520,58 @@
                         :name (service-print (local-variable-name local))
                         :available-p available-p
                         :value (when available-p (service-print value))))))
+
+(defun service-standard-value-observations ()
+  (mapcar (lambda (symbol)
+            (let ((bound-p (boundp symbol)))
+              (list symbol bound-p (when bound-p (symbol-value symbol)))))
+          '(*package* *read-base* *print-base* *read-default-float-format*)))
+
+(defun service-valid-standard-value-p (symbol value)
+  (ecase symbol
+    (*package* (and (packagep value) (package-name value)))
+    ((*read-base* *print-base*) (typep value '(integer 2 36)))
+    (*read-default-float-format*
+     (member value '(short-float single-float double-float long-float)))))
+
+(defun service-default-standard-value (symbol)
+  (ecase symbol
+    (*package* (mezzano.internals::find-package-or-die "COMMON-LISP-USER"))
+    ((*read-base* *print-base*) 10)
+    (*read-default-float-format* 'single-float)))
+
+(defun call-with-service-standard-values (stop function)
+  (let ((observations (or (service-stop-standard-values stop)
+                          (service-standard-value-observations)))
+        (symbols nil)
+        (values nil))
+    (dolist (observation observations)
+      (destructuring-bind (symbol bound-p value) observation
+        (let* ((valid-p (and bound-p (service-valid-standard-value-p symbol value)))
+               (replacement (if valid-p value (service-default-standard-value symbol))))
+          (unless valid-p
+            (push (list symbol bound-p value replacement)
+                  (service-stop-standard-value-warnings stop)))
+          (push symbol symbols)
+          (push replacement values))))
+    (progv (nreverse symbols) (nreverse values)
+      (unwind-protect
+           (funcall function)
+        (setf (service-stop-standard-values stop)
+              (service-standard-value-observations))))))
+
+(defun service-show-standard-value-warnings (stop)
+  (let ((warnings (reverse (service-stop-standard-value-warnings stop))))
+    (if (null warnings)
+        "There were no standard values which required binding"
+        (with-output-to-string (stream)
+          (write-line "The following standard values were bound:" stream)
+          (dolist (warning warnings)
+            (destructuring-bind (symbol bound-p value replacement) warning
+              (format stream "  Rebinding ~A to ~A~%    (old value was ~A)~%"
+                      (service-print symbol)
+                      (service-print replacement)
+                      (if bound-p (service-print value) "[unbound]"))))))))
 
 (defun service-show-lexical-environment (stop)
   (let* ((frame (aref (service-stop-frames stop) (service-stop-current-frame stop)))
@@ -845,6 +899,7 @@
     (:compiled-code (service-show-code stop nil))
     (:instruction (service-show-code stop t))
     (:lexical-environment (service-show-lexical-environment stop))
+    (:standard-value-warnings (service-show-standard-value-warnings stop))
     (:bindings (service-show-bindings stop (service-command-argument command)))
     (:catches (service-show-catches stop (service-command-argument command)))
     (:handlers (service-show-handlers stop (service-command-argument command)))
@@ -885,8 +940,10 @@
   (let ((mezzano.internals::*active-handlers* nil))
     (with-simple-restart (abort "Abort this debugger command.")
       (unwind-protect
-           (let ((result (let ((*service-current-command* command))
-                           (execute-service-command stop command))))
+           (let ((result
+                   (let ((*service-current-command* command))
+                     (call-with-service-standard-values
+                      stop (lambda () (execute-service-command stop command))))))
              (with-service-lock
                (setf (service-command-result command) result
                      (service-command-state command) :returned
@@ -932,6 +989,8 @@
           (service-stop-frames stop) nil
           (service-stop-current-frame stop) nil
           (service-stop-evaluation-history stop) nil
+          (service-stop-standard-values stop) nil
+          (service-stop-standard-value-warnings stop) nil
           (service-stop-active stop) nil
           (service-stop-pending stop) nil)
     (clrhash (service-stop-inspection-values stop))
@@ -943,6 +1002,7 @@
                 :thread (mezzano.supervisor:current-thread)
                 :condition condition :restarts (compute-restarts condition)
                 :parent *service-current-stop*
+                :standard-values (service-standard-value-observations)
                 :evaluation-environment
                 (if *service-current-stop*
                     (service-stop-evaluation-environment *service-current-stop*)

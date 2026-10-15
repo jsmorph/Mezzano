@@ -66,6 +66,8 @@ The [source-scope fixture](README.md#compiler-lexical-environment-tests) checks 
 
 The emitted-scope fixture checks compiler-generated records against live x86-64 call addresses and binding storage, including nested and disjoint bindings, namespaces, local macros, scope exit, mutation, compiled-file loading, and full GC.  It exercises DEBUG 0/3 and COMPILATION-SPEED 1/3 with SAFETY 3 and SPEED 1, and checks values at DEBUG 3.  Direct emitter checks cover both architectures.  These results do not establish ARM64 execution or a host cross-build.  The [frame-evaluation fixture](README.md#frame-evaluation-tests) separately checks live bindings, writes, declarations and representations, histories, replay, nested recovery, GC, continuation, and lifetime rejection.  Load the debugger-service fixture for its helpers before compiling it.
 
+The standard-value fixture requires the debugger-service and frame-evaluation fixtures above.  Compile and load `TEST-STANDARD-VALUES.LISP` in the guest, rejecting compilation warnings or failure, then call `(lispm-standard-values-test:run)`.  It checks validity/defaults, bound NIL versus unbound controls, valid nondefault package/radices/float format, debugger edits and repeated validation, independent child contexts, warning printer Abort/repair, exact replay, selection/history, full GC, program binding restoration, and owned cleanup.  Its target policy is SAFETY 3, DEBUG 3, SPEED 1 on x86-64.
+
 The spill-interference fixture checks overlapping, adjacent, disjoint, repeated, and unused ranges, edges from every range of a spilled register, and scalar and SIMD slot assignment.  It compares with supplied previous implementations when requested and checks that dense bit-vector rows retain their identity across insertions.
 
 ## Pager reservation tests
@@ -118,6 +120,8 @@ LISP
 The completion phase checks the restored state before releasing the event and recovering the application.
 
 For queued-command expiration, use `prepare-queued-restore-test` and `finish-queued-restore-test` in place of the parked-stop functions.  Preparation stops the target thread with the supervisor's thread controls, then queues a restart command.  After restore, completion resumes the thread and checks that the old command expires without invoking the restart.  It then submits a fresh restart command and recovers the application.
+
+For standard-value restoration, load those three native fixtures and call `(lispm-standard-values-test:prepare-restore-test)` on a dedicated VM with no retained stops.  Save a snapshot and wait for completion, then stop and restart that VM from the saved image.  Call `(lispm-standard-values-test:finish-restore-test)` after boot.  It checks retained nondefault controls, four correction warnings, history/selection/mode, retained text, expired old handles, prior-boot replay rejection, fresh evaluation and full GC, original program bindings after Proceed, one cleanup, and stop release.  This fixture covers a parked raw-thread condition stop.  Restoration during an executing warning command remains untested.
 
 ### Remote session restore
 

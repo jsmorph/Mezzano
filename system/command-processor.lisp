@@ -49,6 +49,8 @@
      :help "Evaluate forms in the debugger's global lexical context.")
     (:name "Use Lexical Environment" :id :use-lexical-environment
      :help "Evaluate forms in the selected frame's live lexical context.")
+    (:name "Show Standard Value Warnings" :id :show-standard-value-warnings
+     :help "Display corrections to invalid or unbound debugger reader and printer controls.")
     (:name "Show Lexical Environment" :id :show-lexical-environment
      :help "Display inherited lexical bindings of the selected source function. Missing ancestry or values are labelled unavailable.")
     (:name "Show Bindings" :id :show-bindings
@@ -463,6 +465,7 @@
     (:use-dynamic-environment (list :operation "use-dynamic-environment"))
     (:use-lexical-environment (list :operation "use-lexical-environment"))
     (:show-lexical-environment (list :operation "lexical-environment"))
+    (:show-standard-value-warnings (list :operation "standard-value-warnings"))
     (:show-bindings (list :operation "bindings"
                           :argument (list (cdr (assoc "All" keywords :test #'equal))
                                           (cdr (assoc "Matching" keywords :test #'equal)))))
