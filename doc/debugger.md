@@ -448,6 +448,8 @@ Native x86-64 tests at DEBUG 3, SAFETY 3, SPEED 1 cover differing arities, closu
 
 The internal callable resolver uses explicit compiler provenance to select a current global definition or retain an exact local/anonymous closure.  It preserves current trace wrappers, rejects a missing or macro replacement before unwinding, and reports unavailable provenance for older or lower-policy code.  A compiled function installed under an alias retains its source identity.  Native x86-64 tests cover current redefinition, trace entry display-name collisions, global closures, SETF/CAS names, compiled aliases, cleanup, full GC, and nested prompts.  Both target emitters have metadata tests.  The public Reinvoke command remains planned.
 
+Frame transfers retain ordinary Common Lisp dynamic-extent requirements.  The callable and argument or returned objects must remain valid after the unwind.  Native x86-64 tests verify caller-owned stack conses, vectors, and lexical closures through Return/Reinvoke, cleanup, full GC, and nested prompts.  Objects allocated inside an unwound dynamic-extent scope expire with that scope.  Copying a list spine preserves that spine's storage.  General promotion of its payload objects is unsupported.
+
 ### Current argument construction
 
 The internal SERVICE-REINVOKE-ARGUMENTS takes the source parameter layout, current descriptor/value/availability observations, and original supplied sequence.  It returns the constructed list, an unavailability reason, and the unavailable descriptor.  A zero-argument candidate is NIL with no reason.
@@ -458,7 +460,7 @@ These rules make optional/key parameters supplied in the new call.  Their defaul
 
 Unavailable required/optional/rest/key values produce :UNAVAILABLE-CURRENT-ARGUMENT and their descriptor.  Improper/circular tails, odd keyword tails, nonsymbol key names, and a final count of 500 or more signal errors.  Multiple declarations of one key require EQL current values.  The first such value supplies that key.  The constructor preserves :ALLOW-OTHER-KEYS pairs and its declared-parameter role.  The callee performs its ordinary argument checks.
 
-Native x86-64 tests at DEBUG 3/SAFETY 3/SPEED 1 cover construction, live current bindings, defaults and supplied-p values, rest/key disagreements, source spine and heap identity, exact special/closure bindings, private Reinvoke transfers, GC, and nested prompts.  This helper supplies no retained command or browser operation.  Stack-allocated payload lifetime, saved activation restoration, and ARM64 execution require separate acceptance.
+Native x86-64 tests at DEBUG 3/SAFETY 3/SPEED 1 cover construction, live current bindings, defaults and supplied-p values, rest/key disagreements, source spine and heap identity, exact special/closure bindings, private Reinvoke transfers, GC, and nested prompts.  This helper supplies no retained command or browser operation.  Values must satisfy the transfer lifetime requirements above.  Saved activation restoration and ARM64 execution require separate acceptance.
 
 ## Compiler guarantees
 
