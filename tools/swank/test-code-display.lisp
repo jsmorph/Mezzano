@@ -93,8 +93,30 @@
           (assert (search (format nil "~{~2,'0X ~}" bytes) output))
           (assert (search (format nil "instruction starts at #x~X" start) output)))))))
 
+(defun check-missing-scope-code (handle lease controller)
+  (let* ((stop (d::service-handle-stop handle))
+         (function (nth-value 1 (frame-function (selected-frame handle))))
+         (info (i::function-debug-info function))
+         (scopes (nth 10 info))
+         (function-output (test::command handle lease :function))
+         (code (test::command handle lease :compiled-code))
+         (instruction (test::command handle lease :instruction))
+         (history (copy-list (d::service-stop-evaluation-history stop)))
+         (index (d::service-stop-current-frame stop)))
+    (assert (eq (i::function-name function) 'target))
+    (unwind-protect
+         (progn
+           (setf (nth 10 info) nil)
+           (frame::rejected-source handle lease controller "37" 'debugger-service-error
+                                   :unavailable-lexical-scope)
+           (assert (equal function-output (test::command handle lease :function)))
+           (assert (equal code (test::command handle lease :compiled-code)))
+           (assert (equal instruction (test::command handle lease :instruction)))
+           (assert (equal history (d::service-stop-evaluation-history stop)))
+           (assert (= index (d::service-stop-current-frame stop))))
+      (setf (nth 10 info) scopes))))
+
 (defun check-ordinary (handle lease controller)
-  (declare (ignore controller))
   (let* ((stop (d::service-handle-stop handle))
          (function (nth-value 1 (frame-function (selected-frame handle)))))
     (dolist (values '((1 2) (3 4) (5 6)))
@@ -144,7 +166,8 @@
         (assert (equal history (d::service-stop-evaluation-history stop)))
         (submit-debugger-command lease id :function)
         (assert (equal history (d::service-stop-evaluation-history stop))))
-      (assert (= index (d::service-stop-current-frame stop))))))
+      (assert (= index (d::service-stop-current-frame stop))))
+    (check-missing-scope-code handle lease controller)))
 
 (defun check-invalid-call (handle lease controller)
   (declare (ignore controller))
@@ -194,9 +217,6 @@
     (frame::evaluate-source handle lease "37" '("37"))
     (test::command handle lease :select-frame index)
     (let ((history (copy-list (d::service-stop-evaluation-history stop))))
-      (frame::rejected-source handle lease controller "37" 'debugger-service-error
-                              :unavailable-lexical-scope)
-      (assert (equal history (d::service-stop-evaluation-history stop)))
       (check-printer-abort handle lease controller :function generic)
       (setf (fourth history) generic)
       (assert (equal history (d::service-stop-evaluation-history stop)))

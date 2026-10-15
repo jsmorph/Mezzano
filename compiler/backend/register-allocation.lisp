@@ -976,6 +976,7 @@
                                (gethash range range-allocations))
             for record = (gethash entry records)
             for cached = (gethash tail layouts)
+            when (and range (<= (live-range-start range) index (live-range-end range)))
             do
               (setf (gethash vreg result) t)
               (unless (and record (eql (second record) location))

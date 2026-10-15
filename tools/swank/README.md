@@ -414,6 +414,15 @@ The binding-identity fixture checks distinct same-name bindings, shared closure 
 
 Its PREPARE-RESTORE-TEST retains three closures and a binding descriptor.  FINISH-RESTORE-TEST checks their shared and shadowed identities and mutations after restoration and full GC.
 
+The allocator lifetime fixture checks inclusive endpoints, expired values, register reuse, a gap followed by a preserved spilled value, missing ranges, and shared layout records:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEBUG-ALLOCATION.LISP"))
+(lispm-debug-allocation-test:run)
+```
+
+It executes in Mezzano and inspects the allocator's location records.  The code-display fixture also tests the bootstrap DEBUG 1 invalid-argument helper's captured FUNCTION value.
+
 Compiled locations and closure layouts retain a descriptor for each binding.  Distinct bindings can have the same display name.  Copied bindings receive new descriptors, while closures sharing a binding retain the same descriptor.  Existing debug records remain readable with absent descriptor identity.  The public local-variable API retains its existing names, locations, and values.
 
 The instruction-scope fixture tests the assembler's address table and runtime lookup:
@@ -490,9 +499,9 @@ The function and code-display fixtures require the debugger-service, frame-evalu
 (lispm-large-code-display-test:run)
 ```
 
-The first fixture checks Show Function's isolated * assignment, every branch-label definition, actual call bytes and instruction boundaries, active redefinition, replay, rejected arguments, unchanged selection, generic-associated functions, missing lexical scope, invalid-argument helper identity and bindings, unknown decoding in unexecuted owned code, printer child Abort and repair, moving constants, continuation, cleanup, and release.  The large fixture checks complete disassembly above 64 KiB through its final instruction, unchanged history, multiple values, and continuation effects.  The existing frameless fixture checks an interrupted instruction's exact saved PC.  Tests execute native x86-64 code at DEBUG 3, SAFETY 3, SPEED 1.  Service compilation uses DEBUG 1 with SAFETY 3 and SPEED 1.
+The first fixture checks Show Function's isolated * assignment, every branch-label definition, actual call bytes and instruction boundaries, active redefinition, replay, rejected arguments, unchanged selection, generic-associated functions, missing lexical scope, invalid-argument helper identity and bindings, unknown decoding in unexecuted owned code, printer child Abort and repair, moving constants, continuation, cleanup, and release.  Its missing-scope case clears and restores the scope table of its owned TARGET function, checking expression rejection and unchanged function/code/instruction output.  The large fixture checks complete disassembly above 64 KiB through its final instruction, unchanged history, multiple values, and continuation effects.  The existing frameless fixture checks an interrupted instruction's exact saved PC.  Tests execute native x86-64 code at DEBUG 3, SAFETY 3, SPEED 1.  Service compilation uses DEBUG 1 with SAFETY 3 and SPEED 1.
 
-The invalid-argument binding case requires RAISE-INVALID-ARGUMENT-ERROR compiled with current DEBUG 3 metadata.  Loading all of system/error.lisp reinitializes debugger-hook globals.  A bootstrap DEBUG 1 helper therefore requires separate DEBUG 3 compilation before this binding case.  The [function and instruction reference](../../doc/debugger.md#functions-and-instructions) states the supported behavior and remaining compatibility work.
+The invalid-argument binding case requires current binding, location, and source metadata.  Tests cover the bootstrap DEBUG 1 helper and DEBUG 3 compilation.  Recompiling an older helper or rebuilding the image replaces its earlier records.  Loading all of system/error.lisp reinitializes debugger-hook globals, so isolated helper recompilation uses its canonical definition and restores its source pathname and top-level-form index.  The [function and instruction reference](../../doc/debugger.md#functions-and-instructions) states the supported behavior and remaining compatibility work.
 
 The dynamic-binding fixture uses the same helpers:
 
