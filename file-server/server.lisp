@@ -163,36 +163,53 @@
       #-sbcl (error "delete of directories not implemented"))
   (format *client* ":ok~%"))
 
+(define-condition file-server-errors (error)
+  ((conditions :initarg :conditions :reader file-server-error-conditions))
+  (:report (lambda (condition stream)
+             (format stream "File server errors:~{~%  ~A~}"
+                     (file-server-error-conditions condition)))))
+
+(defun signal-file-server-errors (conditions)
+  (when conditions
+    (if (null (cdr conditions))
+        (error (car conditions))
+        (error 'file-server-errors :conditions (nreverse conditions)))))
+
 (defun handle-client (*client*)
-  (ignore-errors
-    (let ((*file-table* (make-array 8 :initial-element nil)))
-      (unwind-protect
-           (loop
-              (let ((form (read-preserving-whitespace *client*)))
-                (format t "Command: ~S~%" form)
-                (cond
-                  ((or (not (consp form))
-                       (not (keywordp (first form))))
-                   (format *client* "(:invalid-command \"Invalid command\")"))
-                  ((eql (first form) :quit)
-                   (format *client* ":bye")
-                   (return))
-                  (t (let ((fn (gethash (first form) *commands*)))
-                       (if fn
-                           (handler-case (funcall fn form)
-                             (error-with-class (c)
-                               (format *client* "(:error ~S ~S)"
-                                       (format nil "~A" c)
-                                       (error-class c)))
-                             (error (c)
-                               (format *client* "(:error ~S)"
-                                       (format nil "~A" c))))
-                           (format *client* "(:invalid-command \"Invalid command\")"))))))
-              (finish-output *client*))
-        (loop for file across *file-table*
-           do (when file (close file)))
-        (finish-output *client*)
-        (format t "Client closed.~%")))))
+  (let ((*file-table* (make-array 8 :initial-element nil))
+        (failures nil))
+    (unwind-protect
+         (handler-case
+              (loop
+                (let ((form (read-preserving-whitespace *client*)))
+                  (format t "Command: ~S~%" form)
+                  (cond
+                    ((or (not (consp form))
+                         (not (keywordp (first form))))
+                     (format *client* "(:invalid-command \"Invalid command\")"))
+                    ((eql (first form) :quit)
+                     (format *client* ":bye")
+                     (finish-output *client*)
+                     (return))
+                    (t (let ((fn (gethash (first form) *commands*)))
+                         (if fn
+                             (handler-case (funcall fn form)
+                               (error-with-class (c)
+                                 (format *client* "(:error ~S ~S)"
+                                         (format nil "~A" c)
+                                         (error-class c)))
+                               (error (c)
+                                 (format *client* "(:error ~S)"
+                                         (format nil "~A" c))))
+                             (format *client* "(:invalid-command \"Invalid command\")"))))))
+                (finish-output *client*))
+           (end-of-file ())
+           #+sbcl (sb-sys:io-timeout ())
+           (error (condition) (push condition failures)))
+      (loop for file across *file-table*
+            when file do (handler-case (close file)
+                           (error (condition) (push condition failures))))
+      (signal-file-server-errors failures))))
 
 #-sbcl
 (defun run-file-server (&key (port *default-file-server-port*))
@@ -218,34 +235,105 @@
 #+sbcl
 (progn
 (defun accept (socket)
-  "Like socket-accept, but retry on EAGAIN."
-  (loop (handler-case
-            (return (sb-bsd-sockets:socket-accept socket))
-          (sb-bsd-sockets:interrupted-error ()))))
+  (sb-sys:with-interrupts
+    (sb-sys:wait-until-fd-usable (sb-bsd-sockets:socket-file-descriptor socket)
+                                :input nil nil))
+  (handler-case (sb-bsd-sockets:socket-accept socket)
+    (sb-bsd-sockets:interrupted-error () nil)))
+
+(defun make-client-worker (function)
+  (sb-thread:make-thread function :name "File server client"))
 
 (defun run-file-server (&key (port *default-file-server-port*))
-  (let ((socket (make-instance 'sb-bsd-sockets:inet-socket
-                               :type :stream
-                               :protocol :tcp)))
-    (unwind-protect
-         (progn
-           (setf (sb-bsd-sockets:sockopt-reuse-address socket) t)
-           (sb-bsd-sockets:socket-bind socket (sb-bsd-sockets:make-inet-address "127.0.0.1") port)
-           (sb-bsd-sockets:socket-listen socket 5)
-           (loop
-                (with-open-stream (client
-                                   (sb-bsd-sockets:socket-make-stream
-                                    (accept socket)
-                                    :input t
-                                    :output t
-                                    :auto-close t
-                                    :external-format :utf-8
-                                    :element-type :default
-                                    :timeout *idle-timeout*))
-                  (format t "Got a connection: ~S~%" client)
-                  (handler-case (handle-client client)
-                    (end-of-file ())))))
-      (sb-bsd-sockets:socket-close socket))))
+  (let ((socket nil)
+        (clients nil)
+        (failures nil)
+        (stopping nil)
+        (idle-timeout *idle-timeout*)
+        (owner sb-thread:*current-thread*)
+        (failed (gensym "CLIENT-FAILED"))
+        (socket-lock (sb-thread:make-mutex :name "File server sockets")))
+    (labels ((serve-client (client)
+               (let ((errors nil))
+                 (unwind-protect
+                      (handler-case
+                          (let ((stream
+                                  (sb-thread:with-mutex (socket-lock)
+                                    (unless stopping
+                                      (sb-bsd-sockets:socket-make-stream
+                                       client :input t :output t :auto-close t
+                                       :external-format :utf-8 :element-type :default
+                                       :timeout idle-timeout)))))
+                            (when stream
+                              (handler-case (handle-client stream)
+                                (stream-error (condition)
+                                  (if (eq (stream-error-stream condition) stream)
+                                      (handler-case
+                                          (progn
+                                            (sb-bsd-sockets:socket-peername client)
+                                            (push condition errors))
+                                        (sb-bsd-sockets:not-connected-error ())
+                                        (error (probe-condition)
+                                          (push condition errors)
+                                          (push probe-condition errors)))
+                                      (push condition errors))))))
+                        (error (condition) (push condition errors)))
+                   (handler-case
+                       (sb-thread:with-mutex (socket-lock)
+                         (sb-bsd-sockets:socket-close client :abort t))
+                     (error (condition) (push condition errors))))
+                 (when errors
+                   (sb-thread:interrupt-thread
+                    owner (lambda () (unless stopping (throw failed nil)))))
+                 errors))
+             (join-client (entry)
+               (handler-case
+                   (setf failures (nconc (sb-thread:join-thread (cdr entry)) failures))
+                 (error (condition) (push condition failures))))
+             (reap-clients ()
+               (setf clients
+                     (delete-if (lambda (entry)
+                                  (unless (sb-thread:thread-alive-p (cdr entry))
+                                    (join-client entry)
+                                    t))
+                                clients))
+               (when failures (throw failed nil))))
+      (sb-sys:without-interrupts
+        (unwind-protect
+             (handler-case
+                 (catch failed
+                   (setf socket (make-instance 'sb-bsd-sockets:inet-socket
+                                               :type :stream :protocol :tcp))
+                   (setf (sb-bsd-sockets:sockopt-reuse-address socket) t)
+                   (sb-bsd-sockets:socket-bind
+                    socket (sb-bsd-sockets:make-inet-address "127.0.0.1") port)
+                   (sb-bsd-sockets:socket-listen socket 5)
+                   (setf (sb-bsd-sockets:non-blocking-mode socket) t)
+                   (loop
+                     (reap-clients)
+                     (let ((client (sb-sys:allow-with-interrupts (accept socket))))
+                       (when client
+                         (let ((entry (cons client nil)))
+                           (push entry clients)
+                           (setf (cdr entry) (make-client-worker (lambda () (serve-client client)))))))
+                     (sb-sys:with-local-interrupts (values))))
+               (error (condition) (push condition failures)))
+          (sb-thread:with-mutex (socket-lock)
+            (setf stopping t))
+          (when socket
+            (handler-case (sb-bsd-sockets:socket-close socket)
+              (error (condition) (push condition failures))))
+          (sb-thread:with-mutex (socket-lock)
+            (dolist (entry clients)
+              (when (sb-bsd-sockets:socket-open-p (car entry))
+                (handler-case (sb-bsd-sockets:socket-shutdown (car entry) :direction :io)
+                  (sb-bsd-sockets:not-connected-error ())
+                  (error (condition) (push condition failures))))))
+          (dolist (entry clients)
+            (when (cdr entry) (join-client entry))
+            (handler-case (sb-bsd-sockets:socket-close (car entry) :abort t)
+              (error (condition) (push condition failures))))
+          (signal-file-server-errors failures))))))
 )
 
 (defun spawn-file-server (&rest args)
