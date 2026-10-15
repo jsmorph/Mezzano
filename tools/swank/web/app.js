@@ -31,6 +31,7 @@ const editorDraftKeys = new Map();
 let historyIndex = null;
 let selectingActivity = false;
 let selectHelpFocus = null;
+let evaluationPrefix = null;
 const assistanceTimers = new Map();
 const views = new Map();
 const commandResults = new Map();
@@ -316,19 +317,36 @@ function useEditorDraft(editor, key, reload = false) {
   editor.value = draft?.text || "";
   editor.setSelectionRange(draft?.start || 0, draft?.end || 0, draft?.direction || "none");
   if (editor.id === "source") resizeSource();
+  updateEditorPrompt(editor);
 }
 function activateStop(stop) {
   if (same(selectedStop, stop)) return;
+  evaluationPrefix = null;
   selectedStop = stop;
+}
+function updateEditorPrompt(editor) {
+  if (!["source", "debugger-command"].includes(editor.id)) return;
+  const inline = editor.id === "source";
+  const info = inline ? listenerDebugger : stops.find(stop => same(stop.token, selectedStop))?.info;
+  const source = editor.value.trimStart();
+  const evaluating = source && !source.startsWith(":");
+  $(inline ? "listener-prompt" : "debugger-prompt").textContent =
+    (info?.prompt || (inline ? listenerPrompt : "→"))
+    + (evaluating && info?.["evaluation-prompt"] ? info["evaluation-prompt"] : "");
+}
+function editorDebuggerStop(editor) {
+  return editor.id === "source" && activity === "listener" ? listenerDebugger?.stop
+    : editor.id === "debugger-command" && activity === "debugger" ? selectedStop : null;
 }
 function updateListenerInput(reload = false) {
   const stop = listenerDebugger?.stop;
   useEditorDraft($("source"), stop ? debuggerDraftKey(stop) : "listener", reload);
   $("source").dataset.debuggerStop = stop ? JSON.stringify(stop) : "";
-  $("listener-prompt").textContent = listenerDebugger?.prompt || listenerPrompt;
+  updateEditorPrompt($("source"));
   if (activity === "listener" && stop) activateStop(stop);
 }
 function showActivity(name) {
+  evaluationPrefix = null;
   const previous = activity;
   if (previous === "listener") storeEditorDraft($("source"));
   else if (previous === "debugger") storeEditorDraft($("debugger-command"));
@@ -383,6 +401,7 @@ function setEditor(editor, text, cursor) {
   editor.setSelectionRange(offset, offset);
   if (editor.id === "source") resizeSource();
   storeEditorDraft(editor);
+  updateEditorPrompt(editor);
 }
 function editorContext(editor) {
   return editor.id === "source" ? (listenerDebugger ? "debugger" : "listener")
@@ -464,7 +483,35 @@ function renderInputHistory() {
   }
   if (!state.inputHistory.length) panel.textContent = "No accepted Listener input in this tab.";
 }
+function evaluationEnvironmentKey(editor, event) {
+  const stop = editorDebuggerStop(editor);
+  if (evaluationPrefix && (evaluationPrefix.editor !== editor || !same(evaluationPrefix.stop, stop))) {
+    evaluationPrefix = null;
+  }
+  const key = event.key.toLowerCase();
+  if (evaluationPrefix) {
+    if (["shift", "control", "alt", "meta"].includes(key)) return false;
+    if (key === "i" && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      if (!evaluationPrefix.used && !event.repeat) {
+        evaluationPrefix.used = true;
+        run(async () => {
+          await submit(stop, "toggle-evaluation-environment", null, {source: "Control-X I"});
+        });
+      }
+      return true;
+    }
+    if (!(key === "x" && event.ctrlKey && event.repeat)) evaluationPrefix = null;
+  }
+  if (stop && key === "x" && event.ctrlKey && !event.altKey && !event.metaKey) {
+    event.preventDefault();
+    if (!event.repeat) evaluationPrefix = {editor, stop, used: false};
+    return true;
+  }
+  return false;
+}
 function editorKey(editor, event) {
+  if (evaluationEnvironmentKey(editor, event)) return;
   if (event.key === "Tab" || (event.key === "F11" && !event.shiftKey)) {
     event.preventDefault();
     scheduleAssistance(editor, "complete");
@@ -492,7 +539,9 @@ function editorKey(editor, event) {
   }
 }
 function editorChanged(editor, event) {
+  evaluationPrefix = null;
   storeEditorDraft(editor);
+  updateEditorPrompt(editor);
   clearAssistance(editor);
   if (editor.id === "source") { historyIndex = null; resizeSource(); }
   scheduleAssistance(editor, event.inputType === "insertText" && event.data === " " ? "space" : "inspect");
@@ -732,7 +781,7 @@ async function refresh() {
   if (!connected) return;
   const offsets = [...views.entries()].map(([name, view]) => ({name, start: view.end}));
   const sample = await api("monitor-state", {offsets});
-  const editor = $("source");
+  const editor = activity === "debugger" ? $("debugger-command") : $("source");
   const priorDraft = editorDraftKeys.get(editor);
   const editorBounds = editor.getBoundingClientRect();
   const pageBounds = $("page").getBoundingClientRect();
@@ -749,7 +798,6 @@ async function refresh() {
     $("herald").dataset.session = state.session;
   }
   state.package = listenerInfo.package;
-  $("listener-prompt").textContent = listenerDebugger?.prompt || listenerInfo.prompt;
   $("package").textContent = listenerInfo.package;
   const names = new Set();
   for (const record of sample.jobs || []) {
@@ -796,7 +844,7 @@ async function refresh() {
   renderPending();
   updateStatus();
   updateTracks();
-  if (activity === "listener" && document.activeElement === editor
+  if (["listener", "debugger"].includes(activity) && document.activeElement === editor
       && (editorVisible || priorDraft !== editorDraftKeys.get(editor))) {
     editor.scrollIntoView({block: "nearest"});
   }
@@ -1132,7 +1180,7 @@ function renderStops() {
   if (received < info["next-command-id"]) {
     detailChildren.push(node("p", "Receiving retained command history (" + received + " of " + info["next-command-id"] + ").", "history-progress"));
   }
-  $("debugger-prompt").textContent = info.prompt || "→";
+  updateEditorPrompt($("debugger-command"));
   const available = info.state === ":stopped" && !info.child && !stopCommandPending(selectedStop);
   $("debugger-command").disabled = info.state !== ":stopped";
   if (activity === "debugger") {
@@ -1153,7 +1201,8 @@ function renderStops() {
     for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
                         ":Show Function", ":Show Compiled Code", ":Show Instruction", ":Show Lexical Environment",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
-                        ":Inspect", ":Describe Last", ":Clear Inspector"]) {
+                        ":Inspect", ":Describe Last", ":Clear Inspector",
+                        ":Use Dynamic Environment", ":Use Lexical Environment"]) {
       const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
       command.disabled = !available;
       menuChildren.push(command);
@@ -1247,11 +1296,14 @@ function renderStops() {
       output = node("div", undefined, "debugger-description");
       output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
-    } else if (["arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment"].includes(command.command)) {
+    } else if (["arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment",
+                "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
       output = node("div", undefined, "debugger-" + command.command);
       const name = {arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
-        instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment"}[command.command];
+        instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
+        "use-dynamic-environment": ":Use Dynamic Environment", "use-lexical-environment": ":Use Lexical Environment",
+        "toggle-evaluation-environment": "Control-X I"}[command.command];
       output.append(node("pre", "→ " + (command.source ?? name), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, command.command + "-result"));
     } else if (!result || result.state === ":pending" || result.state === ":running") {
@@ -1359,8 +1411,8 @@ document.addEventListener("keydown", event => {
     showActivity(name);
   } else message("No activity is assigned to SELECT " + event.key + ". F9 then F12 lists activities.");
 }, true);
-document.addEventListener("pointerdown", () => { if (selectingActivity) cancelActivitySelection(); });
-window.addEventListener("blur", () => { if (selectingActivity) cancelActivitySelection(); });
+document.addEventListener("pointerdown", () => { evaluationPrefix = null; if (selectingActivity) cancelActivitySelection(); });
+window.addEventListener("blur", () => { evaluationPrefix = null; if (selectingActivity) cancelActivitySelection(); });
 $("select-help").addEventListener("close", () => selectHelpFocus?.focus());
 $("select-help").addEventListener("keydown", event => {
   if (event.key === "F11" && event.shiftKey) { event.preventDefault(); $("select-help").close(); }
@@ -1394,7 +1446,11 @@ for (const id of ["source", "debugger-command"]) {
   editor.onkeydown = event => editorKey(editor, event);
   editor.oninput = event => editorChanged(editor, event);
   editor.onclick = () => { storeEditorDraft(editor); scheduleAssistance(editor, "inspect"); };
-  editor.onkeyup = () => storeEditorDraft(editor);
+  editor.onkeyup = event => {
+    if (evaluationPrefix?.used && event.key.toLowerCase() === "i") evaluationPrefix = null;
+    storeEditorDraft(editor);
+  };
+  editor.onblur = () => { evaluationPrefix = null; };
   editor.onselect = () => storeEditorDraft(editor);
 }
 $("debug-command").onsubmit = event => { event.preventDefault(); queueDebuggerCommand(); };

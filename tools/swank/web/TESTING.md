@@ -71,7 +71,21 @@ A catch-display target nests two catches with the same tag and an outer catch wi
 
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
-The frame-evaluation, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
+The frame-evaluation, evaluation-environment, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
+
+The evaluation-environment driver compiles one owned DEBUG 3 function whose lexical argument shadows a separately established global value.  It tests typed commands and SPACE completion, distinct lexical/global reads and writes, Control-X I in both debugger editors, draft/cursor retention, arrows and editing prompts, history/selection/reload, child inheritance and independent mode changes, typed Abort, and exact-ID replay after a discarded accepted toggle reply.  Proceed must observe both writes, cleanup must remove the fixture definitions and symbols, and the next Listener must return 42.
+
+```sh
+node tools/swank/web/test-evaluation-environments.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-evaluation-environments
+```
+
+The separate intercepted-response fixture makes no guest requests.  It holds a completed automatic inspection's HTTP reply while the enabled editor receives the shortcut, then requires exactly one queued toggle and unchanged draft/cursor after release.  It also tests a completed chord across an activity change, repeated keys, unfinished-prefix cancellation, nested arrows, reload, and an older backend without evaluation-prompt.  A long backtrace must keep the focused standalone editor visible after toggle output.  Refresh must preserve manual scrolling when that editor is unfocused or already outside the viewport.
+
+```sh
+node tools/swank/web/test-evaluation-environment-fixtures.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-environment-fixtures
+```
 
 ## Object Inspector
 

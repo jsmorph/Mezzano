@@ -49,7 +49,8 @@ class ProtocolTests(unittest.TestCase):
         session = "a" * 64
         stop = [":stop", session, 1]
         for command in ("current-frame", "top-frame", "bottom-frame", "arglist",
-                        "function", "compiled-code", "instruction", "lexical-environment"):
+                        "function", "compiled-code", "instruction", "lexical-environment",
+                        "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"):
             with self.subTest(command=command):
                 self.assertEqual(server.operation_arguments("submit",
                     {"stop": stop, "id": 0, "command": command}, session)[2:],
