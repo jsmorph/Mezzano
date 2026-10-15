@@ -643,6 +643,53 @@ Returns NIL if the function captures no variables."
                     collect pair))))
   regs)
 
+(defun safe-return-address-to-function (address)
+  (assert (within-function-area-p address))
+  (return-address-to-function address))
+
+(defun backtrace-next-frame (thread stack-pointer frame-pointer return-address)
+  "Return the caller's SP, FP, PC, saved-PC slot, frame link, and interrupted-PC flag.
+The frame link is NIL when this transition leaves FP unchanged."
+  (multiple-value-bind (fn fn-offset)
+      (safe-return-address-to-function return-address)
+    (multiple-value-bind (framep interruptp pushed-values pushed-values-register
+                          layout-address layout-length
+                          multiple-values incoming-arguments
+                          block-or-tagbody-thunk extra-registers
+                          entry-offset restart)
+        (gc-info-for-function-offset fn fn-offset)
+      (cond (interruptp
+             (when (not framep)
+               (error "Frameless interrupt frames not implemented" framep interruptp pushed-values pushed-values-register
+                      layout-address layout-length
+                      multiple-values incoming-arguments
+                      block-or-tagbody-thunk extra-registers
+                      entry-offset restart))
+             (values
+              ;; Stack pointer is past the frame pointer & additional saved state.
+              (memref-unsigned-byte-64 frame-pointer 4)
+              (memref-unsigned-byte-64 frame-pointer 0)
+              (memref-unsigned-byte-64 frame-pointer 1)
+              (+ frame-pointer 8) frame-pointer t))
+            (framep
+             (values
+              ;; Stack pointer is past the frame pointer & saved return address.
+              (+ frame-pointer 16)
+              (memref-unsigned-byte-64 frame-pointer 0)
+              (memref-unsigned-byte-64 frame-pointer 1)
+              (+ frame-pointer 8) frame-pointer nil))
+            (t
+             (values
+              ;; In a no-frame function the stack layout is directly
+              ;; represented by the layout field. Layout size = number of
+              ;; elements on the stack, including the return address.
+              (+ stack-pointer (* layout-length 8))
+              ;; Frame pointer is unchanged.
+              frame-pointer
+              ;; Return address should be the first entry on the stack.
+              (memref-unsigned-byte-64 stack-pointer (1- layout-length))
+              (+ stack-pointer (* (1- layout-length) 8)) nil nil))))))
+
 (defun %map-backtrace (fn)
   (do* ((i 0 (1+ i))
         (callee-save-regs

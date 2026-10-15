@@ -154,10 +154,6 @@
            (rejected-source handle lease controller "(error \"Owned frame expression error.\")"
                             'simple-error nil t)
            (evaluate-source handle lease "(values * x)" '("42" "42"))
-           (select-function handle lease #'break)
-           (rejected-source handle lease controller "42"
-                            'debugger-service-error :unavailable-lexical-scope)
-           (select-function handle lease #'target)
            (test::expect-error :invalid-source
                                (lambda ()
                                  (submit-debugger-command
@@ -210,7 +206,10 @@
              (assert index)
              (test::command handle lease :select-frame index)
              (evaluate-source handle lease "42" '("42"))
-             (rejected-source handle lease controller "x" 'debugger-service-error :unavailable-binding)))
+             (rejected-source handle lease controller "x" 'debugger-service-error :unavailable-binding)
+             (setf (nth 10 (i::function-debug-info function)) nil)
+             (rejected-source handle lease controller "42"
+                              'debugger-service-error :unavailable-lexical-scope)))
       (when handle (release-test-stop handle controller))
       (test::await (lambda () (nth-value 1 (mezzano.supervisor:thread-join thread nil))))
       (close-debugger-controller controller))))

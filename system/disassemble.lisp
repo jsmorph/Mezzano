@@ -1,49 +1,5 @@
 ;;;; DISASSEMBLE, generic bits
 
-(defpackage :mezzano.disassemble
-  (:use :cl)
-  (:local-nicknames (:sys.int :mezzano.internals))
-  (:export #:disassemble
-           #:make-disassembler-context
-           #:disassembler-context-function
-           #:instruction-at
-           #:print-instruction
-           #:print-instruction-bytes
-           #:*print-gc-metadata*
-           #:*print-debug-metadata*
-
-           #:disassembler-context
-           #:make-disassembler-context-using-architecture
-           #:disassembler-context-function
-           #:context-function
-           #:context-code-offset
-           #:context-label-table
-           #:context-instructions
-
-           #:consume-ub8
-           #:consume-ub16/le
-           #:consume-ub32/le
-           #:consume-ub64/le
-           #:consume-sb8
-           #:consume-sb16/le
-           #:consume-sb32/le
-           #:consume-sb64/le
-
-           #:instruction
-           #:inst-offset
-           #:inst-size
-
-           #:disassemble-one-instruction
-           #:code-initial-offset
-           #:code-end
-           #:code-byte
-
-           #:label
-
-           #:decode-object-from-integer
-           #:slot-to-thread-slot-name
-           #:type-tag-to-name))
-
 (in-package :mezzano.disassemble)
 
 (defvar *print-gc-metadata* t)

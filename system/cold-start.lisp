@@ -243,6 +243,9 @@ structures to exist, and for memory to be allocated, but not much beyond that."
         *terminal-io* :cold-stream
         *standard-output* :cold-stream
         *standard-input* :cold-stream
+        *error-output* :cold-stream
+        *trace-output* :cold-stream
+        *query-io* :cold-stream
         *debug-io* :cold-stream
         * nil
         ** nil
