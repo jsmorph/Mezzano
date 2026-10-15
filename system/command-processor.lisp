@@ -35,6 +35,8 @@
 (defparameter *debugger-commands*
   '((:name "Abort" :id :abort :help "Invoke this stop's innermost ABORT restart.")
     (:name "Help" :id :help :help "List the supported debugger commands.")
+    (:name "Return" :id :return
+     :help "Return from the selected frame with the values of a prompted expression, after confirmation.")
     (:name "Proceed" :id :proceed :type :restart
      :help "Invoke the default CONTINUE restart or a zero-based restart index. :Arguments requests a Lisp expression returning the argument list."
      :keywords (("Arguments" :boolean "No" "Yes")))
@@ -458,6 +460,7 @@
 (defun debugger-plan (command argument keywords)
   (case (getf command :id)
     (:abort (list :operation "abort"))
+    (:return (list :operation "return"))
     (:proceed
      (cond ((cdr (assoc "Arguments" keywords :test #'equal))
             (list :operation "invoke-restart-with-arguments"

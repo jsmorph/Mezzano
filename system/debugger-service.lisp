@@ -462,7 +462,7 @@
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
           :function :compiled-code :instruction :lexical-environment
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
-          :standard-value-warnings)
+          :standard-value-warnings :return)
          (when argument (service-error :unexpected-argument)))
         (:proceed
          (when argument (service-error :unexpected-argument))
@@ -973,10 +973,29 @@ NIL with true availability denotes an absent global cell."
                                             "[unbound]"))))))))
       (unless found (write-line "No matching bindings." stream)))))
 
+(defun service-return (stop)
+  (let* ((index (service-stop-current-frame stop))
+         (reference (%make-service-frame (service-handle stop)
+                                         (service-stop-generation stop) index))
+         (frame (service-frame-for-access reference))
+         (reason (nth-value 2 (mezzano.internals::frame-return-context frame))))
+    (when reason (service-error reason))
+    (write-string "Return values (Lisp expression): " *query-io*)
+    (finish-output *query-io*)
+    (let ((values (service-evaluate-input stop #'read-service-expression)))
+      (format *query-io* "~&~D value~:P:~{ ~A~}~%"
+              (length values) (mapcar #'service-print values))
+      (if (y-or-n-p "Return from frame ~D ~A?"
+                    index (service-print (frame-function frame)))
+          (mezzano.internals::return-from-frame
+           (service-frame-for-access reference) values)
+          "Return cancelled."))))
+
 (defun execute-service-command (stop command)
   (ecase (service-command-operation command)
     (:condition (service-print (service-stop-condition stop) t))
     (:evaluate (service-evaluate stop (service-command-argument command)))
+    (:return (service-return stop))
     (:inspect (service-inspect stop (service-command-argument command)))
     (:modify (service-modify-inspection stop (service-command-argument command)))
     (:describe-object (service-describe-inspection stop (service-command-argument command)))

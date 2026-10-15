@@ -96,6 +96,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Show Frame | Displays the selected function and available locals.  Original argument values remain unavailable. |
 | :Show Local All | Displays all available local records for the selected frame.  All is the default. |
 | :Show Local index | Displays one local by its zero-based decimal index. |
+| :Return | Reads one expression supplying all return values, displays them, and asks for confirmation before returning from the selected frame. |
 | :Show Proceed Options | Displays retained restart choices and marks the default CONTINUE.  Selecting a choice invokes its interactive function in the guest to obtain any arguments. |
 
 Debugger operations run with application condition handlers disabled.  A handler established inside an evaluated expression still works.  Unhandled reader, evaluator, printer, and restart-function errors enter a child debugger.  Leaving the debugger restores the application's handlers for continuation and unwind cleanup.
