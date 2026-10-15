@@ -754,6 +754,70 @@
                                   (list binding value available)))
                   nil))))))
 
+(defun service-reinvoke-arguments (layout observations original)
+  (check-type layout (simple-vector 7))
+  (unless (eq (svref layout 0) :parameters)
+    (error "Invalid source parameter debug metadata."))
+  (let ((required (svref layout 1))
+        (optional (svref layout 2))
+        (rest (svref layout 3))
+        (keys (svref layout 4))
+        (enable-keys (svref layout 5)))
+    (labels ((value (binding)
+               (let ((observation (assoc binding observations :test #'eq)))
+                 (unless observation
+                   (error "Source parameter has no current observation: ~S." binding))
+                 (unless (third observation)
+                   (return-from service-reinvoke-arguments
+                     (values nil :unavailable-current-argument binding)))
+                 (second observation)))
+             (argument-count (arguments)
+               (let ((count (list-length arguments)))
+                 (unless count (error "Current arguments contain a circular list."))
+                 (unless (< count call-arguments-limit)
+                   (error "Reinvocation requires fewer than ~D arguments."
+                          call-arguments-limit))
+                 count)))
+      (let* ((prefix (append (mapcar #'value required)
+                             (loop for (binding supplied) in optional
+                                   collect (value binding))))
+             (source-tail
+               (cond (rest (value rest))
+                     (enable-keys
+                      (let ((count (argument-count original)))
+                        (unless (>= count (length required))
+                          (error "Saved arguments omit a required parameter."))
+                        (nthcdr (+ (length required) (length optional)) original)))))
+             (tail-count (argument-count source-tail))
+             (tail (copy-list source-tail))
+             (key-values nil)
+             (missing nil))
+        (when enable-keys
+          (when (oddp tail-count)
+            (error "Current keyword arguments have odd length."))
+          (loop for (name value) on tail by #'cddr
+                do (check-type name symbol))
+          (dolist (entry keys)
+            (destructuring-bind (name binding supplied) entry
+              (declare (ignore supplied))
+              (check-type name symbol)
+              (let* ((current (value binding))
+                     (previous (assoc name key-values :test #'eq)))
+                (if previous
+                    (unless (eql current (cdr previous))
+                      (error "Current parameters for keyword ~S disagree." name))
+                    (push (cons name current) key-values)))))
+          (dolist (entry (nreverse key-values))
+            (let ((cell (loop for pair on tail by #'cddr
+                              when (eq (first pair) (car entry))
+                                return (cdr pair))))
+              (if cell
+                  (setf (car cell) (cdr entry))
+                  (setf missing (list* (cdr entry) (car entry) missing))))))
+        (let ((arguments (nconc prefix (nreverse missing) tail)))
+          (argument-count arguments)
+          (values arguments nil nil))))))
+
 (defun service-frame-special-stack-head (frame)
   "Return the physical special-stack head and availability at FRAME."
   (declare (ignorable frame))
