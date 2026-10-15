@@ -67,7 +67,7 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [x] Add live frame evaluation and writes, per-level evaluation history, and frame-environment lifetime checks.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
 - [x] Add retained object inspection and mutation with explicit reference lifetimes.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
 - [x] Implement selected-frame Return with caller continuation, zero/one/multiple values, dynamic bindings, cleanup, command replay, snapshot restoration, and Chromium interaction on the documented x86-64 scope.
-- [ ] Implement Reinvoke with caller continuation, multiple values, cleanup, dynamic bindings, and redefinition behavior.  Reinvoke defaults to current arguments, with original arguments available through an explicit option.
+- [ ] Implement Reinvoke with caller continuation, multiple values, cleanup, dynamic bindings, and redefinition behavior.  Reinvoke defaults to current arguments, with original arguments available through an explicit option.  The internal transfer passed native tests.  Argument recovery and the retained command remain work.
 - [ ] Implement compiled breakpoints and stepping, with defined behavior under GC, redefinition, concurrent execution, and removal.
 - [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
 - [ ] Complete environment and source inspection, original/current argument display, source control transfers, THROW, call/exit traps, and monitoring.
@@ -437,6 +437,12 @@ Successful Return records `:UNWOUND`, closes the original stop, and expires its 
 A saved-image test restored Return while it awaited confirmation after one expression evaluation.  Fresh control recognized prior input and confirmed the original command, preserving heap/multiple values and one cleanup.  Accepted execution uses the retained activation's lifetime.  Old external handles and prior-boot command submission remain invalid.
 
 Genera prompts separately for the values its caller expects.  Mezzano lacks that caller metadata: one expression supplies all return values, and confirmation is unconditional.  `(values)` supplies zero values.  `(values 20 22)` supplies two.  Chromium tests cover batch Listener and jobless stops, cancellation and history, nested errors and Abort, seven values, confirmation reload and exact replay, and a cleanup's new root through Current Stop.  These results cover the isolated test deployment.  Stable publication remains pending.
+
+## Internal frame Reinvoke
+
+`MEZZANO.INTERNALS::REINVOKE-FRAME` takes a live eligible frame, a function object, and a finite argument list shorter than CALL-ARGUMENTS-LIMIT.  It validates the function, list, and Return boundary before unwinding.  It copies the argument-list spine, preserving argument identities, so replacement execution can reuse stack storage that held a dynamic-extent spine.  The replacement runs after cleanup with the original caller's dynamic bindings.  Its multiple values return through that caller's original continuation.
+
+Native x86-64 tests at DEBUG 3, SAFETY 3, SPEED 1 cover differing arities, closures, the 499-argument limit, stack-allocated argument-list storage, cleanup and replacement errors, boundary guards, continuation prompts, heap identity, and concurrent full GC.  The internal helper receives its function object explicitly.  Current/original argument recovery, current-definition lookup, the retained Reinvoke command and confirmation, browser interaction, and saved-image acceptance remain work.  ARM64 execution remains untested.
 
 ## Compiler guarantees
 
