@@ -5,6 +5,9 @@ import { openBrowser } from './browser-test-support.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:8765/';
 const output = resolve(process.argv[3] ?? 'browser-https-results');
+const protectedStops = (process.env.PROTECTED_STOPS ?? process.env.PROTECTED_STOP ?? '')
+  .split(',').filter(Boolean).map(Number).sort((a,b) => a-b);
+assert(protectedStops.every(id => Number.isSafeInteger(id) && id >= 0));
 function jsonInput(value) {
   return `(com.inuoe.jzon:parse ${JSON.stringify(JSON.stringify(value))})`;
 }
@@ -117,10 +120,25 @@ const cases = [
 await mkdir(output, { recursive: true });
 const browser = await openBrowser(url);
 const owned = [];
-let session;
+let session, protectedBefore;
+async function protectedRecords() {
+  if (!protectedStops.length) return [];
+  const records = await browser.evaluate(`(async () => {
+    const result = [];
+    for (const stop of await api('stops', {include_closed:true}) || []) {
+      const info = await api('information', {stop});
+      if (${JSON.stringify(protectedStops)}.includes(info.id)) result.push({id:info.id,
+        state:info.state, generation:info.generation, next:info['next-command-id']});
+    }
+    return result.sort((a,b) => a.id-b.id);
+  })()`);
+  assert.deepEqual(records.map(record => record.id), protectedStops);
+  return records;
+}
 try {
   await browser.waitFor("typeof connected !== 'undefined' && connected && !busy");
   session = await browser.evaluate('state.session');
+  protectedBefore = await protectedRecords();
   for (const test of cases) {
     await browser.waitFor("typeof connected !== 'undefined' && connected && !busy");
     const previous = await browser.evaluate('state.inputHistory.map(item => item.name)');
@@ -159,15 +177,17 @@ try {
       if (!job?.token) throw new Error('Owned HTTPS job token is missing: ' + name);
       await mutate('release-job', {job: job.token});
     }
-    await mutate('release-session', {});
   })()`);
+  const protectedAfter = await protectedRecords();
+  assert.deepEqual(protectedAfter, protectedBefore);
+  await browser.evaluate("mutate('release-session', {})");
   assert.equal(await browser.evaluate('connected'), false);
   for (const name of owned) assert.equal(await browser.evaluate(`Boolean(state.jobs[${JSON.stringify(name)}])`), false);
   assert.deepEqual(browser.errors, []);
-  await writeFile(join(output, 'cleanup.json'), JSON.stringify({session, releasedJobs: owned, sessionReleased: true}, null, 2));
+  await writeFile(join(output, 'cleanup.json'), JSON.stringify({session, releasedJobs: owned, sessionReleased: true, protectedBefore, protectedAfter}, null, 2));
   console.log('PASS owned HTTPS evaluations and session released');
 } catch (error) {
-  await writeFile(join(output, 'failure-fixtures.json'), JSON.stringify({session, jobs: owned,
+  await writeFile(join(output, 'failure-fixtures.json'), JSON.stringify({session, jobs: owned, protectedBefore,
     state: await browser.evaluate('state'), error: error.stack, browserErrors: browser.errors}, null, 2));
   await browser.screenshot(join(output, 'failure.png'));
   throw error;

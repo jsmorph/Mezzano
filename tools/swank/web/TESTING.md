@@ -71,7 +71,7 @@ A catch-display target nests two catches with the same tag and an outer catch wi
 
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
-The frame-evaluation and Inspector drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
+The frame-evaluation, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
 
 ## Object Inspector
 

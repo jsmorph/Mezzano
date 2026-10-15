@@ -160,7 +160,7 @@ try {
   await browser.waitFor("document.readyState === 'complete' && connected && !busy");
   evidence.session = await browser.evaluate('state.session');
   evidence.rejections = [];
-  originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, next: stop.info["next-command-id"]}))');
+  originalStops = await browser.evaluate('stops.map(stop => ({id: stop.info.id, state: stop.info.state, generation: stop.info.generation, next: stop.info["next-command-id"]}))');
   for (const id of protectedStops) assert(originalStops.some(stop => stop.id === id), 'Protected stop missing: ' + id);
   const setup = await start('(progn (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DESCRIBE.LISP")) :description-fixture-loaded)');
   assert.deepEqual((await completed(setup)).values, [':DESCRIPTION-FIXTURE-LOADED']);
@@ -977,7 +977,7 @@ try {
     const original = [];
     for (const token of remaining ?? []) {
       const detail = await browser.evaluate(`api('information', {stop: ${text(token)}})`);
-      if (originalStops.some(stop => stop.id === detail.id)) original.push({id: detail.id, state: detail.state, next: detail['next-command-id']});
+      if (originalStops.some(stop => stop.id === detail.id)) original.push({id: detail.id, state: detail.state, generation: detail.generation, next: detail['next-command-id']});
     }
     await browser.evaluate("api('release-session')");
     evidence.cleanup = 'Owned jobs/stops/session released';
