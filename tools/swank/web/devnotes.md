@@ -1,5 +1,18 @@
 # Web UI development journal
 
+## Normal-snapshot Web smoke test: 2026-10-14
+
+The development guest has restarted from a normal snapshot as QEMU 697273 on SWANK 4006.  The recommendation is one bounded Chromium session using the existing browser driver and owned-record cleanup: Listener 42, SPACE completion, one populated Document Examiner topic, populated Peek, and one condition stop with automatically loaded frames and restarts.  Typed :Abort must end that owned evaluation, and another Listener evaluation must return 42.  Release all owned jobs, the closed stop, and the session.  Preserve unrelated clients.  No full suite, catalog refresh, service change, or request to the separate cold-build guest is needed.
+
+The first external driver passed Listener 42, SPACE completion, and documentation, then tried to click the hidden window label when leaving Document Examiner.  Its helper came from the debugger-only driver.  The Examiner stylesheet hides that label.  Chromium rejected the click before Peek or condition-stop creation.  The owned job and session were released, and there were no failed HTTP responses or browser errors.  Evidence remains in `/tmp/web-normal-restore-smoke`.  Use the existing product checker's F9 SELECT navigation in the retry.  No product correction follows from this driver error.
+
+The corrected bounded run passed six groups in `/tmp/web-normal-restore-smoke-final/result.json`: Listener 42, SPACE Se-to-Set completion, the restored debugger guide, Peek with 31 processes, initial condition/23 frames/CONTINUE and ABORT restarts, and typed Abort followed by Listener 42.  The aborted job's output is the cleanup marker, 31 characters.  Reviewed all five captures.  Three owned jobs, stop 1271, and the session were released.  Unrelated retained records were preserved.  Browser errors and failed HTTP responses were empty, and browser traffic stopped after cleanup.
+
+The mode-0600 archive `/tmp/debugger-web-normal-restore-smoke-evidence.tar.gz` preserves both attempts, exact external drivers and browser support, logs, results, screenshots, and runtime metadata.  SHA-256: `5092144b30c93a79fdd0d56dbffb3d59d42e9e253cafbd3a2b2cd68c9f21cc60`.  No product or permanent test source changed.
+
+- [x] Run the bounded Web smoke test and inspect its captures.
+- [x] Release owned state, archive evidence, and report the guest ready.
+
 ## Restoration and installation documentation: 2026-10-14
 
 Reviewed the updated debugger restoration paragraph, parked-control fixture instructions, and installation guide's host serializer commands.  The recommendation is to reuse the existing Chromium catalog-reload and Show Documentation flow, restricted to these three additions.  Check their rendered text and both complete serializer commands, capture each view, and release the owned catalog job and session.  The existing browser25 and product99 results remain applicable to unchanged implementation behavior.  This documentation check requires no service restart, VM change, host Lisp invocation, or additional dependency.
