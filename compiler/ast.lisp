@@ -176,6 +176,24 @@
           (or (mezzano.extensions:cas (gethash key table) nil definition)
               definition)))))
 
+(defun debug-lexical-ancestry (environment)
+  (let ((owner (slot-value environment '%source-owner))
+        (seen nil)
+        (result nil))
+    (when (eq owner :unknown)
+      (return-from debug-lexical-ancestry :unknown))
+    (dolist (slot '(%variables %functions))
+      (loop for (nil binding) in (slot-value environment slot)
+            when (and (lexical-variable-p binding) (not (member binding seen)))
+              do (push binding seen)
+                 (let ((binding-owner (getf (lexical-variable-plist binding)
+                                           'source-owner :unknown)))
+                   (when (eq binding-owner :unknown)
+                     (return-from debug-lexical-ancestry :unknown))
+                   (unless (eq binding-owner owner)
+                     (push (debug-variable-identity binding) result)))))
+    (nreverse result)))
+
 (defun debug-source-scope (environment &optional target-architecture cache)
   (when (member environment '(nil :unknown))
     (return-from debug-source-scope environment))
@@ -190,6 +208,7 @@
              (remove-duplicates (slot-value environment slot)
                                 :test #'equal :key #'first :from-end t)))
       (list
+       :lexical-environment (debug-lexical-ancestry environment)
        :variables
        (loop for (name binding) in (bindings '%variables)
              collect
@@ -360,6 +379,9 @@
                                 :ignore (lexical-variable-ignore var)
                                 :dynamic-extent (lexical-variable-dynamic-extent var)
                                 :plist (append
+                                        (list 'source-owner
+                                              (getf (lexical-variable-plist var)
+                                                    'source-owner :unknown))
                                         (when (preserve-variable-for-debugger-p var)
                                           (list 'preserve-for-debugger t))
                                         (when (getf (lexical-variable-plist var) 'debug-name)

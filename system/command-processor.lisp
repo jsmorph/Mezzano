@@ -45,6 +45,8 @@
     (:name "Show Function" :id :show-function :help "Display the selected frame's function and assign it to *.")
     (:name "Show Compiled Code" :id :show-compiled-code :help "Disassemble the selected frame's executing function with hexadecimal byte offsets.")
     (:name "Show Instruction" :id :show-instruction :help "Display the instruction at the selected frame's saved caller location or interrupted program counter.")
+    (:name "Show Lexical Environment" :id :show-lexical-environment
+     :help "Display inherited lexical bindings of the selected source function. Missing ancestry or values are labelled unavailable.")
     (:name "Show Bindings" :id :show-bindings
      :help "Display special bindings established by the selected frame. :All selects all frames. :Matching filters symbol names by a case-sensitive substring."
      :keywords (("All" :boolean "No" "Yes") ("Matching" :string "" nil)))
@@ -454,6 +456,7 @@
     (:show-function (list :operation "function"))
     (:show-compiled-code (list :operation "compiled-code"))
     (:show-instruction (list :operation "instruction"))
+    (:show-lexical-environment (list :operation "lexical-environment"))
     (:show-bindings (list :operation "bindings"
                           :argument (list (cdr (assoc "All" keywords :test #'equal))
                                           (cdr (assoc "Matching" keywords :test #'equal)))))

@@ -82,10 +82,13 @@
       (make-instance 'lexical-variable
                      :name name
                      :environment env
-                     :plist (when (= (optimize-quality-1
+                     :plist (list 'source-owner
+                                  (getf (lambda-information-plist *current-lambda*)
+                                        'source-owner :unknown)
+                                  'preserve-for-debugger
+                                  (= (optimize-quality-1
                                       (optimize-qualities-in-environment env) 'debug)
-                                     3)
-                              (list 'preserve-for-debugger t))
+                                     3))
                      :definition-point *current-lambda*
                      :ignore (cond ((declared-as-p 'ignore name declares) t)
                                    ((declared-as-p 'ignorable name declares) :maybe))
@@ -114,9 +117,14 @@
                                   :enable-keys enable-keys
                                   :allow-other-keys allow-other-keys
                                   :environment optimize-env
-                                  :plist (list :declares declares)))
+                                  :plist (list :declares declares
+                                               'source-owner (gensym "SOURCE-FUNCTION-"))))
              (*current-lambda* info)
+             (env (or (map-environment-bindings #'identity env)
+                      (make-instance 'lexical-environment)))
              (aux-bindings '()))
+        (setf (slot-value env '%source-owner)
+              (getf (lambda-information-plist info) 'source-owner))
         ;; Add required, optional and rest arguments to the environment & lambda.
         (labels ((add-var (name)
                    (let ((var (make-variable name declares optimize-env)))
@@ -406,6 +414,9 @@
                                :name name
                                :environment env
                                :plist (list 'debug-name (list 'function name)
+                                            'source-owner
+                                            (getf (lambda-information-plist *current-lambda*)
+                                                  'source-owner :unknown)
                                             'preserve-for-debugger
                                             (= (optimize-quality-1
                                                 (optimize-qualities-in-environment env) 'debug)

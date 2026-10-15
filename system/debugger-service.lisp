@@ -424,7 +424,7 @@
         (service-error :stop-busy))
       (case operation
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
-          :function :compiled-code :instruction)
+          :function :compiled-code :instruction :lexical-environment)
          (when argument (service-error :unexpected-argument)))
         (:proceed
          (when argument (service-error :unexpected-argument))
@@ -502,6 +502,36 @@
                         :name (service-print (local-variable-name local))
                         :available-p available-p
                         :value (when available-p (service-print value))))))
+
+(defun service-show-lexical-environment (stop)
+  (let* ((frame (aref (service-stop-frames stop) (service-stop-current-frame stop)))
+         (raw (mezzano.internals::frame-raw-data frame)))
+    (multiple-value-bind (function offset) (mezzano.internals::function-from-frame raw)
+      (let* ((scope (mezzano.internals::source-scope-at-offset function offset))
+             (bindings (if (eq scope :unknown)
+                           :unknown
+                           (getf scope :lexical-environment :unknown))))
+        (cond ((eq bindings :unknown) "Lexical ancestry unavailable.")
+              ((null bindings) "This frame was not lexically called.")
+              (t
+               (let* ((locals (mezzano.internals::frame-locals raw))
+                      (observations
+                        (loop for binding in bindings
+                              for local = (find binding locals :key #'fifth)
+                              collect
+                              (multiple-value-bind (value available-p)
+                                  (when local
+                                    (mezzano.internals::read-frame-slot
+                                     raw (third local) (fourth local)))
+                                (list (mezzano.internals::debug-binding-name binding)
+                                      available-p value)))))
+                 (with-output-to-string (stream)
+                   (write-line "Lexically inherited variables:" stream)
+                   (dolist (observation observations)
+                     (destructuring-bind (name available-p value) observation
+                       (format stream "  ~A: ~A~%"
+                               (service-print name)
+                               (if available-p (service-print value) "[unavailable]"))))))))))))
 
 (defun service-frame-binding-cells (frame)
   (declare (ignorable frame))
@@ -787,6 +817,7 @@
     (:function (service-show-function stop))
     (:compiled-code (service-show-code stop nil))
     (:instruction (service-show-code stop t))
+    (:lexical-environment (service-show-lexical-environment stop))
     (:bindings (service-show-bindings stop (service-command-argument command)))
     (:catches (service-show-catches stop (service-command-argument command)))
     (:handlers (service-show-handlers stop (service-command-argument command)))

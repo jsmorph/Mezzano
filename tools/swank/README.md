@@ -487,6 +487,17 @@ The emitted-scope fixture resolves compiled source scopes from live call address
 
 It checks nested and disjoint same-name bindings, variable/function namespaces, symbol macros and local macros, scope exits, mutation, compiled-file loading, full GC, and both emitters.  Execution uses x86-64 with DEBUG 0/3 and COMPILATION-SPEED 1/3, SAFETY 3, and SPEED 1.  Value checks use DEBUG 3.  Prologue instructions retain unavailable scope information.  ARM64 execution remains untested.
 
+## Lexical ancestry tests
+
+Load the debugger-service, frame-evaluation, control-records, and catch-display fixtures first for their job and stop lifecycle helpers.  The lexical-environment fixture tests compiler ownership and the retained command:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-LEXICAL-ENVIRONMENT.LISP"))
+(lispm-lexical-environment-test:run)
+```
+
+It checks environment extension, copied binding identities, shadowed ancestors, variable/function namespaces, current captured-local exclusion, both emitters, native compiled-file scopes, inlining and lambda lifting, empty and legacy metadata, unavailable storage, parser/completion, rejected arguments, exact retained replay, history and selection, printer child Abort/repair, full GC, continuation, cleanup, and release.  Ownership executes on x86-64 with DEBUG 0/3 and COMPILATION-SPEED 1/3, SAFETY 3, and SPEED 1.  Retained-command value checks use DEBUG 3.  The fixture does not require unused outer capture.  ARM64 execution remains untested.
+
 ## Frame evaluation tests
 
 The frame-evaluation fixture tests the retained service against compiled stopped functions:

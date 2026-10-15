@@ -44,7 +44,8 @@
    (%go-tags :initform '())
    (%inline-decls :initform '())
    (%variable-type-decls :initform '())
-   (%optimize :initform '())))
+   (%optimize :initform '())
+   (%source-owner :initform :unknown)))
 
 (defun map-environment-bindings (function environment)
   (when (null environment)
@@ -58,6 +59,7 @@
     (setf (slot-value result '%variable-type-decls)
           (loop for (binding type) in (slot-value environment '%variable-type-decls)
                 collect (list (funcall function binding) type)))
+    (setf (slot-value result '%source-owner) (slot-value environment '%source-owner))
     (dolist (slot '(%inline-decls %optimize))
       (setf (slot-value result slot) (copy-list (slot-value environment slot))))
     result))
@@ -98,6 +100,7 @@
                                                            (not (special-variable-implicitly-declared previous)))
                                                       previous
                                                       (make-instance 'special-variable :name name)))))))))
+    (setf (slot-value sub '%source-owner) (slot-value environment '%source-owner))
     (setf (slot-value sub '%variables)
           (append new-variables (slot-value environment '%variables)))
     (setf (slot-value sub '%functions) (append functions
