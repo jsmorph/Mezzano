@@ -133,8 +133,13 @@
 (defun sys.int::%nonmaskable-interrupt-handler (interrupt-frame info)
   (unhandled-interrupt interrupt-frame info "nonmaskable"))
 
+(defun raise-debugger-breakpoint (argument)
+  (declare (ignore argument))
+  (break "Breakpoint instruction."))
+
 (defun sys.int::%breakpoint-handler (interrupt-frame info)
-  (unhandled-interrupt interrupt-frame info "breakpoint"))
+  (declare (ignore info))
+  (pager-invoke-via-interrupt #'raise-debugger-breakpoint interrupt-frame nil))
 
 (defun sys.int::%overflow-handler (interrupt-frame info)
   (unhandled-interrupt interrupt-frame info "overflow"))

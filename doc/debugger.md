@@ -50,7 +50,7 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 | Frame execution | Reinvoke; Return; Throw | Return passed native x86-64 and Chromium condition-stop tests.  Its one-expression value prompt differs from Genera.  Reinvoke passed native retained-command, prepared-confirmation restore, parked-frame restore, and Chromium interaction on the documented x86-64 scope.  Throw remains planned. |
 | Call and exit traps | Set Trap On Call; Clear Trap On Call; Proceed Trap On Call; Restart Trap On Call; Set Trap On Exit; Clear Trap On Exit | Planned. |
 | Conditions and monitoring | Enable Condition Tracing; Disable Condition Tracing; Monitor Variable; Unmonitor Variable; Show Monitored Locations | Planned. |
-| Breakpoints and stepping | Set Breakpoint; Clear Breakpoint; Clear All Breakpoints; Show Breakpoints; Single Step | Planned.  TRACE :BREAK demonstrates a separate function-entry stop. |
+| Breakpoints and stepping | Set Breakpoint; Clear Breakpoint; Clear All Breakpoints; Show Breakpoints; Single Step | Management and stepping remain planned.  Intentional x86-64 INT3 entry and continuation passed native tests.  TRACE :BREAK provides a separate function-entry stop. |
 | System integration | Edit Function; Mail Bug Report; Set Stack Size | Pending explicit Mezzano mappings. |
 
 The command reference must expand each entry with its supported arguments, omitted and mentioned defaults, selection rules, prompts, confirmation behavior, errors, and tests.  Genera keyboard accelerators need a documented browser mapping.  Editor, mail, instance-model, and stack-layout differences remain open scope decisions.  They remain in this inventory until implemented or explicitly excluded.
@@ -475,6 +475,14 @@ These rules make optional/key parameters supplied in the new call.  Their defaul
 Unavailable required/optional/rest/key values produce :UNAVAILABLE-CURRENT-ARGUMENT and their descriptor.  Improper/circular tails, odd keyword tails, nonsymbol key names, and a final count of 500 or more signal errors.  Multiple declarations of one key require EQL current values.  The first such value supplies that key.  The constructor preserves :ALLOW-OTHER-KEYS pairs and its declared-parameter role.  The callee performs its ordinary argument checks.
 
 Native x86-64 tests at DEBUG 3/SAFETY 3/SPEED 1 cover construction, live current bindings, defaults and supplied-p values, rest/key disagreements, source spine and heap identity, exact special/closure bindings, private Reinvoke transfers, GC, and nested prompts.  Values must satisfy the transfer lifetime requirements above.  Fresh retained commands on saved x86-64 activations passed as described above.  ARM64 execution remains untested.
+
+## Native breakpoint entry
+
+On x86-64, an intentional INT3 instruction enters ordinary Lisp BREAK through the existing pager exception callback.  The resident exception handler schedules the callback on the interrupted thread after saving its machine state.  CONTINUE returns through that saved state to the instruction after INT3.  An existing image keeps its loaded exception handler until the resident module is updated.  The retained debugger provides its existing frame inspection, expression evaluation, child Abort, and restart operations at the stop.
+
+Native tests use a fixed INT3 in an owned LAP function.  They verify the saved PC, caller lexical access, exact heap identity through moving GC, Continue and Abort, one cleanup, ordinary/nested prompt stacks, and two parked threads sharing the same trap function.  The resident module compiled at DEBUG 1/SAFETY 3/SPEED 1.  Test Lisp compiled at DEBUG 3/SAFETY 3/SPEED 1.  Traps in interrupt handlers or runtime critical sections, saved trap-stop restoration, a cold boot of this addition, and ARM64 execution remain untested.
+
+Breakpoint installation, original-instruction execution after replacement, concurrent modification/removal, conditions/actions, and instruction stepping remain unimplemented.
 
 ## Compiler guarantees
 
