@@ -47,7 +47,7 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 | Recovery choices | Show Proceed Options | Partial: lists captured restart names and reports, marking the default CONTINUE. |
 | Objects | Describe Last; Symeval In Last Instance | Describe Last and retained Inspector navigation and modification passed native x86-64, SWANK, and Chromium tests.  Symeval remains planned. |
 | Source and code | Analyze Frame; Show Source Code; Show Compiled Code; Show Instruction | Selected-frame compiled code and instruction display are implemented.  Their other arguments, Analyze Frame, and source display remain planned. |
-| Frame execution | Reinvoke; Return; Throw | Native Return is implemented.  Its browser acceptance remains pending.  Reinvoke and Throw remain planned. |
+| Frame execution | Reinvoke; Return; Throw | Return passed native x86-64 and Chromium condition-stop tests.  Its one-expression value prompt differs from Genera.  Reinvoke and Throw remain planned. |
 | Call and exit traps | Set Trap On Call; Clear Trap On Call; Proceed Trap On Call; Restart Trap On Call; Set Trap On Exit; Clear Trap On Exit | Planned. |
 | Conditions and monitoring | Enable Condition Tracing; Disable Condition Tracing; Monitor Variable; Unmonitor Variable; Show Monitored Locations | Planned. |
 | Breakpoints and stepping | Set Breakpoint; Clear Breakpoint; Clear All Breakpoints; Show Breakpoints; Single Step | Planned.  TRACE :BREAK demonstrates a separate function-entry stop. |
@@ -66,7 +66,8 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [x] Add guest-owned frame selection and navigation.
 - [x] Add live frame evaluation and writes, per-level evaluation history, and frame-environment lifetime checks.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
 - [x] Add retained object inspection and mutation with explicit reference lifetimes.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
-- [ ] Implement selected-frame Return and Reinvoke, preserving the caller's continuation, zero/one/multiple values, dynamic bindings, cleanup, and redefinition behavior.  Reinvoke defaults to current arguments, with original arguments available through an explicit option.
+- [x] Implement selected-frame Return with caller continuation, zero/one/multiple values, dynamic bindings, cleanup, command replay, snapshot restoration, and Chromium interaction on the documented x86-64 scope.
+- [ ] Implement Reinvoke with caller continuation, multiple values, cleanup, dynamic bindings, and redefinition behavior.  Reinvoke defaults to current arguments, with original arguments available through an explicit option.
 - [ ] Implement compiled breakpoints and stepping, with defined behavior under GC, redefinition, concurrent execution, and removal.
 - [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
 - [ ] Complete environment and source inspection, original/current argument display, source control transfers, THROW, call/exit traps, and monitoring.
@@ -435,7 +436,7 @@ Successful Return records `:UNWOUND`, closes the original stop, and expires its 
 
 A saved-image test restored Return while it awaited confirmation after one expression evaluation.  Fresh control recognized prior input and confirmed the original command, preserving heap/multiple values and one cleanup.  Accepted execution uses the retained activation's lifetime.  Old external handles and prior-boot command submission remain invalid.
 
-Genera prompts separately for the values its caller expects.  Mezzano lacks that caller metadata: one expression supplies all return values, and confirmation is unconditional.  `(values)` supplies zero values.  `(values 20 22)` supplies two.  Browser acceptance of this command remains pending.
+Genera prompts separately for the values its caller expects.  Mezzano lacks that caller metadata: one expression supplies all return values, and confirmation is unconditional.  `(values)` supplies zero values.  `(values 20 22)` supplies two.  Chromium tests cover batch Listener and jobless stops, cancellation and history, nested errors and Abort, seven values, confirmation reload and exact replay, and a cleanup's new root through Current Stop.  These results cover the isolated test deployment.  Stable publication remains pending.
 
 ## Compiler guarantees
 
@@ -461,7 +462,7 @@ The x86-64 frame walker uses existing GC metadata to traverse framed calls, fram
 
 An activation without an established frame reports stack-slot values unavailable and rejects stack-slot writes.  Saved-register local inspection and traversal through frameless interrupt-return phases remain unsupported.  The frame walker has no ARM64 execution test.  Restoring an interrupted frameless activation remains untested.
 
-The retained service lists applicable restarts, supports zero-argument calls, invokes their interactive argument readers, and reads explicit argument expressions.  The Web restart controls offer interactive invocation or :Arguments input.  Each debugger command supplies QUERY-IO through its own retained input and output streams.  The :Arguments operation supports required parameters even when a restart has no interactive function.  It reads with `*READ-EVAL*` NIL and evaluates in the stopped thread's current dynamic environment and a null lexical environment.  It does not expose selected-frame lexical bindings.  Reader, evaluation, argument-list, and invocation errors enter a child debugger.  Aborting that command restores the enclosing stop.  Accepted-command and input replay preserve the original execution.  A nonlocal restart exit follows Common Lisp unwinding rules.  It does not provide arbitrary frame return, frame reinvocation, or a selected-frame THROW operation.
+The retained service lists applicable restarts, supports zero-argument calls, invokes their interactive argument readers, and reads explicit argument expressions.  The Web restart controls offer interactive invocation or :Arguments input.  Each debugger command supplies QUERY-IO through its own retained input and output streams.  The :Arguments operation supports required parameters even when a restart has no interactive function.  It reads with `*READ-EVAL*` NIL and evaluates in the stopped thread's current dynamic environment and a null lexical environment.  It does not expose selected-frame lexical bindings.  Reader, evaluation, argument-list, and invocation errors enter a child debugger.  Aborting that command restores the enclosing stop.  Accepted-command and input replay preserve the original execution.  A nonlocal restart exit follows Common Lisp unwinding rules.  Selected-frame Return uses the separate operation described above.  Reinvoke and selected-frame THROW remain planned.
 
 The API does not provide breakpoint management, call/exit traps, instruction or source stepping, location monitoring, or raw-stack modification.  Function-level source information and the separate Lisp disassembler do not provide source display tied to the executing function version through this API.
 
