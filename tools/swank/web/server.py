@@ -129,7 +129,11 @@ def json_value(value):
 class Swank:
     def __init__(self, host, port, deadline):
         self.deadline = deadline
-        self.socket = socket.create_connection((host, port), self.remaining())
+        timeout = self.remaining()
+        try:
+            self.socket = socket.create_connection((host, port), timeout)
+        except TimeoutError as error:
+            raise TimeoutError("SWANK TCP connection timed out.") from error
         self.next_id = 0
         self.output = []
 
@@ -146,14 +150,21 @@ class Swank:
         payload = lisp(value).encode("utf-8")
         if len(payload) >= 0x1000000:
             raise ValueError("SWANK request exceeds the length field.")
+        packet = f"{len(payload):06x}".encode("ascii") + payload
         self.socket.settimeout(self.remaining())
-        self.socket.sendall(f"{len(payload):06x}".encode("ascii") + payload)
+        try:
+            self.socket.sendall(packet)
+        except TimeoutError as error:
+            raise TimeoutError(f"SWANK packet send timed out ({len(packet)} bytes requested).") from error
 
     def read(self, count):
         parts = bytearray()
         while len(parts) < count:
             self.socket.settimeout(self.remaining())
-            part = self.socket.recv(count - len(parts))
+            try:
+                part = self.socket.recv(count - len(parts))
+            except TimeoutError as error:
+                raise TimeoutError(f"SWANK receive timed out after {len(parts)} of {count} bytes.") from error
             if not part:
                 raise ConnectionError(f"SWANK closed after {len(parts)} of {count} bytes.")
             parts.extend(part)
@@ -508,19 +519,25 @@ class Application:
         name, operation, values = prepared
         deadline = time.monotonic() + self.timeout
         with self.session_lock(name, deadline) as entry:
+            phase = "connection setup"
             try:
                 if entry.connection is None:
                     entry.connection = Swank(self.host, self.port, deadline)
+                    phase = "initial SWANK-REQUIRE"
                     entry.connection.rpc([Symbol("swank:swank-require"),
                                           Symbol(":swank-mezzano-debugger")])
                 else:
                     entry.connection.deadline = deadline
                     entry.connection.output.clear()
                 connection = entry.connection
+                phase = f"retained operation {operation}"
                 result = connection.transient_request(name, operation, *values)
                 return {"value": json_value(result), "diagnostics": list(connection.output)}
             except ServiceError:
                 raise
+            except TimeoutError as error:
+                entry.close()
+                raise TimeoutError(f"SWANK {phase}: {error}") from error
             except BaseException:
                 entry.close()
                 raise

@@ -45,6 +45,69 @@ class ProtocolTests(unittest.TestCase):
             connection.close()
             thread.join()
 
+    def test_stalled_packet_reports_received_bytes(self):
+        for packet, received, expected in ((b"", 0, 6), (b"000", 3, 6),
+                                            (b"00000aab", 2, 10)):
+            with self.subTest(packet=packet):
+                reader, writer = socket.socketpair()
+                connection = object.__new__(server.Swank)
+                connection.socket = reader
+                deadline = time.monotonic() + .05
+                connection.deadline = deadline
+                try:
+                    writer.sendall(packet)
+                    with self.assertRaises(TimeoutError) as raised:
+                        connection.receive()
+                    self.assertEqual(str(raised.exception),
+                        f"SWANK receive timed out after {received} of {expected} bytes.")
+                    self.assertIsInstance(raised.exception.__cause__, TimeoutError)
+                    self.assertEqual(connection.deadline, deadline)
+                finally:
+                    writer.close()
+                    connection.close()
+
+    def test_connect_and_send_timeout_context(self):
+        original = TimeoutError("test socket timeout")
+        deadline = time.monotonic() + 3
+        with mock.patch.object(server.socket, "create_connection", side_effect=original) as connect:
+            with self.assertRaises(TimeoutError) as raised:
+                server.Swank("127.0.0.1", 4006, deadline)
+            self.assertEqual(str(raised.exception), "SWANK TCP connection timed out.")
+            self.assertIs(raised.exception.__cause__, original)
+            connect.assert_called_once()
+        connection = object.__new__(server.Swank)
+        connection.deadline = deadline
+        connection.socket = mock.Mock()
+        connection.socket.sendall.side_effect = original
+        value = [server.Symbol("cl:identity"), "private source"]
+        packet_size = 6 + len(server.lisp(value).encode("utf-8"))
+        with self.assertRaises(TimeoutError) as raised:
+            connection.send(value)
+        self.assertEqual(str(raised.exception),
+            f"SWANK packet send timed out ({packet_size} bytes requested).")
+        self.assertIs(raised.exception.__cause__, original)
+        connection.socket.sendall.assert_called_once()
+        self.assertEqual(connection.deadline, deadline)
+
+    def test_expired_deadline_precedes_socket_operation(self):
+        for operation in ("connect", "send", "read"):
+            with self.subTest(operation=operation):
+                connection = object.__new__(server.Swank)
+                connection.deadline = time.monotonic() - 1
+                connection.socket = mock.Mock()
+                with mock.patch.object(server.socket, "create_connection") as connect:
+                    with self.assertRaises(TimeoutError) as raised:
+                        if operation == "connect":
+                            server.Swank("127.0.0.1", 4006, connection.deadline)
+                        elif operation == "send":
+                            connection.send(None)
+                        else:
+                            connection.read(6)
+                    self.assertEqual(str(raised.exception), "SWANK request deadline expired.")
+                    self.assertIsNone(raised.exception.__cause__)
+                    connect.assert_not_called()
+                    self.assertEqual(connection.socket.mock_calls, [])
+
     def test_typed_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]
@@ -367,6 +430,35 @@ class ConnectionTests(unittest.TestCase):
         replacement.transient_request.assert_called_once_with(self.name, "resume-session")
         self.assertEqual(self.factory_mock.call_count, 2)
 
+    def test_timeout_phase_and_cleanup(self):
+        for phase in ("connection setup", "initial SWANK-REQUIRE", "retained operation open-session"):
+            with self.subTest(phase=phase):
+                app = server.Application("127.0.0.1", 4006, 15)
+                connection = mock.Mock(output=[])
+                original = TimeoutError("transport timeout")
+                connection.rpc.side_effect = original if phase == "initial SWANK-REQUIRE" else None
+                connection.transient_request.side_effect = original
+                with mock.patch.object(server, "Swank", return_value=connection) as factory:
+                    if phase == "connection setup":
+                        factory.side_effect = original
+                    with self.assertRaises(TimeoutError) as raised:
+                        app.dispatch((self.name, "open-session", []))
+                self.assertEqual(str(raised.exception), f"SWANK {phase}: transport timeout")
+                self.assertIs(raised.exception.__cause__, original)
+                factory.assert_called_once()
+                self.assertEqual(app.sessions, {})
+                if phase == "connection setup":
+                    connection.close.assert_not_called()
+                    connection.rpc.assert_not_called()
+                else:
+                    connection.close.assert_called_once()
+                    connection.rpc.assert_called_once()
+                if phase == "retained operation open-session":
+                    connection.transient_request.assert_called_once_with(self.name, "open-session")
+                else:
+                    connection.transient_request.assert_not_called()
+                app.close()
+
     def test_idle_and_active_connections(self):
         self.dispatch()
         entry = self.app.sessions[self.name]
@@ -596,6 +688,20 @@ class HTTPTests(unittest.TestCase):
             return reply.status, json.loads(reply.read())
         finally:
             conn.close()
+
+    def test_timeout_and_service_error_responses(self):
+        headers = {"Content-Type": "application/json", "X-Mezzano-Request": "1"}
+        data = {"session": "a" * 64, "operation": "open-session"}
+        message = "SWANK initial SWANK-REQUIRE: SWANK receive timed out after 3 of 6 bytes."
+        for error, expected_status, expected_error, uncertain in (
+                (TimeoutError(message), 502, message, True),
+                (server.ServiceError(":expired-session"), 409, ":expired-session", False)):
+            with self.subTest(status=expected_status):
+                with mock.patch.object(self.http.application, "dispatch", side_effect=error) as dispatch:
+                    status, reply = self.post(headers, data)
+                    self.assertEqual(status, expected_status)
+                    self.assertEqual(reply, {"error": expected_error, "uncertain": uncertain})
+                    dispatch.assert_called_once()
 
     def test_content_length_boundaries(self):
         with mock.patch.object(self.http.application, "dispatch") as dispatch:
