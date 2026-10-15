@@ -71,7 +71,7 @@ A catch-display target nests two catches with the same tag and an outer catch wi
 
 The driver releases its jobs, stops, session, named functions, and special symbols.  It creates fresh stopped frames in the running guest.  Saved-frame restoration and other compiler policies require separate native tests.
 
-The frame-evaluation, evaluation-environment, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
+The frame-evaluation, evaluation-environment, standard-value-warning, Inspector, and HTTPS drivers accept PROTECTED_STOPS as a comma-separated list of existing stop IDs.  They require each stop to exist at startup and retain its state, generation, and next command counter through cleanup.  PROTECTED_STOP remains available for one ID.  PROTECTED_STOPS takes precedence when both are set.  The drivers select and release only stops associated with their own recorded jobs.
 
 The evaluation-environment driver compiles one owned DEBUG 3 function whose lexical argument shadows a separately established global value.  It tests typed commands and SPACE completion, distinct lexical/global reads and writes, Control-X I in both debugger editors, draft/cursor retention, arrows and editing prompts, history/selection/reload, child inheritance and independent mode changes, typed Abort, and exact-ID replay after a discarded accepted toggle reply.  Proceed must observe both writes, cleanup must remove the fixture definitions and symbols, and the next Listener must return 42.
 
@@ -86,6 +86,17 @@ The separate intercepted-response fixture makes no guest requests.  It holds a c
 node tools/swank/web/test-evaluation-environment-fixtures.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-environment-fixtures
 ```
+
+## Standard-value warnings
+
+The standard-value-warning driver compiles one owned DEBUG 3 target.  Ordinary PROGV binds `*PACKAGE*` to NIL and leaves `*READ-BASE*`, `*PRINT-BASE*`, and `*READ-DEFAULT-FLOAT-FORMAT*` unbound.  The debugger must supply valid controls and report the original bound NIL separately from unbound cells.  Typed SPACE completion and the menu must produce the same retained warning text without changing frame selection or the nine evaluation histories.  A debugger edit assigns an owned lexical probe to `*PACKAGE*`.  The next command must correct that value and record another warning.  Reload and replay after a discarded accepted reply must retain the text without another printer invocation.  Arming the probe must enter a child during warning printing.  Typed `:Abort`, repair, a fresh display, Proceed, and subsequent Listener 42 must succeed.  The target checks that continuation sees its original program bindings and one cleanup.
+
+```sh
+node tools/swank/web/test-standard-value-warnings.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-standard-value-warnings
+```
+
+The driver removes its class, printer method, named target, and symbols, then releases its jobs, stops, and session.  It creates a fresh condition stop.  Migration of an existing stop, other valid nondefault controls, and saved-stop restoration require the native fixtures.
 
 ## Object Inspector
 
