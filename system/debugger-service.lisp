@@ -482,6 +482,8 @@
       (unless command (service-error :unknown-command))
       (list :state (service-command-state command)
             :operation (service-command-operation command)
+            :source (when (eq (service-command-operation command) :evaluate)
+                      (copy-seq (service-command-argument command)))
             :current-boot-p (eq (service-command-boot command)
                                (mezzano.supervisor:current-boot-id))
             :result (copy-service-result (service-command-result command))))))
