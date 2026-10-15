@@ -57,17 +57,19 @@ The command reference must expand each entry with its supported arguments, omitt
 
 ### Delivery plan and acceptance
 
-Implementation proceeds in bounded increments, with compilation and tests in Mezzano, headless Chromium interaction, documentation updates, review, commits, and pushes.  The sequence below orders dependencies and preserves the full remaining scope.
+Implementation proceeds in bounded increments, with compilation and tests in Mezzano, headless Chromium interaction, documentation updates, review, commits, and pushes.  The sequence below orders dependencies and preserves the full remaining scope.  After acceptance of the current increment, frame Return and Reinvoke have first priority.  Compiled breakpoints and stepping follow, then the remaining binding and inspection work.
 
 - [x] Establish per-command abort boundaries.  Add typed Abort and Help, exact Listener ownership/nesting, completion, prompt restoration, and equivalent button actions.
 - [x] Implement interactive restart invocation, default Proceed selection, restart reports, and normal-return versus nonlocal-exit results.
 - [x] Add explicit Lisp argument expressions for restart invocation.
 - [x] Complete interruption of debugger operations and correct frame capture for interrupted frameless functions.  Validate caller locals, moving GC, nested interruption, and input recovery in the browser before extending frame evaluation.  Register-local inspection remains separate work.
 - [x] Add guest-owned frame selection and navigation.
-- [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
 - [x] Add live frame evaluation and writes, per-level evaluation history, and frame-environment lifetime checks.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
 - [x] Add retained object inspection and mutation with explicit reference lifetimes.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
-- [ ] Complete environment and source inspection, original/current argument handling, selected-frame control transfers, compiled breakpoints, stepping, call/exit traps, and monitoring.
+- [ ] Implement selected-frame Return and Reinvoke, preserving the caller's continuation, zero/one/multiple values, dynamic bindings, cleanup, and redefinition behavior.  Reinvoke defaults to current arguments, with original arguments available through an explicit option.
+- [ ] Implement compiled breakpoints and stepping, with defined behavior under GC, redefinition, concurrent execution, and removal.
+- [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
+- [ ] Complete environment and source inspection, original/current argument display, source control transfers, THROW, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
 - [ ] Complete the command inventory, product guide, compatibility reference, Document Examiner topics, and architecture-specific acceptance results.
 
