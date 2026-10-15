@@ -306,3 +306,17 @@ Function debug-info field 13, at zero-based list index 12, records source parame
 Lexical parameters use existing #(:BINDING name) descriptors.  A special parameter uses #(:SPECIAL symbol cell-binding), whose cell-binding identifies its hidden exact-cell variable.  A missing declared supplied-p variable is NIL.  The emitted record contains descriptors and symbols, with no source AST objects or initializers.  Lower debug policies, older functions, and generated cleanup functions have no record.
 
 The internal service reader returns the layout, (descriptor value available) observations, and a record-level unavailability reason.  It validates the live owning x86-64 frame first and reads through existing locations.  Before binding, missing storage reports an unavailable value.  An unbound special cell also reports an unavailable value.  A bound NIL remains available.  Malformed metadata and accessible-storage errors propagate.  Reading these bindings does not reconstruct a new invocation's argument list.
+
+## Callable provenance metadata
+
+Function debug-info field 14, at zero-based list index 13, records callable provenance at DEBUG 3:
+
+| Record | Meaning |
+| --- | --- |
+| #(:GLOBAL-FUNCTION name) | The source defines the named global function. |
+| :EXACT-CALLABLE | The executing callable supplies the invocation identity. |
+| NIL | Provenance is unavailable, including older functions and lower debug policies. |
+
+A display name alone does not establish a global definition.  TRACE's entry closure, for example, uses the display name TRACE-WRAPPER while differing from that global function.  Its record is :EXACT-CALLABLE.
+
+The internal REINVOKE-CALLABLE reader returns the function object, provenance record, and unavailability reason.  A global record resolves the current function reference without creating a missing reference.  It preserves a current trace wrapper and rejects absent or macro definitions with UNDEFINED-FUNCTION before transfer.  An exact record preserves the supplied closure's identity.  Missing metadata returns NIL/NIL/:UNAVAILABLE-CALLABLE-PROVENANCE.  Malformed records signal errors.  The reader does not unwind or invoke the result.

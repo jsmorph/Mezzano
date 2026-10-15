@@ -510,7 +510,7 @@
         (parse-declares body :permit-docstring t)
       (let ((the-lambda `(lambda ,lambda-list
                            (declare ,@declares
-                                    (lambda-name ,name))
+                                    (lambda-name ,name :global t))
                            ,docstring
                            (block ,base-name ,@body-forms))))
         `(progn

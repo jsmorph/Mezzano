@@ -284,7 +284,11 @@
              nil ; precise debug info
              nil ; instruction source scopes
              (backend-function-entry-info backend-function)
-             (mezzano.compiler::parameter-debug-info ast-lambda)))
+             (mezzano.compiler::parameter-debug-info ast-lambda)
+             (when (= (mezzano.compiler::optimize-quality ast-lambda 'debug) 3)
+               (or (getf (lambda-information-plist ast-lambda)
+                         'mezzano.compiler::global-function)
+                   :exact-callable))))
      nil
      target)))
 

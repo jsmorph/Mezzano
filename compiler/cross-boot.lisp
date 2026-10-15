@@ -58,7 +58,7 @@
 
 (def-x-macro defun (name lambda-list &body body)
   (let ((the-lambda `(lambda ,lambda-list
-                       (declare (sys.int::lambda-name ,name))
+                       (declare (sys.int::lambda-name ,name :global t))
                        ,@body)))
     `(progn
        (eval-when (:compile-toplevel :load-toplevel :execute)

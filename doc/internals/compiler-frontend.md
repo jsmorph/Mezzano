@@ -54,3 +54,9 @@ At function DEBUG 3, LAMBDA-INFORMATION retains the source required, optional, r
 COPY-FORM initializes the copied lambda's layout from the source layout.  COPY-VARIABLE replaces each matching binding by identity in the copied layout when it creates that binding.  This includes parameters lowered into LET nodes, whose replacement-list scope ends before control returns to the lambda copier.  Copies retain hidden-variable flags and receive fresh debug binding descriptors.
 
 For each special parameter, LOWER-SPECIAL-BINDINGS preserves the special-stack cell immediately after its existing %%BIND, through one hidden lexical variable.  The descriptor therefore identifies the parameter's cell despite later rebinding of the same symbol.  Before parameter binding, that location is unavailable.  The additional value uses existing debug liveness and GC roots.  [The backend metadata reference](compiler-backend.md#source-parameter-metadata) describes its emitted representation.
+
+## Global definition provenance
+
+The internal declaration (LAMBDA-NAME name :GLOBAL T) identifies a global definition separately from its display name.  Native and cross DEFUN expansions emit it.  Named COMPILE adds it when compiling nonmacro lambda source.  Installing an already compiled function under another name preserves that function's source provenance.
+
+PASS1 retains the immutable #(:GLOBAL-FUNCTION name) record in the lambda plist.  Existing AST copying preserves it.  The [backend metadata reference](compiler-backend.md#callable-provenance-metadata) defines emission and current-definition resolution.  Local and anonymous functions receive the explicit exact-callable marker when compiled at DEBUG 3.

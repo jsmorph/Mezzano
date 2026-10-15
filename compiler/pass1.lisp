@@ -118,6 +118,11 @@
                                   :allow-other-keys allow-other-keys
                                   :environment optimize-env
                                   :plist (list :declares declares
+                                               'global-function
+                                               (loop for declaration in declares
+                                                     when (and (eq (first declaration) 'sys.int::lambda-name)
+                                                               (getf (cddr declaration) :global))
+                                                       return (vector :global-function (second declaration)))
                                                'source-owner (gensym "SOURCE-FUNCTION-"))))
              (*current-lambda* info)
              (env (or (map-environment-bindings #'identity env)

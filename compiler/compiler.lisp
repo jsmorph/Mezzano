@@ -159,6 +159,13 @@ Currently disabled by default as it has a severe performance impact.")
              (when env
                (error "TODO: cannot compile functions defined outside the null lexical environment."))
              (setf definition lambda-expression)))
+         (when (and name (not (and (symbolp name) (macro-function name)))
+                    (consp definition) (eq (first definition) 'lambda)
+                    (consp (rest definition)))
+           (setf definition
+                 `(lambda ,(second definition)
+                    (declare (sys.int::lambda-name ,name :global t))
+                    ,@(cddr definition))))
          (setf definition
                (let ((*load-time-value-hook* 'eval-load-time-value)
                      (*gensym-counter* 0))

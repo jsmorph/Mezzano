@@ -269,6 +269,26 @@ Returns NIL if the function captures no variables."
                 (error "Invalid saved entry argument list.")))
             (values (copy-list arguments) callable nil)))))))
 
+(defun reinvoke-callable (function)
+  (check-type function function)
+  (let ((record (nth 13 (function-debug-info function))))
+    (unless record
+      (return-from reinvoke-callable
+        (values nil nil :unavailable-callable-provenance)))
+    (when (eq record :exact-callable)
+      (return-from reinvoke-callable (values function record nil)))
+    (check-type record (simple-vector 2))
+    (unless (and (eq (svref record 0) :global-function)
+                 (valid-function-name-p (svref record 1)))
+      (error "Invalid global function debug metadata."))
+    (let* ((name (svref record 1))
+           (reference (function-reference name nil))
+           (current (when reference (function-reference-function reference))))
+      (when (or (null current) (and (symbolp name) (macro-function name)))
+        (error 'undefined-function :name name))
+      (check-type current function)
+      (values current record nil))))
+
 (defun function-from-frame (frame)
   (let ((return-address (- (frame-code-address frame)
                            (if (sixth frame) 0 1))))
