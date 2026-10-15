@@ -414,7 +414,7 @@ def operation_arguments(operation, args, session):
         command = string(args["command"])
         if command not in ("condition", "restarts", "frames", "locals", "current-frame", "select-frame",
                            "next-frame", "previous-frame", "top-frame", "bottom-frame", "proceed", "invoke-restart",
-                           "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "help",
+                           "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "return", "help",
                            "inspect", "modify", "describe-object", "clear-inspection", "arglist", "bindings", "handlers", "catches",
                            "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                            "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"):

@@ -132,7 +132,7 @@ class ProtocolTests(unittest.TestCase):
     def test_typed_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]
-        for command in ("current-frame", "top-frame", "bottom-frame", "arglist",
+        for command in ("current-frame", "top-frame", "bottom-frame", "arglist", "return",
                         "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings",
                         "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"):
             with self.subTest(command=command):

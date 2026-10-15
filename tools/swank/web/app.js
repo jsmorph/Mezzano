@@ -1323,6 +1323,9 @@ function renderStops() {
   if (info.parent) detailChildren.push(control(prefix + "parent:" + JSON.stringify(info.parent), "Parent Stop", debuggerAction(() => selectStop(info.parent))));
   if (info.child) detailChildren.push(control(prefix + "child:" + JSON.stringify(info.child), "Child Stop", debuggerAction(() => selectStop(info.child))));
   if (info.state === ":closed") {
+    if (info["thread-stop"]) detailChildren.push(control(prefix + "thread-stop:" + JSON.stringify(info["thread-stop"]),
+      "Current Stop", debuggerAction(() => selectStop(info["thread-stop"])),
+      "Mouse-Left: Select this thread's current debugger stop."));
     menuChildren.push(control(prefix + "release", "Release Stop", debuggerAction(async () => {
       await mutate("release-stop", {stop: selectedStop});
       await refresh();
@@ -1331,7 +1334,7 @@ function renderStops() {
     const inspect = control(prefix + "condition", "Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
     inspect.disabled = !available;
     menuChildren.push(inspect);
-    for (const name of [":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
+    for (const name of [":Return", ":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
                         ":Show Function", ":Show Compiled Code", ":Show Instruction", ":Show Lexical Environment", ":Show Standard Value Warnings",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
                         ":Inspect", ":Describe Last", ":Clear Inspector",
@@ -1437,10 +1440,10 @@ function renderStops() {
       output = node("div", undefined, "debugger-description");
       output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
-    } else if (["arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
+    } else if (["return", "arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                 "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
       output = node("div", undefined, "debugger-" + command.command);
-      const name = {arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
+      const name = {return: ":Return", arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
         instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
         "standard-value-warnings": ":Show Standard Value Warnings", special: ":Show Special",

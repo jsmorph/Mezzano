@@ -334,3 +334,19 @@ node tools/swank/web/test-command-io.mjs \
 ```
 
 Isolated x86-64 browser acceptance passed the jobless driver, Listener/restart driver, batch Inspector driver, and frame-evaluation driver.  Their readers use the command's input/output identity.  Program input remains on the evaluation job.  Coverage includes nested readers and Abort, reload, uncertain submit/input replies, exact replay, returning restart values, and interruption inside an interrupted command.  Native tests separately passed a partially consumed command reader across image restoration.  The intercepted browser fixture tests fresh-handle input for a prior-boot running record.  A browser command reader across an image restart remains untested.
+
+## Frame Return
+
+The intercepted Return fixture tests retained cancellation text, the existing command menu/parser path, reload without resubmission, and closed-only Current Stop navigation.  Two active fixture records share a thread display name.  Only the guest-supplied token receives selection and initial inspections.
+
+```sh
+node tools/swank/web/test-return-fixtures.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-return-fixtures
+```
+
+The native-backed driver creates its own DEBUG 3, SAFETY 3, SPEED 1 target and caller.  Its batch case covers SPACE completion, lexical/dynamic cancellation, history, reader/evaluator child Abort, seven returned values, draft/confirmation reload, and exact command/input replay.  A jobless invocation raises a cleanup condition after Return, follows Current Stop to that new root, continues cleanup, and checks the caller's values.  The driver releases its recorded state and tests Listener reuse.  The six-group driver passed on the isolated x86-64 guest and released its seven jobs, five stops, and session.  The host fixture separately tests duplicate thread labels.  Browser Return across an image restart remains untested.
+
+```sh
+node tools/swank/web/test-return.mjs \
+  http://127.0.0.1:8766/ /tmp/mezzano-frame-return
+```
