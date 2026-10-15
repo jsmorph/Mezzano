@@ -17,6 +17,8 @@ Run guest tests sequentially on a dedicated test VM.  Tests define guest functio
 
 Load ordinary debugger, evaluator, Command Processor, SWANK, and test files with LOAD's default allocation policy.  The image builder uses the same policy for these modules.  Explicit wired loading is reserved for supervisor/runtime code with the residency requirements below.  Forcing ordinary test code and constants into the wired area can exhaust its available blocks despite repeated full collection.
 
+Live publication must load the matching SWANK contrib after a core service change.  An older checkpoint can retain an encoder that predates a new core result field even when the checkout contains the corrected source.  Compile/load `SYS:HOME;SLIME;CONTRIB;SWANK-MEZZANO-DEBUGGER.LISP` and `SWANK-MEZZANO-TRANSIENT-TEST.LISP` with ordinary LOAD, reject warnings/failure, and call `(swank-mezzano-transient-test:run)` before browser acceptance.  That suite checks direct and monitor encoding of a closed stop's current-thread link.
+
 The instruction-position and saved-register tests target x86-64.  Compiler tests select the policies they exercise.  The default running compiler policy is `(safety 3 debug 3 speed 1)` and the image bootstrap policy is `(safety 3 debug 1 speed 1)`.  These tests do not establish ARM64, bare-metal, supervisor-trap, or arbitrary-suspension support.
 
 ## Kernel compilation
