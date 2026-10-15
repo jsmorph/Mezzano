@@ -237,6 +237,34 @@ class ProtocolTests(unittest.TestCase):
                     server.operation_arguments("submit",
                         {"stop": stop, "id": 2, "command": command, "argument": argument}, session)
 
+    def test_reinvoke_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        def submit(argument):
+            return server.operation_arguments("submit",
+                {"stop": stop, "id": 2, "command": "reinvoke", "argument": argument}, session)
+        for original in (None, False, True):
+            for new in (None, False, True):
+                with self.subTest(original=original, new=new):
+                    argument = [original, new]
+                    if original and new:
+                        with self.assertRaises(ValueError):
+                            submit(argument)
+                    else:
+                        result = submit(argument)
+                        self.assertEqual(result, [stop, 2, server.Symbol(":reinvoke"),
+                                                  [bool(original), bool(new)]])
+                        self.assertEqual(server.lisp(result[3]), server.lisp(argument))
+                        self.assertIsNot(result[3], argument)
+                    self.assertEqual(argument, [original, new])
+        for argument in (None, True, 0, "", {}, [], [False], [False, False, False],
+                         [0, False], [False, 1], ["Yes", False], [False, "No"],
+                         [[], False], [False, {}]):
+            with self.subTest(argument=argument), self.assertRaises(ValueError):
+                submit(argument)
+        with self.assertRaises(ValueError):
+            server.operation_arguments("submit", {"stop": stop, "id": 2, "command": "reinvoke"}, session)
+
     def test_binding_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]

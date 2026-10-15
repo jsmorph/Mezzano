@@ -414,7 +414,7 @@ def operation_arguments(operation, args, session):
         command = string(args["command"])
         if command not in ("condition", "restarts", "frames", "locals", "current-frame", "select-frame",
                            "next-frame", "previous-frame", "top-frame", "bottom-frame", "proceed", "invoke-restart",
-                           "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "return", "help",
+                           "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "return", "reinvoke", "help",
                            "inspect", "modify", "describe-object", "clear-inspection", "arglist", "bindings", "handlers", "catches",
                            "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                            "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"):
@@ -422,6 +422,12 @@ def operation_arguments(operation, args, session):
         argument = args.get("argument")
         if command == "evaluate":
             argument = string(argument)
+        elif command == "reinvoke":
+            if not isinstance(argument, list) or len(argument) != 2:
+                raise ValueError("Expected Original Args and New Args Booleans.")
+            argument = [boolean(False if option is None else option) for option in argument]
+            if all(argument):
+                raise ValueError("Original Args and New Args cannot both be true.")
         elif command == "special":
             if not isinstance(argument, list) or len(argument) != 2:
                 raise ValueError("Expected symbol source and an environment.")

@@ -370,3 +370,11 @@ The native-backed driver creates its own DEBUG 3, SAFETY 3, SPEED 1 target and c
 node tools/swank/web/test-return.mjs \
   http://127.0.0.1:8766/ /tmp/mezzano-frame-return
 ```
+
+### Reinvoke
+
+The HTTP unit suite checks all null/Boolean option combinations, Lisp encoding, independent option-list construction, conflicting options, and malformed or missing lists.  The Return driver preserves its six existing groups and adds six Reinvoke groups against the native operation.  Its owned required/optional/rest/key target tests Current/Original defaults and supplied flags, rest/key precedence and spine copying, New cancellation/history and child Abort, lexical/dynamic expression contexts, a 29-argument indexed preview, input/confirmation reload and exact replay, captured replacement identity, and cleanup through Current Stop/Proceed.  All twelve groups passed on an isolated restored x86-64 guest with owned targets compiled at DEBUG 3, SAFETY 3, SPEED 1.  The driver released 29 jobs, fourteen stops, seventeen symbols, and its session.  These were fresh browser commands after the guest restart.  Browser Reinvoke commands held across a restart and stable deployment remain untested.
+
+Host acceptance passed 35 Python tests and seven checks each in the existing intercepted Return fixture and an external Reinvoke fixture using the product HTTP handler locally.  The latter tested three menu option lists, retained cancellation, and active-reader/history reload.  Both recorded zero guest requests.  Their evidence and the failed generic-static-server runs are retained in /tmp/web-reinvoke-host.  The six native Return groups were not rerun during this host-only phase.
+
+The focused product check passed 26 excerpts across the debugger, Command Processor, and Web guides after catalog refresh, plus Peek processes, SPACE/Tab completion, and Listener 42.  It released two jobs and its session.  Functional and product browser error lists were empty.  Evidence is /tmp/web-reinvoke-native-restored and /tmp/web-reinvoke-product-restored.  Earlier runs preserve a diagnosed stale-contrib publication failure and an SSH-forward exit with unknown cause.  Neither changed the accepted driver or product parser.
