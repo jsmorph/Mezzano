@@ -1,5 +1,37 @@
 # Web UI development journal
 
+## Clean paging image browser acceptance: 2026-10-14
+
+The clean image built with the unchanged 2048 MiB host heap.  Root preserved the unbooted image as `debugger-cold-paging-pristine-20261014.image` and owns native first-boot, pager, parked-stop, and normal-restoration tests.  The browser plan held traffic until those tests passed.
+
+The recommendation is to run the same 25-group driver and bounded product check against the restored clean image through the existing isolated HTTP 8766/SWANK 4007 service.  Retain the original fifteen-second deadline, assertions, phase wrapper, and owned-record cleanup.  Reuse the unchanged driver whose SHA-256 is `40681c5ed8e0a80833014d90dd347afea8d52eace2a6523c9884dd3dbb086c69`.  Use fresh evidence directories, review captures, and archive the exact source, result, and runtime identities.  This establishes clean-image browser acceptance separately from the compiled correction loaded into the preceding baseline.  No product changes are required by this test plan.
+
+- [x] Wait for clean-image native and restoration readiness.
+- [x] Run the unchanged 25 groups and bounded product checks, preserving failures and releasing owned state.
+- [x] Review and archive evidence, then commit the Web journal separately.
+
+Restored clean QEMU 725336 passed all twenty-five Chromium groups with the unchanged fifteen-second deadline and driver.  The image contains revision 45aada49, built with an empty compiler cache and the original 2048 MiB host heap.  Root completed native first-boot, parked-stop, and normal-restoration acceptance without production hotloads before this browser interval.  The browser released nine jobs, eighteen stops, and its session.  Errors, failed HTTP responses, and cleanup failures were empty.  Disassembly retained 366,868 characters and 3,015 rows through RET at #x3EC5, survived reload, and returned 42/43 with all expected sink effects.
+
+The longest RPC was listener assistance request 5270 at 2.159871 seconds, including 2.159502 seconds waiting for its reply header.  The longest host session-lock wait was 0.395 milliseconds.  The external watcher recorded no five-second warning.  No guest GC meter ran during this test, so these phase measurements do not identify the cause of that wait.
+
+The bounded product check passed seventeen documentation excerpts across two guides after catalog reload, displayed twenty-five Peek processes, completed `Set Package ` with SPACE and Tab, and evaluated 42.  It released its two jobs and session without browser or HTTP failures.  Reviewed the compiled-code columns and labels, terminal instruction, capture-limitation paragraph, and populated Peek screenshots.  Results are `/tmp/web-paging-clean-restored-frame-evaluation/result.json` and `/tmp/web-paging-clean-restored-product/result.json`.
+
+The combined mode-0600 archive `/tmp/debugger-web-paging-clean-evidence.tar.gz` preserves these two runs and the subsequent browser-across-restart test, exact driver/product/wrapper source copies, screenshots, complete disassembly, phase traces, and root's native normal/browser restoration logs.  SHA-256: `507562d78db98302625358490e5bf2a2a697f9fede352901ad02cdb327d80b0b`.  This completes clean x86-64 browser acceptance of revision 45aada49 after normal restoration.  The earlier monitor 502 and unidentified extra 409 retain their separate unresolved status.
+
+## Browser restart driver review: 2026-10-14
+
+Reviewed `test-image-restore.mjs`, `browser-test-support.mjs`, and the Browser restoration procedure in the Web test guide.  The recommendation for a later coordinated restart is to reuse that driver unchanged with HTTP 8766 as its first argument and a fresh local output directory as its second.  The existing server keeps SWANK 4007 selected.  The driver and browser remain open while root saves the guest, waits for completion, and restarts only the isolated VM.  HTTP service restart is outside this test sequence.
+
+`ready.json` records the browser session, completed initial job, unique counter symbol, and owned job list.  After root confirms that the saved image responds through SWANK, the local `restored` marker permits assertions to continue.  The marker belongs on the browser-driver host.  The existing confirmation deadline is fifteen minutes.
+
+The driver requires a different session after reload, recovery of the original returned job with `current-boot-p` false, preserved input history, and counter value 1.  It then displays the Command Processor topic containing Clear All and populated Peek.  Cleanup uninterns the counter and releases three jobs and the replacement session.  During outage and session recovery, recorded browser errors must be network HTTP 409, 502, or 503.  Later operations must add no errors.  The driver does not require observing a disconnected state or a particular recovery error count, and it does not capture response bodies.  A failure saves browser state and owned identities for separate cleanup.
+
+The earlier retained-transport test passed this driver across a real restart into QEMU 619820, recording one outage 502 and one expired-session 409.  Earlier boot and route failures remain separate unsuccessful attempts.  This review changed no assertions or product source and sent no guest requests.  After the twenty-five clean-image groups and bounded product check passed and released their state, root authorized the unchanged coordinated driver.  Preparation on HTTP 8766 wrote `/tmp/web-paging-clean-image-restore/ready.json`, with counter 1 and a completed owned job.  Root owns snapshot completion, VM restart, native readiness, and creation of the local `restored` marker.  HTTP remains running.  The driver retains its existing fifteen-minute confirmation limit and its original outage and subsequent-error assertions.
+
+The coordinated restart passed into QEMU 727838.  Root preserved `debugger-paging-clean-browser-20261014.image`, completed the native boot audit, and created the local marker.  The unchanged HTTP wrapper remained running.  The browser replaced its expired session, recovered the saved job with prior-boot status and input history, and read counter 1.  The Command Processor guide rendered, and the reviewed Peek capture displayed twenty-eight processes.
+
+Exactly two browser network errors occurred: one outage HTTP 502 and one expired-session HTTP 409.  The phase trace identifies request 5693 as monitor-state: the existing SWANK connection closed after zero of six header bytes, returning 502.  Request 5694 was resume-session, which returned :EXPIRED-SESSION and 409.  No later operation added an error.  The driver uninterned its counter, released all three owned jobs and the replacement session, closed Chromium, and exited zero.  Result and reviewed captures are in `/tmp/web-paging-clean-image-restore/`, included in the clean-image archive above.  All owned browser traffic stopped before root resumed guest work.  HTTP 8765 and SWANK 4006 remained unchanged.
+
 ## Coalesced page-in browser acceptance: 2026-10-14
 
 The metered failure established a major collection longer than the HTTP deadline.  Core now has a bounded page-in correction and a separate ATA transfer-error correction.  Native tests passed before this browser interval.  The recommendation is to restore the original private normal baseline, load only the five compiled definitions prepared in the warm guest, and verify that loading and the normal-restore audit do not collect.  Root owns that setup and the independent guest/host meters.
@@ -60,7 +92,7 @@ The controlled failure archives are `/tmp/debugger-web-cold-baseline-replay-evid
 
 - [x] Replace the stale shared-BREAK assumption with an owned scope-table fixture.
 - [x] Run isolated Chromium acceptance and release owned state.
-- [ ] Repeat relevant acceptance on the final clean image after readiness.
+- [x] Repeat relevant acceptance on the final clean image after readiness.  The later clean paging image passed as recorded above.
 
 ## Normal-snapshot Web smoke test: 2026-10-14
 
