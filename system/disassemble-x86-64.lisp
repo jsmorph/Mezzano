@@ -17,8 +17,8 @@
     (format t "(")
     (cond ((eql (inst-opcode instruction) :jump-target)
            (format t ":D64/LE (- L~D L~D)"
-                   (label context (first (inst-operands instruction)))
-                   (label context (+ (first (inst-operands instruction)) (second (inst-operands instruction))))))
+                   (dis:label context (first (inst-operands instruction)))
+                   (dis:label context (+ (first (inst-operands instruction)) (second (inst-operands instruction))))))
           (t
            (when (inst-lock-prefix instruction)
              (format t "LOCK "))
@@ -46,18 +46,17 @@
                                   (pool-index (truncate (- target (dis:code-end (dis:context-function context))) 8))
                                   (label (dis:label context target)))
                              (cond
-                               ((and print-labels label)
+                               ((and print-labels label (typep operand 'relative-address))
                                 (push (format nil "#x~8,'0X" (+ address target)) annotations)
                                 (format t "L~D" label))
-                               ((member (inst-opcode instruction) '(sys.lap-x86:call sys.lap-x86:jmp))
-                                ;; TODO: Differentiate between direct calls and indirect calls that
-                                ;; use an rip-based memory operand.
-                                (let* ((abs-addr (+ address target))
-                                       ;; Hopefully a real object!
-                                       (obj (sys.int::%%assemble-value
-                                             (sys.int::base-address-of-internal-pointer abs-addr)
-                                             sys.int::+tag-object+)))
-                                  (push (format nil "'~S" obj) annotations)
+                               ((typep operand 'relative-address)
+                                (let ((abs-addr (+ address target)))
+                                  (when (member (inst-opcode instruction)
+                                                '(sys.lap-x86:call sys.lap-x86:jmp))
+                                    (let ((obj (sys.int::%%assemble-value
+                                                (sys.int::base-address-of-internal-pointer abs-addr)
+                                                sys.int::+tag-object+)))
+                                      (push (format nil "'~S" obj) annotations)))
                                   (format t "#x~X" abs-addr)))
                                (t
                                 (cond ((and (not (logtest target #b111))
@@ -75,7 +74,9 @@
                                             (eql target sys.int::+tag-object+))
                                        ;; The function itself, used for invalid args handling.
                                        (push (format nil "'~S" (dis:context-function context)) annotations)))
-                                (format t "(:RIP #x~X)" (+ address target))))))
+                                (if (and print-labels label)
+                                    (format t "(:RIP L~D)" label)
+                                    (format t "(:RIP #x~X)" (+ address target)))))))
                           ((and (eql (ea-base operand) :rbp)
                                 (eql (logand (ea-disp operand) 7) 0)
                                 (< (ea-disp operand) 0)
@@ -209,6 +210,8 @@
    (%disp :initarg :disp :reader ea-disp)
    (%segment :initarg :segment :reader ea-segment))
   (:default-initargs :base nil :index nil :scale nil :disp 0 :segment nil))
+
+(defclass relative-address (effective-address) ())
 
 (defmethod dis:make-disassembler-context-using-architecture ((architecture mezzano.compiler::x86-64-target) &rest initargs)
   (apply #'make-instance 'x86-64-disassembler-context initargs))
@@ -1120,13 +1123,13 @@
 
 (defun decode-jb (context info opcode)
   (declare (ignore info))
-  (make-instruction opcode (make-instance 'effective-address
+  (make-instruction opcode (make-instance 'relative-address
                                           :base :rip
                                           :disp (dis:consume-sb8 context))))
 
 (defun decode-jz (context info opcode)
   (declare (ignore info))
-  (make-instruction opcode (make-instance 'effective-address
+  (make-instruction opcode (make-instance 'relative-address
                                           :base :rip
                                           :disp (dis:consume-sb32/le context))))
 
@@ -1896,14 +1899,14 @@
                     ;; Rewind & try again.
                     (setf (decoding-jump-table-p context) nil
                           (slot-value context 'dis::%offset) start)
-                    (disassemble-one-instruction context)))))
+                    (dis:disassemble-one-instruction context)))))
           (t
            (let ((inst (disassemble-one-instruction-1 context)))
              (cond (inst
                     ;; Hack - Guess where jump tables start.
                     (when (and (eql (inst-opcode inst) 'sys.lap-x86:jmp)
                                (equal (inst-operands inst) '(:rax)))
-                      (label context (dis:context-code-offset context) :createp t)
+                      (dis:label context (dis:context-code-offset context) :createp t)
                       (setf (decoding-jump-table-p context) (dis:context-code-offset context)))
                     (setf (slot-value inst 'dis::%offset) start
                           (slot-value inst '%size) (- (dis:context-code-offset context) start))
