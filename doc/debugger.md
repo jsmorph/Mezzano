@@ -482,6 +482,8 @@ On x86-64, an intentional INT3 instruction enters ordinary Lisp BREAK through th
 
 Native tests use a fixed INT3 in an owned LAP function.  They verify the saved PC, caller lexical access, exact heap identity through moving GC, Continue and Abort, one cleanup, ordinary/nested prompt stacks, and two parked threads sharing the same trap function.  The resident module compiled at DEBUG 1/SAFETY 3/SPEED 1.  Test Lisp compiled at DEBUG 3/SAFETY 3/SPEED 1.  Traps in interrupt handlers or runtime critical sections, saved trap-stop restoration, a cold boot of this addition, and ARM64 execution remain untested.
 
+A combined x86-64 run with older compiled INT3 test functions panicked.  A separate repeated hardware-breakpoint test entered the target with the callback's argument.  Both failures remain under investigation.  A staged publication with recompiled trap functions passed the combined suite.
+
 ### Managed hardware locations
 
 Internal x86-64 support manages four global instruction-breakpoint locations through DR0–DR3.  Each resident descriptor retains the compiled function, byte offset, and nonmoving code address.  Installation/removal synchronizes the register image on every online CPU before ordinary threads resume.  The handler enters BREAK before the instruction and sets saved RFLAGS.RF so CONTINUE executes the original instruction while the breakpoint remains enabled.  Code bytes remain unchanged.  A captured hit retains its descriptor when its slot is cleared or reused.
