@@ -274,7 +274,7 @@
 (defun debugger-stops (&key include-closed)
   (with-service-lock
     (loop for stop being the hash-values of *service-stops*
-          when (or include-closed (eq (service-stop-state stop) :stopped))
+          when (or include-closed (not (eq (service-stop-state stop) :closed)))
             collect (service-handle stop))))
 
 (defun bounded-display-label (object)
@@ -458,7 +458,7 @@
       (unless (eql id (service-stop-next-command-id stop))
         (service-error :request-order))
       (unless (eq (service-stop-state stop) :stopped)
-        (service-error :stop-closed))
+        (service-error (if (eq (service-stop-state stop) :stepping) :stop-stepping :stop-closed)))
       (when (or (service-stop-pending stop) (service-stop-active stop)
                 (service-stop-child stop))
         (service-error :stop-busy))
@@ -466,7 +466,7 @@
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
           :function :compiled-code :instruction :lexical-environment
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
-          :standard-value-warnings :return :breakpoints)
+          :standard-value-warnings :return :breakpoints :single-step)
          (when argument (service-error :unexpected-argument)))
         ((:set-breakpoint :clear-breakpoint)
          (unless (typep argument '(cons string (cons (integer 0 *) null)))
@@ -1084,6 +1084,117 @@ NIL with true availability denotes an absent global cell."
   #-x86-64
   (service-error :unsupported-architecture))
 
+(defstruct service-step
+  stop condition pc-slot function offset request
+  (state :preparing))
+
+(defvar *service-step* nil)
+(defvar *service-step-owner* nil)
+(defvar *service-resuming-stop* nil)
+
+(defun service-stepping-stop ()
+  (with-service-lock
+    (loop for stop being the hash-values of *service-stops*
+          when (and (eq (service-stop-thread stop) (mezzano.supervisor:current-thread))
+                    (eq (service-stop-state stop) :stepping))
+            return stop)))
+
+(defun cancel-service-step (step)
+  #+x86-64
+  (progn
+    (when (eq (service-step-state step) :running)
+      (map-backtrace
+       (lambda (frame)
+         (when (and (mezzano.internals::frame-interrupted-p frame)
+                    (eql (mezzano.internals::frame-pc-slot frame) (service-step-pc-slot step)))
+           (multiple-value-bind (function offset) (service-frame-code-location frame)
+             (when (and (eq function (service-step-function step))
+                        (= offset (service-step-offset step)))
+               (setf (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
+                     (logandc2
+                      (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
+                      #x100))))))))
+    (when (service-step-request step)
+      (mezzano.supervisor::clear-instruction-step-request (service-step-request step))))
+  (setf (mezzano.internals::instruction-trap-exit-function (service-step-condition step)) nil
+        (service-step-state step) :cancelled))
+
+(defun service-step-exit (step action)
+  (ecase action
+    (:resume
+     #+x86-64
+     (mezzano.supervisor:without-footholds
+       (setf (service-step-state step) :running
+             (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
+             (logior (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
+                     #x100)))
+     #-x86-64 (service-error :unsupported-architecture))
+    ((:cancel :unwind)
+     (cancel-service-step step)
+     (when (and (eq action :unwind)
+                (eq (service-stop-state (service-step-stop step)) :stepping))
+       (close-service-stop (service-step-stop step))))))
+
+(defun service-deliver-step (step)
+  (when (eq (service-step-state step) :running)
+    (setf (service-step-state step) :completed)
+    (let ((*service-resuming-stop* (service-step-stop step)))
+      (mezzano.internals::invoke-instruction-debugger :single-step))))
+
+(defun service-single-step (stop)
+  #-x86-64 (declare (ignore stop))
+  #+x86-64
+  (progn
+    (unless (and (eq stop *service-current-stop*) (eq stop *service-step-owner*)
+                 (null *service-step*))
+      (service-error :unavailable-step-control))
+    (multiple-value-bind (function offset index reason) (service-instruction-trap-context stop)
+      (when reason (service-error reason))
+      (unless (= (service-stop-current-frame stop) index)
+        (service-error :step-requires-interrupted-frame))
+      (service-validate-instruction-breakpoint-location function offset)
+      (let* ((frame (aref (service-stop-frames stop) index))
+             (slot (mezzano.internals::frame-pc-slot frame))
+             (flags (mezzano.internals::memref-unsigned-byte-64 slot 2))
+             (instruction (mezzano.disassemble:instruction-at
+                           (mezzano.disassemble:make-disassembler-context function) offset)))
+        (unless (and (logbitp 9 flags) (not (logbitp 8 flags)))
+          (service-error :unsupported-step-flags))
+        (unless (and instruction
+                     (case (mezzano.disassemble.x86-64::inst-opcode instruction)
+                       ((mezzano.lap.x86:nop mezzano.lap.x86:ret) t)
+                       (mezzano.lap.x86:jmp
+                        (let ((operands (mezzano.disassemble.x86-64::inst-operands instruction)))
+                          (and (= (length operands) 1)
+                               (typep (first operands)
+                                      'mezzano.disassemble.x86-64::relative-address))))))
+          (service-error :unsupported-step-instruction))
+        (let* ((condition (service-stop-condition stop))
+               (step (make-service-step :stop stop :condition condition :pc-slot slot
+                                        :function function :offset offset)))
+          (setf *service-step* step)
+          (mezzano.supervisor:without-footholds
+            (setf (mezzano.internals::instruction-trap-exit-function condition)
+                  (lambda (action) (service-step-exit step action)))
+            (let ((restart (or (find-restart 'mezzano.internals::instruction-step condition)
+                               (service-error :unavailable-step-transfer))))
+              (setf (service-step-request step)
+                    (mezzano.supervisor::register-instruction-step-request
+                     (mezzano.supervisor:current-thread) #'service-deliver-step step)
+                    (service-step-state step) :prepared)
+              (invoke-restart restart)))))))
+  #-x86-64 (service-error :unsupported-architecture))
+
+(defun suspend-service-stop (stop)
+  (with-service-lock
+    (incf (service-stop-generation stop))
+    (setf (service-stop-state stop) :stepping
+          (service-stop-frames stop) nil
+          (service-stop-restarts stop) nil
+          (service-stop-current-frame stop) nil)
+    (clrhash (service-stop-inspection-values stop))
+    (clrhash (service-stop-inspection-identities stop))))
+
 (defun service-breakpoint-function (source stop)
   (if source
       (with-input-from-string (stream source)
@@ -1347,6 +1458,7 @@ NIL with true availability denotes an absent global cell."
   (ecase (service-command-operation command)
     (:condition (service-print (service-stop-condition stop) t))
     (:evaluate (service-evaluate stop (service-command-argument command)))
+    (:single-step (service-single-step stop))
     (:return (service-return stop))
     (:reinvoke (service-reinvoke stop (service-command-argument command)))
     ((:set-breakpoint :clear-breakpoint :clear-all-breakpoints :breakpoints)
@@ -1467,7 +1579,11 @@ NIL with true availability denotes an absent global cell."
           (close-service-command-io command)
           (when (eq (service-command-state command) :running)
             (setf (service-command-state command) :unwound))
-          (setf (service-stop-active stop) nil))))))
+          (setf (service-stop-active stop) nil))))
+    (when (and (service-step-p *service-step*)
+               (eq (service-step-stop *service-step*) stop))
+      (cancel-service-step *service-step*)
+      (setf *service-step* nil))))
 
 (defun service-command-loop (stop)
   (loop
@@ -1515,41 +1631,71 @@ NIL with true availability denotes an absent global cell."
     (clrhash (service-stop-inspection-identities stop))))
 
 (defun service-debugger (condition)
-  (let* ((boundary (mezzano.internals::read-frame-pointer))
-         (stop (%make-service-stop
-                :thread (mezzano.supervisor:current-thread)
-                :condition condition :restarts (compute-restarts condition)
-                :parent *service-current-stop*
-                :standard-values (service-standard-value-observations)
-                :evaluation-environment
-                (if *service-current-stop*
-                    (service-stop-evaluation-environment *service-current-stop*)
-                    :lexical)))
-         (*service-current-stop* stop)
-         (*debugger-hook* #'service-debugger-hook)
-         (*global-debugger* #'service-debugger))
-    (unwind-protect
-         (progn
-           (let ((frames nil)
-                 (found nil))
-             (map-backtrace
-              (lambda (frame)
-                (when (= (mezzano.internals::frame-fp frame) boundary)
-                  (setf found t))
-                (when found (push frame frames))))
-             (unless found (error "Debugger activation missing from backtrace."))
-             (setf (service-stop-frames stop) (coerce (nreverse frames) 'vector))
-             (multiple-value-bind (function offset index reason)
-                 (service-instruction-trap-context stop)
-               (declare (ignore function offset reason))
-               (when index (setf (service-stop-current-frame stop) index))))
-           (with-service-lock
-             (when (service-stop-parent stop)
-               (setf (service-stop-child (service-stop-parent stop)) stop))
-             (setf (service-stop-id stop) (incf *service-next-stop-id*)
-                   (gethash (service-stop-id stop) *service-stops*) stop))
-           (service-command-loop stop))
-      (close-service-stop stop))))
+  (mezzano.supervisor:without-footholds
+    (when (and *service-resuming-stop*
+               (eq (service-stop-state *service-resuming-stop*) :closed)
+               (typep condition 'mezzano.internals::instruction-trap)
+               (eq (mezzano.internals::instruction-trap-kind condition) :single-step))
+      (invoke-restart (find-restart 'continue condition)))
+
+    (let* ((boundary (mezzano.internals::read-frame-pointer))
+           (resuming
+             (or (and *service-resuming-stop*
+                      (eq (service-stop-state *service-resuming-stop*) :stepping)
+                      *service-resuming-stop*)
+                 (service-stepping-stop)))
+           (stop (or resuming
+                     (%make-service-stop
+                      :thread (mezzano.supervisor:current-thread)
+                      :parent *service-current-stop*
+                      :standard-values (service-standard-value-observations)
+                      :evaluation-environment
+                      (if *service-current-stop*
+                          (service-stop-evaluation-environment *service-current-stop*)
+                          :lexical))))
+           (*service-current-stop* stop)
+           (*service-resuming-stop* nil)
+           (*service-step-owner* stop)
+           (*service-step* nil)
+           (*debugger-hook* #'service-debugger-hook)
+           (*global-debugger* #'service-debugger))
+      (unwind-protect
+           (progn
+             (when resuming
+               (let* ((previous (service-stop-condition stop))
+                      (function (when (typep previous 'mezzano.internals::instruction-trap)
+                                  (mezzano.internals::instruction-trap-exit-function previous))))
+                 (when function (funcall function :cancel))))
+             (setf (service-stop-condition stop) condition
+                   (service-stop-restarts stop) (compute-restarts condition)
+                   (service-stop-current-frame stop) 0)
+             (let ((frames nil)
+                   (found nil))
+               (map-backtrace
+                (lambda (frame)
+                  (when (= (mezzano.internals::frame-fp frame) boundary)
+                    (setf found t))
+                  (when found (push frame frames))))
+               (unless found (error "Debugger activation missing from backtrace."))
+               (setf (service-stop-frames stop) (coerce (nreverse frames) 'vector))
+               (multiple-value-bind (function offset index reason)
+                   (service-instruction-trap-context stop)
+                 (declare (ignore function offset reason))
+                 (when index (setf (service-stop-current-frame stop) index))))
+             (with-service-lock
+               (when (service-stop-parent stop)
+                 (setf (service-stop-child (service-stop-parent stop)) stop))
+               (unless resuming
+                 (setf (service-stop-id stop) (incf *service-next-stop-id*)
+                       (gethash (service-stop-id stop) *service-stops*) stop))
+               (setf (service-stop-state stop) :stopped))
+             (mezzano.supervisor::with-local-footholds
+               (service-command-loop stop)))
+        (if (and (service-step-p *service-step*) (eq (service-step-state *service-step*) :prepared))
+            (suspend-service-stop stop)
+            (progn
+              (when (service-step-p *service-step*) (cancel-service-step *service-step*))
+              (close-service-stop stop)))))))
 
 (defun service-debugger-hook (condition previous-hook)
   (declare (ignore previous-hook))
@@ -1558,4 +1704,10 @@ NIL with true availability denotes an absent global cell."
 (defun call-with-debugger-service (function)
   (let ((*debugger-hook* #'service-debugger-hook)
         (*global-debugger* #'service-debugger))
-    (funcall function)))
+    (unwind-protect
+         (funcall function)
+      (let ((stop (service-stepping-stop)))
+        (when stop
+          (let* ((condition (service-stop-condition stop))
+                 (exit (mezzano.internals::instruction-trap-exit-function condition)))
+            (when exit (funcall exit :unwind))))))))

@@ -8,7 +8,8 @@
 
 (define-condition instruction-trap (simple-condition)
   ((kind :initarg :kind :reader instruction-trap-kind)
-   (breakpoint :initarg :breakpoint :initform nil :reader instruction-trap-breakpoint)))
+   (breakpoint :initarg :breakpoint :initform nil :reader instruction-trap-breakpoint)
+   (exit-function :initform nil :accessor instruction-trap-exit-function)))
 
 (defun invoke-instruction-debugger (kind &optional breakpoint)
   (let ((condition
@@ -27,10 +28,19 @@
                              :format-control "Breakpoint instruction."))
             (:single-step
              (make-condition 'instruction-trap :kind kind
-                             :format-control "Single step.")))))
-    (with-simple-restart (continue "Continue the interrupted computation.")
-      (let ((*debugger-hook* nil))
-        (invoke-debugger condition))))
+                             :format-control "Single step."))))
+        (stepping nil))
+    (unwind-protect
+         (restart-case
+             (with-simple-restart (continue "Continue the interrupted computation.")
+               (let ((*debugger-hook* nil))
+                 (invoke-debugger condition)))
+           (instruction-step ()
+             :test (lambda (tested)
+                     (and (eq tested condition) (instruction-trap-exit-function condition)))
+             (setf stepping t)))
+      (let ((function (instruction-trap-exit-function condition)))
+        (when function (funcall function (if stepping :resume :unwind))))))
   nil)
 
 (defun debug-info-name (info)
