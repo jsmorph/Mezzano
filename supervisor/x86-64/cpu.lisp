@@ -217,6 +217,19 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
         (when cleared (synchronize-instruction-breakpoints))))
     cleared))
 
+(defun clear-function-instruction-breakpoints (function)
+  (let ((count 0))
+    (with-world-stopped
+      (when *instruction-breakpoint-slots*
+        (dotimes (index 4)
+          (let ((breakpoint (svref *instruction-breakpoint-slots* index)))
+            (when (and breakpoint
+                       (eq (instruction-breakpoint-function breakpoint) function))
+              (setf (svref *instruction-breakpoint-slots* index) nil)
+              (incf count))))
+        (when (plusp count) (synchronize-instruction-breakpoints))))
+    count))
+
 (defun instruction-breakpoints ()
   (let ((snapshot (make-array 4 :initial-element nil)))
     (with-world-stopped

@@ -50,7 +50,7 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 | Frame execution | Reinvoke; Return; Throw | Return passed native x86-64 and Chromium condition-stop tests.  Its one-expression value prompt differs from Genera.  Reinvoke passed native retained-command, prepared-confirmation restore, parked-frame restore, and Chromium interaction on the documented x86-64 scope.  Throw remains planned. |
 | Call and exit traps | Set Trap On Call; Clear Trap On Call; Proceed Trap On Call; Restart Trap On Call; Set Trap On Exit; Clear Trap On Exit | Planned. |
 | Conditions and monitoring | Enable Condition Tracing; Disable Condition Tracing; Monitor Variable; Unmonitor Variable; Show Monitored Locations | Planned. |
-| Breakpoints and stepping | Set Breakpoint; Clear Breakpoint; Clear All Breakpoints; Show Breakpoints; Single Step | Internal x86-64 hardware installation/removal passed native tests with four locations.  User commands and retained stepping remain planned.  Intentional INT3 entry/continuation also passed.  TRACE :BREAK provides a separate function-entry stop. |
+| Breakpoints and stepping | Set Breakpoint; Clear Breakpoint; Clear All Breakpoints; Show Breakpoints; Single Step | The Lisp API installs, lists, and removes up to four x86-64 hardware locations.  User commands and retained stepping remain planned.  Intentional INT3 entry/continuation also passed.  TRACE :BREAK provides a separate function-entry stop. |
 | System integration | Edit Function; Mail Bug Report; Set Stack Size | Pending explicit Mezzano mappings. |
 
 The command reference must expand each entry with its supported arguments, omitted and mentioned defaults, selection rules, prompts, confirmation behavior, errors, and tests.  Genera keyboard accelerators need a documented browser mapping.  Editor, mail, instance-model, and stack-layout differences remain open scope decisions.  They remain in this inventory until implemented or explicitly excluded.
@@ -486,13 +486,28 @@ Combined x86-64 hardware, INT3, and raw-step tests passed with the corrected pag
 
 ### Managed hardware locations
 
-Internal x86-64 support manages four global instruction-breakpoint locations through DR0–DR3.  Each resident descriptor retains the compiled function, byte offset, and nonmoving code address.  Installation/removal synchronizes the register image on every online CPU before ordinary threads resume.  The handler enters BREAK before the instruction and sets saved RFLAGS.RF so CONTINUE executes the original instruction while the breakpoint remains enabled.  Code bytes remain unchanged.  A captured hit retains its descriptor when its slot is cleared or reused.
+On x86-64, hardware support manages four global instruction-breakpoint locations through DR0–DR3.  Each resident descriptor retains the compiled function, byte offset, and nonmoving code address.  Installation/removal synchronizes the register image on every online CPU before ordinary threads resume.  The handler enters BREAK before the instruction and sets saved RFLAGS.RF so CONTINUE executes the original instruction while the breakpoint remains enabled.  Code bytes remain unchanged.  A captured hit retains its descriptor when its slot is cleared or reused.
 
 Native tests cover compiled Lisp entry points, an assembled body instruction, exact saved PCs/RF, repeated hits, concurrent parked threads, definition replacement, four-slot exhaustion, retained clear/reuse, caller lexical reads, moving GC, Continue/Abort, values, cleanup, and zero/two prompts.  Register synchronization passed with two online CPUs.  The tests do not identify the CPU of each hit.  The resident modules used DEBUG 1/SAFETY 3/SPEED 1 and test Lisp used DEBUG 3/SAFETY 3/SPEED 1.
 
 Snapshot restoration reloads the installed hardware register image during CPU startup.  Retained hits accept fresh debugger control after boot.  Prior-boot stop handles expire.  Native x86-64 restoration tests retained four locations and two simultaneous hits across zero/two prompt levels.  Fresh control verified saved PC/RF, caller lexical access, and moving heap identity, then continued one hit and aborted the other.  All four locations trapped again after boot, with unchanged code and the expected values and cleanup.  The test used two CPUs and the compilation policies above.  Browser commands retained across image restoration remain untested.
 
 The kernel installer validates function kind/residency and byte range.  Its caller must supply a valid instruction boundary.  The ordinary debugger validator checks the assembler's instruction-start bitmap and reports a typed error for missing metadata, resident code, invalid offsets, and bytes that do not start instructions.  User commands remain unimplemented.  Conditions/actions, software breakpoints beyond four locations, retained stepping, a clean image build and first boot, ARM64, and Return/Reinvoke from these trap stops remain unimplemented or untested.  Supervisor-priority threads, interrupt handlers, and runtime critical sections are outside the supported scope.
+
+### Lisp breakpoint management
+
+These functions in MEZZANO.DEBUG support x86-64 compiled function objects.  An offset counts bytes from the function object's start.  Ordinary compiled code starts at byte 16.
+
+| Function | Result and behavior |
+|---|---|
+| `(set-breakpoint function offset)` | Validates a nonresident compiled function and an authoritative instruction-start bit, then installs the location.  Returns a fresh `(function offset)` list.  Repeating the same location uses the existing slot. |
+| `(clear-breakpoint function offset)` | Removes that exact function/offset location.  Returns true if removed, otherwise NIL.  The offset must be a nonnegative integer. |
+| `(clear-all-breakpoints function)` | Removes every location for that exact function in one world-stop interval and synchronizes online CPUs once.  Returns the removed count. |
+| `(breakpoints)` | Returns a fresh list of `(function offset)` pairs for all installed locations. |
+
+The returned lists share the function objects.  Editing a returned list leaves the installed table unchanged.  Function identity determines ownership: redefining a name leaves its old locations installed in the original compiled function.  An exact old function obtained from BREAKPOINTS or a retained frame can remove those locations.  Removal does not require instruction metadata to remain available.
+
+SET-BREAKPOINT reports a debugger-service error for invalid function kind, resident code, invalid offset, missing instruction metadata, or a byte inside an instruction.  Exhausting all four locations signals the kernel installer's existing error.  Unsupported architectures report :UNSUPPORTED-ARCHITECTURE.  Command Processor commands remain planned.
 
 ### Instruction boundaries
 

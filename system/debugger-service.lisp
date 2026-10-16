@@ -965,6 +965,47 @@ NIL with true availability denotes an absent global cell."
       (service-error :not-instruction-start)))
   (values function offset))
 
+(defun set-breakpoint (function offset)
+  #-x86-64 (declare (ignore function offset))
+  #+x86-64
+  (progn
+    (service-validate-instruction-breakpoint-location function offset)
+    (mezzano.supervisor::install-instruction-breakpoint function offset)
+    (list function offset))
+  #-x86-64
+  (service-error :unsupported-architecture))
+
+(defun clear-breakpoint (function offset)
+  (check-type function function)
+  (check-type offset (integer 0 *))
+  #+x86-64
+  (let ((breakpoint
+          (find-if (lambda (breakpoint)
+                     (and (eq (mezzano.supervisor::instruction-breakpoint-function breakpoint)
+                              function)
+                          (= (mezzano.supervisor::instruction-breakpoint-offset breakpoint)
+                             offset)))
+                   (mezzano.supervisor::instruction-breakpoints))))
+    (when breakpoint (mezzano.supervisor::clear-instruction-breakpoint breakpoint)))
+  #-x86-64
+  (service-error :unsupported-architecture))
+
+(defun clear-all-breakpoints (function)
+  (check-type function function)
+  #+x86-64
+  (mezzano.supervisor::clear-function-instruction-breakpoints function)
+  #-x86-64
+  (service-error :unsupported-architecture))
+
+(defun breakpoints ()
+  #+x86-64
+  (mapcar (lambda (breakpoint)
+            (list (mezzano.supervisor::instruction-breakpoint-function breakpoint)
+                  (mezzano.supervisor::instruction-breakpoint-offset breakpoint)))
+          (mezzano.supervisor::instruction-breakpoints))
+  #-x86-64
+  (service-error :unsupported-architecture))
+
 (defun service-code-instruction (context offset)
   (loop with start = (mezzano.disassemble:code-initial-offset
                       (mezzano.disassemble:context-function context))

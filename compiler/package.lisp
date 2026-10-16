@@ -287,6 +287,10 @@
    #:debugger-stops
    #:debugger-stop-information
    #:process-summary
+   #:set-breakpoint
+   #:clear-breakpoint
+   #:clear-all-breakpoints
+   #:breakpoints
    #:attach-debugger-stop
    #:release-debugger-stop
    #:submit-debugger-command
