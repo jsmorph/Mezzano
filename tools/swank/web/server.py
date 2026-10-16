@@ -417,11 +417,19 @@ def operation_arguments(operation, args, session):
                            "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "return", "reinvoke", "help",
                            "inspect", "modify", "describe-object", "clear-inspection", "arglist", "bindings", "handlers", "catches",
                            "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
+                           "set-breakpoint", "clear-breakpoint", "clear-all-breakpoints", "breakpoints",
                            "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"):
             raise ValueError("Unsupported debugger command.")
         argument = args.get("argument")
         if command == "evaluate":
             argument = string(argument)
+        elif command in ("set-breakpoint", "clear-breakpoint"):
+            if not isinstance(argument, list) or len(argument) != 2:
+                raise ValueError("Expected function source and a nonnegative PC.")
+            argument = [string(argument[0]), integer(argument[1])]
+        elif command == "clear-all-breakpoints":
+            if argument is not None:
+                argument = string(argument)
         elif command == "reinvoke":
             if not isinstance(argument, list) or len(argument) != 2:
                 raise ValueError("Expected Original Args and New Args Booleans.")

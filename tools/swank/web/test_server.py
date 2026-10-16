@@ -133,6 +133,7 @@ class ProtocolTests(unittest.TestCase):
         session = "a" * 64
         stop = [":stop", session, 1]
         for command in ("current-frame", "top-frame", "bottom-frame", "arglist", "return",
+                        "breakpoints",
                         "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings",
                         "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"):
             with self.subTest(command=command):
@@ -236,6 +237,48 @@ class ProtocolTests(unittest.TestCase):
                 with self.subTest(command=command, argument=argument), self.assertRaises(ValueError):
                     server.operation_arguments("submit",
                         {"stop": stop, "id": 2, "command": command, "argument": argument}, session)
+
+    def test_breakpoint_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        for command in ("set-breakpoint", "clear-breakpoint"):
+            for source in ("TARGET", "(setf target)", "|mixed name λ|", '#.(error "unread")'):
+                for pc in (0, 16, 255):
+                    with self.subTest(command=command, source=source, pc=pc):
+                        argument = [source, pc]
+                        result = server.operation_arguments("submit",
+                            {"stop": stop, "id": 2, "command": command, "argument": argument}, session)
+                        self.assertEqual(result, [stop, 2, server.Symbol(":" + command), argument])
+                        self.assertIsNot(result[3], argument)
+                        self.assertNotIsInstance(result[3][0], server.Symbol)
+                        self.assertEqual(server.parse(server.lisp(result)), result)
+            for argument in (None, True, 0, "TARGET", {}, [], ["TARGET"], ["TARGET", 16, 0],
+                             [False, 16], [None, 16], [0, 16], [[], 16], ["TARGET", None],
+                             ["TARGET", True], ["TARGET", False], ["TARGET", -1],
+                             ["TARGET", 1.5], ["TARGET", "16"], ["TARGET", []]):
+                with self.subTest(command=command, argument=argument), self.assertRaises(ValueError):
+                    server.operation_arguments("submit",
+                        {"stop": stop, "id": 2, "command": command, "argument": argument}, session)
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                server.operation_arguments("submit", {"stop": stop, "id": 2, "command": command}, session)
+
+    def test_clear_all_breakpoint_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        for source in (None, "TARGET", "(setf target)", "|mixed name λ|", '#.(error "unread")'):
+            with self.subTest(source=source):
+                result = server.operation_arguments("submit",
+                    {"stop": stop, "id": 2, "command": "clear-all-breakpoints", "argument": source}, session)
+                self.assertEqual(result, [stop, 2, server.Symbol(":clear-all-breakpoints"), source])
+                self.assertEqual(server.parse(server.lisp(result)), result)
+                if source is not None:
+                    self.assertNotIsInstance(result[3], server.Symbol)
+        self.assertIsNone(server.operation_arguments("submit",
+            {"stop": stop, "id": 2, "command": "clear-all-breakpoints"}, session)[3])
+        for source in (True, False, 0, [], ["TARGET"], {}):
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                server.operation_arguments("submit",
+                    {"stop": stop, "id": 2, "command": "clear-all-breakpoints", "argument": source}, session)
 
     def test_reinvoke_arguments(self):
         session = "a" * 64

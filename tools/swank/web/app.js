@@ -1341,19 +1341,22 @@ function renderStops() {
                         ":Show Function", ":Show Compiled Code", ":Show Instruction", ":Show Lexical Environment", ":Show Standard Value Warnings",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
                         ":Inspect", ":Describe Last", ":Clear Inspector",
+                        ":Clear All Breakpoints", ":Show Breakpoints",
                         ":Use Dynamic Environment", ":Use Lexical Environment"]) {
       const command = control(prefix + name, name, debuggerAction(() => debuggerCommand(name)));
       command.disabled = !available;
       menuChildren.push(command);
     }
-    const special = control(prefix + ":Show Special", ":Show Special", debuggerAction(() => {
-      const editor = activity === "listener" ? $("source") : $("debugger-command");
-      const text = ":Show Special ";
-      setEditor(editor, text, text.length);
-      scheduleAssistance(editor, "inspect");
-    }));
-    special.disabled = !available;
-    menuChildren.push(special);
+    for (const name of [":Show Special", ":Set Breakpoint", ":Clear Breakpoint"]) {
+      const command = control(prefix + name, name, debuggerAction(() => {
+        const editor = activity === "listener" ? $("source") : $("debugger-command");
+        const text = name + " ";
+        setEditor(editor, text, text.length);
+        scheduleAssistance(editor, "inspect");
+      }));
+      command.disabled = !available;
+      menuChildren.push(command);
+    }
   }
   const help = returnedResult("help");
   if (help !== null) detailChildren.push(node("pre", help, "debugger-help"));
@@ -1444,12 +1447,15 @@ function renderStops() {
       output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
     } else if (["return", "reinvoke", "arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
+                "set-breakpoint", "clear-breakpoint", "clear-all-breakpoints", "breakpoints",
                 "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
       output = node("div", undefined, "debugger-" + command.command);
       const name = {return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
         instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
         "standard-value-warnings": ":Show Standard Value Warnings", special: ":Show Special",
+        "set-breakpoint": ":Set Breakpoint", "clear-breakpoint": ":Clear Breakpoint",
+        "clear-all-breakpoints": ":Clear All Breakpoints", breakpoints: ":Show Breakpoints",
         "use-dynamic-environment": ":Use Dynamic Environment", "use-lexical-environment": ":Use Lexical Environment",
         "toggle-evaluation-environment": "Control-X I"}[command.command];
       output.append(node("pre", "→ " + (command.source ?? name), "debugger-transcript"),
