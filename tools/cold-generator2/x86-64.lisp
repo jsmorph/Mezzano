@@ -214,6 +214,8 @@
       (values))))
 
 (defmethod configure-system-for-target (environment (target (eql :x86-64)))
+  (setf (env:cross-symbol-value environment 'mezzano.supervisor::*instruction-breakpoint-slots*) nil
+        (env:cross-symbol-value environment 'mezzano.supervisor::*instruction-step-nlx-hook*) nil)
   (setf (env:cross-symbol-value environment 'sys.int::*funcallable-instance-trampoline*)
         (env:compile-lap environment
                          *funcallable-instance-trampoline*
