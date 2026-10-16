@@ -1,0 +1,20 @@
+(defpackage #:lispm-cpu-printing-test
+  (:use #:cl)
+  (:local-nicknames (#:s #:mezzano.supervisor))
+  (:export #:run))
+(in-package #:lispm-cpu-printing-test)
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+
+(defun run ()
+  #+x86-64
+  (let ((*print-readably* nil) (*print-escape* t) (*print-case* :upcase))
+    (dotimes (iteration 2)
+      (when (plusp iteration) (mezzano.extensions:gc :full t))
+      (dolist (cpu s::*cpus*)
+        (let ((text (prin1-to-string cpu)))
+          (assert (search "X86-64-Cpu" text))
+          (assert (search (format nil "~D ~S" (s::x86-64-cpu-apic-id cpu)
+                                  (s::x86-64-cpu-state cpu))
+                          text)))))
+    (format t "PASS x86-64 CPU printing on ~D CPUs before/after full GC.~%" (length s::*cpus*)))
+  t)
