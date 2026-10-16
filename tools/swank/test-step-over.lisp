@@ -11,6 +11,7 @@
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
 
 (defun step-callee (state)
+  (assert (zerop (logand (i::read-frame-pointer) 15)))
   (incf (aref state 1))
   (when (aref state 0) (s:event-wait (aref state 0)))
   (let ((depth (aref state 5)))
@@ -29,6 +30,7 @@
   (:gc :frame)
   (lap:push :r8)
   (:gc :frame :layout #*1)
+  (lap:push 0)
   (lap:nop)
   (lap:call (:named-call step-callee))
   (:gc :frame :layout #*1 :multiple-values 0)

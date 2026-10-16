@@ -1084,7 +1084,8 @@ NIL with true availability denotes an absent global cell."
 
 (defstruct service-step
   stop condition pc-slot function offset request
-  (state :preparing))
+  (state :preparing)
+  breakpoint)
 
 (defvar *service-step* nil)
 (defvar *service-step-owner* nil)
@@ -1100,7 +1101,8 @@ NIL with true availability denotes an absent global cell."
 (defun cancel-service-step (step)
   #+x86-64
   (progn
-    (when (eq (service-step-state step) :running)
+    (when (and (service-step-request step)
+               (eq (service-step-state step) :running))
       (map-backtrace
        (lambda (frame)
          (when (and (mezzano.internals::frame-interrupted-p frame)
@@ -1113,7 +1115,9 @@ NIL with true availability denotes an absent global cell."
                       (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
                       #x100))))))))
     (when (service-step-request step)
-      (mezzano.supervisor::clear-instruction-step-request (service-step-request step))))
+      (mezzano.supervisor::clear-instruction-step-request (service-step-request step)))
+    (when (service-step-breakpoint step)
+      (mezzano.supervisor::clear-instruction-breakpoint (service-step-breakpoint step))))
   (setf (mezzano.internals::instruction-trap-exit-function (service-step-condition step)) nil
         (service-step-state step) :cancelled))
 
@@ -1122,10 +1126,11 @@ NIL with true availability denotes an absent global cell."
     (:resume
      #+x86-64
      (mezzano.supervisor:without-footholds
-       (setf (service-step-state step) :running
-             (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
-             (logior (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
-                     #x100)))
+       (setf (service-step-state step) :running)
+       (when (service-step-request step)
+         (setf (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
+               (logior (mezzano.internals::memref-unsigned-byte-64 (service-step-pc-slot step) 2)
+                       #x100))))
      #-x86-64 (service-error :unsupported-architecture))
     ((:cancel :unwind)
      (cancel-service-step step)
@@ -1155,12 +1160,16 @@ NIL with true availability denotes an absent global cell."
              (slot (mezzano.internals::frame-pc-slot frame))
              (flags (mezzano.internals::memref-unsigned-byte-64 slot 2))
              (instruction (mezzano.disassemble:instruction-at
-                           (mezzano.disassemble:make-disassembler-context function) offset)))
+                           (mezzano.disassemble:make-disassembler-context function) offset))
+             (call-p (and instruction
+                          (eq (mezzano.disassemble.x86-64::inst-opcode instruction)
+                              'mezzano.lap.x86:call)))
+             (next-offset (when call-p (+ offset (mezzano.disassemble:inst-size instruction)))))
         (unless (and (logbitp 9 flags) (not (logbitp 8 flags)))
           (service-error :unsupported-step-flags))
         (unless (and instruction
                      (case (mezzano.disassemble.x86-64::inst-opcode instruction)
-                       ((mezzano.lap.x86:nop mezzano.lap.x86:ret
+                       ((mezzano.lap.x86:nop mezzano.lap.x86:ret mezzano.lap.x86:call
                          mezzano.lap.x86:push mezzano.lap.x86:pop
                          mezzano.lap.x86:mov32 mezzano.lap.x86:mov64
                          mezzano.lap.x86:lea64 mezzano.lap.x86:add64
@@ -1174,6 +1183,7 @@ NIL with true availability denotes an absent global cell."
                                (typep (first operands)
                                       'mezzano.disassemble.x86-64::relative-address))))))
           (service-error :unsupported-step-instruction))
+        (when call-p (service-validate-instruction-breakpoint-location function next-offset))
         (let* ((condition (service-stop-condition stop))
                (step (make-service-step :stop stop :condition condition :pc-slot slot
                                         :function function :offset offset)))
@@ -1183,10 +1193,16 @@ NIL with true availability denotes an absent global cell."
                   (lambda (action) (service-step-exit step action)))
             (let ((restart (or (find-restart 'mezzano.internals::instruction-step condition)
                                (service-error :unavailable-step-transfer))))
-              (setf (service-step-request step)
-                    (mezzano.supervisor::register-instruction-step-request
-                     (mezzano.supervisor:current-thread) #'service-deliver-step step)
-                    (service-step-state step) :prepared)
+              (if call-p
+                  (setf (service-step-breakpoint step)
+                        (mezzano.supervisor::install-callback-instruction-step-breakpoint
+                         function next-offset (mezzano.supervisor:current-thread)
+                         (mezzano.internals::memref-unsigned-byte-64 slot 3)
+                         #'service-deliver-step step))
+                  (setf (service-step-request step)
+                        (mezzano.supervisor::register-instruction-step-request
+                         (mezzano.supervisor:current-thread) #'service-deliver-step step)))
+              (setf (service-step-state step) :prepared)
               (invoke-restart restart)))))))
   #-x86-64 (service-error :unsupported-architecture))
 

@@ -15,6 +15,7 @@
 (defstruct call-case state gate thread controller stop lease point (deliveries 0) mode)
 
 (defun call-callee (state)
+  (assert (zerop (logand (i::read-frame-pointer) 15)))
   (incf (aref state 1))
   (when (aref state 0) (s:event-wait (aref state 0)))
   (let ((depth (aref state 5)))
@@ -33,6 +34,7 @@
   (:gc :frame)
   (lap:push :r8)
   (:gc :frame :layout #*1)
+  (lap:push 0)
   (lap:nop)
   (lap:call (:named-call call-callee))
   (:gc :frame :layout #*1 :multiple-values 0)
@@ -45,8 +47,8 @@
   (:gc :no-frame :layout #*0 :multiple-values 0)
   (lap:ret))
 
-(defun call-location ()
-  (let* ((context (dis:make-disassembler-context #'step-body))
+(defun call-location (&optional (function #'step-body))
+  (let* ((context (dis:make-disassembler-context function))
          (instruction (find-if (lambda (instruction)
                                  (and instruction (eq (x::inst-opcode instruction) 'lap:call)))
                                (dis:context-instructions context))))
@@ -58,10 +60,10 @@
   (when (call-case-point record)
     (s::clear-instruction-breakpoint (call-case-point record)))
   (when (call-case-thread record)
-    (let ((stop (or (call-case-stop record)
-                    (managed::thread-stop (call-case-thread record)))))
-      (when stop
-        (lispm-frame-evaluation-test::release-test-stop stop (call-case-controller record))))
+    (loop for stop = (managed::thread-stop (call-case-thread record))
+          while stop
+          do (lispm-frame-evaluation-test::release-test-stop
+              stop (call-case-controller record)))
     (let ((state (call-case-state record)) (thread (call-case-thread record)))
       (when (aref state 0) (setf (s:event-state (aref state 0)) t))
       (setf (s:event-state (call-case-gate record)) t)
@@ -73,10 +75,10 @@
         (test::await (lambda () (nth-value 1 (s:thread-join thread nil)))))))
   (d:close-debugger-controller (call-case-controller record)))
 
-(defun start-case (depth recursion &optional blocked (mode :stop))
+(defun start-case (depth recursion &optional blocked (mode :stop) (function #'step-body))
   (let* ((state (vector (when blocked (s:make-event)) 0 0 0
                         (vector :managed-call-return depth recursion) recursion
-                        nil nil nil nil nil nil))
+                        nil (fdefinition 'call-callee) nil nil nil nil))
          (record (make-call-case :state state :gate (s:make-event)
                                  :controller (d:make-debugger-controller) :mode mode))
          (prepared nil))
@@ -101,13 +103,13 @@
              (test::await (lambda () (and (aref state 6)
                                          (eq (s::sample-thread-state thread) :sleeping))))
              (s::stop-thread thread)
-             (s::force-call-on-thread thread #'step-body state)
+             (s::force-call-on-thread thread function state)
              (loop repeat 12
-                   do (multiple-value-bind (function offset) (raw::location thread)
-                        (when (and (eq function #'step-body) (= offset (call-location))) (return))
+                   do (multiple-value-bind (actual offset) (raw::location thread)
+                        (when (and (eq actual function) (= offset (call-location function))) (return))
                         (s::single-step-thread thread))
                    finally (error "Owned managed call target did not reach CALL."))
-             (raw::check-location thread #'step-body (call-location)))
+             (raw::check-location thread function (call-location function)))
            (setf prepared t)
            record)
       (unless prepared (cleanup-case record)))))
