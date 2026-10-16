@@ -1,0 +1,63 @@
+(defpackage #:lispm-hardware-breakpoint-restore-test
+  (:use #:cl)
+  (:local-nicknames (#:s #:mezzano.supervisor) (#:d #:mezzano.debug)
+                    (#:hw #:lispm-hardware-breakpoint-test)
+                    (#:test #:lispm-service-test))
+  (:export #:prepare #:finish))
+(in-package #:lispm-hardware-breakpoint-restore-test)
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+(defvar *state* nil)
+
+(defun prepare ()
+  (assert (null *state*))
+  (assert (null (s::instruction-breakpoints)))
+  (let ((functions (list #'hw::target-one #'hw::target-two
+                         #'hw::target-three #'hw::target-four)))
+    (setf *state* (list :boot (s:current-boot-id)
+                       :functions functions
+                       :bytes (mapcar #'hw::code-bytes functions)
+                       :breakpoints nil :cases nil))
+    (loop for function in functions
+          for offset in '(16 24 16 16)
+          do (push (hw::install function offset) (getf *state* :breakpoints)))
+    (setf (getf *state* :breakpoints) (nreverse (getf *state* :breakpoints)))
+    (dolist (depth '(0 2))
+      (push (hw::make-case (first functions) 16 depth) (getf *state* :cases)))
+    (mapc #'hw::inspect-case (getf *state* :cases)))
+  (format t "Prepared four active hardware locations and two retained hits across zero/two prompts.~%")
+  t)
+
+(defun finish ()
+  (assert *state*)
+  (assert (not (eq (getf *state* :boot) (s:current-boot-id))))
+  (assert (equal (s::instruction-breakpoints) (getf *state* :breakpoints)))
+  (assert (eq (svref s::*user-interrupt-handlers* #x85)
+              #'s::instruction-breakpoint-ipi-handler))
+  (unwind-protect
+       (progn
+         (dolist (record (getf *state* :cases))
+           (test::expect-error
+            :expired-stop
+            (lambda () (d:debugger-stop-information (fourth record))))
+           (d:close-debugger-controller (second record))
+           (setf (second record) (d:make-debugger-controller)
+                 (fourth record) nil
+                 (fifth record) nil)
+           (hw::inspect-case record))
+         (hw::finish-case (first (getf *state* :cases)) nil)
+         (hw::finish-case (second (getf *state* :cases)) t)
+         (loop for function in (getf *state* :functions)
+               for offset in '(16 24 16 16)
+               do (hw::call-case function offset 0))
+         (mapc (lambda (function bytes)
+                 (assert (equalp (hw::code-bytes function) bytes)))
+               (getf *state* :functions) (getf *state* :bytes))
+         (assert (zerop s::*instruction-breakpoint-updates-pending*)))
+    (dolist (breakpoint (getf *state* :breakpoints))
+      (s::clear-instruction-breakpoint breakpoint))
+    (dolist (record (getf *state* :cases)) (hw::cleanup-case record))
+    (setf *state* nil))
+  (assert (null (s::instruction-breakpoints)))
+  (assert (eq hw::*probe* :global))
+  (format t "PASS restored hardware locations and retained hits, expired handles, fresh control, saved PC/RF, caller lexical access, GC/identity, Continue/Abort, all four locations after boot, unchanged code, values, cleanup, and prompts.~%")
+  t)
