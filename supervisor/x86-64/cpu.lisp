@@ -133,6 +133,111 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
 (defconstant +magic-button-ipi-vector+ #x84
   "Sent to CPUs when the magic debug button is pressed.")
 
+(defconstant +instruction-breakpoint-ipi-vector+ #x85)
+
+(defstruct (instruction-breakpoint
+             (:area :wired)
+             (:constructor %make-instruction-breakpoint (function offset address)))
+  (function nil :read-only t)
+  (offset 0 :type fixnum :read-only t)
+  (address 0 :type fixnum :read-only t))
+
+(sys.int::defglobal *instruction-breakpoint-slots* nil)
+(sys.int::defglobal *instruction-breakpoint-updates-pending* 0)
+
+(defun load-instruction-breakpoint-registers ()
+  (let* ((slots (and (boundp '*instruction-breakpoint-slots*)
+                     *instruction-breakpoint-slots*))
+         (b0 (and slots (svref slots 0)))
+         (b1 (and slots (svref slots 1)))
+         (b2 (and slots (svref slots 2)))
+         (b3 (and slots (svref slots 3))))
+    (setf (sys.int::%dr7) #x400
+          (sys.int::%dr0) (if b0 (instruction-breakpoint-address b0) 0)
+          (sys.int::%dr1) (if b1 (instruction-breakpoint-address b1) 0)
+          (sys.int::%dr2) (if b2 (instruction-breakpoint-address b2) 0)
+          (sys.int::%dr3) (if b3 (instruction-breakpoint-address b3) 0)
+          (sys.int::%dr7) (logior #x400 (if b0 #x02 0) (if b1 #x08 0)
+                                 (if b2 #x20 0) (if b3 #x80 0)))))
+
+(defun synchronize-instruction-breakpoints ()
+  (ensure (eql *world-stopper* (current-thread)))
+  (safe-without-interrupts ()
+    (setf *instruction-breakpoint-updates-pending* (1- *n-up-cpus*))
+    (load-instruction-breakpoint-registers)
+    (broadcast-ipi +ipi-type-fixed+ +instruction-breakpoint-ipi-vector+)
+    (loop until (zerop *instruction-breakpoint-updates-pending*)
+          do (sys.int::cpu-relax))))
+
+(defun instruction-breakpoint-ipi-handler (interrupt-frame info)
+  (declare (ignore interrupt-frame info))
+  (lapic-eoi)
+  (load-instruction-breakpoint-registers)
+  (sys.int::%atomic-fixnum-add-symbol '*instruction-breakpoint-updates-pending* -1))
+
+(defun install-instruction-breakpoint (function offset)
+  (unless (and (sys.int::%object-of-type-p function sys.int::+object-tag-function+)
+               (<= sys.int::*function-area-base* (sys.int::lisp-object-address function)))
+    (error "Instruction breakpoints require a nonresident compiled function: ~S." function))
+  (check-type offset fixnum)
+  (unless (<= 16 offset (1- (sys.int::function-code-size function)))
+    (error "Invalid instruction breakpoint offset ~D in ~S." offset function))
+  (let ((breakpoint (%make-instruction-breakpoint
+                     function offset (+ (logand (sys.int::lisp-object-address function) -16) offset)))
+        (new-slots (unless *instruction-breakpoint-slots*
+                     (let ((slots (sys.int::make-simple-vector 4 :wired)))
+                       (dotimes (index 4) (setf (svref slots index) nil))
+                       slots)))
+        (result nil))
+    (with-world-stopped
+      (unless *instruction-breakpoint-slots*
+        (setf *instruction-breakpoint-slots* new-slots))
+      (let ((free nil))
+        (dotimes (index 4)
+          (let ((current (svref *instruction-breakpoint-slots* index)))
+            (cond ((null current) (unless free (setf free index)))
+                  ((and (eq (instruction-breakpoint-function current) function)
+                        (= (instruction-breakpoint-offset current) offset))
+                   (setf result current)))))
+        (when (and (not result) free)
+          (setf (svref *instruction-breakpoint-slots* free) breakpoint
+                result breakpoint)
+          (synchronize-instruction-breakpoints))))
+    (or result (error "All four hardware instruction breakpoints are in use."))))
+
+(defun clear-instruction-breakpoint (breakpoint)
+  (check-type breakpoint instruction-breakpoint)
+  (let ((cleared nil))
+    (with-world-stopped
+      (when *instruction-breakpoint-slots*
+        (dotimes (index 4)
+          (when (eq (svref *instruction-breakpoint-slots* index) breakpoint)
+            (setf (svref *instruction-breakpoint-slots* index) nil
+                  cleared t)))
+        (when cleared (synchronize-instruction-breakpoints))))
+    cleared))
+
+(defun instruction-breakpoints ()
+  (let ((snapshot (make-array 4 :initial-element nil)))
+    (with-world-stopped
+      (when *instruction-breakpoint-slots*
+        (dotimes (index 4)
+          (setf (svref snapshot index) (svref *instruction-breakpoint-slots* index)))))
+    (remove nil (coerce snapshot 'list))))
+
+(defun instruction-breakpoint-for-interrupt (interrupt-frame status)
+  (when *instruction-breakpoint-slots*
+    (let ((control (sys.int::%dr7))
+          (pc (interrupt-frame-raw-register interrupt-frame :rip)))
+      (dotimes (index 4)
+        (let ((breakpoint (svref *instruction-breakpoint-slots* index)))
+          (when (and breakpoint
+                     (logbitp index status)
+                     (logtest (ash 3 (* index 2)) control)
+                     (zerop (ldb (byte 4 (+ 16 (* index 4))) control))
+                     (= pc (instruction-breakpoint-address breakpoint)))
+            (return-from instruction-breakpoint-for-interrupt breakpoint)))))))
+
 (defun set-idt-entry (cpu idt-index
                       &key (offset 0) (segment #x0008)
                         (present t) (dpl 0) (ist nil)
@@ -939,7 +1044,8 @@ This is a one-shot timer and must be reset after firing."
   (hook-user-interrupt +panic-ipi-vector+ 'panic-ipi-handler)
   (hook-user-interrupt +quiesce-ipi-vector+ 'quiesce-ipi-handler)
   (hook-user-interrupt +tlb-shootdown-ipi-vector+ 'tlb-shootdown-ipi-handler)
-  (hook-user-interrupt +magic-button-ipi-vector+ 'magic-button-ipi-handler))
+  (hook-user-interrupt +magic-button-ipi-vector+ 'magic-button-ipi-handler)
+  (hook-user-interrupt +instruction-breakpoint-ipi-vector+ 'instruction-breakpoint-ipi-handler))
 
 (defun load-cpu-bits (cpu)
   (let* ((addr (- (sys.int::lisp-object-address cpu)
@@ -947,7 +1053,8 @@ This is a one-shot timer and must be reset after firing."
     (%lgdt (1- (* 4 8)) (+ addr 8 (mezzano.runtime::location-offset +x86-64-cpu-gdt-null+)))
     (%lidt (1- (* 256 16)) (+ addr 8 (mezzano.runtime::location-offset +x86-64-cpu-idt+)))
     (%ltr 16)
-    (%load-cs 8)))
+    (%load-cs 8))
+  (load-instruction-breakpoint-registers))
 
 (defun page-fault-idt-entry-flags (cpu)
   (x86-64-cpu-idt cpu (+ (* 14 4) 1)))

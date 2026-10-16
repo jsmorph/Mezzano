@@ -50,7 +50,7 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 | Frame execution | Reinvoke; Return; Throw | Return passed native x86-64 and Chromium condition-stop tests.  Its one-expression value prompt differs from Genera.  Reinvoke passed native retained-command, prepared-confirmation restore, parked-frame restore, and Chromium interaction on the documented x86-64 scope.  Throw remains planned. |
 | Call and exit traps | Set Trap On Call; Clear Trap On Call; Proceed Trap On Call; Restart Trap On Call; Set Trap On Exit; Clear Trap On Exit | Planned. |
 | Conditions and monitoring | Enable Condition Tracing; Disable Condition Tracing; Monitor Variable; Unmonitor Variable; Show Monitored Locations | Planned. |
-| Breakpoints and stepping | Set Breakpoint; Clear Breakpoint; Clear All Breakpoints; Show Breakpoints; Single Step | Management and stepping remain planned.  Intentional x86-64 INT3 entry and continuation passed native tests.  TRACE :BREAK provides a separate function-entry stop. |
+| Breakpoints and stepping | Set Breakpoint; Clear Breakpoint; Clear All Breakpoints; Show Breakpoints; Single Step | Internal x86-64 hardware installation/removal passed native tests with four locations.  User commands and retained stepping remain planned.  Intentional INT3 entry/continuation also passed.  TRACE :BREAK provides a separate function-entry stop. |
 | System integration | Edit Function; Mail Bug Report; Set Stack Size | Pending explicit Mezzano mappings. |
 
 The command reference must expand each entry with its supported arguments, omitted and mentioned defaults, selection rules, prompts, confirmation behavior, errors, and tests.  Genera keyboard accelerators need a documented browser mapping.  Editor, mail, instance-model, and stack-layout differences remain open scope decisions.  They remain in this inventory until implemented or explicitly excluded.
@@ -482,9 +482,18 @@ On x86-64, an intentional INT3 instruction enters ordinary Lisp BREAK through th
 
 Native tests use a fixed INT3 in an owned LAP function.  They verify the saved PC, caller lexical access, exact heap identity through moving GC, Continue and Abort, one cleanup, ordinary/nested prompt stacks, and two parked threads sharing the same trap function.  The resident module compiled at DEBUG 1/SAFETY 3/SPEED 1.  Test Lisp compiled at DEBUG 3/SAFETY 3/SPEED 1.  Traps in interrupt handlers or runtime critical sections, saved trap-stop restoration, a cold boot of this addition, and ARM64 execution remain untested.
 
+### Managed hardware locations
+
+Internal x86-64 support manages four global instruction-breakpoint locations through DR0–DR3.  Each resident descriptor retains the compiled function, byte offset, and nonmoving code address.  Installation/removal synchronizes the register image on every online CPU before ordinary threads resume.  The handler enters BREAK before the instruction and sets saved RFLAGS.RF so CONTINUE executes the original instruction while the breakpoint remains enabled.  Code bytes remain unchanged.  A captured hit retains its descriptor when its slot is cleared or reused.
+
+Native tests cover compiled Lisp entry points, an assembled body instruction, exact saved PCs/RF, repeated hits, concurrent parked threads, definition replacement, four-slot exhaustion, retained clear/reuse, caller lexical reads, moving GC, Continue/Abort, values, cleanup, and zero/two prompts.  Register synchronization passed with two online CPUs.  The tests do not identify the CPU of each hit.  The resident modules used DEBUG 1/SAFETY 3/SPEED 1 and test Lisp used DEBUG 3/SAFETY 3/SPEED 1.
+
+The kernel installer validates function kind/residency and byte range.  Its caller must supply a valid instruction boundary.  An ordinary debugger validator and user commands remain unimplemented.  Conditions/actions, software breakpoints beyond four locations, retained stepping, snapshot rearming, first boot, ARM64, and Return/Reinvoke from these trap stops remain unimplemented or untested.  Supervisor-priority threads, interrupt handlers, and runtime critical sections are outside the supported scope.
+
+### Instruction-step primitive
+
 The existing supervisor TF primitive passed separate native tests on owned raw stopped threads: exact PCs for ordinary instructions, taken jumps and CALL/RET, saved registers through moving GC, and return to the original partial/full saved continuation at zero/two prompts.  It enters called functions.  Genera's Single Step steps over calls.  Retained debugger stepping has no command implementation yet.
 
-Breakpoint installation, original-instruction execution after replacement, concurrent modification/removal, and conditions/actions remain unimplemented.
 
 ## Compiler guarantees
 

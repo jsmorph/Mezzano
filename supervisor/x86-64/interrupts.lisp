@@ -121,14 +121,27 @@
   (unhandled-interrupt interrupt-frame info "divide error"))
 
 (defun sys.int::%debug-exception-handler (interrupt-frame info)
-  (let ((status (sys.int::%dr6)))
+  (let* ((status (sys.int::%dr6))
+         (breakpoint (instruction-breakpoint-for-interrupt interrupt-frame status)))
     (setf (sys.int::%dr6) 0)
     (cond ((logbitp 14 status)
            ;; Single-step trap.
            ;; Stop the thread and save the state.
            (stop-thread-for-single-step interrupt-frame))
+          ((and breakpoint
+                (not (eq (thread-priority (current-thread)) :supervisor))
+                (logbitp 9 (interrupt-frame-raw-register interrupt-frame :rflags)))
+           (setf (interrupt-frame-raw-register interrupt-frame :rflags)
+                 (logior (interrupt-frame-raw-register interrupt-frame :rflags) #x10000))
+           (pager-invoke-via-interrupt #'raise-debugger-instruction-breakpoint
+                                     interrupt-frame breakpoint))
           (t
            (unhandled-interrupt interrupt-frame info "debug exception")))))
+
+(defun raise-debugger-instruction-breakpoint (breakpoint)
+  (break "Instruction breakpoint at ~S +#x~X."
+         (instruction-breakpoint-function breakpoint)
+         (instruction-breakpoint-offset breakpoint)))
 
 (defun sys.int::%nonmaskable-interrupt-handler (interrupt-frame info)
   (unhandled-interrupt interrupt-frame info "nonmaskable"))
