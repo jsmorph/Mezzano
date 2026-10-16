@@ -1017,6 +1017,41 @@ NIL with true availability denotes an absent global cell."
   #-x86-64
   (service-error :unsupported-architecture))
 
+(defun single-step-over-thread (thread)
+  #+x86-64
+  (progn
+    (check-type thread mezzano.supervisor::thread)
+    (unless (and (eq (mezzano.supervisor::sample-thread-state thread) :stopped)
+                 (not (eq thread (mezzano.supervisor:current-thread)))
+                 (not (eq (mezzano.supervisor:thread-priority thread) :supervisor)))
+      (service-error :invalid-step-thread))
+    (mezzano.supervisor::convert-thread-to-full-save thread)
+    (multiple-value-bind (function offset)
+        (mezzano.internals::safe-return-address-to-function
+         (mezzano.supervisor:thread-state-rip thread))
+      (service-validate-instruction-breakpoint-location function offset)
+      (let* ((context (mezzano.disassemble:make-disassembler-context function))
+             (instruction (mezzano.disassemble:instruction-at context offset)))
+        (unless instruction (service-error :instruction-unavailable))
+        (if (eq (mezzano.disassemble.x86-64::inst-opcode instruction) 'mezzano.lap.x86:call)
+            (let* ((next (+ offset (mezzano.disassemble:inst-size instruction)))
+                   (breakpoint nil))
+              (service-validate-instruction-breakpoint-location function next)
+              (unwind-protect
+                   (progn
+                     (mezzano.supervisor:without-footholds
+                       (setf breakpoint
+                             (mezzano.supervisor::install-instruction-step-breakpoint
+                              function next thread (mezzano.supervisor:thread-state-rsp thread))))
+                     (mezzano.supervisor::resume-thread thread :single-step)
+                     (mezzano.supervisor::wait-for-thread-stop thread)
+                     (mezzano.supervisor::instruction-step-breakpoint-breakpoint breakpoint))
+                (when breakpoint
+                  (mezzano.supervisor::clear-instruction-breakpoint breakpoint))))
+            (progn (mezzano.supervisor::single-step-thread thread) nil)))))
+  #-x86-64
+  (service-error :unsupported-architecture))
+
 (defun service-breakpoint-function (source stop)
   (if source
       (with-input-from-string (stream source)

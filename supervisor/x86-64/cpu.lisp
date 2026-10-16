@@ -142,6 +142,15 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
   (offset 0 :type fixnum :read-only t)
   (address 0 :type fixnum :read-only t))
 
+(defstruct (instruction-step-breakpoint
+             (:include instruction-breakpoint)
+             (:area :wired)
+             (:constructor %make-instruction-step-breakpoint
+                 (function offset address thread stack-pointer)))
+  (thread nil :read-only t)
+  (stack-pointer 0 :type fixnum :read-only t)
+  breakpoint)
+
 (sys.int::defglobal *instruction-breakpoint-slots* nil)
 (sys.int::defglobal *instruction-breakpoint-updates-pending* 0)
 
@@ -176,34 +185,49 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
   (sys.int::%atomic-fixnum-add-symbol '*instruction-breakpoint-updates-pending* -1))
 
 (defun install-instruction-breakpoint (function offset)
-  (unless (and (sys.int::%object-of-type-p function sys.int::+object-tag-function+)
-               (<= sys.int::*function-area-base* (sys.int::lisp-object-address function)))
-    (error "Instruction breakpoints require a nonresident compiled function: ~S." function))
-  (check-type offset fixnum)
-  (unless (<= 16 offset (1- (sys.int::function-code-size function)))
-    (error "Invalid instruction breakpoint offset ~D in ~S." offset function))
-  (let ((breakpoint (%make-instruction-breakpoint
-                     function offset (+ (logand (sys.int::lisp-object-address function) -16) offset)))
-        (new-slots (unless *instruction-breakpoint-slots*
-                     (let ((slots (sys.int::make-simple-vector 4 :wired)))
-                       (dotimes (index 4) (setf (svref slots index) nil))
-                       slots)))
-        (result nil))
-    (with-world-stopped
-      (unless *instruction-breakpoint-slots*
-        (setf *instruction-breakpoint-slots* new-slots))
-      (let ((free nil))
-        (dotimes (index 4)
-          (let ((current (svref *instruction-breakpoint-slots* index)))
-            (cond ((null current) (unless free (setf free index)))
-                  ((and (eq (instruction-breakpoint-function current) function)
-                        (= (instruction-breakpoint-offset current) offset))
-                   (setf result current)))))
-        (when (and (not result) free)
-          (setf (svref *instruction-breakpoint-slots* free) breakpoint
-                result breakpoint)
-          (synchronize-instruction-breakpoints))))
-    (or result (error "All four hardware instruction breakpoints are in use."))))
+  (%install-instruction-breakpoint
+   (%make-instruction-breakpoint
+    function offset (+ (logand (sys.int::lisp-object-address function) -16) offset))))
+
+(defun install-instruction-step-breakpoint (function offset thread stack-pointer)
+  (check-type thread thread)
+  (check-type stack-pointer fixnum)
+  (%install-instruction-breakpoint
+   (%make-instruction-step-breakpoint
+    function offset (+ (logand (sys.int::lisp-object-address function) -16) offset)
+    thread stack-pointer)))
+
+(defun %install-instruction-breakpoint (breakpoint)
+  (let ((function (instruction-breakpoint-function breakpoint))
+        (offset (instruction-breakpoint-offset breakpoint)))
+    (unless (and (sys.int::%object-of-type-p function sys.int::+object-tag-function+)
+                 (<= sys.int::*function-area-base* (sys.int::lisp-object-address function)))
+      (error "Instruction breakpoints require a nonresident compiled function: ~S." function))
+    (check-type offset fixnum)
+    (unless (<= 16 offset (1- (sys.int::function-code-size function)))
+      (error "Invalid instruction breakpoint offset ~D in ~S." offset function))
+    (let ((new-slots (unless *instruction-breakpoint-slots*
+                       (let ((slots (sys.int::make-simple-vector 4 :wired)))
+                         (dotimes (index 4) (setf (svref slots index) nil))
+                         slots)))
+          (result nil))
+      (with-world-stopped
+        (unless *instruction-breakpoint-slots*
+          (setf *instruction-breakpoint-slots* new-slots))
+        (let ((free nil))
+          (dotimes (index 4)
+            (let ((current (svref *instruction-breakpoint-slots* index)))
+              (cond ((null current) (unless free (setf free index)))
+                    ((and (not (instruction-step-breakpoint-p breakpoint))
+                          (not (instruction-step-breakpoint-p current))
+                          (eq (instruction-breakpoint-function current) function)
+                          (= (instruction-breakpoint-offset current) offset))
+                     (setf result current)))))
+          (when (and (not result) free)
+            (setf (svref *instruction-breakpoint-slots* free) breakpoint
+                  result breakpoint)
+            (synchronize-instruction-breakpoints))))
+      (or result (error "All four hardware instruction breakpoints are in use.")))))
 
 (defun clear-instruction-breakpoint (breakpoint)
   (check-type breakpoint instruction-breakpoint)
@@ -224,6 +248,7 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
         (dotimes (index 4)
           (let ((breakpoint (svref *instruction-breakpoint-slots* index)))
             (when (and breakpoint
+                       (not (instruction-step-breakpoint-p breakpoint))
                        (eq (instruction-breakpoint-function breakpoint) function))
               (setf (svref *instruction-breakpoint-slots* index) nil)
               (incf count))))
@@ -236,12 +261,16 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
       (when *instruction-breakpoint-slots*
         (dotimes (index 4)
           (setf (svref snapshot index) (svref *instruction-breakpoint-slots* index)))))
-    (remove nil (coerce snapshot 'list))))
+    (remove-if (lambda (point) (or (null point) (instruction-step-breakpoint-p point)))
+               (coerce snapshot 'list))))
 
 (defun instruction-breakpoint-for-interrupt (interrupt-frame status)
   (when *instruction-breakpoint-slots*
     (let ((control (sys.int::%dr7))
-          (pc (interrupt-frame-raw-register interrupt-frame :rip)))
+          (pc (interrupt-frame-raw-register interrupt-frame :rip))
+          (step nil)
+          (public nil)
+          (unmatched nil))
       (dotimes (index 4)
         (let ((breakpoint (svref *instruction-breakpoint-slots* index)))
           (when (and breakpoint
@@ -249,7 +278,15 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
                      (logtest (ash 3 (* index 2)) control)
                      (zerop (ldb (byte 4 (+ 16 (* index 4))) control))
                      (= pc (instruction-breakpoint-address breakpoint)))
-            (return-from instruction-breakpoint-for-interrupt breakpoint)))))))
+            (cond ((not (instruction-step-breakpoint-p breakpoint))
+                   (setf public breakpoint))
+                  ((and (eq (instruction-step-breakpoint-thread breakpoint) (current-thread))
+                        (= (instruction-step-breakpoint-stack-pointer breakpoint)
+                           (interrupt-frame-raw-register interrupt-frame :rsp)))
+                   (setf step breakpoint))
+                  (t (setf unmatched breakpoint))))))
+      (when step (setf (instruction-step-breakpoint-breakpoint step) public))
+      (or step public unmatched))))
 
 (defun set-idt-entry (cpu idt-index
                       &key (offset 0) (segment #x0008)

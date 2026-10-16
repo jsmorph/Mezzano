@@ -128,6 +128,13 @@
            ;; Single-step trap.
            ;; Stop the thread and save the state.
            (stop-thread-for-single-step interrupt-frame))
+          ((instruction-step-breakpoint-p breakpoint)
+           (setf (interrupt-frame-raw-register interrupt-frame :rflags)
+                 (logior (interrupt-frame-raw-register interrupt-frame :rflags) #x10000))
+           (when (and (eq (instruction-step-breakpoint-thread breakpoint) (current-thread))
+                      (= (instruction-step-breakpoint-stack-pointer breakpoint)
+                         (interrupt-frame-raw-register interrupt-frame :rsp)))
+             (stop-thread-for-single-step interrupt-frame)))
           ((and breakpoint
                 (not (eq (thread-priority (current-thread)) :supervisor))
                 (logbitp 9 (interrupt-frame-raw-register interrupt-frame :rflags)))
