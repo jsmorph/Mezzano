@@ -151,6 +151,14 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
   (stack-pointer 0 :type fixnum :read-only t)
   breakpoint)
 
+(defstruct (callback-instruction-step-breakpoint
+             (:include instruction-step-breakpoint)
+             (:area :wired)
+             (:constructor %make-callback-instruction-step-breakpoint
+                 (function offset address thread stack-pointer callback argument)))
+  (callback nil :read-only t)
+  (argument nil :read-only t))
+
 (defstruct (instruction-step-request
              (:area :wired)
              (:constructor %make-instruction-step-request (thread function argument)))
@@ -257,6 +265,23 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
    (%make-instruction-step-breakpoint
     function offset (+ (logand (sys.int::lisp-object-address function) -16) offset)
     thread stack-pointer)))
+
+(defun install-callback-instruction-step-breakpoint
+    (function offset thread stack-pointer callback argument)
+  (check-type thread thread)
+  (check-type stack-pointer fixnum)
+  (check-type callback function)
+  (when (eq (thread-priority thread) :supervisor)
+    (error "Instruction stepping requires an ordinary thread."))
+  (%install-instruction-breakpoint
+   (%make-callback-instruction-step-breakpoint
+    function offset (+ (logand (sys.int::lisp-object-address function) -16) offset)
+    thread stack-pointer callback argument)))
+
+(defun deliver-callback-instruction-step-breakpoint (breakpoint)
+  (when (clear-instruction-breakpoint breakpoint)
+    (funcall (callback-instruction-step-breakpoint-callback breakpoint)
+             (callback-instruction-step-breakpoint-argument breakpoint))))
 
 (defun %install-instruction-breakpoint (breakpoint)
   (let ((function (instruction-breakpoint-function breakpoint))

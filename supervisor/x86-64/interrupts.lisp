@@ -141,7 +141,12 @@
            (when (and (eq (instruction-step-breakpoint-thread breakpoint) (current-thread))
                       (= (instruction-step-breakpoint-stack-pointer breakpoint)
                          (interrupt-frame-raw-register interrupt-frame :rsp)))
-             (stop-thread-for-single-step interrupt-frame)))
+             (if (and (callback-instruction-step-breakpoint-p breakpoint)
+                      (not (eq (thread-priority (current-thread)) :supervisor))
+                      (logbitp 9 (interrupt-frame-raw-register interrupt-frame :rflags)))
+                 (pager-invoke-via-interrupt #'deliver-callback-instruction-step-breakpoint
+                                           interrupt-frame breakpoint)
+                 (stop-thread-for-single-step interrupt-frame))))
           ((and breakpoint
                 (not (eq (thread-priority (current-thread)) :supervisor))
                 (logbitp 9 (interrupt-frame-raw-register interrupt-frame :rflags)))
