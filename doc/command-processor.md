@@ -21,6 +21,10 @@ Command: ,help
 | Show Herald | Displays the Listener herald: image version, architecture, memory totals, and keyboard help.  :Detailed Yes adds loaded ASDF systems and declared versions.  An omitted :Detailed means No.  Mentioning it without a value means Yes. |
 | Show Command Processor Status | Displays mode, prompt, package, and pathname default. |
 | Show Processes | Displays thread names, scheduler states, priorities, wait reasons, recorded run time, and retained debugger stop IDs. |
+| Set Breakpoint | Takes a compiled function name and a required PC.  Installs an instruction breakpoint. |
+| Clear Breakpoint | Takes a compiled function name and an optional PC, defaulting to byte 16.  Removes that location. |
+| Clear All Breakpoints | Takes a compiled function name and removes all its locations. |
+| Show Breakpoints | Lists every installed function/offset location. |
 | Clear All | Terminates retained evaluations across Listeners, releases their output and closed debugger records, and clears this tab's evaluation histories. |
 | Clear Output History | Clears the tab's prior displayed transcript while preserving input history and retained jobs. |
 | Show Directory | Lists guest files matching a pathname.  An omitted argument uses a wildcard in the default directory.  A directory pathname acquires wildcard name and type components. |
@@ -33,6 +37,24 @@ File arguments use Mezzano Common Lisp pathname syntax.  Relative names merge wi
 These commands implement the listed arguments and keywords.  Unsupported or duplicate keywords produce an input error.  Compile File supports Yes and No for :Load.  Genera's Ask choice, multiple-file arguments, output redirection, and other command keywords are unsupported.
 
 Show Processes uses `mezzano.debug:process-summary`, the same guest query as Peek's Processes view.  It reports live observations assembled from per-thread scheduler samples.  Run time counts recorded processor time in the displayed units.  An active scheduling interval enters that counter when the thread switches out.  Scheduler state and retained debugger stops are separate: a thread waiting at a retained stop usually has scheduler state Sleeping.  Idle threads are absent from the supervisor's live-thread list.
+
+### Compiled breakpoints
+
+Set Breakpoint requires a function name and a PC.  Clear Breakpoint defaults its PC to byte 16.  PCs accept nonnegative decimal integers or `#x` hexadecimal integers and count bytes from the compiled function object's start, matching Show Compiled Code.  Lisp validates each new location against the compiler's instruction-start map.  An older function without that map reports unavailable metadata until recompiled.
+
+```text
+Command: (compile 'demo-add '(lambda (value) (+ value 1)))
+Command: Set Breakpoint DEMO-ADD #x10
+Command: Show Breakpoints
+Command: Clear Breakpoint DEMO-ADD
+Command: Clear All Breakpoints DEMO-ADD
+```
+
+A function operand uses Mezzano's function-name syntax, including symbols and SETF names.  A name containing spaces needs Command Processor quotes, for example `Set Breakpoint "(setf accessor)" #x10`.  The guest reads one name with read-time evaluation disabled in the Listener's package, or the debugger's current package, and resolves its current definition when the command executes.  It accepts function names rather than arbitrary function-producing expressions.  The [Lisp breakpoint API](debugger.md#lisp-breakpoint-management) accepts exact compiled function objects.
+
+The table identifies a location by its function object and byte offset.  Redefining a name leaves its old locations on the original function.  Show Breakpoints prints the retained function identities.  In the debugger, Clear All Breakpoints with no function uses the selected frame's exact executing function, including an older definition.  The Listener requires an explicit function.
+
+The x86-64 implementation provides four global hardware locations.  Installation/removal synchronizes online CPUs.  A retained hit remains inspectable and can continue after its location is cleared.  Breakpoint commands preserve frame selection and expression/value history.  Retained replay returns the recorded result without repeating the mutation.  Reader, resolution, location, capacity, and printer errors enter the usual debugger.  Conditions/actions, mouse breakpoint operations, and Single Step remain planned.
 
 ### Clear All
 
@@ -80,6 +102,10 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Clear Inspector | Releases this stop's retained Inspector object and place references. |
 | :Show Function | Displays the selected frame's associated function and assigns only the debugger level's * value before printing. |
 | :Show Compiled Code | Disassembles the selected executing function, with labels, hexadecimal byte offsets, bytes, and annotations. |
+| :Set Breakpoint function PC | Installs a validated location in the function's current definition.  PC is required. |
+| :Clear Breakpoint function [PC] | Removes that function/offset location.  PC defaults to byte 16. |
+| :Clear All Breakpoints [function] | Removes all locations in the named function, or the selected frame's exact executing function when omitted. |
+| :Show Breakpoints | Prints all installed function/offset locations. |
 | :Show Instruction | Displays the instruction containing the selected saved caller location or interrupted program counter. |
 | :Show Arglist | Prints the selected compiled function's stored lambda list, preserving selection and evaluation history.  Missing metadata reports unavailable. |
 | :Use Dynamic Environment | Selects the debugger's global evaluation context. |

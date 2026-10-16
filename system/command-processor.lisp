@@ -5,84 +5,104 @@
   (pathname *default-pathname-defaults*)
   job)
 
+(defparameter *breakpoint-commands*
+  '((:name "Set Breakpoint" :id :set-breakpoint
+     :arguments ((:function-name nil) (:code-offset nil))
+     :help "Set a breakpoint in a compiled function at a decimal or #x hexadecimal byte offset.")
+    (:name "Clear Breakpoint" :id :clear-breakpoint
+     :arguments ((:function-name nil) (:code-offset "16"))
+     :help "Clear one function/offset breakpoint. The default offset is byte 16.")
+    (:name "Show Breakpoints" :id :show-breakpoints
+     :help "Display all installed function/offset breakpoints.")))
+
 (defparameter *commands*
-  '((:name "Help" :id :help
-     :help "List the supported commands. :Format Brief or Detailed selects the description."
-     :keywords (("Format" :format "Brief" "Brief")))
-    (:name "Set Package" :id :set-package :type :package
-     :help "Select this Listener's Lisp package.")
-    (:name "Show Herald" :id :show-herald
-     :help "Display the guest Lisp implementation and machine information."
-     :keywords (("Detailed" :boolean "No" "Yes")))
-    (:name "Show Command Processor Status" :id :show-command-processor-status
-     :help "Display the Listener mode, prompt, package, and pathname default.")
-    (:name "Show Processes" :id :show-processes
-     :help "Display Mezzano thread states, priorities, wait reasons, recorded run time, and retained debugger stops.")
-    (:name "Clear All" :id :clear-all
-     :help "Terminate retained evaluations, release their data and closed debugger records, and clear this tab's evaluation histories.")
-    (:name "Clear Output History" :id :clear-output-history
-     :help "Clear the displayed transcript. Retain input history and guest jobs.")
-    (:name "Show Directory" :id :show-directory :type :directory
-     :help "List guest pathnames matching a directory or wildcard pathname.")
-    (:name "Show File" :id :show-file :type :pathname
-     :help "Display a guest text file.")
-    (:name "Load File" :id :load-file :type :pathname
-     :help "Load a guest file using Common Lisp LOAD.")
-    (:name "Compile File" :id :compile-file :type :pathname
-     :help "Compile a guest Lisp file. :Load Yes loads the result. :Binary File selects the output."
-     :keywords (("Load" :boolean "No" "Yes") ("Binary File" :pathname nil nil)))))
+  (append
+    '((:name "Help" :id :help
+       :help "List the supported commands. :Format Brief or Detailed selects the description."
+       :keywords (("Format" :format "Brief" "Brief")))
+      (:name "Set Package" :id :set-package :type :package
+       :help "Select this Listener's Lisp package.")
+      (:name "Show Herald" :id :show-herald
+       :help "Display the guest Lisp implementation and machine information."
+       :keywords (("Detailed" :boolean "No" "Yes")))
+      (:name "Show Command Processor Status" :id :show-command-processor-status
+       :help "Display the Listener mode, prompt, package, and pathname default.")
+      (:name "Show Processes" :id :show-processes
+       :help "Display Mezzano thread states, priorities, wait reasons, recorded run time, and retained debugger stops.")
+      (:name "Clear All" :id :clear-all
+       :help "Terminate retained evaluations, release their data and closed debugger records, and clear this tab's evaluation histories.")
+      (:name "Clear Output History" :id :clear-output-history
+       :help "Clear the displayed transcript. Retain input history and guest jobs.")
+      (:name "Show Directory" :id :show-directory :type :directory
+       :help "List guest pathnames matching a directory or wildcard pathname.")
+      (:name "Show File" :id :show-file :type :pathname
+       :help "Display a guest text file.")
+      (:name "Load File" :id :load-file :type :pathname
+       :help "Load a guest file using Common Lisp LOAD.")
+      (:name "Compile File" :id :compile-file :type :pathname
+       :help "Compile a guest Lisp file. :Load Yes loads the result. :Binary File selects the output."
+       :keywords (("Load" :boolean "No" "Yes") ("Binary File" :pathname nil nil))))
+    *breakpoint-commands*
+    '((:name "Clear All Breakpoints" :id :clear-all-breakpoints
+        :arguments ((:function-name nil))
+        :help "Clear every breakpoint in the named compiled function."))))
 
 (defparameter *debugger-commands*
-  '((:name "Abort" :id :abort :help "Invoke this stop's innermost ABORT restart.")
-    (:name "Help" :id :help :help "List the supported debugger commands.")
-    (:name "Reinvoke" :id :reinvoke
-     :help "Reinvoke the selected frame using current arguments after confirmation. :New Args prompts for a list. :Original Args uses the original supplied sequence."
-     :keywords (("New Args" :boolean "No" "Yes") ("Original Args" :boolean "No" "Yes")))
-    (:name "Return" :id :return
-     :help "Return from the selected frame with the values of a prompted expression, after confirmation.")
-    (:name "Proceed" :id :proceed :type :restart
-     :help "Invoke the default CONTINUE restart or a zero-based restart index. :Arguments requests a Lisp expression returning the argument list."
-     :keywords (("Arguments" :boolean "No" "Yes")))
-    (:name "Inspect" :id :inspect :help "Inspect this debugger level's * value.")
-    (:name "Describe Last" :id :describe-last :help "Describe this debugger level's * value.")
-    (:name "Clear Inspector" :id :clear-inspector :help "Release this debugger level's retained Inspector references.")
-    (:name "Show Arglist" :id :show-arglist :help "Display the selected compiled function's argument list.")
-    (:name "Show Function" :id :show-function :help "Display the selected frame's function and assign it to *.")
-    (:name "Show Compiled Code" :id :show-compiled-code :help "Disassemble the selected frame's executing function with hexadecimal byte offsets.")
-    (:name "Show Instruction" :id :show-instruction :help "Display the instruction at the selected frame's saved caller location or interrupted program counter.")
-    (:name "Use Dynamic Environment" :id :use-dynamic-environment
-     :help "Evaluate forms in the debugger's global lexical context.")
-    (:name "Use Lexical Environment" :id :use-lexical-environment
-     :help "Evaluate forms in the selected frame's live lexical context.")
-    (:name "Show Standard Value Warnings" :id :show-standard-value-warnings
-     :help "Display corrections to invalid or unbound debugger reader and printer controls.")
-    (:name "Show Lexical Environment" :id :show-lexical-environment
-     :help "Display inherited lexical bindings of the selected source function. Missing ancestry or values are labelled unavailable.")
-    (:name "Show Special" :id :show-special :type :symbol-source
-     :help "Display a symbol's special binding in the selected Program frame or the Debugger. Streams is unsupported."
-     :keywords (("Environment" :special-environment "Program" "Program")))
-    (:name "Show Bindings" :id :show-bindings
-     :help "Display special bindings established by the selected frame. :All selects all frames. :Matching filters symbol names by a case-sensitive substring."
-     :keywords (("All" :boolean "No" "Yes") ("Matching" :string "" nil)))
-    (:name "Show Catch Blocks" :id :show-catches
-     :help "Display catch tags and available destination functions and byte offsets. :All selects all frames."
-     :keywords (("All" :boolean "No" "Yes")))
-    (:name "Show Condition Handlers" :id :show-handlers
-     :help "Display condition handlers established by the selected frame, with their active state at debugger entry. :All selects all frames."
-     :keywords (("All" :boolean "No" "Yes")))
-    (:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
-    (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
-    (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
-    (:name "Show Local" :id :show-local :type :local :help "Display All locals, or a local by its zero-based decimal index.")
-    (:name "Set Current Frame" :id :set-current-frame :type :frame :help "Select a zero-based frame index from Show Backtrace.")
-    (:name "Top Of Stack" :id :top-frame :help "Select and display the newest retained frame.")
-    (:name "Bottom Of Stack" :id :bottom-frame :help "Select and display the oldest retained frame.")
-    (:name "Next Frame" :id :next-frame
-     :help "Move toward older callers. :Nframes takes a nonnegative count, defaulting to one."
-     :keywords (("Nframes" :count "1" nil)))
-    (:name "Previous Frame" :id :previous-frame
-     :help "Move toward newer callees. :Nframes takes a nonnegative count, defaulting to one."
-     :keywords (("Nframes" :count "1" nil)))))
+  (append
+    '((:name "Abort" :id :abort :help "Invoke this stop's innermost ABORT restart.")
+      (:name "Help" :id :help :help "List the supported debugger commands.")
+      (:name "Reinvoke" :id :reinvoke
+       :help "Reinvoke the selected frame using current arguments after confirmation. :New Args prompts for a list. :Original Args uses the original supplied sequence."
+       :keywords (("New Args" :boolean "No" "Yes") ("Original Args" :boolean "No" "Yes")))
+      (:name "Return" :id :return
+       :help "Return from the selected frame with the values of a prompted expression, after confirmation.")
+      (:name "Proceed" :id :proceed :type :restart
+       :help "Invoke the default CONTINUE restart or a zero-based restart index. :Arguments requests a Lisp expression returning the argument list."
+       :keywords (("Arguments" :boolean "No" "Yes")))
+      (:name "Inspect" :id :inspect :help "Inspect this debugger level's * value.")
+      (:name "Describe Last" :id :describe-last :help "Describe this debugger level's * value.")
+      (:name "Clear Inspector" :id :clear-inspector :help "Release this debugger level's retained Inspector references.")
+      (:name "Show Arglist" :id :show-arglist :help "Display the selected compiled function's argument list.")
+      (:name "Show Function" :id :show-function :help "Display the selected frame's function and assign it to *.")
+      (:name "Show Compiled Code" :id :show-compiled-code :help "Disassemble the selected frame's executing function with hexadecimal byte offsets.")
+      (:name "Show Instruction" :id :show-instruction :help "Display the instruction at the selected frame's saved caller location or interrupted program counter.")
+      (:name "Use Dynamic Environment" :id :use-dynamic-environment
+       :help "Evaluate forms in the debugger's global lexical context.")
+      (:name "Use Lexical Environment" :id :use-lexical-environment
+       :help "Evaluate forms in the selected frame's live lexical context.")
+      (:name "Show Standard Value Warnings" :id :show-standard-value-warnings
+       :help "Display corrections to invalid or unbound debugger reader and printer controls.")
+      (:name "Show Lexical Environment" :id :show-lexical-environment
+       :help "Display inherited lexical bindings of the selected source function. Missing ancestry or values are labelled unavailable.")
+      (:name "Show Special" :id :show-special :type :symbol-source
+       :help "Display a symbol's special binding in the selected Program frame or the Debugger. Streams is unsupported."
+       :keywords (("Environment" :special-environment "Program" "Program")))
+      (:name "Show Bindings" :id :show-bindings
+       :help "Display special bindings established by the selected frame. :All selects all frames. :Matching filters symbol names by a case-sensitive substring."
+       :keywords (("All" :boolean "No" "Yes") ("Matching" :string "" nil)))
+      (:name "Show Catch Blocks" :id :show-catches
+       :help "Display catch tags and available destination functions and byte offsets. :All selects all frames."
+       :keywords (("All" :boolean "No" "Yes")))
+      (:name "Show Condition Handlers" :id :show-handlers
+       :help "Display condition handlers established by the selected frame, with their active state at debugger entry. :All selects all frames."
+       :keywords (("All" :boolean "No" "Yes")))
+      (:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
+      (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
+      (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
+      (:name "Show Local" :id :show-local :type :local :help "Display All locals, or a local by its zero-based decimal index.")
+      (:name "Set Current Frame" :id :set-current-frame :type :frame :help "Select a zero-based frame index from Show Backtrace.")
+      (:name "Top Of Stack" :id :top-frame :help "Select and display the newest retained frame.")
+      (:name "Bottom Of Stack" :id :bottom-frame :help "Select and display the oldest retained frame.")
+      (:name "Next Frame" :id :next-frame
+       :help "Move toward older callers. :Nframes takes a nonnegative count, defaulting to one."
+       :keywords (("Nframes" :count "1" nil)))
+      (:name "Previous Frame" :id :previous-frame
+       :help "Move toward newer callees. :Nframes takes a nonnegative count, defaulting to one."
+       :keywords (("Nframes" :count "1" nil))))
+    *breakpoint-commands*
+    '((:name "Clear All Breakpoints" :id :clear-all-breakpoints
+        :arguments ((:function-name nil t))
+        :help "Clear every breakpoint in the named function, defaulting to the selected executing function."))))
 
 (defun debugger-help ()
   (with-output-to-string (stream)
@@ -144,8 +164,18 @@
           always (and (not (lexeme-quoted-p token)) (prefixp (lexeme-value token) part)))))
 
 (defun find-command (tokens commands)
-  (let ((matches (remove-if-not (lambda (command) (name-match-p tokens (getf command :name))) commands)))
-    (values (when (= (length matches) 1) (first matches)) matches)))
+  (let* ((matches (remove-if-not (lambda (command) (name-match-p tokens (getf command :name))) commands))
+         (complete (remove-if (lambda (command)
+                                (< (length tokens) (length (words (getf command :name)))))
+                              matches))
+         (longest (when complete
+                    (loop for command in complete maximize (length (words (getf command :name))))))
+         (choices (if complete
+                      (remove-if-not (lambda (command)
+                                       (= (length (words (getf command :name))) longest))
+                                     complete)
+                      matches)))
+    (values (when (= (length choices) 1) (first choices)) matches)))
 
 (defun quote-argument (text)
   (if (or (zerop (length text))
@@ -192,7 +222,8 @@
   (format nil "(~A~@[ [default ~A]~])"
           (case type (:package "A package") ((:pathname :directory) "pathname")
                 (:format "Brief or Detailed") (:boolean "Yes or No") (:string "string")
-                (:symbol-source "symbol") (:special-environment "Program, Debugger, or Streams")
+                (:symbol-source "symbol") (:function-name "compiled function name")
+                (:code-offset "nonnegative decimal or #x hexadecimal byte offset") (:special-environment "Program, Debugger, or Streams")
                 (:local "local index or All") (:frame "frame index")
                 (:restart "restart index or Default") (:count "nonnegative frame count"))
           default))
@@ -214,7 +245,15 @@
                     (null (pathname-name pathname)) (null (pathname-type pathname)))
            (setf pathname (make-pathname :name :wild :type :wild :version :wild :defaults pathname)))
          (merge-pathnames pathname (listener-pathname listener))))
-      ((:string :symbol-source) text)
+      ((:string :symbol-source :function-name) text)
+      (:code-offset
+       (let ((hexadecimal-p (prefixp "#x" text)))
+         (multiple-value-bind (value end)
+             (parse-integer text :start (if hexadecimal-p 2 0)
+                                 :radix (if hexadecimal-p 16 10) :junk-allowed t)
+           (unless (and value (>= value 0) (= end (length text)))
+             (input-error "Expected a nonnegative decimal or #x hexadecimal byte offset, received ~S." text))
+           value)))
       (:special-environment
        (cond ((string-equal text "Program") :program)
              ((string-equal text "Debugger") :debugger)
@@ -232,6 +271,11 @@
          (start (if (and (plusp (length text)) (char= (char text 0) #\:)) 1 0)))
     (tokenize (subseq text start))))
 
+(defun command-arguments (command listener)
+  (or (getf command :arguments)
+      (let ((type (getf command :type)))
+        (when type (list (list type (argument-default type listener)))))))
+
 (defun parse-command (source listener context)
   (let* ((tokens (command-tokens source))
          (commands (if (eq context :debugger) *debugger-commands* *commands*)))
@@ -241,17 +285,18 @@
                      (mapcar (lambda (entry) (getf entry :name)) (or matches commands))))
       (let* ((count (length (words (getf command :name))))
              (rest (nthcdr count tokens))
-             (type (getf command :type))
              (argument nil)
              (keywords nil))
         (when (< (length tokens) count) (input-error "Complete the command name ~A." (getf command :name)))
-        (when type
-          (let ((text (if (and rest (or (lexeme-quoted-p (first rest))
-                                       (not (prefixp ":" (lexeme-value (first rest))))))
-                          (lexeme-value (pop rest))
-                          (argument-default type listener))))
-            (unless text (input-error "~A requires ~A." (getf command :name) (argument-prompt type nil)))
-            (setf argument (parse-argument text type listener))))
+        (dolist (specification (command-arguments command listener))
+          (destructuring-bind (type default &optional optional-p) specification
+            (let ((text (if (and rest (or (lexeme-quoted-p (first rest))
+                                         (not (prefixp ":" (lexeme-value (first rest))))))
+                            (lexeme-value (pop rest)) default)))
+              (unless (or text optional-p)
+                (input-error "~A requires ~A." (getf command :name) (argument-prompt type nil)))
+              (push (when text (parse-argument text type listener)) argument))))
+        (setf argument (if (getf command :arguments) (nreverse argument) (first argument)))
         (loop while rest do
           (let* ((token (pop rest))
                  (text (lexeme-value token))
@@ -426,6 +471,14 @@
                "Command: " (package-name *package*) (namestring (listener-pathname listener))))
       (:show-processes
        (mezzano.debug::print-process-summary (mezzano.debug:process-summary)))
+      ((:set-breakpoint :clear-breakpoint :clear-all-breakpoints :show-breakpoints)
+       (write-string
+        (mezzano.debug::service-breakpoint-command
+         (case (getf command :id)
+           (:show-breakpoints :breakpoints)
+           (otherwise (getf command :id)))
+         (if (eq (getf command :id) :clear-all-breakpoints) (first argument) argument)))
+       (terpri))
       (:clear-all
        (let ((result (mezzano.debug::clear-evaluation-history job)))
          (format t "Released ~D evaluations and ~D debugger records.~%"
@@ -484,6 +537,10 @@
     (:show-function (list :operation "function"))
     (:show-compiled-code (list :operation "compiled-code"))
     (:show-instruction (list :operation "instruction"))
+    (:set-breakpoint (list :operation "set-breakpoint" :argument argument))
+    (:clear-breakpoint (list :operation "clear-breakpoint" :argument argument))
+    (:clear-all-breakpoints (list :operation "clear-all-breakpoints" :argument (first argument)))
+    (:show-breakpoints (list :operation "breakpoints"))
     (:use-dynamic-environment (list :operation "use-dynamic-environment"))
     (:use-lexical-environment (list :operation "use-lexical-environment"))
     (:show-lexical-environment (list :operation "lexical-environment"))
@@ -530,18 +587,21 @@
         (definitions (copy-list (getf command :keywords))))
     (labels ((state (type value default)
                (list :base base :type type :value value :default default :keywords definitions))
-             (accept-value (type default)
+             (accept-value (type default &optional more-arguments-p)
                (let ((value (when (and rest (not (keyword-token-p (first rest))))
                               (lexeme-value (pop rest)))))
                  (when (and (null rest)
-                            (or (null value) (zerop trailing) (member action '(:space :complete :insert))))
+                            (or (null value) (zerop trailing)
+                                (and (not more-arguments-p) (member action '(:space :complete :insert)))))
                    (return-from argument-context (state type value default)))
                  (let ((text (or value default)))
                    (unless text (input-error "An argument is required: ~A." (argument-prompt type nil)))
                    (parse-argument text type listener)
                    (setf base (concatenate 'string base (quote-argument text) " "))))))
-      (when (getf command :type)
-        (accept-value (getf command :type) (argument-default (getf command :type) listener)))
+      (loop for specifications on (command-arguments command listener)
+            for specification = (first specifications)
+            do (accept-value (first specification) (second specification)
+                             (not (null (rest specifications)))))
       (loop while rest do
         (let* ((token (pop rest))
                (text (lexeme-value token)))

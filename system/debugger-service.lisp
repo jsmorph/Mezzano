@@ -447,7 +447,8 @@
            (previous (gethash id (service-stop-commands stop))))
       (when previous
         (unless (and (eq operation (service-command-operation previous))
-                     (if (member operation '(:evaluate :inspect :modify :bindings :special :reinvoke))
+                     (if (member operation '(:evaluate :inspect :modify :bindings :special :reinvoke
+                                             :set-breakpoint :clear-breakpoint :clear-all-breakpoints))
                          (equal argument (service-command-argument previous))
                          (eql argument (service-command-argument previous)))
                      (eq (service-command-boot previous)
@@ -465,8 +466,14 @@
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
           :function :compiled-code :instruction :lexical-environment
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
-          :standard-value-warnings :return)
+          :standard-value-warnings :return :breakpoints)
          (when argument (service-error :unexpected-argument)))
+        ((:set-breakpoint :clear-breakpoint)
+         (unless (typep argument '(cons string (cons (integer 0 *) null)))
+           (service-error :invalid-breakpoint-location)))
+        (:clear-all-breakpoints
+         (unless (typep argument '(or null string))
+           (service-error :invalid-breakpoint-function)))
         (:reinvoke
          (unless (and (typep argument '(cons (member nil t) (cons (member nil t) null)))
                       (not (and (first argument) (second argument))))
@@ -512,6 +519,10 @@
                                                        ((:inspect :modify :reinvoke) (copy-list argument))
                                                        (:special (list (copy-seq (first argument))
                                                                        (second argument)))
+                                                       ((:set-breakpoint :clear-breakpoint)
+                                                        (list (copy-seq (first argument)) (second argument)))
+                                                       (:clear-all-breakpoints
+                                                        (when argument (copy-seq argument)))
                                                        (:bindings (when argument
                                                                     (list (first argument)
                                                                           (copy-seq (second argument)))))
@@ -1006,6 +1017,50 @@ NIL with true availability denotes an absent global cell."
   #-x86-64
   (service-error :unsupported-architecture))
 
+(defun service-breakpoint-function (source stop)
+  (if source
+      (with-input-from-string (stream source)
+        (let* ((*read-eval* nil)
+               (end (list :end))
+               (name (read stream nil end)))
+          (unless (and (not (eq name end))
+                       (mezzano.internals::valid-function-name-p name)
+                       (eq (read stream nil end) end))
+            (service-error :expected-function-name))
+          (fdefinition name)))
+      (if stop
+          (or (nth-value 0
+                         (service-frame-code-location
+                          (aref (service-stop-frames stop) (service-stop-current-frame stop))))
+              (service-error :unavailable-function))
+          (service-error :missing-breakpoint-function))))
+
+(defun service-breakpoint-command (operation argument &optional stop)
+  (ecase operation
+    (:breakpoints
+     (let ((points (breakpoints)))
+       (if points
+           (with-output-to-string (stream)
+             (write-line "Breakpoints:" stream)
+             (dolist (point points)
+               (format stream "  ~A +#x~X~%" (service-print (first point)) (second point))))
+           "No breakpoints.")))
+    ((:set-breakpoint :clear-breakpoint)
+     (destructuring-bind (source offset) argument
+       (let ((function (service-breakpoint-function source stop)))
+         (if (eq operation :set-breakpoint)
+             (progn
+               (set-breakpoint function offset)
+               (format nil "Breakpoint set in ~A at #x~X." (service-print function) offset))
+             (format nil (if (clear-breakpoint function offset)
+                             "Breakpoint cleared in ~A at #x~X."
+                             "No breakpoint in ~A at #x~X.")
+                     (service-print function) offset)))))
+    (:clear-all-breakpoints
+     (let* ((function (service-breakpoint-function argument stop))
+            (count (clear-all-breakpoints function)))
+       (format nil "Cleared ~D breakpoint~:P in ~A." count (service-print function))))))
+
 (defun service-code-instruction (context offset)
   (loop with start = (mezzano.disassemble:code-initial-offset
                       (mezzano.disassemble:context-function context))
@@ -1227,6 +1282,9 @@ NIL with true availability denotes an absent global cell."
     (:evaluate (service-evaluate stop (service-command-argument command)))
     (:return (service-return stop))
     (:reinvoke (service-reinvoke stop (service-command-argument command)))
+    ((:set-breakpoint :clear-breakpoint :clear-all-breakpoints :breakpoints)
+     (service-breakpoint-command (service-command-operation command)
+                                 (service-command-argument command) stop))
     (:inspect (service-inspect stop (service-command-argument command)))
     (:modify (service-modify-inspection stop (service-command-argument command)))
     (:describe-object (service-describe-inspection stop (service-command-argument command)))
