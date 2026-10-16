@@ -255,7 +255,7 @@ Within the callback, `request` sends one synchronous debugger RPC.  `send-reques
 
 Commands that print values execute application printers and can block or enter a child stop.  A client timeout closes its connection while an accepted command can continue in the guest.  Query the recorded outcome before deciding what to submit next.
 
-Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers and executing debugger commands.  Selected-frame evaluation reads and writes available lexical bindings.  Arbitrary frame return or reinvocation, breakpoints, and integrated stepping remain planned for the remote API.  Local-variable availability depends on compiler debug metadata and the selected frame.  The [debugger guide](../../doc/debugger.md) describes those limits and the supported stopping states.
+Evaluation jobs and the explicit debugger wrapper retain condition stops.  Numbered job interruption supports computing and input-waiting workers and executing debugger commands.  Selected-frame evaluation reads and writes available lexical bindings.  Selected-frame Return and Reinvoke, hardware breakpoint management, and retained instruction stepping support the documented x86-64 stopping states.  Local-variable availability depends on compiler debug metadata and the selected frame.  The [debugger guide](../../doc/debugger.md) describes those limits and the supported stopping states.
 
 ## Kernel source loading
 

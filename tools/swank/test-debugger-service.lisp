@@ -20,9 +20,9 @@
        (funcall 'missing a b object)
     (incf *cleanup-count*)))
 
-(defun await (predicate)
+(defun await (predicate &optional (timeout 20))
   (let ((deadline (+ (get-internal-real-time)
-                     (* 20 internal-time-units-per-second))))
+                     (* timeout internal-time-units-per-second))))
     (loop
       (let ((result (funcall predicate)))
         (when result (return result)))
@@ -38,16 +38,17 @@
               () "Expected ~S, received ~S."
               reason (debugger-service-error-reason condition)))))
 
-(defun completed-command (handle id)
+(defun completed-command (handle id &optional (timeout 20))
   (await (lambda ()
            (let ((result (debugger-command-result handle id)))
              (unless (member (getf result :state) '(:pending :running))
-               result)))))
+               result)))
+         timeout))
 
-(defun command (handle lease operation &optional argument)
+(defun command (handle lease operation &optional argument (timeout 20))
   (let ((id (getf (debugger-stop-information handle) :next-command-id)))
     (submit-debugger-command lease id operation argument)
-    (let ((result (completed-command handle id)))
+    (let ((result (completed-command handle id timeout)))
       (assert (eq (getf result :state) :returned) () "~S" result)
       (getf result :result))))
 

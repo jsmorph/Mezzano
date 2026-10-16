@@ -17,7 +17,7 @@
            (native::select-frame record #'native::target)
            (assert (equal
                     (test::command stop lease :evaluate
-                                   "(lispm-native-unwind-test::wrapper-values state)")
+                                   "(lispm-native-unwind-test::wrapper-values state)" 60)
                     '("T")))
            (let ((instruction (test::command stop lease :instruction))
                  (initial (test::command
