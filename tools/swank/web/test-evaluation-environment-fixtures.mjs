@@ -28,7 +28,7 @@ try {
     const store=()=>sessionStorage.setItem('environment-fixture',JSON.stringify(fixture));
     const token=session=>[':stop',session,1];
     const prompt=()=>fixture.mode===':lexical'?'Eval (program): ':'Eval (debugger): ';
-    const info=()=>({id:1,state:':stopped',thread:'Environment fixture',depth:fixture.depth,prompt:'→'.repeat(fixture.depth)+' ',
+    const info=()=>({id:1,generation:0,state:':stopped',thread:'Environment fixture',depth:fixture.depth,prompt:'→'.repeat(fixture.depth)+' ',
       'current-frame':0,'next-command-id':fixture.results.length,
       ...(!fixture.missing?{'evaluation-environment':fixture.mode,'evaluation-prompt':prompt()}:{})});
     window.fetch=async(url,options)=>{
@@ -51,7 +51,7 @@ try {
         else if(name==='current-frame')result={index:0,function:'TARGET',locals:[]};
         else if(name==='evaluate')result=['42'];
         else throw Error('Unexpected command '+name);
-        fixture.results.push({state:':returned',operation:':'+name,source:name==='evaluate'?args.argument:null,'current-boot-p':true,result});store();value=args.id;
+        fixture.results.push({state:':returned',generation:0,operation:':'+name,source:name==='evaluate'?args.argument:null,'current-boot-p':true,result});store();value=args.id;
         if(name==='frames'&&fixture.holdInitial){fixture.holdInitial=false;store();await new Promise(resolve=>window.releaseInspection=resolve);}
         if(name==='toggle-evaluation-environment'&&fixture.holdNext){fixture.holdNext=false;store();await new Promise(resolve=>window.releaseToggle=resolve);}
       }else if(operation==='result')value=fixture.results[args.id];

@@ -9,19 +9,19 @@ try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument', {source: `
     const saved = sessionStorage.getItem('history-fixture');
     window.fixture = saved ? JSON.parse(saved) : {calls:[], results:[], failed:false, held:false};
-    if (!saved) for (let id=0; id<100; id++) fixture.results.push({state:':returned',
+    if (!saved) for (let id=0; id<100; id++) fixture.results.push({state:':returned',generation:0,
       operation:':arglist', source:null, 'current-boot-p':null, result:'Recorded result '+id});
     const store = () => sessionStorage.setItem('history-fixture', JSON.stringify(fixture));
-    fixture.results[5] = {state:':returned', operation:':evaluate', source:'(incf writes)',
+    fixture.results[5] = {state:':returned',generation:0, operation:':evaluate', source:'(incf writes)',
       'current-boot-p':null, result:['1']};
-    fixture.results[6] = {state:':returned', operation:':lexical-environment', source:null,
+    fixture.results[6] = {state:':returned',generation:0, operation:':lexical-environment', source:null,
       'current-boot-p':null, result:'Lexically inherited variables:\\n  ANCESTOR: 37\\n'};
-    fixture.results[7] = {state:':returned', operation:':inspect', source:null,
+    fixture.results[7] = {state:':returned',generation:0, operation:':inspect', source:null,
       'current-boot-p':null, result:{object:[':object','old',1], title:'#(37)', type:'VECTOR',
         start:0,end:1,total:1,count:32, parts:[{label:'0', 'bound-p':true,value:'37',
           object:[':object','old',2],part:[':part','old',3]}]}};
     const stop = session => [':stop',session,1];
-    const information = () => ({id:1,state:':stopped',thread:'History fixture',depth:1,prompt:'DBG 1: ',
+    const information = () => ({id:1,generation:0,state:':stopped',thread:'History fixture',depth:1,prompt:'DBG 1: ',
       'current-frame':2,'next-command-id':fixture.results.length});
     function resultFor(command,session) {
       if(command==='frames') return ['A','B','TARGET'].map((name,id)=>({function:name,frame:[':frame',session,id]}));
@@ -42,7 +42,7 @@ try {
       else if(operation==='information') value=information();
       else if(operation==='submit') {
         if(args.id!==fixture.results.length) throw Error('Submission ID changed');
-        fixture.results.push({state:':returned',operation:':'+args.command,source:null,
+        fixture.results.push({state:':returned',generation:0,operation:':'+args.command,source:null,
           'current-boot-p':true,result:resultFor(args.command,session)}); store(); value=args.id;
       } else if(operation==='result') {
         if(args.id===98 && !fixture.held) {

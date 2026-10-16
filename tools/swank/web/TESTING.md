@@ -378,3 +378,24 @@ The HTTP unit suite checks all null/Boolean option combinations, Lisp encoding, 
 Host acceptance passed 35 Python tests and seven checks each in the existing intercepted Return fixture and an external Reinvoke fixture using the product HTTP handler locally.  The latter tested three menu option lists, retained cancellation, and active-reader/history reload.  Both recorded zero guest requests.  Their evidence and the failed generic-static-server runs are retained in /tmp/web-reinvoke-host.  The six native Return groups were not rerun during this host-only phase.
 
 The focused product check passed 26 excerpts across the debugger, Command Processor, and Web guides after catalog refresh, plus Peek processes, SPACE/Tab completion, and Listener 42.  It released two jobs and its session.  Functional and product browser error lists were empty.  Evidence is /tmp/web-reinvoke-native-restored and /tmp/web-reinvoke-product-restored.  Earlier runs preserve a diagnosed stale-contrib publication failure and an SSH-forward exit with unknown cause.  Neither changed the accepted driver or product parser.
+
+## Single Step Web tests
+
+The host state test executes the application's selection and input functions without a browser, HTTP server, or guest:
+
+```sh
+node tools/swank/web/test-step-state.mjs
+```
+
+It checks observed and missed generation transitions, a different function at the same frame index, old transcripts and Inspector metadata, stepping input/draft preservation, rejection before submission, failed-printer suppression, and descriptive closed-stop frames.  The Python suite checks argument-free `single-step` encoding, rejection of supplied operands, and generation-field JSON conversion.
+
+The intercepted browser fixture uses local static files and replaces every API request:
+
+```sh
+node tools/swank/web/test-single-step-fixtures.mjs \
+  http://127.0.0.1:8772/ /tmp/mezzano-single-step-fixtures
+```
+
+Its model covers observed Listener and standalone-debugger transitions, paused reload with the same stop association, missed transitions, current-generation live views, disabled old Inspector references, preserved drafts/cursors/mode, retained `unwound` text, and exact accepted-ID replay.  It records zero guest requests.  This driver is prepared and syntax-checked.  Its browser execution and native-backed Single Step acceptance await the matched backend and explicit candidate handoff.  The model does not test native instruction execution, CALL, or nonlocal exits.
+
+Existing intercepted command-I/O, evaluation-environment, Return, and history fixtures provide generation zero for their unchanged stops and command results.  Native-backed acceptance must additionally test an owned Listener worker at zero/two prompt depths, a target-qualified pause and release, fast reentry without a stepping monitor sample, expired frame/Inspector handles, RET into a different function at the same index, CALL step-over and escaping nonlocal exits.  Its controls must not submit or select native debugger commands for the browser.  Preserve exact source/runtime/process guards and release browser records before native fixture cleanup.

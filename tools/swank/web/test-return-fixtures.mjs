@@ -10,12 +10,12 @@ const currentButton="[...document.querySelectorAll('#stop-detail button')].find(
 try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument',{source:`
     const name='a'.repeat(64), token=id=>[':stop',name,id];
-    const empty={state:':returned','current-boot-p':true,source:null,'input-length':0,
+    const empty={state:':returned',generation:0,'current-boot-p':true,source:null,'input-length':0,
       'input-eof-p':null,'input-waiting-p':null,'output-length':0};
     window.fixture=JSON.parse(sessionStorage.getItem('return-fixture')||'null')||{calls:[],link:true,
       records:{1:[{...empty,operation:':return',result:'Return cancelled.'}],2:[],3:[]}};
     const store=()=>sessionStorage.setItem('return-fixture',JSON.stringify(fixture));
-    const info=id=>({id,state:id===1?':closed':':stopped',thread:'Duplicate thread label',depth:1,prompt:'→ ',
+    const info=id=>({id,generation:0,state:id===1?':closed':':stopped',thread:'Duplicate thread label',depth:1,prompt:'→ ',
       'current-frame':id===1?null:0,'next-command-id':fixture.records[id].length,
       'thread-stop':fixture.link?token(2):null});
     const value=(command,id)=>({frames:[{function:'TARGET-'+id,frame:[':frame',name,id]}],
@@ -79,9 +79,9 @@ try {
   const confirmation=await browser.evaluate(`(()=>{
     fixture.activeReturn=true;
     const records=fixture.records[2], start=records.length;
-    records.push({state:':returned',operation:':evaluate',source:'(+ 20 22)',result:['42'],'current-boot-p':true},
-      {state:':returned',operation:':return',result:'Return cancelled.','current-boot-p':true},
-      {state:':running',operation:':return',result:null,'current-boot-p':true,
+    records.push({state:':returned',generation:0,operation:':evaluate',source:'(+ 20 22)',result:['42'],'current-boot-p':true},
+      {state:':returned',generation:0,operation:':return',result:'Return cancelled.','current-boot-p':true},
+      {state:':running',generation:0,operation:':return',result:null,'current-boot-p':true,
         'input-length':12,'input-eof-p':null,'input-waiting-p':true,
         text:'1 value: 42\\nReturn from frame 0 TARGET-2? (Y or N) ',
         'output-length':Array.from('1 value: 42\\nReturn from frame 0 TARGET-2? (Y or N) ').length});

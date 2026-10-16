@@ -326,6 +326,22 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(argument=argument), self.assertRaises(ValueError):
                 submit(argument)
 
+    def test_single_step_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        for fields in ({}, {"argument": None}):
+            result = server.operation_arguments("submit",
+                {"stop": stop, "id": 2, "command": "single-step", **fields}, session)
+            self.assertEqual(result, [stop, 2, server.Symbol(":single-step"), None])
+            self.assertEqual(server.parse(server.lisp(result)), result)
+        self.assertEqual(server.json_value(server.parse(
+            '(:state :unwound :generation 7 :operation :single-step :result nil)')),
+            {"state": ":unwound", "generation": 7, "operation": ":single-step", "result": None})
+        for argument in (False, True, 0, "", [], [0], {}):
+            with self.subTest(argument=argument), self.assertRaises(ValueError):
+                server.operation_arguments("submit",
+                    {"stop": stop, "id": 2, "command": "single-step", "argument": argument}, session)
+
     def test_inspection_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]

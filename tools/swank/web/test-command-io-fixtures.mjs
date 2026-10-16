@@ -22,8 +22,8 @@ try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument', {source:`
     window.fixture=JSON.parse(sessionStorage.getItem('command-io-fixture')||'null');
     const name='a'.repeat(64), token=id=>[':stop',name,id];
-    const empty={state:':returned','current-boot-p':true,'input-length':0,'input-eof-p':null,'input-waiting-p':null,'output-length':0};
-    const running=(text,source)=>({state:':running',operation:':evaluate',source,
+    const empty={state:':returned',generation:0,'current-boot-p':true,'input-length':0,'input-eof-p':null,'input-waiting-p':null,'output-length':0};
+    const running=(text,source)=>({state:':running',generation:0,operation:':evaluate',source,
       'current-boot-p':true,'input-length':0,'input-eof-p':null,'input-waiting-p':true,
       'output-length':Array.from(text).length,result:null,text,input:'',reads:0});
     if(!fixture) fixture={calls:[],inline:true,child:false,closed:false,held:false,drop:false,corrupt:false,
@@ -34,7 +34,7 @@ try {
         running('λ中文😀'.repeat(16385)+'\\nFirst input: ','(read-line *query-io*)')],
       childResult:running('Child input: ','(read-line *query-io*)')};
     const store=()=>sessionStorage.setItem('command-io-fixture',JSON.stringify(fixture));
-    const info=id=>({id,state:fixture.closed?':closed':':stopped',thread:'Command I/O fixture',
+    const info=id=>({id,generation:0,state:fixture.closed?':closed':':stopped',thread:'Command I/O fixture',
       depth:id===1?1:2,prompt:id===1?'→ ':'→→ ','current-frame':0,
       'next-command-id':id===1?fixture.results.length:1,
       ...(id===1&&fixture.child?{child:token(2)}:{}),...(id===2?{parent:token(1)}:{})});
@@ -157,7 +157,7 @@ try {
   await ready();
   assert.equal(await browser.evaluate('fixture.results[4].reads'),2);
   assert.equal(await browser.evaluate("document.querySelector('.command-io[data-command-id=\"4\"] .input-form').hidden"),true);
-  await browser.evaluate(`fixture.results.push({...fixture.childResult,state:':running','input-length':0,
+  await browser.evaluate(`fixture.results.push({...fixture.childResult,state:':running',generation:0,'input-length':0,
     'input-eof-p':null,'input-waiting-p':true,text:'Fresh input: ','output-length':13,input:'',reads:0});
     state.commands.push({stop:[':stop',state.session,1],id:5,command:'evaluate',source:'(read-line)'});
     void run(refresh)`);

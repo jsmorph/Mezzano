@@ -356,6 +356,11 @@ function editorDebuggerStop(editor) {
   return editor.id === "source" && activity === "listener" ? listenerDebugger?.stop
     : editor.id === "debugger-command" && activity === "debugger" ? selectedStop : null;
 }
+function editorBlocked(editor) {
+  const stop = editor.id === "source" ? listenerDebugger?.stop
+    : editor.id === "debugger-command" ? selectedStop : null;
+  return Boolean(stop && stops.find(item => same(item.token, stop))?.info.state !== ":stopped");
+}
 function updateListenerInput(reload = false) {
   const stop = listenerDebugger?.stop;
   useEditorDraft($("source"), stop ? debuggerDraftKey(stop) : "listener", reload);
@@ -389,6 +394,7 @@ function showActivity(name) {
   document.dispatchEvent(new CustomEvent("activitychange", {detail: {name, previous}}));
 }
 function queueEvaluation() {
+  if (editorBlocked($("source"))) return;
   const source = $("source").value;
   const interactive = $("interactive").checked;
   const stop = listenerDebugger?.stop;
@@ -445,7 +451,7 @@ function renderAssistance(editor, result, source, cursor, action) {
   if (result.help) panel.append(node("pre", result.help));
   for (const candidate of ["help", "complete"].includes(action) ? result.candidates || [] : []) {
     const choice = button(candidate.label, async () => {
-      if (editor.value !== source || editorCursor(editor) !== cursor) {
+      if (editorBlocked(editor) || editor.value !== source || editorCursor(editor) !== cursor) {
         throw new Error("Input changed; request completion again.");
       }
       setEditor(editor, candidate.text, candidate.cursor);
@@ -460,18 +466,19 @@ function renderAssistance(editor, result, source, cursor, action) {
   else if (!editor.closest(".activity")?.hidden) editor.scrollIntoView({block: "nearest"});
 }
 function scheduleAssistance(editor, action, presentation) {
+  if (editorBlocked(editor)) return;
   clearTimeout(assistanceTimers.get(editor));
   const source = editor.value;
   const cursor = editorCursor(editor);
   const context = editorContext(editor);
   const draftKey = editorDraftKeys.get(editor);
   const request = () => run(async () => {
-    if (!connected || editor.value !== source || editorCursor(editor) !== cursor
+    if (!connected || editorBlocked(editor) || editor.value !== source || editorCursor(editor) !== cursor
         || context !== editorContext(editor) || draftKey !== editorDraftKeys.get(editor)) return;
     const result = await api(context === "examiner" ? "document-assistance" : "listener-assistance", {
       source, cursor, action, ...(context === "examiner" ? {} : {context}),
       ...(presentation === undefined ? {} : {presentation})});
-    if (editor.value !== source || editorCursor(editor) !== cursor
+    if (editorBlocked(editor) || editor.value !== source || editorCursor(editor) !== cursor
         || context !== editorContext(editor) || draftKey !== editorDraftKeys.get(editor)) return;
     if (action !== "inspect" && !result.error) setEditor(editor, result.text, result.cursor);
     renderAssistance(editor, result, editor.value, editorCursor(editor), action);
@@ -484,6 +491,7 @@ function scheduleAssistance(editor, action, presentation) {
   else request();
 }
 function recallInput(index) {
+  if (editorBlocked($("source"))) throw new Error("This debugger is stepping. Input is preserved.");
   const item = state.inputHistory[index];
   if (!item) throw new Error("No earlier Listener input.");
   historyIndex = index;
@@ -531,6 +539,7 @@ function evaluationEnvironmentKey(editor, event) {
   return false;
 }
 function editorKey(editor, event) {
+  if (editorBlocked(editor)) { event.preventDefault(); evaluationPrefix = null; return; }
   if (evaluationEnvironmentKey(editor, event)) return;
   if (event.key === "Tab" || (event.key === "F11" && !event.shiftKey)) {
     event.preventDefault();
@@ -892,7 +901,8 @@ function renderListenerState() {
   let status = panel.querySelector("span");
   if (!status) { status = node("span"); panel.append(status); }
   status.textContent = stop
-    ? "This Listener is stopped in the debugger. "
+    ? stops.find(item => same(item.token, stop))?.info.state === ":stepping"
+      ? "This Listener is single-stepping in the debugger. " : "This Listener is stopped in the debugger. "
     : info["input-waiting-p"] ? "This Listener is waiting for evaluation input. "
       : "This Listener is evaluating. ";
   let action = panel.querySelector("button");
@@ -920,9 +930,15 @@ async function inspectSelectedStop() {
   if (command) await mutate("submit", {stop: selectedStop,
     id: selected.info["next-command-id"], command, argument: null});
 }
+function currentCommandGeneration(command) {
+  const info = stops.find(stop => same(stop.token, command.stop))?.info;
+  const result = commandResults.get(commandKey(command));
+  return Number.isSafeInteger(info?.generation) && result?.generation === info.generation;
+}
 function nextStopInspection(stop) {
   const current = state.commands.filter(command => same(command.stop, stop)
-    && commandResults.get(commandKey(command))?.["current-boot-p"] === true);
+    && commandResults.get(commandKey(command))?.["current-boot-p"] === true
+    && currentCommandGeneration(command));
   return ["frames", "restarts", "condition"].find(name => !current.some(command => command.command === name))
     || (!current.some(command => frameCommands.includes(command.command)) ? "current-frame" : null);
 }
@@ -1091,6 +1107,7 @@ function renderCommandIO(command, result, info) {
 }
 async function submit(stop, command, argument = null, metadata = {}) {
   const info = await api("information", {stop});
+  if (info.state !== ":stopped") throw new Error("This debugger is " + label(info.state) + ".");
   const id = info["next-command-id"];
   await mutate("submit", {stop, id, command, argument}, metadata);
   await refresh();
@@ -1105,15 +1122,20 @@ function latestCommand(commandName) {
   return state.commands.findLast(command => same(command.stop, selectedStop) && command.command === commandName);
 }
 function returnedInspection(commandName) {
+  const info = stops.find(stop => same(stop.token, selectedStop))?.info;
   const command = state.commands.findLast(item => same(item.stop, selectedStop)
-    && item.command === commandName && commandResults.get(commandKey(item))?.state === ":returned");
+    && item.command === commandName && commandResults.get(commandKey(item))?.state === ":returned"
+    && (info?.state === ":closed" || (info?.state === ":stopped" && currentCommandGeneration(item)
+      && commandResults.get(commandKey(item))["current-boot-p"] === true)));
   return command ? {command, result: commandResults.get(commandKey(command)).result} : null;
 }
 function returnedFrameInspection() {
-  const command = state.commands.findLast(item => same(item.stop, selectedStop)
-    && frameCommands.includes(item.command) && commandResults.get(commandKey(item))?.state === ":returned");
-  const result = command && commandResults.get(commandKey(command)).result;
   const info = stops.find(stop => same(stop.token, selectedStop))?.info;
+  const command = state.commands.findLast(item => same(item.stop, selectedStop)
+    && frameCommands.includes(item.command) && commandResults.get(commandKey(item))?.state === ":returned"
+    && (info?.state === ":closed" || (info?.state === ":stopped" && currentCommandGeneration(item)
+      && commandResults.get(commandKey(item))["current-boot-p"] === true)));
+  const result = command && commandResults.get(commandKey(command)).result;
   return result && (info?.state === ":closed" || result.index === info?.["current-frame"]) ? {command, result} : null;
 }
 function returnedResult(commandName) {
@@ -1127,7 +1149,8 @@ function returnedInspections(stop = selectedStop) {
     && ["inspect", "modify"].includes(command.command)
     && commandResults.get(commandKey(command))?.state === ":returned")
     .map(command => ({command, result: commandResults.get(commandKey(command)).result,
-      currentBoot: commandResults.get(commandKey(command))["current-boot-p"] === true}));
+      currentBoot: commandResults.get(commandKey(command))["current-boot-p"] === true,
+      currentGeneration: currentCommandGeneration(command)}));
 }
 function inspectionRange(result) {
   return result.start === result.end ? "No components on this page (" + result.total + " total)"
@@ -1155,9 +1178,9 @@ function renderInspector(stop, info, available, control, controls) {
   const header = element("header", "div", "inspector-header");
   const history = element("history", "div", "inspector-history");
   history.setAttribute("aria-label", "Inspector history");
-  const entries = records.map(({command, result, currentBoot}) => action("history:" + command.id,
+  const entries = records.map(({command, result, currentBoot, currentGeneration}) => action("history:" + command.id,
     inspectionRange(result) + ": " + result.title, "inspect", [result.object, result.start, result.count],
-    "Mouse-Left: Inspect this object and recorded component range again.", currentBoot));
+    "Mouse-Left: Inspect this object and recorded component range again.", currentBoot && currentGeneration));
   reconcileChildren(history, [node("h3", "History"), ...entries]);
   const menu = element("menu", "div", "inspector-menu");
   reconcileChildren(menu, [
@@ -1168,7 +1191,8 @@ function renderInspector(stop, info, available, control, controls) {
   reconcileChildren(header, [history, menu]);
   const children = [node("h3", info.state === ":closed" ? "Inspector: recorded objects from this closed stop" : "Inspector"), header];
   if (!records.length) children.push(node("p", "No retained Inspector objects."));
-  for (const {command, result, currentBoot} of records.slice(-3)) {
+  for (const {command, result, currentBoot, currentGeneration} of records.slice(-3)) {
+    const live = currentBoot && currentGeneration;
     const key = "page:" + command.id;
     const pane = element(key, "section", "inspection-pane");
     pane.dataset.commandId = command.id;
@@ -1176,16 +1200,16 @@ function renderInspector(stop, info, available, control, controls) {
     const toolbar = element(key + ":toolbar", "div", "inspection-toolbar");
     const previous = action(key + ":previous", "More Above", "inspect",
       [result.object, Math.max(0, result.start - result.count), result.count],
-      "Mouse-Left: Inspect the preceding component page.", currentBoot);
+      "Mouse-Left: Inspect the preceding component page.", live);
     previous.disabled ||= result.start === 0;
     const next = action(key + ":next", "More Below", "inspect",
-      [result.object, result.end, result.count], "Mouse-Left: Inspect the following component page.", currentBoot);
+      [result.object, result.end, result.count], "Mouse-Left: Inspect the following component page.", live);
     next.disabled ||= result.end >= result.total;
     reconcileChildren(toolbar, [
       action(key + ":refresh", "Refresh", "inspect", [result.object, result.start, result.count],
-        "Mouse-Left: Read this object and component range again.", currentBoot),
+        "Mouse-Left: Read this object and component range again.", live),
       action(key + ":describe", "Describe", "describe-object", result.object,
-        "Mouse-Left: Describe this retained object.", currentBoot), previous, next,
+        "Mouse-Left: Describe this retained object.", live), previous, next,
       node("span", inspectionRange(result))
     ]);
     const table = element(key + ":parts", "table", "inspection-parts");
@@ -1196,11 +1220,11 @@ function renderInspector(stop, info, available, control, controls) {
       const value = element(partKey + ":value", "td");
       reconcileChildren(value, part["bound-p"] && part.object != null
         ? [action(partKey + ":inspect", part.value, "inspect", [part.object, 0, result.count],
-          "Mouse-Left: Inspect this component value.", currentBoot)]
+          "Mouse-Left: Inspect this component value.", live)]
         : [node("span", part["bound-p"] ? part.value : "<unbound>")]);
       const modify = element(partKey + ":modify", "td");
       reconcileChildren(modify, part.part == null ? [] : [action(partKey + ":write", "Modify", "modify",
-        [part.part, result.start, result.count], "Mouse-Left: Read a Lisp expression for this component's new value.", currentBoot)]);
+        [part.part, result.start, result.count], "Mouse-Left: Read a Lisp expression for this component's new value.", live)]);
       reconcileChildren(row, [node("th", part.label), value, modify]);
       return row;
     });
@@ -1208,7 +1232,8 @@ function renderInspector(stop, info, available, control, controls) {
     const contents = element(key + ":contents", "div", "inspection-contents");
     reconcileChildren(contents, [table]);
     reconcileChildren(pane, [node("pre", result.title, "inspection-title"), node("pre", result.type),
-      ...(currentBoot ? [] : [node("p", "Recorded before this boot.", "historical-command")]), toolbar, contents]);
+      ...(currentBoot ? [] : [node("p", "Recorded before this boot.", "historical-command")]),
+      ...(currentGeneration ? [] : [node("p", "Recorded before this stop generation.", "historical-command")]), toolbar, contents]);
     children.push(pane);
   }
   reconcileChildren(panel, children);
@@ -1223,6 +1248,7 @@ function debuggerAction(action) {
 async function debuggerCommand(text, stop = selectedStop) {
   const selected = stops.find(item => same(item.token, stop));
   if (!selected) throw new Error("Select a debugger stop first.");
+  if (selected.info.state !== ":stopped") throw new Error("This debugger is " + label(selected.info.state) + ".");
   const plan = await api("listener-assistance", {source: text, cursor: Array.from(text).length,
     action: "parse", context: "debugger"});
   if (plan.error) throw new Error(plan.error);
@@ -1232,6 +1258,7 @@ async function debuggerCommand(text, stop = selectedStop) {
     {display: plan.display, localIndex: plan["local-index"], source: text});
 }
 function queueDebuggerInput(editor, text, stop) {
+  if (editorBlocked(editor)) return;
   const key = editorDraftKeys.get(editor);
   return run(async () => {
     await debuggerCommand(text, stop);
@@ -1258,6 +1285,13 @@ function reconcileChildren(parent, children) {
 }
 function renderStops() {
   const selected = stops.find(stop => same(stop.token, selectedStop));
+  $("source").disabled = editorBlocked($("source"));
+  $("debugger-command").disabled = editorBlocked($("debugger-command"));
+  for (const id of ["evaluate-button", "clear-input", "set-package", "interactive"]) $(id).disabled = $("source").disabled;
+  for (const editor of [$("source"), $("debugger-command")]) if (editor.disabled) {
+    clearAssistance(editor);
+    if (evaluationPrefix?.editor === editor) evaluationPrefix = null;
+  }
   const controls = new Map();
   const prefix = JSON.stringify(selectedStop) + ":";
   function control(key, text, action, help) {
@@ -1336,7 +1370,7 @@ function renderStops() {
     const inspect = control(prefix + "condition", "Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
     inspect.disabled = !available;
     menuChildren.push(inspect);
-    for (const name of [":Return", ":Reinvoke", ":Reinvoke :Original Args", ":Reinvoke :New Args",
+    for (const name of [":Single Step", ":Return", ":Reinvoke", ":Reinvoke :Original Args", ":Reinvoke :New Args",
                         ":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
                         ":Show Function", ":Show Compiled Code", ":Show Instruction", ":Show Lexical Environment", ":Show Standard Value Warnings",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
@@ -1386,7 +1420,7 @@ function renderStops() {
       table.append(row);
     }
     detailChildren.push(table);
-  } else if (info["current-frame"] != null) {
+  } else if (info.state === ":stopped" && info["current-frame"] != null) {
     detailChildren.push(node("pre", "Frame " + info["current-frame"] + " selected. Use :Show Frame to inspect its locals."));
   }
   const restarts = returnedResult("restarts");
@@ -1446,11 +1480,11 @@ function renderStops() {
       output = node("div", undefined, "debugger-description");
       output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
-    } else if (["return", "reinvoke", "arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
+    } else if (["single-step", "return", "reinvoke", "arglist", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                 "set-breakpoint", "clear-breakpoint", "clear-all-breakpoints", "breakpoints",
                 "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
       output = node("div", undefined, "debugger-" + command.command);
-      const name = {return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
+      const name = {"single-step": ":Single Step", return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
         instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
         "standard-value-warnings": ":Show Standard Value Warnings", special: ":Show Special",
@@ -1517,6 +1551,9 @@ function updateStatus() {
   $("package-label").textContent = "CL " + state.package + ":";
   if (selectingActivity) $("process-state").textContent = "Select:";
   else if (!connected) $("process-state").textContent = "Disconnected";
+  else if (stops.some(stop => stop.info.state === ":stepping"
+      && ((activity === "debugger" && same(stop.token, selectedStop))
+        || (activity === "listener" && same(stop.token, listenerDebugger?.stop))))) $("process-state").textContent = "Single Step";
   else if ((activity === "debugger" && stops.some(stop => same(stop.token, selectedStop) && stop.info.state === ":stopped"))
       || views.get(activeListenerJob)?.info.stops?.length) $("process-state").textContent = "Debugger";
   else if (activeListenerJob && !views.get(activeListenerJob)?.info["input-waiting-p"]) $("process-state").textContent = "Run";
