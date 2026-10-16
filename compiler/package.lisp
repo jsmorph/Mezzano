@@ -275,6 +275,12 @@
            #:slot-to-thread-slot-name
            #:type-tag-to-name))
 
+(defpackage :mezzano.disassemble.x86-64
+  (:use :cl)
+  (:local-nicknames (:sys.int :mezzano.internals)
+                    (:sys.lap-x86 :mezzano.lap.x86)
+                    (:dis :mezzano.disassemble)))
+
 (defpackage :mezzano.debug
   (:use :cl)
   (:export

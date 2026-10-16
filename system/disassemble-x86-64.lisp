@@ -1,11 +1,5 @@
 ;;;; DISASSEMBLE for x86-64
 
-(defpackage :mezzano.disassemble.x86-64
-  (:use :cl)
-  (:local-nicknames (:sys.int :mezzano.internals)
-                    (:sys.lap-x86 :mezzano.lap.x86)
-                    (:dis :mezzano.disassemble)))
-
 (in-package :mezzano.disassemble.x86-64)
 
 (defclass x86-64-disassembler-context (dis:disassembler-context)
