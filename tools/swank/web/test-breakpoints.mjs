@@ -12,10 +12,10 @@ await mkdir(output,{recursive:false});
 const browser=await openBrowser('about:blank');
 const q=JSON.stringify;
 const marker='WEB-BREAKPOINT-'+randomBytes(6).toString('hex').toUpperCase();
-const names=Object.fromEntries(['a','b','touch-a','touch-b','controller','setter'].map(name=>[name,marker+'-'+name.toUpperCase()]));
+const names=Object.fromEntries(['a','b','touch-a','touch-b','controller','setter','int3'].map(name=>[name,marker+'-'+name.toUpperCase()]));
 const stateName='*'+marker+'-STATE*';
 const jobs=[], owned=new Map();
-const evidence={marker,checks:[],protected:[]};
+const evidence={marker,checks:[],protected:[],initialFrames:[]};
 let setupStarted=false, controller;
 const ready=()=>browser.waitFor('connected && !busy');
 const request=(operation,args={})=>browser.evaluate(`api(${q(operation)},${q(args)})`);
@@ -68,14 +68,30 @@ async function remember(token) {
   if(info.child) await remember(info.child);
   return info;
 }
-async function select(token,name) {
-  await remember(token);
+async function select(token,name,{initial=false,selectFrame=true}={}) {
+  const info=await remember(token);
   await browser.evaluate(`void run(()=>selectStop(${q(token)}))`);
   await browser.waitFor(`same(selectedStop,${q(token)}) && !nextStopInspection(selectedStop) && !busy`,60);
   if(name) {
     const index=await browser.evaluate(`returnedResult('frames').findIndex(frame=>frame.function.includes(${q(name)}))`);
     assert(index>=0,'Owned function missing from retained frames: '+name);
-    await returned(await command(':Set Current Frame '+index),token);
+    if(initial) {
+      assert.equal(info['current-frame'],index,'Initial guest frame must be the interrupted program frame');
+      assert.equal((await request('information',{stop:token}))['current-frame'],index);
+      const view=await browser.evaluate(`({inspection:returnedFrameInspection(),
+        function:document.querySelector('#stop-detail .current-function')?.textContent,
+        selected:[...document.querySelectorAll('#stop-detail .frame.selected')].map(node=>node.textContent),
+        frameCommands:state.commands.filter(command=>same(command.stop,${q(token)})&&frameCommands.includes(command.command))})`);
+      assert.equal(view.inspection.command.command,'current-frame');
+      assert.equal(view.inspection.result.index,index);
+      assert(view.inspection.result.function.includes(name));
+      assert.equal(view.function,view.inspection.result.function);
+      assert.deepEqual(view.selected,[index+'  '+view.inspection.result.function]);
+      assert.deepEqual(view.frameCommands.map(command=>command.command),['current-frame']);
+      evidence.initialFrames.push({token,name,index,view});
+      await browser.screenshot(output+'/initial-'+(name===names.int3?'int3':name===names.a?'a':'b-'+evidence.initialFrames.length)+'.png');
+    }
+    if(selectFrame) await returned(await command(':Set Current Frame '+index),token);
   }
 }
 async function stopped(name) {
@@ -230,6 +246,15 @@ try {
       (:gc :frame :layout #*11) (mezzano.lap.x86:nop)
       (mezzano.lap.x86:call (:named-call ${names['touch-'+name]}))
       (mezzano.lap.x86:leave) (:gc :no-frame :layout #*0 :multiple-values 0) (mezzano.lap.x86:ret))`).join('\n')}
+    (mezzano.internals::define-lap-function ${names.int3} ((marker))
+      (:gc :no-frame :layout #*0) (mezzano.lap.x86:push :rbp)
+      (:gc :no-frame :layout #*00) (mezzano.lap.x86:mov64 :rbp :rsp)
+      (:gc :frame) (mezzano.lap.x86:push :r8)
+      (:gc :frame :layout #*1) (mezzano.lap.x86:int 3)
+      (mezzano.lap.x86:mov64 :r8 (:rbp -8)) (mezzano.lap.x86:leave)
+      (:gc :no-frame :layout #*0)
+      (mezzano.lap.x86:mov32 :ecx #.(ash 1 mezzano.internals::+n-fixnum-bits+))
+      (mezzano.lap.x86:ret))
     (dolist (name '(${names['touch-a']} ${names['touch-b']} ${names.controller} (setf ${names.setter})))
       (multiple-value-bind (function warnings failure) (compile name)
         (declare (ignore function)) (assert (not warnings)) (assert (not failure))))
@@ -322,7 +347,7 @@ try {
   evidence.checks.push('Invalid instruction/capacity children and typed Abort; default Clear PC16; recovered results and canonical captions after reload');
 
   const aJob=await background(`(${names.a} :a ${stateName})`), a=await stopped(aJob);
-  await select(a,names.a);
+  await select(a,names.a,{initial:true});
   const clearAllId=(await request('information',{stop:a}))['next-command-id'];
   await menu(':Clear All Breakpoints');
   assert((await returned(clearAllId,a)).includes('Cleared 2 breakpoints in'));
@@ -337,7 +362,7 @@ try {
 
   for(let iteration=0;iteration<2;iteration++) {
     const bJob=await background(`(${names.b} :b ${stateName})`), b=await stopped(bJob);
-    await select(b,names.b);
+    await select(b,names.b,{initial:true});
     await returned(await command(':Show Instruction'));
     if(iteration===1) {
       assert((await returned(await command(':Clear Breakpoint '+names.b+' #x18'))).includes('Breakpoint cleared in'));
@@ -369,6 +394,24 @@ try {
   await completed(listener,['42']);
   evidence.checks.push('Repeated B hits, retained hit after individual removal, quoted SETF name, absent Clear, explicit Clear All, empty global list and Listener reuse');
   evidence.checks.push('Ordinary Listener Set, Show, Clear and explicit-function Clear All use guest commands and leave no locations');
+  const int3Job=await background(`(${names.int3} :int3)`), int3=await stopped(int3Job);
+  await select(int3,names.int3,{initial:true,selectFrame:false});
+  assert.equal(await browser.evaluate("returnedResult('condition')"),'Breakpoint instruction.');
+  const instruction=await returned(await command(':Show Instruction'));
+  assert(instruction.startsWith('Interrupted program counter in '),instruction);
+  assert(instruction.includes(names.int3),instruction);
+  const offset=instruction.match(/at byte offset #x([0-9A-F]+) \(instruction starts at #x([0-9A-F]+)\):/i);
+  assert(offset,instruction);
+  assert.equal(offset[1],offset[2]);
+  await evaluate(`(assert (= (mezzano.internals::function-code-byte #'${names.int3} ${parseInt(offset[1],16)-1}) #xCC))`,['NIL']);
+  evidence.int3={token:int3,instruction};
+  await browser.screenshot(output+'/int3-instruction.png');
+  const proceedInt3=await command(':Proceed');
+  await completed(int3Job,[':INT3']);
+  assert.equal((await request('result',{stop:int3,id:proceedInt3})).state,':unwound');
+  assert.equal((await request('information',{stop:int3})).state,':closed');
+  await locations([]);
+  evidence.checks.push('INT3 preserves condition text, initially selects its interrupted frame, shows the instruction after INT3 and continues with its marker');
   await cleanup();
   evidence.httpFailures=await browser.evaluate("JSON.parse(sessionStorage.getItem('breakpoint-http-failures')||'[]')");
   assert.deepEqual(evidence.httpFailures,[]);
