@@ -65,3 +65,12 @@
   (assert (null (d:debugger-stops :include-closed t)))
   (format t "PASS package mutex release at ERROR/STORAGE-CONDITION debugger stops, cross-thread access, Continue/Abort, reacquisition and cleanup.~%")
   t)
+
+(defvar *overflow-cleanups* 0)
+
+(defun overflow ()
+  (setf *overflow-cleanups* 0)
+  (labels ((consume-stack ()
+             (unwind-protect (consume-stack)
+               (incf *overflow-cleanups*))))
+    (i::call-with-package-system-lock #'consume-stack)))
