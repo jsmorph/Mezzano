@@ -1045,7 +1045,7 @@ This is a one-shot timer and must be reset after firing."
   (hook-user-interrupt +quiesce-ipi-vector+ 'quiesce-ipi-handler)
   (hook-user-interrupt +tlb-shootdown-ipi-vector+ 'tlb-shootdown-ipi-handler)
   (hook-user-interrupt +magic-button-ipi-vector+ 'magic-button-ipi-handler)
-  (hook-user-interrupt +instruction-breakpoint-ipi-vector+ 'instruction-breakpoint-ipi-handler))
+  (hook-user-interrupt +instruction-breakpoint-ipi-vector+ #'instruction-breakpoint-ipi-handler))
 
 (defun load-cpu-bits (cpu)
   (let* ((addr (- (sys.int::lisp-object-address cpu)
