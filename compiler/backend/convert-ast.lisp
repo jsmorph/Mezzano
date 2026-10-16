@@ -14,6 +14,15 @@
      i *source-environment*)
     (append-instruction *backend-function* i)))
 
+(defun emit-nlx-notification (&optional multiple-values-p)
+  (let ((saved (when multiple-values-p (make-instance 'save-multiple-instruction))))
+    (when saved (emit saved))
+    (emit (make-instance 'call-instruction
+                         :function 'sys.int::%%debugger-nlx-entry
+                         :arguments nil
+                         :result (make-instance 'virtual-register)))
+    (when saved (emit (make-instance 'restore-multiple-instruction :context saved)))))
+
 (defun convert (lambda)
   (mezzano.compiler::detect-uses lambda)
   (codegen-lambda lambda))
@@ -259,6 +268,7 @@
          (emit (make-instance 'nlx-entry-multiple-instruction
                               :region nlx-region
                               :context escape-reg))
+         (emit-nlx-notification t)
          (emit (make-instance 'jump-instruction
                               :target exit-label)))
         (:value
@@ -267,7 +277,8 @@
                                 :region nlx-region
                                 :context escape-reg
                                 :value tmp))
-          (emit (make-instance 'jump-instruction
+           (emit-nlx-notification)
+           (emit (make-instance 'jump-instruction
                                :target exit-label
                                :values (list tmp)))))
         (:effect
@@ -275,6 +286,7 @@
                               :region nlx-region
                               :context escape-reg
                               :value (make-instance 'virtual-register)))
+         (emit-nlx-notification)
          (emit (make-instance 'jump-instruction
                               :target exit-label)))))
     (emit exit-label)
@@ -702,6 +714,7 @@
                                 :region nlx-region
                                 :context escape-reg
                                 :value (make-instance 'virtual-register)))
+           (emit-nlx-notification)
            (emit (make-instance 'jump-instruction
                                 :target tag-label))))
     ;; Exit label.

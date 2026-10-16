@@ -61,11 +61,13 @@
     (assert (eq (d::service-stop-owner object) owner))
     (assert (eq (d::service-stop-parent object) parent))
     (assert (= (d::service-stop-generation object) (1+ generation)))
+    (assert (= (getf (d:debugger-command-result stop id) :generation) generation))
     (assert (equal (d::service-stop-evaluation-history object) history))
     (assert (equal (d::service-stop-standard-values object) standard))
     (assert (eq (d::service-stop-evaluation-environment object) environment))
     (let ((next (getf (d:debugger-stop-information stop) :next-command-id)))
       (assert (= (d:submit-debugger-command lease id :single-step) id))
+      (assert (= (getf (d:debugger-command-result stop id) :generation) generation))
       (assert (= (getf (d:debugger-stop-information stop) :next-command-id) next))
       (location stop function offset)
       (test::expect-error :expired-frame

@@ -38,6 +38,10 @@
         (setf (sys.int::%%special-stack-pointer)
               (svref (sys.int::%%special-stack-pointer) 0))))))
 
+#-x86-64
+(defun sys.int::%%debugger-nlx-entry ()
+  (values))
+
 (defmacro do-variable-bindings ((value symbol &optional result) &body body)
   (let ((ssp (gensym "SSP"))
         (sym (gensym)))

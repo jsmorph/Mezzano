@@ -54,7 +54,13 @@ A function operand uses Mezzano's function-name syntax, including symbols and SE
 
 The table identifies a location by its function object and byte offset.  Redefining a name leaves its old locations on the original function.  Show Breakpoints prints the retained function identities.  In the debugger, Clear All Breakpoints with no function uses the selected frame's exact executing function, including an older definition.  The Listener requires an explicit function.
 
-The x86-64 implementation provides four global hardware locations.  Installation/removal synchronizes online CPUs.  A retained hit remains inspectable and can continue after its location is cleared.  Breakpoint commands preserve frame selection and expression/value history.  Retained replay returns the recorded result without repeating the mutation.  Reader, resolution, location, capacity, and printer errors enter the usual debugger.  Conditions/actions, mouse breakpoint operations, and Single Step remain planned.
+The x86-64 implementation provides four global hardware locations.  Installation/removal synchronizes online CPUs.  A retained hit remains inspectable and can continue after its location is cleared.  Breakpoint commands preserve frame selection and expression/value history.  Retained replay returns the recorded result without repeating the mutation.  Reader, resolution, location, capacity, and printer errors enter the usual debugger.  Conditions/actions and mouse breakpoint operations remain planned.
+
+### Single Step
+
+In the debugger, `:Single Step` takes no arguments or keywords.  It executes one supported x86-64 machine instruction at the selected interrupted frame.  A CALL runs until its return or an escaping RETURN-FROM, GO, or THROW.  The debugger then selects the interrupted destination in the same stop.  The [instruction-step reference](debugger.md#retained-instruction-steps) lists supported instructions and execution contexts.
+
+A step invalidates previous frame and Inspector references.  The Web interface retains their transcript entries, disables their old actions, and loads the new condition, stack, selected frame, and restarts when the step stops.  While the computation is stepping, both command inputs preserve their drafts and reject submission.  Interrupt remains available through the active evaluation.
 
 ### Clear All
 

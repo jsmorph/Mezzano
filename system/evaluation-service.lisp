@@ -148,7 +148,8 @@
   (let ((interrupt (evaluation-job-interrupt job))
         (stop (service-thread-current-stop (evaluation-job-thread job))))
     (and (eq (evaluation-job-state job) :running)
-         (or (null stop) (service-stop-active stop))
+         (or (null stop) (eq (service-stop-state stop) :stepping)
+             (service-stop-active stop))
          (or (null interrupt)
              (and (eq (evaluation-interrupt-state interrupt) :running)
                   stop
@@ -366,7 +367,7 @@
             :stops (loop for stop being the hash-values of *service-stops*
                          when (and (eq (service-stop-thread stop)
                                        (evaluation-job-thread job))
-                                   (eq (service-stop-state stop) :stopped))
+                                   (member (service-stop-state stop) '(:stopped :stepping)))
                            collect (service-handle stop))
             :next-interrupt-id (evaluation-job-next-interrupt-id job)
             :interruptible-p (evaluation-job-interruptible-p job)

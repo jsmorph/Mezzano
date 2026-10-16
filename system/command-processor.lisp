@@ -54,6 +54,8 @@
       (:name "Reinvoke" :id :reinvoke
        :help "Reinvoke the selected frame using current arguments after confirmation. :New Args prompts for a list. :Original Args uses the original supplied sequence."
        :keywords (("New Args" :boolean "No" "Yes") ("Original Args" :boolean "No" "Yes")))
+      (:name "Single Step" :id :single-step
+       :help "Execute one supported machine instruction. Calls run to their return or nonlocal exit.")
       (:name "Return" :id :return
        :help "Return from the selected frame with the values of a prompted expression, after confirmation.")
       (:name "Proceed" :id :proceed :type :restart
@@ -523,6 +525,7 @@
          (input-error ":Original Args and :New Args cannot both be Yes."))
        (list :operation "reinvoke" :argument (list original new))))
     (:return (list :operation "return"))
+    (:single-step (list :operation "single-step"))
     (:proceed
      (cond ((cdr (assoc "Arguments" keywords :test #'equal))
             (list :operation "invoke-restart-with-arguments"

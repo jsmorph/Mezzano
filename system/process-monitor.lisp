@@ -28,7 +28,7 @@
   (let ((stops
           (with-service-lock
             (sort (loop for stop being the hash-values of *service-stops*
-                        when (eq (service-stop-state stop) :stopped)
+                        when (member (service-stop-state stop) '(:stopped :stepping))
                           collect (cons (service-stop-thread stop) (service-handle stop)))
                   #'< :key (lambda (entry) (service-stop-id (service-handle-stop (cdr entry))))))))
     (list :title "Processes"

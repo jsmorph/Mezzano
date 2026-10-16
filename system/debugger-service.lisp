@@ -48,7 +48,8 @@
 (defstruct (service-command (:constructor %make-service-command))
   boot operation argument io
   (state :pending)
-  result)
+  result
+  (generation nil :read-only t))
 
 (defvar *service-lock* (mezzano.supervisor:make-mutex 'debugger-service))
 (defvar *service-stops* (make-hash-table))
@@ -340,7 +341,7 @@
 (defun service-thread-current-stop (thread)
   (loop for stop being the hash-values of *service-stops*
         when (and (eq (service-stop-thread stop) thread)
-                  (eq (service-stop-state stop) :stopped)
+                  (member (service-stop-state stop) '(:stopped :stepping))
                   (null (service-stop-child stop)))
           return stop))
 
@@ -512,6 +513,7 @@
         (otherwise (service-error :unknown-operation)))
       (let ((command (%make-service-command
                       :boot (mezzano.supervisor:current-boot-id)
+                      :generation (service-stop-generation stop)
                       :io (make-two-way-stream (make-instance 'evaluation-input-stream)
                                                 (make-instance 'evaluation-output-stream))
                       :operation operation :argument (case operation
@@ -546,6 +548,7 @@
            (command (gethash id (service-stop-commands stop))))
       (unless command (service-error :unknown-command))
       (list :state (service-command-state command)
+            :generation (service-command-generation command)
             :operation (service-command-operation command)
             :source (when (eq (service-command-operation command) :evaluate)
                       (copy-seq (service-command-argument command)))
@@ -988,12 +991,13 @@ NIL with true availability denotes an absent global cell."
   #-x86-64
   (values nil nil nil :unsupported-architecture))
 
-(defun service-validate-instruction-breakpoint-location (function offset)
+(defun service-validate-instruction-breakpoint-location (function offset &optional resident-p)
   (unless (mezzano.internals::%object-of-type-p
            function mezzano.internals::+object-tag-function+)
     (service-error :not-compiled-function))
-  (when (< (mezzano.internals::lisp-object-address function)
-           mezzano.internals::*function-area-base*)
+  (when (and (not resident-p)
+             (< (mezzano.internals::lisp-object-address function)
+                mezzano.internals::*function-area-base*))
     (service-error :resident-function))
   (unless (and (typep offset 'fixnum)
                (<= 16 offset)
@@ -1085,7 +1089,7 @@ NIL with true availability denotes an absent global cell."
 (defstruct service-step
   stop condition pc-slot function offset request
   (state :preparing)
-  breakpoint)
+  breakpoint stack call-breakpoint)
 
 (defvar *service-step* nil)
 (defvar *service-step-owner* nil)
@@ -1144,6 +1148,53 @@ NIL with true availability denotes an absent global cell."
     (let ((*service-resuming-stop* (service-step-stop step)))
       (mezzano.internals::invoke-instruction-debugger :single-step))))
 
+#+x86-64
+(defun service-call-pending-p (step frame)
+  (let ((call (service-step-call-breakpoint step)))
+    (mezzano.supervisor:with-pseudo-atomic
+      (let ((sp (+ frame 16))
+            (fp (mezzano.internals::memref-unsigned-byte-64 frame))
+            (slot (+ frame 8))
+            (interrupted-p nil))
+        (loop
+          for pc = (mezzano.internals::memref-unsigned-byte-64 slot)
+          until (zerop pc)
+          do (multiple-value-bind (function offset)
+                 (mezzano.internals::return-address-to-function pc)
+               (when (and (= sp (mezzano.supervisor::instruction-step-breakpoint-stack-pointer call))
+                          (eq function (service-step-function step))
+                          (or (= offset (mezzano.supervisor::instruction-breakpoint-offset call))
+                              (and interrupted-p
+                                   (= slot (service-step-pc-slot step))
+                                   (= offset (service-step-offset step)))))
+                 (return t)))
+             (multiple-value-bind (next-sp next-fp next-pc next-slot link interruptp)
+                 (mezzano.internals::backtrace-next-frame
+                  (mezzano.supervisor:current-thread) sp fp pc)
+               (declare (ignore link))
+               (when (or (zerop next-fp) (zerop next-pc)) (return nil))
+               (setf sp next-sp fp next-fp slot next-slot interrupted-p interruptp)))))))
+
+#+x86-64
+(defun service-nlx-entry (point frame)
+  (let ((step (mezzano.supervisor::callback-instruction-step-breakpoint-argument point)))
+    (when (and (service-step-p step)
+               (eq (service-step-state step) :running)
+               (eq (service-step-breakpoint step) point)
+               (service-step-call-breakpoint step)
+               (not (service-call-pending-p step frame)))
+      (multiple-value-bind (function offset)
+          (mezzano.supervisor:with-pseudo-atomic
+            (mezzano.internals::return-address-to-function
+             (mezzano.internals::memref-unsigned-byte-64 frame 1)))
+        (let ((replacement
+                (mezzano.supervisor::replace-callback-instruction-step-breakpoint
+                 point function offset (+ frame 16))))
+          (when replacement (setf (service-step-breakpoint step) replacement)))))))
+
+#+x86-64
+(setf mezzano.supervisor::*instruction-step-nlx-hook* #'service-nlx-entry)
+
 (defun service-single-step (stop)
   #-x86-64 (declare (ignore stop))
   #+x86-64
@@ -1155,55 +1206,62 @@ NIL with true availability denotes an absent global cell."
       (when reason (service-error reason))
       (unless (= (service-stop-current-frame stop) index)
         (service-error :step-requires-interrupted-frame))
-      (service-validate-instruction-breakpoint-location function offset)
-      (let* ((frame (aref (service-stop-frames stop) index))
-             (slot (mezzano.internals::frame-pc-slot frame))
-             (flags (mezzano.internals::memref-unsigned-byte-64 slot 2))
-             (instruction (mezzano.disassemble:instruction-at
-                           (mezzano.disassemble:make-disassembler-context function) offset))
-             (call-p (and instruction
-                          (eq (mezzano.disassemble.x86-64::inst-opcode instruction)
-                              'mezzano.lap.x86:call)))
-             (next-offset (when call-p (+ offset (mezzano.disassemble:inst-size instruction)))))
-        (unless (and (logbitp 9 flags) (not (logbitp 8 flags)))
-          (service-error :unsupported-step-flags))
-        (unless (and instruction
-                     (case (mezzano.disassemble.x86-64::inst-opcode instruction)
-                       ((mezzano.lap.x86:nop mezzano.lap.x86:ret mezzano.lap.x86:call
-                         mezzano.lap.x86:push mezzano.lap.x86:pop
-                         mezzano.lap.x86:mov32 mezzano.lap.x86:mov64
-                         mezzano.lap.x86:lea64 mezzano.lap.x86:add64
-                         mezzano.lap.x86:sub64 mezzano.lap.x86:cmp32
-                         mezzano.lap.x86:cmp64 mezzano.lap.x86:test64
-                         mezzano.lap.x86:shl64 mezzano.lap.x86:leave) t)
-                       ((mezzano.lap.x86:jmp mezzano.lap.x86:jz
-                         mezzano.lap.x86:jnz mezzano.lap.x86:ja)
-                        (let ((operands (mezzano.disassemble.x86-64::inst-operands instruction)))
-                          (and (= (length operands) 1)
-                               (typep (first operands)
-                                      'mezzano.disassemble.x86-64::relative-address))))))
-          (service-error :unsupported-step-instruction))
-        (when call-p (service-validate-instruction-breakpoint-location function next-offset))
-        (let* ((condition (service-stop-condition stop))
-               (step (make-service-step :stop stop :condition condition :pc-slot slot
-                                        :function function :offset offset)))
-          (setf *service-step* step)
-          (mezzano.supervisor:without-footholds
-            (setf (mezzano.internals::instruction-trap-exit-function condition)
-                  (lambda (action) (service-step-exit step action)))
-            (let ((restart (or (find-restart 'mezzano.internals::instruction-step condition)
-                               (service-error :unavailable-step-transfer))))
-              (if call-p
-                  (setf (service-step-breakpoint step)
-                        (mezzano.supervisor::install-callback-instruction-step-breakpoint
-                         function next-offset (mezzano.supervisor:current-thread)
-                         (mezzano.internals::memref-unsigned-byte-64 slot 3)
-                         #'service-deliver-step step))
-                  (setf (service-step-request step)
-                        (mezzano.supervisor::register-instruction-step-request
-                         (mezzano.supervisor:current-thread) #'service-deliver-step step)))
-              (setf (service-step-state step) :prepared)
-              (invoke-restart restart)))))))
+      (let ((resident-p
+              (eq (mezzano.internals::instruction-trap-kind (service-stop-condition stop))
+                  :single-step)))
+        (service-validate-instruction-breakpoint-location function offset resident-p)
+        (let* ((frame (aref (service-stop-frames stop) index))
+               (slot (mezzano.internals::frame-pc-slot frame))
+               (flags (mezzano.internals::memref-unsigned-byte-64 slot 2))
+               (instruction (mezzano.disassemble:instruction-at
+                             (mezzano.disassemble:make-disassembler-context function) offset))
+               (call-p (and instruction
+                            (eq (mezzano.disassemble.x86-64::inst-opcode instruction)
+                                'mezzano.lap.x86:call)))
+               (next-offset (when call-p (+ offset (mezzano.disassemble:inst-size instruction)))))
+          (unless (and (logbitp 9 flags) (not (logbitp 8 flags)))
+            (service-error :unsupported-step-flags))
+          (unless (and instruction
+                       (case (mezzano.disassemble.x86-64::inst-opcode instruction)
+                         ((mezzano.lap.x86:nop mezzano.lap.x86:ret mezzano.lap.x86:call
+                           mezzano.lap.x86:push mezzano.lap.x86:pop
+                           mezzano.lap.x86:mov32 mezzano.lap.x86:mov64
+                           mezzano.lap.x86:lea64 mezzano.lap.x86:add64
+                           mezzano.lap.x86:sub64 mezzano.lap.x86:cmp32
+                           mezzano.lap.x86:cmp64 mezzano.lap.x86:test64
+                           mezzano.lap.x86:shl64 mezzano.lap.x86:leave) t)
+                         ((mezzano.lap.x86:jmp mezzano.lap.x86:jz
+                           mezzano.lap.x86:jnz mezzano.lap.x86:ja)
+                          (let ((operands (mezzano.disassemble.x86-64::inst-operands instruction)))
+                            (and (= (length operands) 1)
+                                 (typep (first operands)
+                                        'mezzano.disassemble.x86-64::relative-address))))))
+            (service-error :unsupported-step-instruction))
+          (when call-p (service-validate-instruction-breakpoint-location function next-offset resident-p))
+          (let* ((condition (service-stop-condition stop))
+                 (step (make-service-step :stop stop :condition condition :pc-slot slot
+                                          :function function :offset offset
+                                          :stack (mezzano.supervisor::thread-stack
+                                                  (mezzano.supervisor:current-thread)))))
+            (setf *service-step* step)
+            (mezzano.supervisor:without-footholds
+              (setf (mezzano.internals::instruction-trap-exit-function condition)
+                    (lambda (action) (service-step-exit step action)))
+              (let ((restart (or (find-restart 'mezzano.internals::instruction-step condition)
+                                 (service-error :unavailable-step-transfer))))
+                (if call-p
+                    (let ((point
+                            (mezzano.supervisor::install-callback-instruction-step-breakpoint
+                             function next-offset (mezzano.supervisor:current-thread)
+                             (mezzano.internals::memref-unsigned-byte-64 slot 3)
+                             #'service-deliver-step step)))
+                      (setf (service-step-breakpoint step) point
+                            (service-step-call-breakpoint step) point))
+                    (setf (service-step-request step)
+                          (mezzano.supervisor::register-instruction-step-request
+                           (mezzano.supervisor:current-thread) #'service-deliver-step step)))
+                (setf (service-step-state step) :prepared)
+                (invoke-restart restart))))))))
   #-x86-64 (service-error :unsupported-architecture))
 
 (defun suspend-service-stop (stop)

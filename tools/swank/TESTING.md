@@ -126,7 +126,17 @@ The spill-interference fixture checks overlapping, adjacent, disjoint, repeated,
 
 Compile/load `test-retained-call-step.lisp` after the raw-step, hardware-breakpoint, managed-step, retained-step, and managed-call-return helpers.  Run `(lispm-retained-call-step-test:run)` in a dedicated two-CPU x86-64 guest at SAFETY 3/DEBUG 3/SPEED 1 with ordinary allocation.  Direct/indirect cases test normal and recursive returns, three values, blocked steps, replay, moving callback arguments, redefinition, other-thread filtering, public coincidence, full capacity, callee conditions, cancellation, and termination under zero/two prompts.  A later condition after Proceed must create a new record, and cleanup must release both that record and the old closed record and join the owned thread.  The LAP callers reserve a raw alignment word while retaining their RBP-8 state root in layout `#*1`.
 
-Run the affected raw step-over, managed call-return, retained-step, and compiled ordinary-step suites with the revised helpers.  Both compiled-entry traces passed 58 instructions with full GC between steps.  Nonlocal transfers past CALL, saved retained steps, public command integration, and ARM64 execution remain untested or unimplemented as specified in the [debugger reference](../../doc/debugger.md#retained-instruction-steps).
+Run the affected raw step-over, managed call-return, retained-step, and compiled ordinary-step suites with the revised helpers.  Both compiled-entry traces passed 58 instructions with full GC between steps.  Saved retained steps and ARM64 execution remain untested.  Nonlocal transfers and public command integration have the separate acceptance requirements below.
+
+## Nonlocal CALL steps
+
+Use the matched compiler, resident CPU module, runtime %CATCH, and debugger service in a dedicated two-CPU x86-64 guest.  Compile/load `test-nlx-step.lisp` ordinarily at SAFETY 3/DEBUG 3/SPEED 1 after the retained CALL helpers.  Then compile/load `test-nlx-step-resident.lisp` wired at SAFETY 3/DEBUG 1/SPEED 1.  Call `(lispm-nlx-step-test:run)`.
+
+The fixture checks RETURN-FROM, GO, THROW, and internal callee exits with zero/two prompts and zero/one/three/eight values.  It checks exact destination PCs, returned values, one cleanup, moving GC, acceptance generation, and command replay.  Two full-table cases preserve three public locations while redirecting the private fourth slot.  The THROW case steps one further supported resident instruction.  Guard tests require the ordinary hook to remain inactive with interrupts disabled, footholds inhibited, pseudo-atomic execution, the world stopped, or the hook disabled.
+
+Repeat the forced retained CALL cancellation/termination cases and the raw step-over, managed call-return, retained-step, retained-CALL, and compiled ordinary-step suites.  Rebuild all system and dependency code before deployment.  An incremental live publication establishes only the tested paths through newly compiled destinations.
+
+The browser fixture `test-web-single-step.lisp` uses the Listener's own evaluation thread.  Compile/load it ordinarily after the nonlocal fixture.  The browser controls blocked CALL, RET, and escaping RETURN-FROM cases, including draft preservation, reload, stale-reference actions, fresh instruction display, accepted-ID replay, Proceed, exact values, and owned-resource cleanup.  Source and isolated client tests do not establish guest/HTTP/Chromium acceptance.
 
 ## Package condition stops
 
