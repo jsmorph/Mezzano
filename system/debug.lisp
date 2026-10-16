@@ -6,6 +6,30 @@
                   *standard-input*
                   *standard-output*))
 
+(define-condition instruction-trap (simple-condition)
+  ((kind :initarg :kind :reader instruction-trap-kind)
+   (breakpoint :initarg :breakpoint :initform nil :reader instruction-trap-breakpoint)))
+
+(defun invoke-instruction-debugger (kind &optional breakpoint)
+  (let ((condition
+          (ecase kind
+            (:instruction-breakpoint
+             #+x86-64
+             (make-condition 'instruction-trap :kind kind :breakpoint breakpoint
+                             :format-control "Instruction breakpoint at ~S +#x~X."
+                             :format-arguments
+                             (list (mezzano.supervisor::instruction-breakpoint-function breakpoint)
+                                   (mezzano.supervisor::instruction-breakpoint-offset breakpoint)))
+             #-x86-64
+             (error "Hardware instruction traps are unsupported on this architecture."))
+            (:breakpoint-instruction
+             (make-condition 'instruction-trap :kind kind
+                             :format-control "Breakpoint instruction.")))))
+    (with-simple-restart (continue "Continue the interrupted computation.")
+      (let ((*debugger-hook* nil))
+        (invoke-debugger condition))))
+  nil)
+
 (defun debug-info-name (info)
   (second info))
 

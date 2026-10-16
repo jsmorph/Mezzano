@@ -146,16 +146,14 @@
            (unhandled-interrupt interrupt-frame info "debug exception")))))
 
 (defun raise-debugger-instruction-breakpoint (breakpoint)
-  (break "Instruction breakpoint at ~S +#x~X."
-         (instruction-breakpoint-function breakpoint)
-         (instruction-breakpoint-offset breakpoint)))
+  (sys.int::invoke-instruction-debugger :instruction-breakpoint breakpoint))
 
 (defun sys.int::%nonmaskable-interrupt-handler (interrupt-frame info)
   (unhandled-interrupt interrupt-frame info "nonmaskable"))
 
 (defun raise-debugger-breakpoint (argument)
   (declare (ignore argument))
-  (break "Breakpoint instruction."))
+  (sys.int::invoke-instruction-debugger :breakpoint-instruction))
 
 (defun sys.int::%breakpoint-handler (interrupt-frame info)
   (declare (ignore info))

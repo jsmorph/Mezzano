@@ -958,6 +958,38 @@ NIL with true availability denotes an absent global cell."
             (values function offset interrupted-p))
           (values nil nil interrupted-p)))))
 
+(defun service-instruction-trap-context (stop)
+  #+x86-64
+  (let ((condition (service-stop-condition stop)))
+    (unless (typep condition 'mezzano.internals::instruction-trap)
+      (return-from service-instruction-trap-context
+        (values nil nil nil :not-instruction-trap)))
+    (let* ((frames (service-stop-frames stop))
+           (index (position-if #'mezzano.internals::frame-interrupted-p frames)))
+      (unless index
+        (return-from service-instruction-trap-context
+          (values nil nil nil :unavailable-instruction-context)))
+      (multiple-value-bind (function offset)
+          (service-frame-code-location (aref frames index))
+        (unless function
+          (return-from service-instruction-trap-context
+            (values nil nil nil :unavailable-instruction-context)))
+        (case (mezzano.internals::instruction-trap-kind condition)
+          (:instruction-breakpoint
+           (let ((point (mezzano.internals::instruction-trap-breakpoint condition)))
+             (unless (and (mezzano.supervisor::instruction-breakpoint-p point)
+                          (eq (mezzano.supervisor::instruction-breakpoint-function point) function)
+                          (= (mezzano.supervisor::instruction-breakpoint-offset point) offset))
+               (return-from service-instruction-trap-context
+                 (values nil nil nil :mismatched-instruction-context)))))
+          (:breakpoint-instruction)
+          (otherwise
+           (return-from service-instruction-trap-context
+             (values nil nil nil :unsupported-instruction-trap-kind))))
+        (values function offset index nil))))
+  #-x86-64
+  (values nil nil nil :unsupported-architecture))
+
 (defun service-validate-instruction-breakpoint-location (function offset)
   (unless (mezzano.internals::%object-of-type-p
            function mezzano.internals::+object-tag-function+)
@@ -1506,7 +1538,11 @@ NIL with true availability denotes an absent global cell."
                   (setf found t))
                 (when found (push frame frames))))
              (unless found (error "Debugger activation missing from backtrace."))
-             (setf (service-stop-frames stop) (coerce (nreverse frames) 'vector)))
+             (setf (service-stop-frames stop) (coerce (nreverse frames) 'vector))
+             (multiple-value-bind (function offset index reason)
+                 (service-instruction-trap-context stop)
+               (declare (ignore function offset reason))
+               (when index (setf (service-stop-current-frame stop) index))))
            (with-service-lock
              (when (service-stop-parent stop)
                (setf (service-stop-child (service-stop-parent stop)) stop))
