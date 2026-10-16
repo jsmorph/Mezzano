@@ -1,12 +1,14 @@
 (in-package :mezzano.supervisor)
 
 (sys.int::define-lap-function fxsave ((address))
+  (:gc :no-frame :layout #*0)
   (sys.lap-x86:mov64 :rax :r8)
   (sys.lap-x86:sar64 :rax #.sys.int::+n-fixnum-bits+)
   (sys.lap-x86:fxsave (:rax))
   (sys.lap-x86:ret))
 
 (sys.int::define-lap-function fxrstor ((address))
+  (:gc :no-frame :layout #*0)
   (sys.lap-x86:mov64 :rax :r8)
   (sys.lap-x86:sar64 :rax #.sys.int::+n-fixnum-bits+)
   (sys.lap-x86:fxrstor (:rax))

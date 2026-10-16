@@ -219,6 +219,27 @@
   (loop until (aref state 1))
   :done)
 
+(defun with-interrupted-flag-guards (function callback)
+  (let ((selected nil) (interrupted nil))
+    (i::map-backtrace
+     (lambda (frame)
+       (unless selected
+         (when (i::frame-interrupted-p frame) (setf interrupted frame))
+         (when (eq (nth-value 1 (i::frame-function frame)) function)
+           (setf selected frame)))))
+    (assert selected)
+    (assert interrupted)
+    (let* ((slot (i::frame-pc-slot interrupted))
+           (flags (i::memref-unsigned-byte-64 slot 2)))
+      (assert (logbitp 9 flags))
+      (assert (not (logbitp 8 flags)))
+      (dolist (unsupported (list (logandc2 flags #x200) (logior flags #x100)))
+        (unwind-protect
+             (progn
+               (setf (i::memref-unsigned-byte-64 slot 2) unsupported)
+               (funcall callback selected))
+          (setf (i::memref-unsigned-byte-64 slot 2) flags))))))
+
 (defun run-interruption-guard ()
   (let* ((name (symbol-name (gensym "Frame Return interruption guard ")))
          (controller (d:make-debugger-controller))
@@ -237,8 +258,12 @@
            (s:establish-thread-foothold
             thread
             (lambda ()
-              (assert (eq (context-reason-for-function #'interrupted-work)
-                          :interrupt-boundary))
+              (with-interrupted-flag-guards
+               #'interrupted-work
+               (lambda (frame)
+                 (declare (ignore frame))
+                 (assert (eq (context-reason-for-function #'interrupted-work)
+                             :interrupt-boundary))))
               (setf (aref state 2) t)))
            (lispm-service-test::await (lambda () (aref state 2))))
       (setf (aref state 1) t)

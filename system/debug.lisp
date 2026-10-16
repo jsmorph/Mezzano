@@ -171,26 +171,48 @@ Returns NIL if the function captures no variables."
   (check-type frame frame)
   #+x86-64
   (block context
-    (let ((interrupted nil))
+    (let ((interrupt-boundary nil)
+          (interrupt-fpu-states nil)
+          (previous-function nil))
       (map-backtrace
        (lambda (current)
-         (when (frame-interrupted-p current) (setf interrupted t))
-         (when (and (= (frame-fp current) (frame-fp frame))
-                    (eql (frame-pc-slot current) (frame-pc-slot frame)))
-           (when interrupted
-             (return-from context (values nil nil :interrupt-boundary)))
-           (unless (frame-stack-available-p (frame-raw-data current))
-             (return-from context (values nil nil :frameless-frame)))
-           (multiple-value-bind (function offset) (function-from-frame (frame-raw-data current))
-             (let ((scope (source-scope-at-offset function offset)))
-               (when (member scope '(nil :unknown))
-                 (return-from context (values nil nil :unavailable-source-scope)))))
-           (let ((fp (memref-unsigned-byte-64 (frame-fp current))))
-             (multiple-value-bind (head available) (special-stack-head-at-boundary fp)
-               (unless (and available (zerop (mod fp 16))
-                            (not (zerop (memref-unsigned-byte-64 fp 1))))
-                 (return-from context (values nil nil :unavailable-return-address)))
-               (return-from context (values fp head nil))))))))
+         (let ((raw (frame-raw-data current)))
+           (multiple-value-bind (function offset) (function-from-frame raw)
+             (when (frame-interrupted-p current)
+               (let ((anchor (frame-fp current)))
+                 (if (and (eq previous-function #'mezzano.supervisor::%%partial-save-return-thunk)
+                          (zerop (mod anchor 16))
+                          (let ((flags (memref-unsigned-byte-64
+                                        anchor
+                                        (mezzano.supervisor::interrupt-frame-register-offset
+                                         :rflags))))
+                            (and (logbitp 9 flags) (not (logbitp 8 flags)))))
+                     (multiple-value-bind (head available) (special-stack-head-at-boundary anchor)
+                       (if available
+                           (push (cons head
+                                       (+ anchor
+                                          (* 8 (1+ (mezzano.supervisor::interrupt-frame-register-offset
+                                                    :ss)))))
+                                 interrupt-fpu-states)
+                           (setf interrupt-boundary t)))
+                     (setf interrupt-boundary t))))
+             (when (and (= (frame-fp current) (frame-fp frame))
+                        (eql (frame-pc-slot current) (frame-pc-slot frame)))
+               (when interrupt-boundary
+                 (return-from context (values nil nil :interrupt-boundary)))
+               (unless (frame-stack-available-p raw)
+                 (return-from context (values nil nil :frameless-frame)))
+               (let ((scope (source-scope-at-offset function offset)))
+                 (when (member scope '(nil :unknown))
+                   (return-from context (values nil nil :unavailable-source-scope))))
+               (let ((fp (memref-unsigned-byte-64 (frame-fp current))))
+                 (multiple-value-bind (head available) (special-stack-head-at-boundary fp)
+                   (unless (and available (zerop (mod fp 16))
+                                (not (zerop (memref-unsigned-byte-64 fp 1))))
+                     (return-from context (values nil nil :unavailable-return-address)))
+                   (return-from context
+                     (values fp head nil (nreverse interrupt-fpu-states))))))
+             (setf previous-function function))))))
     (values nil nil :inactive-frame))
   #-x86-64
   (values nil nil :unsupported-architecture))
@@ -227,12 +249,12 @@ Returns NIL if the function captures no variables."
     (unless (and count (<= count multiple-values-limit))
       (error "Frame return requires a finite list of at most ~D values."
              multiple-values-limit)))
-  (multiple-value-bind (fp head reason) (frame-return-context frame)
-    (declare (ignorable fp head))
+  (multiple-value-bind (fp head reason interrupt-fpu-states) (frame-return-context frame)
+    (declare (ignorable fp head interrupt-fpu-states))
     (when reason (error "Cannot return from frame: ~S." reason))
     #+x86-64
     (let ((stack (mezzano.supervisor::thread-stack (mezzano.supervisor:current-thread))))
-      (%%unwind-to head)
+      (%%unwind-to head interrupt-fpu-states)
       (%return-values-from-frame fp values stack))))
 
 #+x86-64
@@ -264,13 +286,13 @@ Returns NIL if the function captures no variables."
     (unless (and count (< count call-arguments-limit))
       (error "Frame reinvocation requires a finite argument list shorter than ~D."
              call-arguments-limit)))
-  (multiple-value-bind (fp head reason) (frame-return-context frame)
-    (declare (ignorable fp head))
+  (multiple-value-bind (fp head reason interrupt-fpu-states) (frame-return-context frame)
+    (declare (ignorable fp head interrupt-fpu-states))
     (when reason (error "Cannot reinvoke frame: ~S." reason))
     #+x86-64
     (let ((arguments (copy-list arguments))
           (stack (mezzano.supervisor::thread-stack (mezzano.supervisor:current-thread))))
-      (%%unwind-to head)
+      (%%unwind-to head interrupt-fpu-states)
       (%reinvoke-frame fp function arguments stack))))
 
 (defun frame-entry-context (frame)

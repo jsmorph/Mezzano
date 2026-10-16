@@ -12,10 +12,16 @@
   (declare (sys.int::suppress-ssp-checking))
   (setf (sys.int::%%special-stack-pointer) value))
 
-(defun sys.int::%%unwind-to (target-special-stack-pointer)
+(defun sys.int::%%unwind-to (target-special-stack-pointer &optional interrupt-fpu-states)
   (declare (sys.int::suppress-ssp-checking))
-  (loop (when (eq target-special-stack-pointer (sys.int::%%special-stack-pointer))
-          (return))
+  (loop
+     #+x86-64
+     (loop while (and interrupt-fpu-states
+                      (eq (caar interrupt-fpu-states) (sys.int::%%special-stack-pointer)))
+           do (mezzano.supervisor::fxrstor (cdr (pop interrupt-fpu-states))))
+     (when (eq target-special-stack-pointer (sys.int::%%special-stack-pointer))
+       (assert (null interrupt-fpu-states))
+       (return))
      (assert (sys.int::%%special-stack-pointer))
      (etypecase (sys.int::%object-ref-t (sys.int::%%special-stack-pointer) 1)
        (symbol-value-cell

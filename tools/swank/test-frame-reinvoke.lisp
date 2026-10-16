@@ -155,7 +155,9 @@
            (s:establish-thread-foothold
             thread
             (lambda ()
-              (reject-frame (selected-frame #'base::interrupted-work) :interrupt-boundary)
+              (base::with-interrupted-flag-guards
+               #'base::interrupted-work
+               (lambda (frame) (reject-frame frame :interrupt-boundary)))
               (setf (aref state 2) t)))
            (lispm-service-test::await (lambda () (aref state 2))))
       (setf (aref state 1) t)

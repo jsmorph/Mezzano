@@ -697,8 +697,7 @@
   (declare (ignorable frame))
   #+x86-64
   (let ((raw (mezzano.internals::frame-raw-data frame)))
-    (unless (and (mezzano.internals::frame-stack-available-p raw)
-                 (not (mezzano.internals::frame-interrupted-p frame)))
+    (unless (mezzano.internals::frame-stack-available-p raw)
       (return-from service-frame-binding-cells (values nil nil)))
     (let* ((lower (mezzano.internals::frame-fp frame))
            (upper (mezzano.internals::memref-unsigned-byte-64 lower)))
@@ -838,8 +837,7 @@
   (declare (ignorable frame))
   #+x86-64
   (let ((raw (mezzano.internals::frame-raw-data frame)))
-    (unless (and (mezzano.internals::frame-stack-available-p raw)
-                 (not (mezzano.internals::frame-interrupted-p frame)))
+    (unless (mezzano.internals::frame-stack-available-p raw)
       (return-from service-frame-special-stack-head (values nil nil)))
     (mezzano.internals::special-stack-head-at-boundary
      (mezzano.internals::frame-fp frame)))
