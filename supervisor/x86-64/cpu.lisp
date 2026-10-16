@@ -151,6 +151,67 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
   (stack-pointer 0 :type fixnum :read-only t)
   breakpoint)
 
+(defstruct (instruction-step-request
+             (:area :wired)
+             (:constructor %make-instruction-step-request (thread function argument)))
+  (thread nil :read-only t)
+  (function nil :read-only t)
+  (argument nil :read-only t)
+  (state :armed)
+  next)
+
+(sys.int::defglobal *instruction-step-requests* nil)
+
+(defun find-instruction-step-request (thread)
+  (loop for request = *instruction-step-requests* then (instruction-step-request-next request)
+        while request
+        when (eq (instruction-step-request-thread request) thread)
+          return request))
+
+(defun register-instruction-step-request (thread function argument)
+  (check-type thread thread)
+  (check-type function function)
+  (when (eq (thread-priority thread) :supervisor)
+    (error "Instruction stepping requires an ordinary thread."))
+  (let ((request (%make-instruction-step-request thread function argument))
+        (registered nil))
+    (with-world-stopped
+      (unless (find-instruction-step-request thread)
+        (setf (instruction-step-request-next request) *instruction-step-requests*
+              *instruction-step-requests* request
+              registered t)))
+    (unless registered (error "The thread already has an instruction-step request."))
+    request))
+
+(defun %remove-instruction-step-request (request state required-state)
+  (check-type request instruction-step-request)
+  (let ((removed nil))
+    (with-world-stopped
+      (when (or (null required-state)
+                (eq (instruction-step-request-state request) required-state))
+        (loop for previous = nil then current
+              for current = *instruction-step-requests* then (instruction-step-request-next current)
+              while current
+              when (eq current request)
+                do (if previous
+                       (setf (instruction-step-request-next previous)
+                             (instruction-step-request-next current))
+                       (setf *instruction-step-requests*
+                             (instruction-step-request-next current)))
+                   (setf (instruction-step-request-next current) nil
+                         (instruction-step-request-state current) state
+                         removed t)
+                   (return))))
+    removed))
+
+(defun clear-instruction-step-request (request)
+  (%remove-instruction-step-request request :cancelled nil))
+
+(defun deliver-instruction-step (request)
+  (when (%remove-instruction-step-request request :delivered :trapped)
+    (funcall (instruction-step-request-function request)
+             (instruction-step-request-argument request))))
+
 (sys.int::defglobal *instruction-breakpoint-slots* nil)
 (sys.int::defglobal *instruction-breakpoint-updates-pending* 0)
 

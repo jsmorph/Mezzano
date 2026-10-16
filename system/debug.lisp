@@ -24,7 +24,10 @@
              (error "Hardware instruction traps are unsupported on this architecture."))
             (:breakpoint-instruction
              (make-condition 'instruction-trap :kind kind
-                             :format-control "Breakpoint instruction.")))))
+                             :format-control "Breakpoint instruction."))
+            (:single-step
+             (make-condition 'instruction-trap :kind kind
+                             :format-control "Single step.")))))
     (with-simple-restart (continue "Continue the interrupted computation.")
       (let ((*debugger-hook* nil))
         (invoke-debugger condition))))

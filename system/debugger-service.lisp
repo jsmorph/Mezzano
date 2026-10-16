@@ -982,7 +982,7 @@ NIL with true availability denotes an absent global cell."
                           (= (mezzano.supervisor::instruction-breakpoint-offset point) offset))
                (return-from service-instruction-trap-context
                  (values nil nil nil :mismatched-instruction-context)))))
-          (:breakpoint-instruction)
+          ((:breakpoint-instruction :single-step))
           (otherwise
            (return-from service-instruction-trap-context
              (values nil nil nil :unsupported-instruction-trap-kind))))

@@ -125,9 +125,16 @@
          (breakpoint (instruction-breakpoint-for-interrupt interrupt-frame status)))
     (setf (sys.int::%dr6) 0)
     (cond ((logbitp 14 status)
-           ;; Single-step trap.
-           ;; Stop the thread and save the state.
-           (stop-thread-for-single-step interrupt-frame))
+           (let ((request (find-instruction-step-request (current-thread))))
+             (if (and request (eq (instruction-step-request-state request) :armed))
+                 (progn
+                   (setf (interrupt-frame-raw-register interrupt-frame :rflags)
+                         (logior #x10000
+                                 (logandc2 (interrupt-frame-raw-register interrupt-frame :rflags)
+                                           #x100))
+                         (instruction-step-request-state request) :trapped)
+                   (pager-invoke-via-interrupt #'deliver-instruction-step interrupt-frame request))
+                 (stop-thread-for-single-step interrupt-frame))))
           ((instruction-step-breakpoint-p breakpoint)
            (setf (interrupt-frame-raw-register interrupt-frame :rflags)
                  (logior (interrupt-frame-raw-register interrupt-frame :rflags) #x10000))
