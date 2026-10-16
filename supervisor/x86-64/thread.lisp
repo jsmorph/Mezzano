@@ -258,15 +258,15 @@
 (defun single-step-thread (thread)
   (check-type thread thread)
   (assert (eql (thread-state thread) :stopped))
-  ;; If the thread is not in the full-save state, then convert it.
   (convert-thread-to-full-save thread)
-  ;; Set the single-step bit in rflags.
-  (setf (thread-state-rflags thread) (logior (thread-state-rflags thread)
-                                             (ash 1 8)))
-  ;; Resume the thread & wait for it to stop.
-  (resume-thread thread :single-step)
-  (wait-for-thread-stop thread)
-  ;; Clear the single-step bit.
-  (setf (thread-state-rflags thread) (logand (thread-state-rflags thread)
-                                             (lognot (ash 1 8))))
+  (unwind-protect
+       (progn
+         (setf (thread-state-rflags thread)
+               (logior (thread-state-rflags thread) #x100))
+         (resume-thread thread :single-step)
+         (wait-for-thread-stop thread))
+    (without-footholds
+      (wait-for-thread-stop thread)
+      (setf (thread-state-rflags thread)
+            (logandc2 (thread-state-rflags thread) #x100))))
   (values))
