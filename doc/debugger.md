@@ -134,6 +134,8 @@ An x86-64 native callback entered from a full saved context retains the interrup
 
 A service mutex protects the registry, ownership, command acceptance, and results.  Commands that inspect frames, print objects, or invoke restarts execute outside that mutex on the stopped thread.  Registry operations inhibit footholds while holding the mutex and re-signal errors after releasing it.
 
+Package operations release the package mutex while handling a serious condition, including a storage condition.  Continue reacquires it before the package operation resumes.  Abort reacquires it for normal lock cleanup.  Other threads can perform package operations while that computation is stopped.
+
 A stopped thread retains any application locks it holds.  Another thread can change shared objects reachable through its locals.  A stop therefore preserves an activation without freezing the heap.  An inspection that depends on another held lock can block.  The service does not resolve application deadlocks.
 
 The remote filesystem releases its host transaction mutex before signaling an error to the debugger.  Its Retry restart reconnects after leaving that critical section.  A cached transport must be ESTABLISHED with no pending TCP error before a new request.  Idle expiry leaves the Lisp file stream usable through reconnection on its next transaction.  OPEN retries its initial read-only probe once after EOF.  EOF after CREATE propagates without replaying CREATE.

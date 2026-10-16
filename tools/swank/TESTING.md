@@ -122,6 +122,10 @@ The Show Special fixture uses the same helpers and policy.  Load the updated deb
 
 The spill-interference fixture checks overlapping, adjacent, disjoint, repeated, and unused ranges, edges from every range of a spilled register, and scalar and SIMD slot assignment.  It compares with supplied previous implementations when requested and checks that dense bit-vector rows retain their identity across insertions.
 
+## Package condition stops
+
+Compile/load the current package-lock function and TEST-PACKAGE-LOCK-DEBUGGER.LISP ordinarily at SAFETY 3/DEBUG 3/SPEED 1, then call (lispm-package-lock-debugger-test::run).  It requires the service, frame-evaluation and managed-step helpers.  Four cases signal ERROR or STORAGE-CONDITION under the package mutex and use Continue or Abort.  A separate thread must acquire that mutex while the target remains stopped.  Continue verifies reacquisition, and both exits check one cleanup and release their owned stops.  An additional SWANK test signals a STACK-OVERFLOW condition under the mutex, aborts SLDB through its protocol, and evaluates 42 through a fresh connection.  These tests do not exhaust a stack.
+
 ## Pager reservation tests
 
 From the Mezzano checkout, run the isolated host test:

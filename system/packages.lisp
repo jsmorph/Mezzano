@@ -22,12 +22,11 @@
        (mezzano.supervisor:without-footholds
          (mezzano.supervisor:with-mutex (*package-system-lock*)
            (handler-bind
-               ;; Release the mutex when errors are signalled. This way the
-               ;; debugger will run with the lock unheld but restarts will
-               ;; properly reacquire it.
+               ;; Release the mutex for serious conditions so remote debugging
+               ;; can use package operations. Restarts reacquire the mutex.
                ;; This is required when the debugger may span multiple threads,
                ;; like slime/swank's does.
-               ((error (lambda (c)
+               ((serious-condition (lambda (c)
                          (when (mezzano.supervisor:mutex-held-p *package-system-lock*)
                            (mezzano.supervisor:release-mutex *package-system-lock*)
                            (unwind-protect
