@@ -1162,8 +1162,15 @@ NIL with true availability denotes an absent global cell."
           (service-error :unsupported-step-flags))
         (unless (and instruction
                      (case (mezzano.disassemble.x86-64::inst-opcode instruction)
-                       ((mezzano.lap.x86:nop mezzano.lap.x86:ret) t)
-                       (mezzano.lap.x86:jmp
+                       ((mezzano.lap.x86:nop mezzano.lap.x86:ret
+                         mezzano.lap.x86:push mezzano.lap.x86:pop
+                         mezzano.lap.x86:mov32 mezzano.lap.x86:mov64
+                         mezzano.lap.x86:lea64 mezzano.lap.x86:add64
+                         mezzano.lap.x86:sub64 mezzano.lap.x86:cmp32
+                         mezzano.lap.x86:cmp64 mezzano.lap.x86:test64
+                         mezzano.lap.x86:shl64 mezzano.lap.x86:leave) t)
+                       ((mezzano.lap.x86:jmp mezzano.lap.x86:jz
+                         mezzano.lap.x86:jnz mezzano.lap.x86:ja)
                         (let ((operands (mezzano.disassemble.x86-64::inst-operands instruction)))
                           (and (= (length operands) 1)
                                (typep (first operands)
