@@ -130,6 +130,8 @@ Entry is explicit:
 
 The wrapper binds the condition debugger hooks for the function's dynamic extent.  A background thread needs its own wrapper.  The retained evaluation API establishes the wrapper in each worker.  Ordinary SWANK evaluation uses SLDB.
 
+An x86-64 native callback entered from a full saved context retains the interrupted FPU environment.  Pager-delivered debugger entry and cross-thread interruption restore that environment on Proceed and when Abort leaves the callback, before running the program's outer cleanup.  The callback's own cleanup runs first in its current environment.  This uses ordinary Lisp `unwind-protect` and the existing interrupt save area.  The low-level direct forced-call API has separate nonlocal-exit requirements, described in the [ABI reference](internals/abi.md#interrupt-frame).
+
 A service mutex protects the registry, ownership, command acceptance, and results.  Commands that inspect frames, print objects, or invoke restarts execute outside that mutex on the stopped thread.  Registry operations inhibit footholds while holding the mutex and re-signal errors after releasing it.
 
 A stopped thread retains any application locks it holds.  Another thread can change shared objects reachable through its locals.  A stop therefore preserves an activation without freezing the heap.  An inspection that depends on another held lock can block.  The service does not resolve application deadlocks.

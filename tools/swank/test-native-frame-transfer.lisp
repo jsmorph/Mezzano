@@ -132,7 +132,8 @@
       (declare (ignore fp head))
       (assert (null reason))
       (assert (= (length states) expected))
-      (when equal-heads (assert (eq (caar states) (caadr states))))
+      (when (= expected 2)
+        (assert (eq equal-heads (eq (caar states) (caadr states)))))
       t)))
 
 (defun return-with-cleanup (values)
@@ -169,7 +170,7 @@
            (assert (search "*PROBE*" (test::command stop lease :bindings '(nil ""))))
            (assert (equal (test::command
                            stop lease :evaluate
-                           (format nil "(check-context-in-thread ~D ~S)" (if nested 2 1) nested))
+                           (format nil "(check-context-in-thread ~D nil)" (if nested 2 1)))
                           '("T")))
            (let ((before (i::lisp-object-address (transfer-state-marker state))))
              (mezzano.extensions:gc :full t)
@@ -205,7 +206,7 @@
       (return-case depth selected 3 t t)))
   (assert (null (d:debugger-stops :include-closed t)))
   (assert (null (s::instruction-breakpoints)))
-  (format t "PASS native frame Return, selected interrupted/older frames, zero/one/multiple values, moving GC, debugger/application FPU cleanup modes, equal-head nested interruptions, bindings, cleanup, and prompts.~%")
+  (format t "PASS native frame Return, selected interrupted/older frames, zero/one/multiple values, moving GC, debugger/application FPU cleanup modes, nested interruptions with separate callback cleanup boundaries, bindings, cleanup, and prompts.~%")
   t)
 
 (defun reinvoke-case (depth mode)

@@ -1235,8 +1235,8 @@ It will put the thread to sleep, while it waits for the page."
          do (when (not (wait-for-page-unlocked address t))
               (return-from pager-invoke-function-on-thread nil))))
     (if arg-p
-        (force-call-on-thread thread function arg)
-        (force-call-on-thread thread function))
+        (force-call-on-thread-with-unwind thread function arg)
+        (force-call-on-thread-with-unwind thread function))
     t))
 
 ;; These exist so that the function object exists in the wired area,

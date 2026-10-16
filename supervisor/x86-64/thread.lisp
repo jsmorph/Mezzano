@@ -220,17 +220,27 @@
             (thread-state-rbp thread) (+ sp (* 15 8))
             (thread-full-save-p thread) nil))))
 
-(defun force-call-on-thread (thread function &optional (argument nil argumentp))
+(defun call-with-interrupt-fpu-state (function argument argumentp address)
+  (unwind-protect
+       (if argumentp (funcall function argument) (funcall function))
+    (fxrstor address)))
+
+(defun force-call-on-thread (thread function &optional
+                                            (argument nil argumentp)
+                                            (argument-2 nil argument-2-p)
+                                            (argument-3 nil argument-3-p)
+                                            (argument-4 nil argument-4-p))
   (convert-thread-to-partial-save thread)
   (setf (thread-state-rip thread) (sys.int::%object-ref-unsigned-byte-64
                                    function
                                    sys.int::+function-entry-point+)
-        (thread-state-rcx-value thread) (if argumentp 1 0)
+        (thread-state-rcx-value thread) (cond (argument-4-p 4) (argument-3-p 3)
+                                               (argument-2-p 2) (argumentp 1) (t 0))
         (thread-state-rbx-value thread) function
         (thread-state-r8-value thread) argument
-        (thread-state-r9-value thread) nil
-        (thread-state-r10-value thread) nil
-        (thread-state-r11-value thread) nil
+        (thread-state-r9-value thread) argument-2
+        (thread-state-r10-value thread) argument-3
+        (thread-state-r11-value thread) argument-4
         (thread-state-r12-value thread) nil
         (thread-state-r13-value thread) nil
         (thread-state-r14-value thread) nil

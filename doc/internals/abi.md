@@ -582,8 +582,12 @@ it's necessary to save the full state on the stack in a frame called an "interru
 So-called this because it came about when interrupts would save the state on the thread
 stack. This no longer happens, but the name stuck around for a similar concept.
 
-This only happens in when a thread is interrupted and forced to run another function,
+This happens when a thread is interrupted and forced to run another function,
 such as via `establish-thread-foothold` or `pager-invoke`.
+
+On x86-64, `force-call-on-thread` enters the requested function directly with zero through four arguments in R8–R11.  It converts a full saved context into this interrupt frame before entry.  Normal return through `%%partial-save-return-thunk` restores the saved registers, FPU state, and multiple-value area.
+
+Pager callbacks, cross-thread footholds, and unsleep helpers use `force-call-on-thread-with-unwind`.  When the original context is a full x86-64 save, that function enters the resident `call-with-interrupt-fpu-state` wrapper.  Its `unwind-protect` restores the original FPU area on normal return and nonlocal exit.  Application cleanup therefore runs with the interrupted FPU environment after Abort crosses the callback.  The wrapper preserves callback arguments and returned values.  Partial starting contexts and ARM64 use the direct call path.  Raw forced calls retain direct entry and rely on their caller's nonlocal-exit handling.
 
 This frame has a fixed size, it's large enough to hold the general register file,
 the floating point registers, and the multiple-value area.

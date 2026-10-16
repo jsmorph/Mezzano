@@ -886,6 +886,18 @@ footholds will be reenabled, otherwise footholds will stay inhibited."
     (dolist (fh footholds)
       (funcall fh))))
 
+(defun force-call-on-thread-with-unwind (thread function &optional (argument nil argumentp))
+  #+x86-64
+  (when (thread-full-save-p thread)
+    (convert-thread-to-partial-save thread)
+    (return-from force-call-on-thread-with-unwind
+      (force-call-on-thread
+       thread #'call-with-interrupt-fpu-state function argument argumentp
+       (+ (thread-state-rbp thread) (* 8 (1+ (interrupt-frame-register-offset :ss)))))))
+  (if argumentp
+      (force-call-on-thread thread function argument)
+      (force-call-on-thread thread function)))
+
 (defun unsleep-thread (thread)
   (let ((did-wake (safe-without-interrupts (thread)
                     (let ((wi (thread-wait-item thread)))
@@ -907,9 +919,9 @@ footholds will be reenabled, otherwise footholds will stay inhibited."
     (when did-wake
       ;; Arrange for the unsleep helper to be called.
       ;; Must be done outside the s-w-i form as this touches the thread's stack.
-      (force-call-on-thread thread
-                            (thread-unsleep-helper thread)
-                            (thread-unsleep-helper-argument thread)))))
+      (force-call-on-thread-with-unwind
+       thread (thread-unsleep-helper thread)
+       (thread-unsleep-helper-argument thread)))))
 
 (defun establish-thread-foothold (thread function &key force)
   (check-type thread thread)
@@ -939,7 +951,7 @@ footholds will be reenabled, otherwise footholds will stay inhibited."
                      ((or force
                           (eql (thread-inhibit-footholds thread) 0))
                       (unsleep-thread thread)
-                      (force-call-on-thread thread function))
+                      (force-call-on-thread-with-unwind thread function))
                      (t
                       (push-foothold)))))))))
 
