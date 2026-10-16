@@ -1027,6 +1027,8 @@ This is required to make the GC interrupt safe."
          (scan-layout direct-layout)))
      (when (mezzano.supervisor:threadp object)
        (scan-thread object cycle-kind)))
+    (#.+object-tag-cons+
+     (scan-generic object 4 cycle-kind))
     (#.+object-tag-function-reference+
      (scan-function-reference object cycle-kind))
     (#.+object-tag-function+

@@ -4329,8 +4329,9 @@ The pre-publication hardware fixture LLF was copied before the active rebuild re
 - [x] Pass staged assembler/debugger/service and combined tests on the diagnostic guest.
 - [x] Preserve two panicked guests and inspect the responsive wrong-callback failure before cleanup.
 - [x] Test the restart-write hypothesis against real entry metadata and fifty full collections.
-- [ ] Capture pager preparation, wakeup and callback-entry transitions in the matched runtime.
-- [ ] Identify and correct the first violated saved-state or call invariant.
+- [x] Capture pager preparation, wakeup and callback-entry transitions in the matched runtime.
+- [x] Correct request processing before the publisher's context save.
+- [ ] Resolve the preserved wrong-callback and first-panic failures through combined reproduction.
 - [ ] Repeat uninstrumented combined, concurrent and saved-image tests before public breakpoint deployment.
 
 Staged callback evidence archive: /tmp/debugger-instruction-boundaries-stage-evidence-20261015.tar.gz, 1,087,047 bytes, 108 verified payloads plus manifest, mode 0600, SHA-256 5c4fa83733dd70a8936b69b4d4382aa3a52f81bd6aebcb0bae09799364b0c17e.  It preserves completed staged runs, the responsive callback failure and native inspections, both panic captures, the negative GC diagnostic, source and real compiled artifacts, and the eight protected-process fingerprints.  The active pager-trace driver's changing log/state are excluded.  Its private diagnostic source is included as proposed instrumentation.  The journal copy precedes this reference.
@@ -4383,5 +4384,10 @@ The allocator returns an object-tagged pointer to this four-word header before M
 
 Recommendation: add the missing +OBJECT-TAG-CONS+ case to SCAN-OBJECT-1 and scan its four words through SCAN-GENERIC.  Both header words are immediate values; the last two are car/cdr.  Preserve allocation, the cons representation and mark-bit identity.  Test a deliberately retained object-tagged header through full GC for pinned and wired allocations, moving car/cdr identity, shared references through both header-tagged and cons-tagged roots in both traversal orders, and ordinary cons construction.  Use native Mezzano.  The preserved panic supplies the failing case; do not panic the healthy pager candidate to repeat it.
 
-
 The user's instruction to continue approves the described cons-header scanner correction.  Implement that case and its native tests while preserving the distinct pager and earlier callback-failure scopes.
+
+The first cons-header test file omitted one closing parenthesis.  The host delimiter check caught it, but the host command continued into the native run because its shell did not stop on that failure.  The scanner compiled/loaded, then test compilation entered an owned reader-error stop before test execution.  Abort/release that owned stop and job, correct the delimiter, and require successful checks before launching the corrected driver.  Preserve the failed log and cleanup evidence.
+
+The cons-header correction passed native x86-64 tests.  Published only the changed SCAN-OBJECT-1 definition, copied from the production source, through ordinary compilation/loading at DEBUG 3/SAFETY 3/SPEED 1.  That function compiled without warnings/failure.  The three-function ordinary fixture also compiled without warnings/failure.  Six cases cover pinned/wired allocation with a header-only root and with both pointer forms in each vector order.  Twelve full collections verified stable header identity/type, zero second header word, actual relocation of both car/cdr vectors, updated slot identities, matching cons view and ordinary pinned/wired cons construction.  Collector/background worker and transport-counter table identities remained unchanged.  No stops remained, and the driver/session released.  Evidence: debugger-cons-header-gc-corrected.log.  Combined breakpoint/step acceptance is next; it has no passing result under both corrections yet.
+
+Pager/cons correction evidence archive: /tmp/debugger-pager-cons-corrections-evidence-20261015.tar.gz, 626,304 bytes, 52 verified payloads plus manifest, mode 0600, SHA-256 e0f8fdbb11b1ade7f6610a37fae99933cf4db4a8790986a8b6def16651fdfed6.  It includes before/after boot sources and real compiled artifacts, forced ordering results, snapshot/restart records, the cons-header panic diagnosis, failed test compilation and cleanup, passing native GC result, and current production source/docs.  Nine protected fingerprints and the current owned candidate matched.  Its journal copy precedes this reference.
