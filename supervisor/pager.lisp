@@ -1326,8 +1326,9 @@ It will put the thread to sleep, while it waits for the page."
        (with-symbol-spinlock (*pager-lock*)
          (loop
             (when *pager-waiting-threads*
-              (setf *pager-current-thread* *pager-waiting-threads*
-                    *pager-waiting-threads* (thread-queue-next *pager-current-thread*))
+              (with-global-thread-lock ()
+                (setf *pager-current-thread* *pager-waiting-threads*
+                      *pager-waiting-threads* (thread-queue-next *pager-current-thread*)))
               (set-paging-light t)
               (return))
             (set-paging-light nil)
