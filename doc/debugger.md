@@ -488,12 +488,19 @@ Internal x86-64 support manages four global instruction-breakpoint locations thr
 
 Native tests cover compiled Lisp entry points, an assembled body instruction, exact saved PCs/RF, repeated hits, concurrent parked threads, definition replacement, four-slot exhaustion, retained clear/reuse, caller lexical reads, moving GC, Continue/Abort, values, cleanup, and zero/two prompts.  Register synchronization passed with two online CPUs.  The tests do not identify the CPU of each hit.  The resident modules used DEBUG 1/SAFETY 3/SPEED 1 and test Lisp used DEBUG 3/SAFETY 3/SPEED 1.
 
-The kernel installer validates function kind/residency and byte range.  Its caller must supply a valid instruction boundary.  An ordinary debugger validator and user commands remain unimplemented.  Conditions/actions, software breakpoints beyond four locations, retained stepping, snapshot rearming, first boot, ARM64, and Return/Reinvoke from these trap stops remain unimplemented or untested.  Supervisor-priority threads, interrupt handlers, and runtime critical sections are outside the supported scope.
+The kernel installer validates function kind/residency and byte range.  Its caller must supply a valid instruction boundary.  The ordinary debugger validator checks the assembler's instruction-start bitmap and reports a typed error for missing metadata, resident code, invalid offsets, and bytes that do not start instructions.  User commands remain unimplemented.  Conditions/actions, software breakpoints beyond four locations, retained stepping, snapshot rearming, first boot, ARM64, and Return/Reinvoke from these trap stops remain unimplemented or untested.  Supervisor-priority threads, interrupt handlers, and runtime critical sections are outside the supported scope.
+
+### Instruction boundaries
+
+The common assembler retains an instruction-start bitmap in field 15 of the function's existing debug-info list.  Each set bit identifies the function-relative byte offset of an expanded assembly instruction after branch relaxation.  Data and alignment directives have no start bits.  Byte directives describe data even when their bytes decode as instructions.  Zero-byte mode directives emit no start.  Contiguous standalone x86 prefixes belong to the following instruction.  Embedded LOCK forms occupy one start.  The bitmap excludes final allocator padding and uses one bit per emitted byte, plus the function-header prefix.
+
+The assembler extends the supplied debug-info list while preserving its identity and existing fields.  Functions without that record keep their previous representation.  Older compiled functions lack the bitmap.  Breakpoint validation reports :INSTRUCTION-BOUNDARIES-UNAVAILABLE until the target function is recompiled.
+
+Native x86-64 tests cover COMPILE, compiled-file loading, DEBUG 0/1/3 at SAFETY 3/SPEED 1, closures, definition replacement, collection, exact byte/offset cases, and independent decoder comparisons for ordinary code.  Both target assemblers passed metadata checks.  ARM64 execution remains untested.
 
 ### Instruction-step primitive
 
 The existing supervisor TF primitive passed separate native tests on owned raw stopped threads: exact PCs for ordinary instructions, taken jumps and CALL/RET, saved registers through moving GC, and return to the original partial/full saved continuation at zero/two prompts.  It enters called functions.  Genera's Single Step steps over calls.  Retained debugger stepping has no command implementation yet.
-
 
 ## Compiler guarantees
 

@@ -35,8 +35,11 @@
     (let* ((binding (vector :binding 'x))
            (outer (vector :scope binding))
            (inner (vector :scope binding)))
-      (i::assemble-lap (make-code binding outer inner) 'scope-table
-                      (make-info length) nil :x86-64))))
+      (let ((function (i::assemble-lap (make-code binding outer inner) 'scope-table
+                                       (make-info length) nil :x86-64)))
+        (when (= length 10)
+          (setf (cdr (nthcdr 9 (i::function-debug-info function))) nil))
+        function))))
 
 (defmacro saved-fixture ()
   (list 'quote (make-fixture)))

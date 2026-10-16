@@ -32,6 +32,8 @@
 (defparameter *settle-limit* 500)
 
 (defvar *instruction-is-variably-sized*)
+(defvar *instruction-is-prefix*)
+(defvar *instruction-extents*)
 
 (defclass label ()
   ((%name :initarg :name :reader label-name))
@@ -54,7 +56,8 @@
    (%relocations :initarg :relocations :reader chunk-relocations)
    (%gcmd :initarg :gcmd :reader chunk-gcmd)
    (%debug-md :initarg :debug-md :reader chunk-debug-md)
-   (%fixups :initarg :fixups :reader chunk-fixups)))
+   (%fixups :initarg :fixups :reader chunk-fixups)
+   (%instruction-extents :initarg :instruction-extents :reader chunk-instruction-extents)))
 
 (defclass variably-sized-chunk (chunk)
   ((%instruction :initarg :instruction :reader chunk-instruction)))
@@ -69,14 +72,16 @@
                          :relocations *relocations*
                          :gcmd (reverse *gc-data*)
                          :debug-md (reverse *debug-data*)
-                         :fixups *fixups*)
+                         :fixups *fixups*
+                         :instruction-extents (reverse *instruction-extents*))
           *chunks*)
     (setf *machine-code* (make-array 16 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)
           *symbols* '()
           *relocations* '()
           *gc-data* '()
           *debug-data* '()
-          *fixups* '()))
+          *fixups* '()
+          *instruction-extents* '()))
   (setf *instruction-is-variably-sized* t))
 
 (defun emit (&rest bytes)
@@ -241,9 +246,12 @@
         (*fixups* '())
         (*gc-data* '())
         (*debug-data* '())
+        (*instruction-extents* '())
         (*chunks* '()))
     (dolist (i code-list)
-      (let ((*instruction-is-variably-sized* nil))
+      (let ((*instruction-is-variably-sized* nil)
+            (*instruction-is-prefix* nil)
+            (start (length *machine-code*)))
         (etypecase i
           ((or symbol label)
            (when (gethash i *symbol-table*)
@@ -252,7 +260,12 @@
            (setf (gethash i *symbol-table*) t)
            (push (list i (length *machine-code*)) *symbols*))
           (cons
-           (assemble-one-instruction instruction-set i)))
+           (assemble-one-instruction instruction-set i)
+           (when (and (not *instruction-is-variably-sized*)
+                      (not (keywordp (first i)))
+                      (< start (length *machine-code*)))
+             (push (list start (length *machine-code*) *instruction-is-prefix*)
+                   *instruction-extents*))))
         (when *instruction-is-variably-sized*
           ;; Package this single instruction up into a chunk.
           (push (make-instance 'variably-sized-chunk
@@ -268,9 +281,38 @@
                          :relocations *relocations*
                          :gcmd (reverse *gc-data*)
                          :debug-md (reverse *debug-data*)
-                         :fixups *fixups*)
+                         :fixups *fixups*
+                         :instruction-extents (reverse *instruction-extents*))
           *chunks*)
     (reverse *chunks*)))
+
+(defun instruction-start-map (chunks base-address)
+  (let ((result (make-array (+ base-address
+                               (loop for chunk in chunks summing (length (chunk-code chunk))))
+                            :element-type 'bit :initial-element 0))
+        (address base-address)
+        (prefix-start nil)
+        (prefix-end nil))
+    (flet ((note-instruction (start end prefix-p)
+             (unless (eql prefix-end start)
+               (setf prefix-start nil))
+             (if prefix-p
+                 (setf prefix-start (or prefix-start start)
+                       prefix-end end)
+                 (progn
+                   (setf (sbit result (or prefix-start start)) 1)
+                   (setf prefix-start nil prefix-end nil)))))
+      (dolist (chunk chunks)
+        (etypecase chunk
+          (fixed-sized-chunk
+           (loop for (start end prefix-p) in (chunk-instruction-extents chunk)
+                 do (note-instruction (+ address start) (+ address end) prefix-p)))
+          (variably-sized-chunk
+           (when (and (plusp (length (chunk-code chunk)))
+                      (not (keywordp (first (chunk-instruction chunk)))))
+             (note-instruction address (+ address (length (chunk-code chunk))) nil))))
+        (incf address (length (chunk-code chunk)))))
+    result))
 
 (defun mc-equal (a b)
   "Test if two machine code arrays are equal."
@@ -531,7 +573,13 @@ a vector of constants and an alist of symbols & addresses."
                 (add-to-constant-pool (first var)))))
           (setf (tenth (aref *constant-pool* 1)) (encode-debug-info result-debug-md *constant-pool*))
           (when (>= (length (aref *constant-pool* 1)) 11)
-            (setf (nth 10 (aref *constant-pool* 1)) (debug-source-scopes result-debug-md))))
+            (setf (nth 10 (aref *constant-pool* 1)) (debug-source-scopes result-debug-md)))
+          (when (< (length (aref *constant-pool* 1)) 15)
+            (setf (aref *constant-pool* 1)
+                  (nconc (aref *constant-pool* 1)
+                         (make-list (- 15 (length (aref *constant-pool* 1)))))))
+          (setf (nth 14 (aref *constant-pool* 1))
+                (instruction-start-map chunks base-address)))
         (values result-mc
                 *constant-pool*
                 result-fixups

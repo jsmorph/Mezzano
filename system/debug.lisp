@@ -84,6 +84,9 @@ Returns NIL if the function captures no variables."
 (defun debug-info-source-scopes (info)
   (nth 10 info))
 
+(defun debug-info-instruction-starts (info)
+  (nth 14 info))
+
 (defun source-scope-at-offset (function offset)
   (loop with scope = :unknown
         for (address . current) in (debug-info-source-scopes (function-debug-info function))

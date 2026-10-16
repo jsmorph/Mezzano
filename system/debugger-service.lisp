@@ -947,6 +947,24 @@ NIL with true availability denotes an absent global cell."
             (values function offset interrupted-p))
           (values nil nil interrupted-p)))))
 
+(defun service-validate-instruction-breakpoint-location (function offset)
+  (unless (mezzano.internals::%object-of-type-p
+           function mezzano.internals::+object-tag-function+)
+    (service-error :not-compiled-function))
+  (when (< (mezzano.internals::lisp-object-address function)
+           mezzano.internals::*function-area-base*)
+    (service-error :resident-function))
+  (unless (and (typep offset 'fixnum)
+               (<= 16 offset)
+               (< offset (mezzano.internals::function-code-size function)))
+    (service-error :invalid-instruction-offset))
+  (let ((starts (mezzano.internals::debug-info-instruction-starts
+                 (mezzano.internals::function-debug-info function))))
+    (unless starts (service-error :instruction-boundaries-unavailable))
+    (unless (and (< offset (length starts)) (= (sbit starts offset) 1))
+      (service-error :not-instruction-start)))
+  (values function offset))
+
 (defun service-code-instruction (context offset)
   (loop with start = (mezzano.disassemble:code-initial-offset
                       (mezzano.disassemble:context-function context))

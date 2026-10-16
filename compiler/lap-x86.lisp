@@ -677,8 +677,9 @@ Remaining values describe the effective address: base index scale disp rip-relat
      (return-from instruction
        (generate-jmp ,dst ,short-opc ,long-opc))))
 
-(defmacro define-simple-instruction (name opc)
+(defmacro define-simple-instruction (name opc &optional prefix-p)
   `(define-instruction ,name ()
+     ,@(when prefix-p '((setf mezzano.lap::*instruction-is-prefix* t)))
      ,@(if (listp opc)
            (mapcar (lambda (x) `(emit ,x)) opc)
            (list `(emit ,opc)))
@@ -697,19 +698,19 @@ Remaining values describe the effective address: base index scale disp rip-relat
   (return-from instruction t))
 
 ;;; Prefixes, not real instructions.
-(define-simple-instruction repne #xF2)
-(define-simple-instruction repnz #xF2)
-(define-simple-instruction rep #xF3)
-(define-simple-instruction cs #x2E)
-(define-simple-instruction ss #x36)
-(define-simple-instruction ds #x3E)
-(define-simple-instruction es #x26)
-(define-simple-instruction fs #x64)
-(define-simple-instruction gs #x65)
-(define-simple-instruction hint-not-taken #x2E)
-(define-simple-instruction hint-taken #x3E)
-(define-simple-instruction operand-size-override #x66)
-(define-simple-instruction address-size-override #x67)
+(define-simple-instruction repne #xF2 t)
+(define-simple-instruction repnz #xF2 t)
+(define-simple-instruction rep #xF3 t)
+(define-simple-instruction cs #x2E t)
+(define-simple-instruction ss #x36 t)
+(define-simple-instruction ds #x3E t)
+(define-simple-instruction es #x26 t)
+(define-simple-instruction fs #x64 t)
+(define-simple-instruction gs #x65 t)
+(define-simple-instruction hint-not-taken #x2E t)
+(define-simple-instruction hint-taken #x3E t)
+(define-simple-instruction operand-size-override #x66 t)
+(define-simple-instruction address-size-override #x67 t)
 
 (define-simple-instruction fwait #x9B)
 (define-simple-instruction pushf #x9C)
@@ -752,6 +753,7 @@ Remaining values describe the effective address: base index scale disp rip-relat
 (define-simple-instruction sfence (#x0F #xAE #xF0))
 
 (define-instruction lock (&rest extra)
+  (setf mezzano.lap::*instruction-is-prefix* (null extra))
   (emit #xF0)
   (when extra
     (funcall (or (gethash (first extra) *instruction-assemblers*)
