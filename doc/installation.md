@@ -110,7 +110,7 @@ qemu-system-x86_64 -enable-kvm -smp 2 -m 2G \
   -device virtio-net,netdev=net0 -no-reboot
 ```
 
-The guest uses DHCP on the virtual network.  Host loopback port 4005 forwards to guest SWANK port 4005.  Change the host forwarding port when running another guest.  `serial.log` records boot output.  First boot compiles and loads the remaining system and applications and saves startup state.
+The guest uses DHCP on the virtual network.  Host loopback port 4005 forwards to guest SWANK port 4005.  Change the host forwarding port when running another guest.  `serial.log` records boot output.  First boot compiles and loads the remaining system and applications and saves startup state.  With empty library caches, this can take tens of minutes.  SWANK starts before desktop initialization finishes.
 
 A SWANK query from the Mezzano checkout checks that remote evaluation is ready:
 
