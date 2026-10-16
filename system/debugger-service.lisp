@@ -947,16 +947,16 @@ NIL with true availability denotes an absent global cell."
      available-p)))
 
 (defun service-frame-code-location (frame)
-  (mezzano.supervisor:with-pseudo-atomic
-    (let* ((data (mezzano.internals::frame-raw-data frame))
-           (interrupted-p (mezzano.internals::frame-interrupted-p frame))
-           (address (- (mezzano.internals::frame-code-address data)
-                       (if interrupted-p 0 1))))
-      (if (mezzano.internals::within-function-area-p address)
-          (multiple-value-bind (function offset)
-              (mezzano.internals::return-address-to-function address)
-            (values function offset interrupted-p))
-          (values nil nil interrupted-p)))))
+  (let ((data (mezzano.internals::frame-raw-data frame))
+        (interrupted-p (mezzano.internals::frame-interrupted-p frame)))
+    (mezzano.supervisor:with-pseudo-atomic
+      (let ((address (- (mezzano.internals::frame-code-address data)
+                        (if interrupted-p 0 1))))
+        (if (mezzano.internals::within-function-area-p address)
+            (multiple-value-bind (function offset)
+                (mezzano.internals::return-address-to-function address)
+              (values function offset interrupted-p))
+            (values nil nil interrupted-p))))))
 
 (defun service-instruction-trap-context (stop)
   #+x86-64
