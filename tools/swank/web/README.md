@@ -1,33 +1,37 @@
 # Mezzano Web Listener and Debugger
 
-The Web interface provides a Lisp Listener, debugger, retained evaluations, Peek process viewer, and Document Examiner.  A Python server connects the browser to Mezzano's SWANK service.  Evaluations, output, debugger stops, and command results remain in the guest across browser disconnections.
+The Web interface provides a Lisp Listener, debugger, retained evaluations, Peek process viewer, and Document Examiner.  A Lisp HTTP server inside Mezzano serves the browser files and calls the shared remote service.  Evaluations, output, debugger stops, and command results remain in the guest across browser disconnections.
 
 ## Installation and access
 
-The server requires Python 3.13 or later and has no third-party Python dependencies.  Running it with the command below also requires uv.  The browser requires JavaScript and sessionStorage.  The Mezzano guest must provide the retained SWANK service and its Command Processor and Document Examiner modules.  The matched debugger service must return each command's acceptance generation and retain stepping stops in Listener and job associations.  The Web server does not implement SWANK's shared-secret handshake.  The [installation guide](../../../doc/installation.md) covers guest setup.
+The guest requires the matching Mezzano core, Jzon, Babel, and Web server sources.  The browser requires JavaScript and sessionStorage.  The shared remote service supplies the same retained sessions and debugger operations to HTTP and SWANK.  The [installation guide](../../../doc/installation.md) covers the guest and JSON dependencies.
 
-From the Mezzano checkout, this example uses an installed Python interpreter, serves HTTP on loopback, and connects to SWANK on port 4005:
+Load the server from a guest Listener:
 
-```sh
-uv run --no-python-downloads --python python3 tools/swank/web/server.py \
-  --listen 127.0.0.1 --port 8765 \
-  --swank-host 127.0.0.1 --swank-port 4005
+```lisp
+(load "SYS:SOURCE;TOOLS;SWANK;WEB;LOAD-MEZZANO.LISP")
+(defparameter *web-server*
+  (mezzano.web:start-server
+   :address "0.0.0.0" :port 8765
+   :allowed-authorities '("lispm.example.net:8765" "localhost:8765" "127.0.0.1:8765")
+   :root (translate-logical-pathname "SYS:SOURCE;TOOLS;SWANK;WEB;")))
 ```
 
-The browser address for that configuration is `http://127.0.0.1:8765/`.  The SWANK host and port identify the endpoint reachable from the Python server, which may be a forwarded guest port.
+Open `http://lispm.example.net:8765/` after forwarding the guest port through QEMU.  Each allowed authority includes the hostname and external HTTP port.  The external port may differ from the guest listening port.
 
-| Option | Default | Meaning |
+| Argument | Default | Meaning |
 |---|---|---|
-| `--listen` | `0.0.0.0` | HTTP listening address. |
-| `--port` | `8765` | HTTP listening port. |
-| `--swank-host` | `127.0.0.1` | SWANK server address. |
-| `--swank-port` | `4006` | SWANK server port. |
-| `--timeout` | `15` | Request timeout in seconds. |
-| `--allow-host` | None added | Additional HTTP hostname or IP address.  May be repeated. |
+| `:address` | `"0.0.0.0"` | Guest IPv4 listening address. |
+| `:port` | `8080` | Guest HTTP listening port. |
+| `:allowed-authorities` | Required | List of accepted HTTP hostname:port strings. |
+| `:root` | Required | Physical directory pathname containing the browser files and fonts. |
+| `:timeout` | `15` | Socket receive/send deadline in seconds. |
 
-Network access uses a listening address such as `0.0.0.0` and an allowed browser hostname, for example `--allow-host lispm.example.net`.  The corresponding browser address is `http://lispm.example.net:8765/`.  The allowlist includes `localhost`, `127.0.0.1`, the server's hostname, and its fully qualified hostname.  Additional addresses require an explicit `--allow-host`.  Every request's Host header must include the HTTP listening port.
+The browser has a 20-second fetch deadline.  Synchronous metadata and documentation requests can continue in the guest after a browser stops waiting.  Accepted evaluations and debugger commands retain their identities and results for recovery.
 
-The server reads static assets from its script directory on each request.  A persistent deployment uses a pinned revision directory so its Python code and assets remain at one revision while development continues.  The [installation guide](../../../doc/installation.md#pinned-web-deployment) describes preparing and selecting that directory and coordinating guest and client updates.
+`(mezzano.web:stop-server *web-server*)` stops the listener, cancels its accepted connections, and waits for its threads to finish.  Retained evaluations and debugger commands keep their existing threads and records.
+
+The server reads only its explicit asset allowlist beneath `:root`.  A persistent deployment selects a pinned asset directory.  The [installation guide](../../../doc/installation.md#pinned-web-deployment) describes preparing that directory and coordinating guest and browser updates.
 
 ### Access restrictions
 
@@ -184,9 +188,9 @@ F9 starts SELECT.  L selects the Listener, D selects Document Examiner, and P se
 
 A tab retains its session identity, input history, request records, and viewer state in sessionStorage.  Reload resumes the same session.  Independent tabs create separate sessions.  Duplicated tabs can inherit one identity.  Closing a browser or releasing a session leaves guest jobs retained until explicit release.  Stored output and results consume guest memory.
 
-The server retains one SWANK connection per browser session and serializes that session's requests.  Each operation attaches the guest session and releases its debugger controller before replying.  Accepted jobs and commands remain in the guest.  Release Session closes the transport immediately.  The server closes an idle transport after sixty seconds without a request.  A later request opens another connection and resumes the same guest session.  These transport closures preserve retained jobs and results.
+Each HTTP request attaches the shared guest session and releases its debugger controller before replying.  Session handles and retained results persist between requests.  HTTP responses close their TCP connections.  A later request resumes the same guest session.  SWANK uses the same service with connection ownership.
 
-Orderly server shutdown cancels open HTTP sockets, waits for active handlers to finish, and closes retained SWANK connections.  An accepted guest request keeps its existing deadline.  Cancellation can lose its HTTP reply, leaving an uncertain outcome for recovery through the original request identity.
+Server shutdown closes the listener, cancels open HTTP sockets and request workers, and waits for cleanup.  Accepted evaluations and debugger commands remain in the guest.  Cancellation can lose its HTTP reply, leaving an uncertain outcome for recovery through the original request identity.
 
 Request History distinguishes rejected requests from requests whose replies were lost.  Repeat Original Request uses the recorded evaluation name, input range, interrupt ID, debugger command ID, or private-document Save arguments.  It preserves the identity of the uncertain request.  Recalling input in the Listener and pressing Return creates a new evaluation instead.
 
@@ -225,9 +229,9 @@ Results recorded before image restoration are labelled `Recorded before this boo
 | save-private-document | name, pathname, topics. |
 | read-private-document | pathname. |
 
-Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.  Metadata and printed values remain subject to the SWANK message-size limit.
+Monitor-state returns Listener information, all retained jobs with incremental output, and active and closed stops.  Output shares a 65,536-character response budget.  Each row reports its start and end offsets and the full sampled output length.  Supplying the returned ends on the next request retrieves remaining output.
 
-Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, return, reinvoke, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, arglist, bindings, handlers, catches, function, compiled-code, instruction, set-breakpoint, clear-breakpoint, clear-all-breakpoints, breakpoints, lexical-environment, standard-value-warnings, special, use-dynamic-environment, use-lexical-environment, and toggle-evaluation-environment.  These three environment operations take no argument and return the selected evaluation-prompt string.  Stop information and Listener debugger information report evaluation-environment and evaluation-prompt.  Function, compiled-code, instruction, and lexical-environment take no argument and return strings.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
+Submit accepts condition, restarts, frames, locals, current-frame, select-frame, next-frame, previous-frame, top-frame, bottom-frame, evaluate, inspect, modify, describe-object, clear-inspection, abort, proceed, return, reinvoke, help, invoke-restart, invoke-restart-interactively, invoke-restart-with-arguments, arglist, bindings, handlers, catches, function, compiled-code, instruction, single-step, set-breakpoint, clear-breakpoint, clear-all-breakpoints, breakpoints, lexical-environment, standard-value-warnings, special, use-dynamic-environment, use-lexical-environment, and toggle-evaluation-environment.  These three environment operations take no argument and return the selected evaluation-prompt string.  Stop information and Listener debugger information report evaluation-environment and evaluation-prompt.  Function, compiled-code, instruction, and lexical-environment take no argument and return strings.  Locals requires a frame token.  Select-frame requires a nonnegative index.  Next-frame and previous-frame require a nonnegative count.  Current-frame, top-frame, and bottom-frame take no argument.  These six frame commands return index, function, and locals fields.  Stop information reports current-frame, or null for a closed stop.
 
 Result returns state, operation, current-boot-p, result, source, input-length, input-eof-p, input-waiting-p, and output-length.  Source is the copied accepted string for evaluate and null for other operations.  Reading a result preserves command identity and does not execute the command again.  Historical commands without retained I/O report input length 0, EOF true, waiting null, and output length 0.
 
@@ -235,7 +239,7 @@ Command-output returns start, text, and end, using character offsets and an excl
 
 Return takes no argument and reads its expression and confirmation through retained command input.
 
-Reinvoke requires `[originalArguments, newArguments]`, each a Boolean or null.  Null means false.  `[false, false]` selects current arguments, `[true, false]` selects original arguments, and `[false, true]` requests new arguments.  Both true, missing options, and malformed lists are rejected.  Python sends a fresh Lisp Boolean list through the existing submit operation.
+Reinvoke requires `[originalArguments, newArguments]`, each a Boolean or null.  Null means false.  `[false, false]` selects current arguments, `[true, false]` selects original arguments, and `[false, true]` requests new arguments.  Both true, missing options, and malformed lists are rejected.  The HTTP adapter sends a fresh Lisp Boolean list through the existing submit operation.
 
 Set Breakpoint and Clear Breakpoint require `[function-source, offset]`, with a source string and a nonnegative integer byte offset.  Clear-all-breakpoints accepts a function-name source string or null for the selected frame's exact executing function.  Breakpoints takes no argument.  Lisp reads function names with read-time evaluation disabled and validates new locations against instruction metadata.  All four return guest-formatted strings.  Same-ID replay compares copied arguments and returns the original result.  The [compiled-breakpoint reference](../../../doc/command-processor.md#compiled-breakpoints) defines name quoting, offset defaults, four-location x86-64 capacity, and redefinition behavior.
 
@@ -243,7 +247,7 @@ Arglist takes no argument and returns the guest-formatted signature or unavailab
 
 Standard-value-warnings takes no argument and returns the guest-formatted warnings.
 
-Special requires `[symbol-source, environment]`.  Symbol-source is a string, preserved as text through HTTP and SWANK.  Environment is :program, :debugger, or :streams.  Python encodes only that selector as a protocol keyword.  The guest rejects Streams before accepting a command.  Lisp reads exactly one symbol with read-time evaluation disabled when the command executes.  Same-ID replay compares the copied source and selector and retrieves the retained result.  The result identifies the symbol and environment as formatted text.
+Special requires `[symbol-source, environment]`.  Symbol-source is a string, preserved as text through HTTP and SWANK.  Environment is :program, :debugger, or :streams.  The HTTP adapter converts that selector to a protocol keyword.  The guest rejects Streams before accepting a command.  Lisp reads exactly one symbol with read-time evaluation disabled when the command executes.  Same-ID replay compares the copied source and selector and retrieves the retained result.  The result identifies the symbol and environment as formatted text.
 
 Bindings accepts null for the selected frame without filtering, or `[all, matching]`.  All accepts true, false, or null.  False and null encode Lisp NIL.  Matching is a string.  The result is guest-formatted binding text.  Repeating an accepted command compares a copied argument list and string by EQUAL.
 
@@ -257,4 +261,4 @@ Inspect accepts null for the stop's * history value, or `[object-token, start, c
 
 Invoke-restart and invoke-restart-interactively require a restart index.  Invoke-restart calls the restart with zero arguments.  Invoke-restart-interactively runs its interactive argument reader.  Invoke-restart-with-arguments accepts an index or null for the default and reads an argument-list expression through QUERY-IO.  Abort, Proceed, and Help take no argument.  Proceed selects the first captured CL:CONTINUE restart and invokes it interactively.  The [retained debugger protocol](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) defines operation semantics, states, token lifetimes, and errors.
 
-Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns an `error` and, for operation failures, an `uncertain` flag.  Input validation precedes SWANK dispatch.  Transport or remote decoding failures after dispatch report an uncertain outcome.  Requests require a Content-Length header, and bodies are limited to one MiB.  Chunked transfer encoding is unsupported.
+Success returns `{"value": ..., "diagnostics": [...]}`.  Failure returns an `error` and, for operation failures, an `uncertain` flag.  Input validation precedes shared-service dispatch.  Unexpected request-handler failures return HTTP 500 with an uncertain outcome and enter the retained debugger.  Content-Length, when present, must occur once, and bodies are limited to one MiB.  The server rejects Transfer-Encoding and ambiguous framing.  Request lines are limited to 8 KiB, headers to 32 KiB and 100 fields, and active connection workers to 64.  Unexpected server errors remain available as retained debugger stops through SWANK and Peek.

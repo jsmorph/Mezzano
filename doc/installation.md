@@ -6,7 +6,7 @@ This guide builds the remote-development image and runs it under x86-64 QEMU wit
 
 The host needs Git, Make, a 64-bit SBCL with Unicode support, QEMU's x86 system emulator, and access to `/dev/kvm`.  Building requires a host Quicklisp installation.  The image builder loads Nibbles, CL-PPCRE, Iterate, Alexandria, Closer-MOP, and trivial-gray-streams.  The file server also loads CL-FAD and SBCL's socket library.
 
-The Web server requires Python 3.13 or later.  Its uv launch command and access settings appear in the [Web guide](../tools/swank/web/README.md).  The Lisp clients require SBCL.
+The guest Web server uses Lisp, Jzon, and the existing TCP stack.  Its startup and access settings appear in the [Web guide](../tools/swank/web/README.md).  The host Lisp clients require SBCL.
 
 ## Source checkout
 
@@ -34,7 +34,7 @@ Jzon requires additional source checkouts beneath the guest home directory.  Run
 
 ```sh
 git clone https://github.com/jsmorph/jzon.git home/jzon
-git -C home/jzon checkout --detach 8f8099ae762d54de9cbe2a084fc52ae3de96ee7d
+git -C home/jzon checkout --detach fcdad46565be8308837a241da08a3f08a7251e18
 git clone https://github.com/Shinmera/float-features.git home/float-features
 git -C home/float-features checkout --detach cd5dab00d2f4a562d65f46b3fc1cecec308e2443
 git clone https://github.com/Shinmera/documentation-utils.git home/documentation-utils
@@ -43,7 +43,7 @@ git clone https://github.com/Shinmera/trivial-indent.git home/trivial-indent
 git -C home/trivial-indent checkout --detach 87b35ff9202b107230e35790e93c471cc7880900
 ```
 
-These pins select Jzon 1.1.4 with a [numeric-range correction](https://github.com/jsmorph/jzon/compare/99b19fb18ab3555c04564a51a990db06ed1d8a23...8f8099ae762d54de9cbe2a084fc52ae3de96ee7d) and its additional dependencies.  The correction rejects provable floating-point overflow and underflow before constructing large powers of ten.  MBuild supplies Closer-MOP, Flexi Streams, trivial-gray-streams, trivial-features, and ASDF/UIOP.  The guest's ASDF registry discovers sources beneath `home/`.  The [JSON reference](json.md) describes loading and using Jzon in an existing image.
+These pins select Jzon 1.1.4 with [numeric-range and input-error corrections](https://github.com/jsmorph/jzon/compare/99b19fb18ab3555c04564a51a990db06ed1d8a23...fcdad46565be8308837a241da08a3f08a7251e18) and its additional dependencies.  The numeric correction rejects provable floating-point overflow and underflow before constructing large powers of ten.  The input-error correction preserves typed parse errors for empty input and invalid UTF-8.  MBuild supplies Closer-MOP, Flexi Streams, trivial-gray-streams, trivial-features, and ASDF/UIOP.  The guest's ASDF registry discovers sources beneath `home/`.  The [JSON reference](json.md) describes loading and using Jzon in an existing image.
 
 ## Image configuration
 
@@ -106,7 +106,7 @@ In another terminal, start QEMU from the build directory:
 qemu-system-x86_64 -enable-kvm -smp 2 -m 2G \
   -drive file=mezzano.image,format=raw,if=ide \
   -vga std -display none -monitor none -serial file:serial.log \
-  -netdev user,id=net0,hostfwd=tcp:127.0.0.1:4005-:4005 \
+  -netdev user,id=net0,hostfwd=tcp:127.0.0.1:4005-:4005,hostfwd=tcp:0.0.0.0:8765-:8765 \
   -device virtio-net,netdev=net0 -no-reboot
 ```
 
@@ -119,34 +119,41 @@ sbcl --script tools/swank/lispm-eval --host 127.0.0.1 --port 4005 \
   --timeout 30 '(lisp-implementation-version)'
 ```
 
-The included clients and Web server connect directly to SWANK without a shared-secret handshake.  Their endpoint must accept that protocol.  SWANK access grants Lisp evaluation in the guest.  The QEMU example exposes it only on host loopback.
+The included Lisp clients connect directly to SWANK without a shared-secret handshake.  Their endpoint must accept that protocol.  SWANK access grants Lisp evaluation in the guest.  The QEMU example exposes it only on host loopback.
 
 ## Web access
 
-Start the Web server from the Mezzano checkout with the SWANK port chosen above:
+Load and start the Lisp HTTP server from a guest Listener:
 
-```sh
-uv run --no-python-downloads --python python3 tools/swank/web/server.py \
-  --listen 0.0.0.0 --port 8765 --allow-host lispm.example.net \
-  --swank-host 127.0.0.1 --swank-port 4005
+```lisp
+(load "SYS:SOURCE;TOOLS;SWANK;WEB;LOAD-MEZZANO.LISP")
+(defparameter *web-server*
+  (mezzano.web:start-server
+   :address "0.0.0.0" :port 8765
+   :allowed-authorities '("lispm.example.net:8765" "localhost:8765" "127.0.0.1:8765")
+   :root (translate-logical-pathname "SYS:SOURCE;TOOLS;SWANK;WEB;")))
 ```
 
-Replace `lispm.example.net` with the hostname clients use to reach the host.  Open `http://lispm.example.net:8765/`.  The [Web guide](../tools/swank/web/README.md#access-restrictions) specifies host checks, browser-origin checks, and access restrictions.  The HTTP service grants guest evaluation and debugger control and provides no account authentication or TLS.
+Replace `lispm.example.net:8765` with the hostname and external port clients use.  QEMU must forward that host port to the guest HTTP port, as in the launch command above.  Open `http://lispm.example.net:8765/`.  The [Web guide](../tools/swank/web/README.md#access-restrictions) specifies Host and Origin checks and access restrictions.  The HTTP service grants guest evaluation and debugger control and provides no account authentication or TLS.
+
+HTTP calls the shared Lisp session service directly.  SWANK remains available through its separate forwarded port.  QEMU and GDB remain the host recovery path when guest scheduling or networking prevents Web access.
 
 ### Pinned Web deployment
 
-The server reads static files from its script directory on each request.  A persistent service can use a revision-named deployment directory so development edits do not change the served client.  This example runs from the Mezzano checkout and creates the deployment beside it:
+The server reads static files beneath its selected `:root`.  A persistent deployment uses a revision-named directory so development edits preserve the served files.  This example runs from the Mezzano checkout and creates the deployment beside it:
 
 ```sh
 web_revision="$(git rev-parse HEAD)"
 web_release="$PWD/../web-releases/$web_revision"
 mkdir -p "$web_release"
-git archive --format=zip --output="$web_release.zip" \
+git archive --format=tar --output="$web_release.tar" \
   "$web_revision" tools/swank/web
-python3 -m zipfile -e "$web_release.zip" "$web_release"
+tar -xf "$web_release.tar" -C "$web_release"
 ```
 
-A systemd service selects this directory through `WorkingDirectory` and retains the relative `tools/swank/web/server.py` command and its access and SWANK options.  Backend updates precede a client revision that depends on new guest operations or result fields.  Activating another Web revision changes the working directory and restarts the HTTP service.  Accepted jobs and debugger commands remain in the guest.  Tabs resume their guest sessions after the transport reconnects.
+Select the extracted `tools/swank/web/` directory through a physical guest pathname in `:root`.  When that directory lives on the host, its REMOTE pathname must identify the same absolute path the file server can read.
+
+Compile and load matching guest modules before activating browser files that require new operations or result fields.  Stop the HTTP server and start it with the selected root directory.  Retained sessions, jobs, stops, and commands remain in the shared guest service.  Reloading a browser tab retrieves the selected files and resumes its session.
 
 ## Snapshots and restarts
 

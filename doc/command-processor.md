@@ -1,6 +1,6 @@
 # Lisp Command Processor
 
-The Web Listener accepts Command Processor commands and Lisp forms through a guest Lisp module.  Each retained SWANK session owns a Listener with a package, pathname default, and current job.  The guest parses commands, supplies completion and help, executes commands, and records output presentations.  The browser renders that information and keeps its input and output histories.  Python transports typed HTTP requests through SWANK.
+The Web Listener accepts Command Processor commands and Lisp forms through a guest Lisp module.  Each retained remote session owns a Listener with a package, pathname default, and current job.  The guest parses commands, supplies completion and help, executes commands, and records output presentations.  The browser renders that information and keeps its input and output histories.  The Lisp HTTP server and SWANK adapter call the shared guest session service.
 
 ## Input and commands
 

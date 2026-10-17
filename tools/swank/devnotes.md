@@ -5239,9 +5239,9 @@ Implement HTTP framing and TCP lifecycle separately from the Web JSON/static-fil
 
 The running service on port 8765 and its guest on port 4006 remain available during isolated testing.  Existing retained user jobs/stops and the requested DEFAULT-PORT breakpoint must be preserved.  Test the shared module and both transports in the rebuilt guest on port 4019, then test HTTP parsing, binary assets, session/command replay, reconnection, Listener/debugger input, Document Examiner, Peek, and HTTPS through Chromium before deployment.  Deployment requires a saved guest and a QEMU HTTP forward.
 
-- [ ] Extract and test the shared session service and SWANK adapter.
-- [ ] Implement and test HTTP framing, deadlines, and shutdown.
-- [ ] Implement and test the HTTP JSON/static-file adapter.
+- [x] Extract and test the shared session service and SWANK adapter.
+- [x] Implement and test HTTP framing, deadlines, and shutdown.
+- [x] Implement and test the HTTP JSON/static-file adapter.
 - [ ] Run browser and debugger tests against guest HTTP.
 - [ ] Document, commit, push, and activate the tested service.
 
@@ -5300,9 +5300,9 @@ The bounded read-only GDB sample during the HTTP adapter test's Jzon load found 
 Recommendation after review: measure one full collection, then compare the same committed heap snapshot under sequential 2 GiB and 4 GiB configurations.  Preserve the initial snapshot and restore its bytes between trials, recording boot IDs and process/image identities.  Record exact GC and host I/O deltas.  The larger memory setting is an experiment, not evidence of a kernel correction.  Keep socket deadlines and the production guest unchanged.  The completed 4020 restoration guest has been saved normally and stopped, leaving capacity for the sequential trial.  Production has a smaller measured old-generation allocation and active user stops; preserve those independently.
 
 - [x] Establish the sampled pager/disk-request identity and physical exhaustion.
-- [ ] Complete adapter unit and shared-transport tests.
-- [ ] Test the documented ASDF loader and start the native HTTP server.
-- [ ] Compare fixed-snapshot collection behavior at 2 GiB and 4 GiB.
+- [ ] Complete shared HTTP/SWANK handle-transfer tests.  Adapter unit tests passed.
+- [ ] Start the native HTTP server for final browser acceptance.  The documented ASDF loader passed.
+- [x] Compare fixed-snapshot collection behavior at 2 GiB and 4 GiB.
 - [ ] Complete unchanged socket tests and headless Chromium acceptance.
 - [ ] Commit, push, and deploy the tested Lisp HTTP service while preserving production debugger state.
 
@@ -5355,3 +5355,19 @@ Cold-build recommendation after reviewing cache/source/policy identities: freeze
 ### Closed TCP native tests: 2026-10-17
 
 The corrected canonical publication passed source pathname/top-level-form checks and published the IPv4 method after its helper functions.  Compiled x86-64 Mezzano tests passed CLOSED and unknown-connection reset fields, incoming reset discard, data/SYN/FIN sequence wrap, a captured lookup blocked through abort before queued detach, a detached captured connection, and expired retransmit/timeout callbacks blocked through rearming or abort.  The driver/test definitions use ordinary allocation at SAFETY 3/DEBUG 3/SPEED 1.  No production definitions changed.  Existing half-close/deadline suites and cold-driver tests remain pending.  Evidence: native-http-4020-tcp-publication-v2-20261017 and native-http-4020-tcp-closed-tests-20261017 sources, receipts, and logs.  The initial reader failure and owned cleanup remain preserved.
+
+The complete final HTTP framing suite passed in 4020: parser/framing rejection and limits, response headers, loopback binary GET/POST/HEAD, independent workers, shutdown, the unchanged absolute receive deadline, and unexpected-handler 500 with original retained condition/frame and ABORT cleanup.  Evidence: native-http-4020-final-framing-tests-20261017.log and its source/receipt.  Corrected Jzon/API direct tests and the unchanged original half-close/deadline/cancellation/stream suite also passed.  Evidence: native-http-4020-json-api-tests-20261017.log and native-http-4020-original-network-tests-20261017.log.  The final worker audit found no jobs/stops/public/private points/step requests or owned sessions before root's framing run.
+
+Recommendation for native Web acceptance: point only test 4020's existing SYS SOURCE translation at the frozen reviewed source tree, preserving its HOME translation.  Run the documented LOAD-MEZZANO.LISP ASDF entry point at ordinary SAFETY 3/DEBUG 3/SPEED 1.  Synchronize the cached home's remote-API manual with the committed b17260f6 Slime manual; it currently describes the old dispatcher.  Rebuild the sixteen-book catalog from those pinned files before Chromium tests.  Record source/dependency/asset hashes and keep production unchanged.
+
+The documented optional Web ASDF loader passed in 4020, resolving the frozen source directory and explicit com.inuoe.jzon/Babel dependencies.  Evidence: native-http-4020-asdf-loader-20261017.log.  The separate HTTPS loader is now accepted; no HTTP listener is started until that load and catalog setup return.
+
+Cold IPL cache review found 55 adjacent ordinary native LLFs, 28,155,135 bytes, whose source files match the frozen tree byte for byte.  CAL selects adjacent COMPILE-FILE-PATHNAME outputs by timestamps and loads ordinarily.  The successful 1fee IPL used the unchanged native SAFETY 3/DEBUG 3/SPEED 1 default.  These artifacts lack individual policy stamps.  Recommendation after review: preserve a separate source/LLF/compiler/default-policy manifest, copy those certified artifacts without overwriting any source, and retain their original source tree for metadata.  Keep this ordinary native cache distinct from the bootstrap SAFETY 3/DEBUG 1/SPEED 1 cache.  No changed kernel/config/shared-service output may enter either copied set.  This reuses compiled files through CAL's existing mechanism.
+
+The corrected ATA/shared-service/TCP cold build completed successfully in 334.67 seconds.  Image SHA-256: 72cbe8b1c70ee645a124fd62903f48d51136113b15f658deac7d8cf2b9d77c8c.  The frozen tree has its own Git repository at 24ead8e3 plus the recorded working diff.  The builder compiled the four intended source files and reused certified matching outputs.  Fifty-five ordinary native cache files were copied separately under their adjunct manifest.  Runtime version and native tests remain pending.
+
+During the accepted 4020 HTTPS load, read-only inspection again found collection active, zero free physical pages, and a 4 KiB ATA DMA write.  Its original job remains accepted.  Current host availability after the builder is about 4.4 GiB, insufficient to reserve a four-GiB guest plus one-GiB host margin while 4020 runs.  Recommendation after resource review: boot the new cold image first with two GiB in a separate owned VM to test initialization and resident-driver/native behavior using the validated caches.  Reserve the four-GiB high-address tests for the required snapshot/restart after the previous guest is quiescent and stopped.  This stage does not test the high-memory path.  Preserve the pristine image, all other processes, and the accepted HTTPS job.  Require a three-GiB host availability threshold for the two-GiB launch and keep one guest-mutation owner per VM.
+
+Product-documentation review found three remaining ownership descriptions naming Python.  Update the debugger, Command Processor, and Document Examiner guides to describe the Lisp HTTP adapter and shared remote-session service.  Browser behavior and operation names remain unchanged.  Rebuild the acceptance catalog from the committed documentation pin after this edit, rather than displaying the earlier frozen drafts.
+
+The HTTP modules, their native tests, optional ASDF loader, and matching product guides form a tested module increment.  Commit these independently of the untested resident ATA change.  Actual HTTP/SWANK token transfer, final Chromium acceptance, and production activation remain unfinished.  No completion claim covers those gates.

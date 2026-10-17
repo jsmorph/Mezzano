@@ -20,7 +20,7 @@ ssh -N -L 4005:127.0.0.1:4005 user@vm-host
 
 ## Browser interface
 
-The [Web Listener and Debugger](web/README.md) provides the [Lisp Command Processor](../../doc/command-processor.md), source evaluation, interactive input, interruption, backtraces, local values, and restart invocation with interactive or explicit arguments.  Its Python server serves the interface and forwards HTTP requests to the guest's SWANK API.  The guest owns evaluations, output, stops, and command results.  The browser retains its session identity across reloads.
+The [Web Listener and Debugger](web/README.md) provides the [Lisp Command Processor](../../doc/command-processor.md), source evaluation, interactive input, interruption, backtraces, local values, and restart invocation with interactive or explicit arguments.  Its Lisp HTTP server serves the interface and calls the shared guest session service.  SWANK uses the same session and retained-operation implementation.  The guest owns evaluations, output, stops, and command results.  The browser retains its session identity across reloads.
 
 The [Document Examiner](../../doc/document-examiner.md) displays the documentation through guest Lisp topic lookup and search.
 

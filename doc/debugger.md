@@ -14,7 +14,7 @@ This section specifies the approved development agenda.  The reference sections 
 
 ### Execution and interaction requirements
 
-Guest Lisp owns debugger entry, nesting, current frame, command parsing, evaluation, restart selection, and execution.  Python transports requests.  The browser renders guest state and translates input.  Command names, completion, and help come from the guest command definitions.
+Guest Lisp owns debugger entry, nesting, current frame, command parsing, evaluation, restart selection, and execution.  The Lisp HTTP server and SWANK adapter call the shared guest session service.  The browser renders guest state and translates input.  Command names, completion, and help come from the guest command definitions.
 
 The owning Listener enters debugger interaction when its evaluation stops.  It displays the nesting level and directs input to the innermost stop in that evaluation.  Other Listeners retain their own input contexts.  The standalone Debugger displays the same guest operations.  Ordinary Listener input and each debugger level retain their drafts and cursor positions.  Returning from a level restores the preceding interaction.
 
