@@ -1,6 +1,6 @@
 # JSON
 
-[Jzon](https://github.com/jsmorph/jzon/tree/8f8099ae762d54de9cbe2a084fc52ae3de96ee7d) provides JSON parsing and generation through the `COM.INUOE.JZON` package.  New images load Jzon during startup.  The [installation guide](installation.md#json-libraries) specifies its source checkouts.  Load the system in an existing image after installing those sources:
+[Jzon](https://github.com/jsmorph/jzon/tree/fcdad46565be8308837a241da08a3f08a7251e18) provides JSON parsing and generation through the `COM.INUOE.JZON` package.  New images load Jzon during startup.  The [installation guide](installation.md#json-libraries) specifies its source checkouts.  Load the system in an existing image after installing those sources:
 
 ```lisp
 (asdf:clear-source-registry)
@@ -64,7 +64,7 @@ PARSE defaults to a nesting limit of 128 and a string-length limit of 1,048,576 
                       :max-string-length 65536)
 ```
 
-These limits apply to nested arrays and objects and to each string, including object keys.  Total input size requires a separate caller limit.  The default parser rejects comments, trailing commas, and additional top-level values.  Jzon defines `COM.INUOE.JZON:JSON-PARSE-ERROR` for syntax errors and its subtype `COM.INUOE.JZON:JSON-PARSE-LIMIT-ERROR` for configured limits.  This release can signal `TYPE-ERROR` for empty input.  The writer detects recursive object references and signals `COM.INUOE.JZON:JSON-RECURSIVE-WRITE-ERROR`.
+These limits apply to nested arrays and objects and to each string, including object keys.  Total input size requires a separate caller limit.  The default parser rejects comments, trailing commas, and additional top-level values.  Jzon defines `COM.INUOE.JZON:JSON-PARSE-ERROR` for syntax errors and its subtype `COM.INUOE.JZON:JSON-PARSE-LIMIT-ERROR` for configured limits.  Empty input signals `JSON-EOF-ERROR`.  Invalid UTF-8 signals `JSON-PARSE-ERROR`, and a truncated sequence signals `JSON-EOF-ERROR`.  A decoding error can report unavailable line and column numbers.  The writer detects recursive object references and signals `COM.INUOE.JZON:JSON-RECURSIVE-WRITE-ERROR`.
 
 Decimal conversion can signal `FLOATING-POINT-OVERFLOW` or `FLOATING-POINT-UNDERFLOW`.  The installed revision bounds extreme exponents before constructing a power of ten.  Values near binary64 rounding boundaries use Jzon's existing conversion.  Zero retains its sign regardless of exponent size.  Mezzano masks hardware floating-point overflow by default.  Conversion paths using FLOAT can then return signed infinity for an out-of-range number.  Callers requiring finite results must reject infinities.
 
