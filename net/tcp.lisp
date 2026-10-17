@@ -247,15 +247,13 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
   (values))
 
 (defun retransmit-timer-handler (connection)
-  (when (not (mezzano.supervisor:timer-expired-p
-              (tcp-connection-retransmit-timer connection)))
-    ;; Timer is either still pending or isn't actually running.
-    ;; This can happen if the timer expires but some other task reconfigures
-    ;; a new retransmit time.
-    (return-from retransmit-timer-handler))
   (mezzano.supervisor:with-mutex ((tcp-connection-lock connection))
-    ;; Disarm it so it stops triggering the source
+    (unless (mezzano.supervisor:timer-expired-p
+             (tcp-connection-retransmit-timer connection))
+      (return-from retransmit-timer-handler))
     (mezzano.supervisor:timer-disarm (tcp-connection-retransmit-timer connection))
+    (when (eq (tcp-connection-state connection) :closed)
+      (return-from retransmit-timer-handler))
     ;; What're we retransmitting?
     (ecase (tcp-connection-state connection)
       (:syn-sent
@@ -284,15 +282,13 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
   (values))
 
 (defun timeout-timer-handler (connection)
-  (when (not (mezzano.supervisor:timer-expired-p
-              (tcp-connection-timeout-timer connection)))
-    ;; Timer is either still pending or isn't actually running.
-    ;; This can happen if the timer expires but some other task reconfigures
-    ;; a new timeout time.
-    (return-from timeout-timer-handler))
   (mezzano.supervisor:with-mutex ((tcp-connection-lock connection))
-    ;; Disarm it so it stops triggering the source
+    (unless (mezzano.supervisor:timer-expired-p
+             (tcp-connection-timeout-timer connection))
+      (return-from timeout-timer-handler))
     (mezzano.supervisor:timer-disarm (tcp-connection-timeout-timer connection))
+    (when (eq (tcp-connection-state connection) :closed)
+      (return-from timeout-timer-handler))
     (setf (tcp-connection-pending-error connection)
           (make-condition 'connection-timed-out
                           :host (tcp-connection-remote-ip connection)
@@ -301,7 +297,6 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
     (case (tcp-connection-state connection)
       ((:syn-sent :syn-received)
        (detach-tcp-connection connection))
-      (:closed)
       (t
        (close-connection connection)))))
 
@@ -387,23 +382,9 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
                    (get-internal-run-time))
              (when (not *netmangler-force-local-retransmit*)
                (tcp4-send-packet connection iss (+u32 irs 1) nil :ack-p t :syn-p t))))
-          ((logtest flags +tcp4-flag-rst+)) ; Do nothing for resets addressed to nobody.
           (t
-           (let* ((seq (if (logtest flags +tcp4-flag-ack+)
-                           (tcp-packet-acknowledgment-number packet start end)
-                           0))
-                  (ack (+u32 (tcp-packet-sequence-number packet start end)
-                             (tcp-packet-data-length packet start end)))
-                  (packet (assemble-tcp4-packet local-ip local-port
-                                                remote-ip remote-port
-                                                seq ack
-                                                0
-                                                nil
-                                                :ack-p (logtest flags +tcp4-flag-ack+)
-                                                :rst-p t)))
-             (mezzano.network.ip:transmit-ipv4-packet
-              local-ip remote-ip
-              mezzano.network.ip:+ip-protocol-tcp+ packet))))))
+           (tcp4-receive-closed packet start end
+                                local-ip local-port remote-ip remote-port)))))
 
 (defun tcp4-accept-connection (connection &key element-type external-format)
   (cond ((or (not element-type)
@@ -499,14 +480,31 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
 (defun tcp-packet-data-length (packet start end)
   (- end (+ start (tcp-packet-header-length packet start end))))
 
+(defun tcp-packet-sequence-length (packet start end)
+  (let ((flags (tcp-packet-flags packet start end)))
+    (+ (tcp-packet-data-length packet start end)
+       (if (logtest flags +tcp4-flag-fin+) 1 0)
+       (if (logtest flags +tcp4-flag-syn+) 1 0))))
+
+(defun tcp4-receive-closed (packet start end local-ip local-port remote-ip remote-port)
+  (let* ((flags (tcp-packet-flags packet start end))
+         (ack-p (logtest flags +tcp4-flag-ack+)))
+    (unless (logtest flags +tcp4-flag-rst+)
+      (let ((reset (assemble-tcp4-packet
+                    local-ip local-port remote-ip remote-port
+                    (if ack-p (tcp-packet-acknowledgment-number packet start end) 0)
+                    (if ack-p 0
+                        (+u32 (tcp-packet-sequence-number packet start end)
+                              (tcp-packet-sequence-length packet start end)))
+                    0 nil :ack-p (not ack-p) :rst-p t)))
+        (mezzano.network.ip:transmit-ipv4-packet
+         local-ip remote-ip mezzano.network.ip:+ip-protocol-tcp+ reset)))))
+
 (defun acceptable-segment-p (connection packet start end)
   (let* ((window (tcp-connection-rcv.wnd connection))
          (next (tcp-connection-rcv.nxt connection))
          (seq (tcp-packet-sequence-number packet start end))
-         (flags (tcp-packet-flags packet start end))
-         (length (+ (tcp-packet-data-length packet start end)
-                    (if (logtest flags +tcp4-flag-fin+) 1 0)
-                    (if (logtest flags +tcp4-flag-syn+) 1 0))))
+         (length (tcp-packet-sequence-length packet start end)))
     (if (zerop window)
         (and (zerop length) (= seq next))
         (or (< (-u32 seq next) window)
@@ -642,8 +640,14 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
         (detach-tcp-connection connection)
         (mezzano.supervisor:condition-notify (tcp-connection-cvar connection) t)
         (return-from tcp4-connection-receive))
-      ;; :CLOSED should never be seen here
       (ecase (tcp-connection-state connection)
+        (:closed
+         (tcp4-receive-closed packet start end
+                              (tcp-connection-local-ip connection)
+                              (tcp-connection-local-port connection)
+                              (tcp-connection-remote-ip connection)
+                              (tcp-connection-remote-port connection))
+         (return-from tcp4-connection-receive))
         (:syn-sent
          ;; Active open
          (cond ((and (logtest flags +tcp4-flag-ack+)
