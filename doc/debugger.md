@@ -68,7 +68,8 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [x] Add retained object inspection and mutation with explicit reference lifetimes.  Accepted on x86-64 compiled condition stops, including parked-stop restoration and Web interaction.
 - [x] Implement selected-frame Return with caller continuation, zero/one/multiple values, dynamic bindings, cleanup, command replay, snapshot restoration, and Chromium interaction on the documented x86-64 scope.
 - [x] Implement Reinvoke with caller continuation, multiple values, cleanup, dynamic bindings, and redefinition behavior.  Current/Original/New commands, argument/callable metadata, reconstruction, error recovery, captured-callable behavior, prepared-confirmation and parked-frame restoration, and Chromium interaction passed on the documented x86-64 scope.
-- [ ] Implement compiled breakpoints and stepping, with defined behavior under GC, redefinition, concurrent execution, and removal.
+- [x] Implement the documented x86-64 breakpoint commands and retained instruction stepping, including normal and nonlocal CALL exits, with GC, redefinition, concurrent execution, removal, and browser acceptance.
+- [ ] Extend instruction coverage and test the remaining saved-step states.
 - [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
 - [ ] Complete environment and source inspection, original/current argument display, source control transfers, THROW, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
@@ -577,7 +578,7 @@ Retained CALL tests cover hardware and prior-step entry, direct/indirect normal 
 
 A saved-image test restored a blocked retained CALL under two prompts with one private return location and one unrelated public breakpoint.  It passed old-control expiration, prior-boot replay rejection without consuming a command ID, preserved descriptor/thread/callback identities, exact return landing, a fresh ordinary step, moving roots, unchanged code, three returned values, and cleanup.  This test used the rebuilt two-CPU x86-64 image and ordinary SAFETY 3/DEBUG 3/SPEED 1 test code.
 
-Headless Chromium tests against a live-updated two-CPU x86-64 guest passed blocked CALL, RET, and escaping RETURN-FROM.  They cover Listener and Debugger interaction, draft and cursor preservation, reload during a blocked step, accepted-command replay, current-generation inspection, stale Inspector actions, exact continuation values, and cleanup.  One HTTP request timed out while parsing Show Instruction.  That failure remains unexplained.  A fresh x86-64 rebuild, first boot, and native stepping tests passed on two QEMU CPUs.  Browser tests against that rebuilt image remain pending.
+Headless Chromium tests through the guest Lisp HTTP server passed on the rebuilt two-CPU x86-64 image.  The debugger tests cover Return/Reinvoke, compiled breakpoints, blocked CALL, RET, and escaping RETURN-FROM.  Stepping tests include Listener and Debugger interaction, draft and cursor preservation, reload during a blocked step, accepted-command replay, current-generation inspection, stale Inspector actions, exact continuation values, and cleanup.  Saved-image acceptance covers the blocked CALL state described above.  Other saved-step states and instruction coverage remain work.
 
 ## Compiler guarantees
 
