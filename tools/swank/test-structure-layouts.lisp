@@ -124,4 +124,90 @@
 (check-existing-parent-change)
 (format t "PASS existing structure predicates, slots, identity, reparenting, and moving GC~%")
 
+(defun expect-read-only-error (function)
+  (assert
+   (handler-case (progn (funcall function) nil)
+     (simple-error (condition)
+       (search "is read-only" (princ-to-string condition))))))
+
+(defstruct readonly-initial (value 17 :type fixnum :read-only t))
+(defstruct readonly-failing
+  (value (error "Expected initialization failure") :read-only t))
+
+(defmethod initialize-instance :after ((object readonly-initial) &key)
+  (expect-read-only-error (lambda () (setf (slot-value object 'value) 99))))
+
+(defun make-readonly-nested-value ()
+  (assert
+   (handler-case (progn (make-instance 'readonly-failing) nil)
+     (simple-error (condition)
+       (equal (simple-condition-format-control condition)
+              "Expected initialization failure"))))
+  (make-instance 'readonly-initial :value 23))
+
+(defstruct readonly-nested
+  (inner (make-readonly-nested-value) :read-only t)
+  (tail 31 :read-only t))
+
+(defun check-readonly-initialization ()
+  (assert (= (readonly-initial-value (make-instance 'readonly-initial)) 17))
+  (assert (= (readonly-initial-value (make-instance 'readonly-initial :value 41)) 41))
+  (assert
+   (handler-case (progn (make-instance 'readonly-initial :value :invalid) nil)
+     (mezzano.internals::assert-error (condition)
+       (and (equal (mezzano.internals::assert-error-test-form condition)
+                   '(typep mezzano.runtime::value type))
+            (equal (mezzano.internals::assert-error-intermediate-values condition)
+                   '((:invalid mezzano.runtime::value) (fixnum type)))))))
+  (let ((object (make-instance 'readonly-nested)))
+    (assert (= (readonly-initial-value (readonly-nested-inner object)) 23))
+    (assert (= (readonly-nested-tail object) 31))
+    (expect-read-only-error
+     (lambda () (shared-initialize object t)))
+    (assert (= (readonly-nested-tail object) 31))))
+
+(defun check-existing-readonly-slot-addition ()
+  (redefine-test-structure
+   '(defstruct readonly-migrating (payload nil :read-only t) (counter 7)))
+  (let* ((payload (vector (list :preserved)))
+         (object (funcall (symbol-function 'make-readonly-migrating) :payload payload))
+         (identity object)
+         (keys (make-hash-table :test 'eq))
+         (reader (compile-test-function '(lambda (object) (readonly-migrating-payload object)))))
+    (setf (gethash object keys) payload)
+    (redefine-test-structure
+     '(defstruct readonly-migrating (payload nil :read-only t) (counter 7)
+        (added nil :read-only t)))
+    (assert (not (fboundp '(setf readonly-migrating-payload))))
+    (assert (not (fboundp '(setf readonly-migrating-added))))
+    (dotimes (pass 2)
+      (assert (eq (funcall reader object) payload))
+      (assert (eq object identity))
+      (assert (eq (gethash object keys) payload))
+      (assert (= (slot-value object 'counter) 7))
+      (assert (null (funcall (symbol-function 'readonly-migrating-added) object)))
+      (setf (slot-value object 'counter) 11)
+      (assert (= (slot-value object 'counter) 11))
+      (setf (slot-value object 'counter) 7)
+      (expect-read-only-error
+       (lambda () (setf (slot-value object 'payload) :changed)))
+      (expect-read-only-error
+       (lambda () (setf (slot-value object 'added) :changed)))
+      (expect-read-only-error
+       (lambda () (mezzano.internals::cas (slot-value object 'added) nil :changed)))
+      (expect-read-only-error
+       (lambda ()
+         (update-instance-for-redefined-class
+          object nil nil nil :allow-other-keys t :payload :changed)))
+      (assert (eq (funcall reader object) payload))
+      (assert (null (funcall (symbol-function 'readonly-migrating-added) object)))
+      (when (zerop pass)
+        (let ((address (mezzano.internals::lisp-object-address payload)))
+          (mezzano.extensions:gc :full t)
+          (assert (/= address (mezzano.internals::lisp-object-address payload))))))))
+
+(check-readonly-initialization)
+(check-existing-readonly-slot-addition)
+(format t "PASS read-only structure initialization, migration, and write rejection~%")
+
 (in-package #:cl-user)

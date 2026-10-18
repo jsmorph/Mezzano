@@ -379,10 +379,6 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
    (documentation class t)
    (slot-value class 'mezzano.clos::has-standard-constructor)))
 
-(defmethod save-one-object ((object structure-class) omap stream)
-  (save-one-object (convert-structure-class-to-structure-definition object)
-                   omap stream))
-
 (defmethod save-one-object ((object layout) omap stream)
   (save-one-object (layout-class object) omap stream)
   (write-byte +llf-layout+ stream))

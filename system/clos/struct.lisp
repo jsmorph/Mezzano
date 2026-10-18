@@ -72,11 +72,7 @@
           (t
            (sys.int::%struct-slot instance class slot)))))
 
-(defmethod (setf slot-value-using-class) (new-value (class structure-class) instance (slot structure-effective-slot-definition))
-  (when (structure-slot-definition-read-only slot)
-    (error "The slot ~S in class ~S is read-only."
-           (slot-definition-name slot)
-           (class-name class)))
+(defun store-structure-slot-value (new-value class instance slot)
   (let ((fv (structure-slot-definition-fixed-vector slot)))
     (cond (fv
            (dotimes (i fv)
@@ -85,6 +81,25 @@
            new-value)
           (t
            (setf (sys.int::%struct-slot instance class slot) new-value)))))
+
+(defmethod (setf slot-value-using-class) (new-value (class structure-class) instance (slot structure-effective-slot-definition))
+  (when (structure-slot-definition-read-only slot)
+    (error "The slot ~S in class ~S is read-only."
+           (slot-definition-name slot)
+           (class-name class)))
+  (store-structure-slot-value new-value class instance slot))
+
+(defvar *structure-initialization-context* nil)
+
+(defun initialize-structure-slot-value (new-value instance slot)
+  (let ((class (class-of instance)))
+    (if (and (structure-slot-definition-read-only slot)
+             (eq instance (car *structure-initialization-context*))
+             (or (eq (cdr *structure-initialization-context*) t)
+                 (member (slot-definition-name slot)
+                         (cdr *structure-initialization-context*))))
+        (store-structure-slot-value new-value class instance slot)
+        (setf (slot-value-using-class class instance slot) new-value))))
 
 (defmethod (sys.int::cas slot-value-using-class) (old new (class structure-class) instance (slot structure-effective-slot-definition))
   (when (structure-slot-definition-read-only slot)
@@ -130,7 +145,8 @@
 
 (defmethod update-instance-for-redefined-class ((instance structure-object) added-slots discarded-slots property-list &rest initargs)
   (check-update-instance-for-redefined-class-initargs instance added-slots discarded-slots property-list initargs)
-  (apply #'shared-initialize instance added-slots initargs))
+  (let ((*structure-initialization-context* (cons instance added-slots)))
+    (apply #'shared-initialize instance added-slots initargs)))
 
 (defmethod shared-initialize ((instance structure-object) slot-names &rest all-keys)
   (dolist (slot (class-slots (class-of instance)))
@@ -141,10 +157,10 @@
              (list (intern (string slot-name) 'keyword)))
          (declare (ignore init-key))
          (cond (foundp
-                (setf (slot-value instance slot-name) init-value))
+                (initialize-structure-slot-value init-value instance slot))
                ((or (eq slot-names t)
                     (member slot-name slot-names))
-                (setf (slot-value instance slot-name) (eval (slot-definition-initform slot))))))))
+                (initialize-structure-slot-value (eval (slot-definition-initform slot)) instance slot))))))
   instance)
 
 (defmethod make-instance ((class structure-class) &rest initargs &key &allow-other-keys)
@@ -165,7 +181,8 @@
       (when invalid-initargs
         (error "Invalid initargs ~:S when creating instance of ~S (~S)"
                invalid-initargs class (class-name class)))))
-  (let ((instance (apply #'allocate-instance class initargs)))
+  (let* ((instance (apply #'allocate-instance class initargs))
+         (*structure-initialization-context* (cons instance t)))
     (apply #'initialize-instance instance initargs)
     instance))
 

@@ -2,6 +2,12 @@
 
 Mezzano supports extensions to `defstruct` for controlling the memory layout of instances.
 
+## Initialization and compiled references
+
+Read-only slots receive their initial values during construction.  When a structure gains a read-only slot, existing instances receive its initform value during layout migration.  Ordinary slot writes and CAS retain their read-only checks.
+
+Compiled references to a structure class resolve its name through `find-class` when loaded.  Explicit `defstruct` forms determine when definitions change.  A referenced class must exist at that point in loading.  Recompiling an older LLF gives its class references this behavior.
+
 ## Struct option `:area`
 
 `(:area area-name)`
