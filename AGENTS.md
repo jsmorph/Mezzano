@@ -10,7 +10,7 @@ On 2026-10-12, the user authorized the entire debugger, headless-system, and QEM
 
 1. Review the relevant implementation, authoritative documentation, prior decisions, and test evidence.
 2. Prefer the simplest design that satisfies the required behavior.  Start with existing mechanisms and determine the cause of failures.
-3. State a concrete recommendation and explain its consequences.
+3. Make a concrete recommendation, review the whole change, and revise the recommendation.  Explain the final recommendation and its consequences.
 4. Record the recommendation, rationale, evidence, and required tests in the development journal before proceeding.
 5. Proceed with the recommendation under the user's standing authorization.
 
