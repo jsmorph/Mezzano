@@ -9,7 +9,7 @@
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
 
 (defun run ()
-  (let* ((frame (s::allocate-physical-pages 1 :32-bit-only t
+  (let* ((frame (s::allocate-physical-pages 16 :32-bit-only t
                                            :mandatory-p "ATA transfer test"))
          (physical (* frame s::+4k-page-size+))
          (bounce (s::convert-to-pmap-address physical))
@@ -32,35 +32,36 @@
              (assert (equal
                       (multiple-value-list
                        (a::ata-read-write device 17 8 bounce direction
-                                          #'failure #'unexpected))
+                                          #'failure))
                       '(nil :injected-failure)))
              (assert (equal
                       (multiple-value-list
                        (a::ata-read-write device 17 8 bounce direction
-                                          #'success #'unexpected))
+                                          #'success))
                       '(t :injected-success)))
              (assert (equal
                       (multiple-value-list
                        (a::ata-read-write device 17 1 address direction
-                                          #'unexpected #'failure))
+                                          #'failure))
                       '(nil :injected-failure)))
              (assert (equal
                       (multiple-value-list
                        (a::ata-read-write device 17 1 address direction
-                                          #'unexpected #'success))
+                                          #'success))
                       '(t :injected-success))))
            (dotimes (i s::+4k-page-size+)
              (setf (i::memref-unsigned-byte-8 bounce i) #x99))
+           (fill buffer #x22)
            (assert (equal
                     (multiple-value-list
                      (a::ata-read-write device 17 8 address :read
-                                        #'failure #'unexpected))
+                                        #'failure))
                     '(nil :injected-failure)))
            (assert (every (lambda (byte) (= byte #x22)) buffer))
            (assert (equal
                     (multiple-value-list
                      (a::ata-read-write device 17 8 address :read
-                                        #'success #'unexpected))
+                                        #'success))
                     '(t :injected-success)))
            (assert (every (lambda (byte) (= byte #x99)) buffer))
            (fill buffer #x44)
@@ -76,11 +77,10 @@
                         (assert (= actual-physical physical))
                         (dotimes (i s::+4k-page-size+)
                           (assert (= (i::memref-unsigned-byte-8 bounce i) #x44)))
-                        (values nil :injected-write-failure))
-                      #'unexpected))
+                        (values nil :injected-write-failure))))
                     '(nil :injected-write-failure)))
            (assert (a::ata-read-write device 17 0 address :read
-                                     #'unexpected #'unexpected)))
-      (s::release-physical-pages frame 1)))
-  (format t "PASS ATA transfer outcomes, DMA/PIO selection, and bounce-buffer data on failed reads and writes.~%")
+                                     #'unexpected)))
+      (s::release-physical-pages frame 16)))
+  (format t "PASS ATA transfer outcomes, direct DMA and bounce selection, and bounce-buffer data on failed reads and writes.~%")
   t)

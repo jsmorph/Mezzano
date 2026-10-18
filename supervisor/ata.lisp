@@ -70,6 +70,9 @@
 (defconstant +ata-bmr-status-drive-1-dma-capable+ #x40)
 (defconstant +ata-bmr-status-simplex+ #x80)
 
+(defconstant +ata-dma-chunk-size+ #x10000)
+(defconstant +ata-prdt-capacity+ 256)
+
 ;; Device bits.
 (defconstant +ata-dev+  #x10 "Select device 0 when clear, device 1 when set.")
 (defconstant +ata-lba+  #x40 "Set when using LBA.")
@@ -518,21 +521,30 @@ This is used to implement the INTRQ_Wait state."
        ;; Return to HPIOO0.
        (decf count))))
 
+(defun ata-fill-prdt (prdt-virt phys-addr n-octets capacity)
+  "Fill a memory-resident PRDT and return the number of descriptors."
+  (sup:ensure (<= 0 phys-addr))
+  (sup:ensure (< 0 n-octets))
+  (sup:ensure (<= (+ phys-addr n-octets) #x100000000))
+  (sup:ensure (zerop (logand phys-addr 1)))
+  (sup:ensure (zerop (logand n-octets 1)))
+  (sup:ensure (<= (ceiling (+ (logand phys-addr #xFFFF) n-octets) #x10000)
+                  capacity))
+  (loop for index from 0
+        for region-size = (min n-octets (- #x10000 (logand phys-addr #xFFFF)))
+        do (setf (sys.int::memref-unsigned-byte-32 prdt-virt (* index 2)) phys-addr
+                 (sys.int::memref-unsigned-byte-32 prdt-virt (1+ (* index 2)))
+                 (logior (logand region-size #xFFFF)
+                         (if (= region-size n-octets) #x80000000 0)))
+           (incf phys-addr region-size)
+           (decf n-octets region-size)
+        when (zerop n-octets)
+          return (1+ index)))
+
 (defun ata-configure-prdt (controller phys-addr n-octets direction)
-  (let* ((prdt (ata-controller-prdt-phys controller))
-         (prdt-virt (sup::convert-to-pmap-address prdt)))
-    (sup:ensure (<= (+ phys-addr n-octets) #x100000000))
-    (sup:ensure (not (eql n-octets 0)))
-    (do ((offset 0 (+ offset 2)))
-        ((<= n-octets #x10000)
-         ;; Write final chunk.
-         (setf (sys.int::memref-unsigned-byte-32 prdt-virt offset) phys-addr
-               (sys.int::memref-unsigned-byte-32 prdt-virt (1+ offset)) (logior #x80000000 n-octets)))
-      ;; Write 64k chunks.
-      (setf (sys.int::memref-unsigned-byte-32 prdt-virt offset) phys-addr
-            (sys.int::memref-unsigned-byte-32 prdt-virt (1+ offset)) 0) ; 0 = 64k
-      (incf phys-addr #x10000)
-      (decf n-octets #x10000))
+  (let ((prdt (ata-controller-prdt-phys controller)))
+    (ata-fill-prdt (sup::convert-to-pmap-address prdt)
+                   phys-addr n-octets +ata-prdt-capacity+)
     ;; Write the PRDT location.
     (setf (pci:pci-io-region/32 (ata-controller-bus-master-register controller) +ata-bmr-prdt-address+) prdt
           ;; Clear DMA status. Yup. You have to write 1 to clear bits.
@@ -542,11 +554,22 @@ This is used to implement the INTRQ_Wait state."
                                                                                                     (:read +ata-bmr-direction-read/write+)
                                                                                                     (:write 0)))))
 
-(defun ata-read-write (device lba count mem-addr what dma-fn pio-fn)
-  (let ((controller (ata-device-controller device)))
+(defun ata-dma-physical-address (mem-addr n-octets)
+  (when (and (zerop (logand mem-addr 1))
+             (<= sup::+physical-map-base+ mem-addr)
+             (< mem-addr (+ sup::+physical-map-base+ #x100000000))
+             (<= (+ mem-addr n-octets)
+                 (+ sup::+physical-map-base+ #x100000000)))
+    (- mem-addr sup::+physical-map-base+)))
+
+(defun ata-read-write (device lba count mem-addr what dma-fn)
+  (let ((controller (ata-device-controller device))
+        (sector-size (ata-device-block-size device)))
     (sup:ensure (>= lba 0))
     (sup:ensure (>= count 0))
     (sup:ensure (<= (+ lba count) (ata-device-sector-count device)))
+    (sup:ensure (<= 1 sector-size +ata-dma-chunk-size+))
+    (sup:ensure (zerop (rem sector-size 8)))
     (cond
       ((ata-device-lba48-capable device)
        (when (> count 65536)
@@ -556,27 +579,27 @@ This is used to implement the INTRQ_Wait state."
        (when (> count 256)
          (sup:debug-print-line "Can't do " what " of more than 256 sectors.")
          (return-from ata-read-write (values nil :too-many-sectors)))))
-    (when (eql count 0)
+    (when (zerop count)
       (return-from ata-read-write t))
-    (cond ((and (<= sup::+physical-map-base+ mem-addr)
-                ;; 4GB limit.
-                (< mem-addr (+ sup::+physical-map-base+ (* 4 1024 1024 1024))))
-           (funcall dma-fn controller device lba count (- mem-addr sup::+physical-map-base+)))
-          ((eql (* count (ata-device-block-size device)) sup::+4k-page-size+)
-           ;; Transfer is small enough that the bounce page can be used.
-           (let* ((bounce-frame (ata-controller-bounce-buffer controller))
-                  (bounce-phys (ash bounce-frame 12))
-                  (bounce-virt (sup::convert-to-pmap-address bounce-phys)))
-             ;; FIXME: Don't copy a whole page
-             (when (eql what :write)
-               (sup::%fast-page-copy bounce-virt mem-addr))
-             (multiple-value-bind (success reason)
-                 (funcall dma-fn controller device lba count bounce-phys)
-               (when (and success (eql what :read))
-                 (sup::%fast-page-copy mem-addr bounce-virt))
-               (values success reason))))
-          (t ;; Give up and do a slow PIO transfer.
-           (funcall pio-fn controller device lba count mem-addr)))))
+    (loop
+      (let* ((chunk-count (min count (floor +ata-dma-chunk-size+ sector-size)))
+             (n-octets (* chunk-count sector-size))
+             (direct-phys (ata-dma-physical-address mem-addr n-octets))
+             (phys (or direct-phys (ash (ata-controller-bounce-buffer controller) 12)))
+             (bounce (unless direct-phys (sup::convert-to-pmap-address phys))))
+        (when (and bounce (eql what :write))
+          (sys.int::%copy-words bounce mem-addr (truncate n-octets 8)))
+        (multiple-value-bind (success reason)
+            (funcall dma-fn controller device lba chunk-count phys)
+          (unless success
+            (return (values success reason)))
+          (when (and bounce (eql what :read))
+            (sys.int::%copy-words mem-addr bounce (truncate n-octets 8)))
+          (decf count chunk-count)
+          (when (zerop count)
+            (return (values success reason))))
+        (incf lba chunk-count)
+        (incf mem-addr n-octets)))))
 
 (defun ata-issue-lba-command (device lba count command28 command48)
   (if (ata-device-lba48-capable device)
@@ -594,7 +617,7 @@ This is used to implement the INTRQ_Wait state."
   t)
 
 (defun ata-read-dma (controller device lba count phys-addr)
-  (ata-configure-prdt controller phys-addr (* count 512) :read)
+  (ata-configure-prdt controller phys-addr (* count (ata-device-block-size device)) :read)
   (when (not (ata-issue-lba-command device lba count
                                     +ata-command-read-dma+
                                     +ata-command-read-dma-ext+))
@@ -617,7 +640,7 @@ This is used to implement the INTRQ_Wait state."
 
 (defun ata-read (device lba count mem-addr)
   (ata-read-write device lba count mem-addr
-                  :read #'ata-read-dma #'ata-read-pio))
+                  :read #'ata-read-dma))
 
 (defun ata-write-pio (controller device lba count mem-addr)
   (declare (ignore controller))
@@ -630,7 +653,7 @@ This is used to implement the INTRQ_Wait state."
   t)
 
 (defun ata-write-dma (controller device lba count phys-addr)
-  (ata-configure-prdt controller phys-addr (* count 512) :write)
+  (ata-configure-prdt controller phys-addr (* count (ata-device-block-size device)) :write)
   (when (not (ata-issue-lba-command device lba count
                                     +ata-command-write-dma+
                                     +ata-command-write-dma-ext+))
@@ -652,7 +675,7 @@ This is used to implement the INTRQ_Wait state."
 
 (defun ata-write (device lba count mem-addr)
   (ata-read-write device lba count mem-addr
-                  :write #'ata-write-dma #'ata-write-pio))
+                  :write #'ata-write-dma))
 
 (defun ata-flush (device)
   (let ((controller (ata-device-controller device)))
@@ -801,9 +824,7 @@ This is used to implement the INTRQ_Wait state."
   (cond ((not (atapi-device-initialized-p device))
          (ata-issue-pio-packet-command device cdb result-buffer result-len))
         ((or (null result-buffer)
-             (and (<= sup::+physical-map-base+ result-buffer)
-                  ;; 4GB limit.
-                  (< result-buffer (+ sup::+physical-map-base+ (* 4 1024 1024 1024)))))
+             (ata-dma-physical-address result-buffer result-len))
          (ata-issue-dma-packet-command device
                                        cdb
                                        (if result-buffer
@@ -834,9 +855,10 @@ This is used to implement the INTRQ_Wait state."
 (defun init-ata-controller (command-base control-base bus-master-register prdt-phys irq)
   (declare (mezzano.compiler::closure-allocation :wired))
   (sup:debug-print-line "New controller at " command-base " " control-base " " bus-master-register " " irq)
-  (let* ((dma32-bounce-buffer (sup::allocate-physical-pages 1
-                                                            :mandatory-p "ATA DMA bounce buffer"
-                                                            :32-bit-only t))
+  (let* ((dma32-bounce-buffer (sup::allocate-physical-pages
+                              (/ +ata-dma-chunk-size+ sup::+4k-page-size+)
+                              :mandatory-p "ATA DMA bounce buffer"
+                              :32-bit-only t))
          (controller (make-ata-controller :command command-base
                                           :control control-base
                                           :bus-master-register bus-master-register
