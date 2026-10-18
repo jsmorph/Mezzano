@@ -44,8 +44,8 @@
       (incf (aref state 1))
       (mezzano.extensions:gc :full t))))
 
-(defun make-case (function offset depth)
-  (let* ((state (vector 0 0 nil (vector :hardware-breakpoint) nil))
+(defun make-case (function offset depth &optional (marker-value :hardware-breakpoint))
+  (let* ((state (vector 0 0 nil (vector marker-value) nil))
          (controller (d:make-debugger-controller))
          (thread (s:make-thread
                   (lambda ()
