@@ -1,6 +1,6 @@
 # Installation and operation
 
-This guide builds the remote-development image and runs it under x86-64 QEMU with KVM on Linux.  The guest receives two virtual CPUs and 2 GiB of memory.  QEMU hides its display, while the guest still initializes its desktop.  Remote access uses SWANK and the optional Web interface.
+This guide builds the remote-development image and runs it under x86-64 QEMU with KVM on Linux.  The example allocates two virtual CPUs and 4 GiB of memory.  Two GiB boots the core, but loading the Web and HTTPS libraries can force paging during copying collection.  QEMU hides its display, while the guest still initializes its desktop.  Remote access uses SWANK and the optional Web interface.
 
 ## Requirements
 
@@ -103,7 +103,7 @@ The SBCL server handles each connection in a separate Lisp thread, with its own 
 In another terminal, start QEMU from the build directory:
 
 ```sh
-qemu-system-x86_64 -enable-kvm -smp 2 -m 2G \
+qemu-system-x86_64 -enable-kvm -smp 2 -m 4G \
   -drive file=mezzano.image,format=raw,if=ide \
   -vga std -display none -monitor none -serial file:serial.log \
   -netdev user,id=net0,hostfwd=tcp:127.0.0.1:4005-:4005,hostfwd=tcp:0.0.0.0:8765-:8765 \
