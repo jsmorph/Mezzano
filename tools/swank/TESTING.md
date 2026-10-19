@@ -174,13 +174,19 @@ sbcl --script tools/swank/test-pager-accounting.lisp
 
 The test reads the production block-map constants and six pager functions.  Its one-page fixture replaces disk allocation, physical memory, page tables, and locking.  It checks reservation changes when releasing eager or lazy pages, realizing a lazy page during swap, rejecting a failed disk allocation, and releasing or replacing a snapshot-owned page.  Read-only and early-allocation cases check the existing paths.  These tests cover local accounting transitions.  Guest collection, paging, and snapshot tests provide separate system evidence.
 
-The queued-pager extension uses `TEST-QUEUED-STEP-RESTORE-KERNEL.LISP` and `TEST-RETAINED-STEP-RESTORE.LISP`.  Compile/load the kernel module first at DEBUG 1/SAFETY 3/SPEED 1 with resident allocation, then compile/load the ordinary module at DEBUG 3/SAFETY 3/SPEED 1 with default allocation.  The new kernel observer requires SAFE-WITHOUT-INTERRUPTS with explicit captures because its caller runs on an ordinary stack.  Compilation and an ordinary-stack observer/interrupt-state preflight have passed.  Full queued Snapshot/restore acceptance remains pending.
-
-`PREPARE-QUEUED` in LISPM-RETAINED-STEP-RESTORE-TEST prepares one zero-prompt NOP step and requests its own normal Snapshot.  Invoke it through raw SWANK, retain that original RPC and serial evidence, and do not request another Snapshot.  It pre-arms the step before blocking the pager, uses existing snapshot inhibition around the mandatory GC and queued-state observation, and retains a genuine pager RPC for boot replay.  The resident gate has a 180-second heartbeat-clock deadline.  The host has a separate 600-second wall-clock deadline.  A failed preparation retains its state and evidence.  After a successful preparation and restart of the same saved image, `FINISH-QUEUED` tests fresh controls, replay rejection, exact delivery, moving roots, another step, values and cleanup.  No other restore fixture may be prepared.
-
 ## Snapshot and restore tests
 
 Preparation saves a guest snapshot containing the fixture.  Completion runs after the VM starts from that image.  A test that has prepared a snapshot must finish before another restore fixture starts.
+
+A raw snapshot coordinator must capture CURRENT-BOOT-ID before saving.  When it resumes under another boot ID, it must return before post-save assertions or fixture mutation.  The fresh completion call performs restored-state checks.  TEST-SNAPSHOT-COW.LISP provides this pattern.
+
+### Queued instruction-step delivery
+
+The queued-pager extension uses `TEST-QUEUED-STEP-RESTORE-KERNEL.LISP` and `TEST-RETAINED-STEP-RESTORE.LISP`.  Compile/load the kernel module first at DEBUG 1/SAFETY 3/SPEED 1 with resident allocation, then compile/load the ordinary module at DEBUG 3/SAFETY 3/SPEED 1 with default allocation.  The kernel observer uses SAFE-WITHOUT-INTERRUPTS with explicit captures because its caller runs on an ordinary stack.
+
+`PREPARE-QUEUED` in LISPM-RETAINED-STEP-RESTORE-TEST prepares one zero-prompt NOP step and requests its own normal Snapshot.  Invoke it through raw SWANK, retain that original RPC and serial evidence, and do not request another Snapshot.  It pre-arms the step before blocking the pager, uses existing snapshot inhibition around the mandatory GC and queued-state observation, and retains a genuine pager RPC for boot replay.  The resident gate has a 180-second heartbeat-clock deadline.  The host has a separate 600-second wall-clock deadline.  A failed preparation retains its state and evidence.  After successful preparation, restart the same saved image and call `FINISH-QUEUED` without reloading the fixture.  No other restore fixture may be prepared.
+
+Native x86-64 acceptance passed with two CPUs at zero prompts.  The saved target was fully saved in PAGER-REQUEST/PAGER-INVOKE, queued behind the genuine pager RPC, with a linked :TRAPPED request, zero callbacks, offset 26, TF clear, IF/RF set, and exact R8/R9 roots.  Restoration checks the gate's second invocation and changed-boot return, expired old controls, prior-command rejection without ID consumption, one request removal and callback, moving roots, a fresh step to offset 30, original values, one cleanup, and empty owned tables.  Two-prompt queued delivery and ARM64 execution remain untested.
 
 ### Guest debugger stops
 
