@@ -659,6 +659,20 @@ The native x86-64 test checks cons, array, symbol, hash-table, CLOS, and structu
 
 For a parked-stop restoration test, call `(lispm-inspector-test:prepare-restore-test)` before saving and `(lispm-inspector-test:finish-restore-test)` after restoration.  It checks historical pages, expired references, prior-command rejection without command-ID consumption, fresh inspection, full GC, modification through retained input, continuation, and cleanup.
 
+## Web inspection tests
+
+Load the debugger-service fixture, compile and load the Web inspection helper, then load its native checks:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-WEB-INSPECTION-REFRESH.LISP"
+                    :output-file "SYS:HOME;TEST-WEB-INSPECTION-REFRESH.LLF"))
+(load "SYS:SOURCE;TOOLS;SWANK;TEST-WEB-INSPECTION-REFRESH-NATIVE.LISP")
+```
+
+The two native cases use background condition stops.  They test a printer waiting on an event, rejection without command-ID consumption, a printer error and child Abort, explicit reinspection, continuation values, and one cleanup per target.  Successful completion releases each owned stop and fixture record.  The helper also provides PREPARE, ARM, CHECK-GATE, RELEASE-GATE, CHECK-RECOVERED, and FINISH for browser tests.
+
+The [browser inspection fixture](web/test-single-step-fixtures.mjs) supplies intercepted API responses.  It tests immediate advancement between completed inspections, timed polling while an inspection is pending, queued action order, step-generation changes, drafts and cursors, reload, stale Inspector actions, and exact-ID replay.  Live browser acceptance uses the guest HTTP server and native helper.  Its tested behavior is recorded in the [debugger acceptance reference](../../doc/debugger.md#retained-instruction-steps).
+
 ## CLOS method replacement tests
 
 The compiled fixture checks calls overlapping method replacement, method and specializer references, notification order, reader/writer and ordinary dispatch, old discriminators, changes in cache representation, cache publication, lock identity after GC, and error unwinding:
