@@ -730,3 +730,23 @@ The x86-64 copy-on-write fixture uses a private page to check protection transit
 The save test first requests an inhibited Snapshot and requires a full collection to complete.  It then holds prepared writeout until the collector owns the stopped world and waits on the Snapshot-completion event.  Collection counters, epoch, and semispace selections must remain unchanged during that wait.  The resident observer then permits real writeout.  The test requires header commit, deferred-block release, and collection completion, with consistent backing-store reservations.  An 8192-element vector changes from 1111 to 2222 after capture.
 
 Wait for the save call to return, then restart that image without another Snapshot.  Call `(lispm-snapshot-cow-test:finish-restore)` without reloading the fixture.  The saved coordinator checks its boot identity before mutation or cleanup.  FINISH-RESTORE removes the saved hook, checks the cleared writeout phase and all 8192 saved values of 1111, performs a full collection, and checks reservations again.
+
+The deferred-store fixture checks both adjacent-range merges, release of a detached two-node batch while another node remains queued, and exact restoration of the free-block, deferred-block, and metadata counts.  It uses twelve guarded blocks from the real store.  Compile its resident helper and run assertions from ordinary Lisp:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-DEFERRED-STORE-KERNEL.LISP")
+      :wired t)
+(let ((observations (lispm-deferred-store-test:probe)))
+  (assert (eq (svref observations 0) :observed))
+  (dolist (pair '((1 2) (3 4) (5 6)))
+    (assert (= (svref observations (first pair))
+               (svref observations (second pair)))))
+  (assert (eq (svref observations 7) (svref observations 8)))
+  (assert (equalp (subseq observations 9 16) #(1 3 6 7 7 8 1)))
+  (assert (svref observations 16))
+  (assert (= (svref observations 3) (svref observations 17)))
+  (assert (= (svref observations 4) (svref observations 18)))
+  observations)
+```
+
+Run the probe while Snapshot is idle.  The final two assertions compare the recorded count with the sum of the global deferred ranges.  Run the same assertions after a real save and again after restoring its image, without reloading the fixture or changing the count.

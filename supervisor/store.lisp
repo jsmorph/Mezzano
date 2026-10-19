@@ -239,7 +239,6 @@
     (do ((range *store-deferred-freelist-head* (freelist-metadata-next range)))
         ((null range)
          (let ((e (freelist-alloc-metadata start (+ start n-blocks) t)))
-           (incf *store-freelist-n-deferred-free-blocks* n-blocks)
            (setf (freelist-metadata-next e) *store-deferred-freelist-head*
                  *store-deferred-freelist-head* e)))
       (when (eql (freelist-metadata-start range) end)
@@ -247,7 +246,8 @@
         (return))
       (when (eql (freelist-metadata-end range) start)
         (setf (freelist-metadata-end range) end)
-        (return)))))
+        (return))))
+  (incf *store-freelist-n-deferred-free-blocks* n-blocks))
 
 (defun store-alloc (n-blocks)
   (ensure (rw-lock-write-held-p *vm-lock*) "*VM-LOCK* must be held when allocating store.")
@@ -454,10 +454,15 @@
       last-block)))
 
 (defun store-release-deferred-blocks (block-list)
-  (do ((range block-list (freelist-metadata-next range)))
+  "Consume a detached deferred list, releasing its blocks and metadata."
+  (do ((range block-list))
       ((null range))
-    (let ((start (freelist-metadata-start range))
+    (let ((next (freelist-metadata-next range))
+          (start (freelist-metadata-start range))
           (n-blocks (- (freelist-metadata-end range) (freelist-metadata-start range))))
       (when *verbose-store*
         (debug-print-line "Release deferred range " (freelist-metadata-start range) "-" (freelist-metadata-end range)))
-      (store-free start n-blocks))))
+      (store-free start n-blocks)
+      (decf *store-freelist-n-deferred-free-blocks* n-blocks)
+      (freelist-free-metadata range)
+      (setf range next))))
