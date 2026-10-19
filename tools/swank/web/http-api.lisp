@@ -85,6 +85,7 @@
     ("reinvoke" . :reinvoke) ("help" . :help) ("inspect" . :inspect)
     ("modify" . :modify) ("describe-object" . :describe-object)
     ("clear-inspection" . :clear-inspection) ("arglist" . :arglist)
+    ("rest-argument" . :rest-argument)
     ("bindings" . :bindings) ("handlers" . :handlers) ("catches" . :catches)
     ("function" . :function) ("compiled-code" . :compiled-code)
     ("instruction" . :instruction) ("single-step" . :single-step)

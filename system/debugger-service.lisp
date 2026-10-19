@@ -465,7 +465,7 @@
         (service-error :stop-busy))
       (case operation
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
-          :function :compiled-code :instruction :lexical-environment
+          :function :rest-argument :compiled-code :instruction :lexical-environment
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
           :standard-value-warnings :return :breakpoints :single-step)
          (when argument (service-error :unexpected-argument)))
@@ -1395,6 +1395,28 @@ NIL with true availability denotes an absent global cell."
     (setf (fourth (service-stop-evaluation-history stop)) function)
     (format nil "Function = ~A." (service-print function))))
 
+(defun service-show-rest-argument (stop)
+  (let ((frame (aref (service-stop-frames stop) (service-stop-current-frame stop))))
+    (multiple-value-bind (layout observations reason) (service-frame-parameter-context frame)
+      (cond (reason
+             (format nil "Rest argument unavailable: ~A." (service-print reason)))
+            ((null (svref layout 3))
+             "This frame has no &REST parameter.")
+            (t
+             (let* ((binding (svref layout 3))
+                    (observation (assoc binding observations :test #'eq)))
+               (unless observation
+                 (error "Rest parameter has no current observation."))
+               (if (third observation)
+                   (progn
+                     (setf (fourth (service-stop-evaluation-history stop))
+                           (second observation))
+                     (format nil "Rest argument ~A = ~A."
+                             (service-print (svref binding 1))
+                             (service-print (second observation))))
+                   (format nil "Rest argument ~A is unavailable."
+                           (service-print (svref binding 1))))))))))
+
 (defun service-catch-destination (exit)
   (let ((binding
           (loop for (offset . scope) in
@@ -1612,6 +1634,7 @@ NIL with true availability denotes an absent global cell."
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
     (:function (service-show-function stop))
+    (:rest-argument (service-show-rest-argument stop))
     (:compiled-code (service-show-code stop nil))
     (:instruction (service-show-code stop t))
     (:lexical-environment (service-show-lexical-environment stop))

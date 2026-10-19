@@ -117,6 +117,14 @@ Clear, instruction-step departure, and stop exit empty the inspection retention 
 
 The current Inspector attaches to an active debugger stop.  Standalone inspection, compiled-function internals, and Genera locatives remain planned.  The [SWANK API reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) specifies page fields, token types, and errors.
 
+## Current rest argument
+
+`:Show Rest Argument` takes no arguments.  It displays the selected frame's current rest parameter and assigns that object to the debugger level's `*` before printing.  It preserves frame selection and the other eight history slots.  Parameter writes and same-named inner bindings retain their distinct source identities.  Special rest parameters use their exact saved binding cells.
+
+An available NIL prints as NIL and becomes `*`.  A frame with no rest parameter reports that absence.  Missing frame/parameter metadata and unavailable storage report unavailable.  Those cases preserve history.  A printer error enters a child debugger after the assignment.  Child Abort abandons printing and returns to the enclosing stop with that assignment preserved.  Accepted-ID replay retrieves the recorded result.
+
+Native tests cover established x86-64 DEBUG 3/SAFETY 3/SPEED 1 frames, including declared-DX rest while its extent remains active.  Debugger use of a declared-DX value requires that extent.  The separate heap-history test covers stepping through the allocating function's exit.  Intercepted Chromium tests cover text, menu/input, replay and historical display.  Native typed-browser acceptance is pending.
+
 ## Architecture and ownership
 
 A stop retains the condition, applicable restart objects, captured frames, and the target thread's dynamic environment.  The target thread waits in a command loop and executes inspection, printing, and restart functions.  Other threads continue running.
@@ -386,7 +394,7 @@ Lexical variables and local functions resolve by binding identity in the selecte
 
 In lexical mode, a scope with unavailable metadata rejects evaluation.  A known binding with unavailable storage rejects access to that binding, while other expressions in the same scope can run.  Constant and unsupported locations reject writes.  These conditions enter a child debugger, where :Abort abandons the expression and restores the enclosing stop.  Reader, evaluator, and result-printer conditions use the same command boundary.  DESCRIBE propagates errors from an object's printer or its slot-value printers through that boundary.
 
-Each debugger level has separate `+`, `++`, `+++`, `*`, `**`, `***`, `/`, `//`, and `///` histories, initially NIL.  The variable `-` holds the current form.  A normally returning evaluation updates the histories before printing.  An aborted evaluation leaves automatic value history unchanged.  Nested debugging preserves its parent's history.  Show Function replaces only `*`, preserving the remaining history slots.
+Each debugger level has separate `+`, `++`, `+++`, `*`, `**`, `***`, `/`, `//`, and `///` histories, initially NIL.  The variable `-` holds the current form.  A normally returning evaluation updates the histories before printing.  An aborted evaluation leaves automatic value history unchanged.  Nested debugging preserves its parent's history.  Show Function and Show Rest Argument replace only `*`, preserving the remaining history slots.
 
 An escaping compiled closure can lack storage for an unused visible outer binding, including a binding introduced at DEBUG 3.  Its source scope retains the binding identity, and accessing it reports :UNAVAILABLE-BINDING.  Preserving those outer values through closure capture remains compiler work.
 

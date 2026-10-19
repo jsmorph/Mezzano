@@ -65,6 +65,8 @@
       (:name "Describe Last" :id :describe-last :help "Describe this debugger level's * value.")
       (:name "Clear Inspector" :id :clear-inspector :help "Release this debugger level's retained Inspector references.")
       (:name "Show Arglist" :id :show-arglist :help "Display the selected compiled function's argument list.")
+      (:name "Show Rest Argument" :id :show-rest-argument
+       :help "Display the selected frame's current &REST parameter and assign it to *.")
       (:name "Show Function" :id :show-function :help "Display the selected frame's function and assign it to *.")
       (:name "Show Compiled Code" :id :show-compiled-code :help "Disassemble the selected frame's executing function with hexadecimal byte offsets.")
       (:name "Show Instruction" :id :show-instruction :help "Display the instruction at the selected frame's saved caller location or interrupted program counter.")
@@ -537,6 +539,7 @@
     (:describe-last (list :operation "describe-object" :display :description))
     (:clear-inspector (list :operation "clear-inspection" :display :inspector))
     (:show-arglist (list :operation "arglist"))
+    (:show-rest-argument (list :operation "rest-argument"))
     (:show-function (list :operation "function"))
     (:show-compiled-code (list :operation "compiled-code"))
     (:show-instruction (list :operation "instruction"))
