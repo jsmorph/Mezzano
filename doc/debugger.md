@@ -125,6 +125,8 @@ This numbering is Mezzano's rule.  Genera's cited command description does not s
 
 An available indexed value becomes this stop's `*` before printing.  The other eight history slots and frame selection remain unchanged.  All and unavailable data preserve all history slots.  Available NIL, known-empty parameters, missing metadata, and unavailable storage have distinct results.  Malformed selectors reject before acceptance.  A known out-of-range index signals a typed error during execution, before printing or history changes.  `:Abort` in its child abandons that accepted command, whose replay returns its recorded unwound result.
 
+Native x86-64 DEBUG 3/SAFETY 3/SPEED 1 tests passed the indexed and All operations, history identity, defaults and keys, availability, range-error child Abort, printer failures, GC, replay, values, and cleanup.  Headless Chromium typed Show Frame, Show Argument All, an indexed rest request, and Inspect in the owning Listener.  It verified source indices, exact current rest object identity, assignment of only *, unchanged All history, accepted-ID replay, Proceed values, and cleanup.
+
 Current parameter access requires an eligible live x86-64 frame and DEBUG 3 parameter metadata.  A declared dynamic-extent value retains its allocating-extent requirement.  The command currently assigns only `*`.  Writable argument locations in `+` and the `DBG:ARG` read/write interface remain unimplemented.  Saved-image execution of this command and ARM64 acceptance remain untested.
 
 ## Current rest argument
