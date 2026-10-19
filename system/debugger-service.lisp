@@ -1225,15 +1225,23 @@ NIL with true availability denotes an absent global cell."
                        (case (mezzano.disassemble.x86-64::inst-opcode instruction)
                          ((mezzano.lap.x86:nop mezzano.lap.x86:ret mezzano.lap.x86:call
                            mezzano.lap.x86:push mezzano.lap.x86:pop
-                           mezzano.lap.x86:mov32 mezzano.lap.x86:mov64
+                           mezzano.lap.x86:mov8 mezzano.lap.x86:mov32 mezzano.lap.x86:mov64
                            mezzano.lap.x86:lea64 mezzano.lap.x86:add64
-                           mezzano.lap.x86:sub32 mezzano.lap.x86:sub64 mezzano.lap.x86:cmp32
+                           mezzano.lap.x86:sub32 mezzano.lap.x86:sub64 mezzano.lap.x86:cmp8 mezzano.lap.x86:cmp32
                            mezzano.lap.x86:cmp64 mezzano.lap.x86:test32
                            mezzano.lap.x86:test64
-                           mezzano.lap.x86:shl64 mezzano.lap.x86:leave
-                           mezzano.lap.x86:and32 mezzano.lap.x86:and64
+                           mezzano.lap.x86:shl64 mezzano.lap.x86:shr32 mezzano.lap.x86:leave
+                           mezzano.lap.x86:and8 mezzano.lap.x86:and32 mezzano.lap.x86:and64
                            mezzano.lap.x86:or32 mezzano.lap.x86:or64
-                           mezzano.lap.x86:xor32 mezzano.lap.x86:xor64) t)
+                           mezzano.lap.x86:xor32 mezzano.lap.x86:xor64
+                           mezzano.lap.x86:cmov64o mezzano.lap.x86:cmov64no
+                           mezzano.lap.x86:cmov64b mezzano.lap.x86:cmov64ae
+                           mezzano.lap.x86:cmov64z mezzano.lap.x86:cmov64nz
+                           mezzano.lap.x86:cmov64be mezzano.lap.x86:cmov64a
+                           mezzano.lap.x86:cmov64s mezzano.lap.x86:cmov64ns
+                           mezzano.lap.x86:cmov64p mezzano.lap.x86:cmov64np
+                           mezzano.lap.x86:cmov64l mezzano.lap.x86:cmov64ge
+                           mezzano.lap.x86:cmov64le mezzano.lap.x86:cmov64g) t)
                          ((mezzano.lap.x86:jmp
                            mezzano.lap.x86:jo mezzano.lap.x86:jno
                            mezzano.lap.x86:jb mezzano.lap.x86:jae
