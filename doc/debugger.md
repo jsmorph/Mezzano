@@ -600,6 +600,8 @@ Three headless Chromium cases stepped the complete normal bodies of a zero-argum
 
 Headless Chromium tests also passed automatic inspection with a waiting condition printer, busy-command rejection preserving the editor text and cursor, a printer-error child with typed Abort, explicit condition reinspection, and a RET step with all four displayed inspection results at the new generation.  Exact-ID replay, original continuation values, one cleanup per target, and release of owned jobs, stops, fixture records and session passed.  These tests used the same two-CPU x86-64 image and ordinary compilation policy.
 
+A separate waiting-printer case verified that background polling and automatic recovery preserve the bottom-line busy message, and a successful typed Help request clears it while retaining the rejected Request History record.
+
 ## Compiler guarantees
 
 The image bootstrap policy is `(safety 3 debug 1 speed 1)`.  The compiler source initializes its default to `(safety 3 debug 3 speed 1)`, and an existing image can retain a different value.  `mezzano.compiler::*optimize-policy*` reports the current default.  Code already in an image retains the policy and debugger metadata from its compilation.
