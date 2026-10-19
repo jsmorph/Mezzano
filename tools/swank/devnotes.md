@@ -5762,3 +5762,15 @@ The first freeze attempt added a remote Git check in a plain Tailscale session. 
 The approved trapped-request fixture draft is staged at trapped-step-restore-20261019/source/test-retained-step-restore.lisp, SHA-256 a4af0953fdf4f9dd4912c40a1b44d0b30624ac8f216eab9aac72b0f7acc65088.  It adds the pre-removal delivery gate and stage-specific checks to the existing fixture.  PREPARE defaults to all three stages, while the next execution selects only :TRAPPED at zero/two prompts.
 
 Compile this staged file at ordinary SAFETY 3/DEBUG 3/SPEED 1 while the Web agent prepares its host files.  Require warnings/failure NIL and unchanged live PREPARE/FINISH/CLEANUP and service function identities, source pin, empty test state and debugger records.  Preserve the exact LLF and compilation receipt.  Load the LLF during later trapped preparation after the accepted UI baseline, then execute the two approved saved-image cases through the reviewed lifecycle.
+
+### Trapped fixture compile-only result
+
+The staged trapped fixture compiled eleven functions in Mezzano at SAFETY 3/DEBUG 3/SPEED 1 with ordinary allocation.  The compiler reported 7.0 seconds, warnings NIL, and failure NIL.  The 310,553-byte LLF remains unloaded.  PREPARE/FINISH/CLEANUP, the four relevant service functions, server/handler/HOME and source translations retained their identities.  Source/catalog remains 4a0b3a4c, and final owned debugger state was empty.  Main PID 985576/start 80543204, all fourteen protected processes, nine other QEMUs, scratch and HTTP remained unchanged.  Root verified all recorded evidence hashes.
+
+Evidence: trapped-step-restore-20261019/compile-result.json, SHA-256 d6532e1c1f4b60a56d1d7bc050408b163fc07f005625ffa4a16ba1c45ea467c1.  LLF SHA-256: 007da049cb3be43de3a7132681f7d5ef3960373f17d0ae0c9fec560f53de8dad.  Compilation alone establishes neither loading nor saved-image behavior.  The two approved trapped cases remain pending after the Web inspection increment.
+
+### Inspection refresh: native test preparation
+
+Review of the one-line queue change and the isolated browser results supports testing it against the guest.  Use a small Lisp fixture whose condition printer can wait on an event or signal once.  Reset its mode before waiting or signalling so child-condition display can proceed.  Retain each test's thread, stop, counters and event, and check one continuation and cleanup before release.  Reuse the existing ordinary-compilation, retained-job and exclusive-ownership mechanisms.
+
+Compile and load only this ordinary test helper before native execution.  Keep the HTTP handler and assets unchanged until the reviewed candidate is committed and staged.  Native and browser checks will verify pending-command rejection preserves the draft, command ID and connection, child-printer Abort returns to the parent, explicit reinspection recovers, and one short RET step completes current-generation inspections with exact-ID replay.  The browser will use the existing serialized queue, public controls and a separate profile.  The finalized driver must read its Abort ID after child inspection consumes its own ID.
