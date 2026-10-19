@@ -15,9 +15,14 @@ export async function openBrowser(url) {
   let processError;
   process.stderr.on('data', data => { diagnostics += data; });
   process.on('error', error => { processError = error; });
-  const exited = new Promise(resolve => process.on('exit', resolve));
+  const processEvents = [{event: 'spawn', pid: process.pid, utc: new Date().toISOString()}];
+  const exited = new Promise(resolve => process.on('exit', (code, signal) => {
+    processEvents.push({event: 'exit', pid: process.pid, code, signal, utc: new Date().toISOString()});
+    resolve(code);
+  }));
   const pending = new Map();
   const errors = [];
+  const network = [];
   let socket;
   let nextId = 0;
 
@@ -56,6 +61,8 @@ export async function openBrowser(url) {
         clearTimeout(request.timer);
         if (message.error) request.reject(new Error(JSON.stringify(message.error)));
         else request.resolve(message.result);
+      } else if (message.method?.startsWith('Network.')) {
+        network.push({method:message.method,parameters:message.params});
       } else if (message.method === 'Runtime.exceptionThrown') {
         errors.push(message.params.exceptionDetails);
       } else if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') {
@@ -122,7 +129,7 @@ export async function openBrowser(url) {
     const navigation = await send('Page.navigate', { url });
     if (navigation.errorText) throw new Error(navigation.errorText);
     await waitFor("document.readyState === 'complete'");
-    return { send, evaluate, waitFor, click, screenshot, errors, close };
+    return { send, evaluate, waitFor, click, screenshot, errors, network, processEvents, close };
   } catch (error) {
     await close();
     throw error;

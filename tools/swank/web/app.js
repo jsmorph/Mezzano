@@ -927,8 +927,11 @@ async function inspectSelectedStop() {
       || !selected || selected.info.state !== ":stopped"
       || selected.info.child || stopCommandPending(selectedStop)) return;
   const command = nextStopInspection(selectedStop);
-  if (command) await mutate("submit", {stop: selectedStop,
-    id: selected.info["next-command-id"], command, argument: null});
+  if (command) {
+    await mutate("submit", {stop: selectedStop,
+      id: selected.info["next-command-id"], command, argument: null});
+    run(refresh);
+  }
 }
 function currentCommandGeneration(command) {
   const info = stops.find(stop => same(stop.token, command.stop))?.info;

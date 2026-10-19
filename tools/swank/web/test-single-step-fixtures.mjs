@@ -9,7 +9,7 @@ await mkdir(output,{recursive:false});
 const q=JSON.stringify;
 function fixtureBootstrap() {
   const saved=sessionStorage.getItem('single-step-fixture');
-  window.fixture=saved?JSON.parse(saved):{generation:0,state:':stopped',results:[],calls:[],steps:0,mode:'paused'};
+  window.fixture=saved?JSON.parse(saved):{generation:0,state:':stopped',results:[],calls:[],steps:0,mode:'paused',holdCondition:true};
   const store=()=>sessionStorage.setItem('single-step-fixture',JSON.stringify(fixture));
   const token=session=>[':stop',session,1];
   const information=()=>({id:1,state:fixture.state,generation:fixture.generation,thread:'Single Step fixture',
@@ -21,7 +21,7 @@ function fixtureBootstrap() {
   window.fetch=async(url,options)=>{
     if(url!=='/api')throw Error('Unexpected fixture fetch '+url);
     const {operation,arguments:args,session}=JSON.parse(options.body);
-    fixture.calls.push({operation,...args});store();let value;
+    fixture.calls.push({operation,...args,time:performance.now()});if(fixture.holdCondition&&fixture.calls.length>50)throw Error('Unbounded pending-inspection requests');store();let value;
     if(['open-session','resume-session'].includes(operation))value={};
     else if(operation==='monitor-state')value={listener:{package:'CL-USER',prompt:'Command: ',debugger:{stop:token(session),...information()}},jobs:[],
       stops:[{token:token(session),information:information()}]};
@@ -45,7 +45,7 @@ function fixtureBootstrap() {
       if(name==='single-step') {
         fixture.steps++;fixture.generation++;fixture.state=fixture.mode==='fast'?':stopped':':stepping';state=':unwound';result=null;
       } else if(name==='frames')result=[{function:frame().function,frame:[':frame',session,fixture.generation]}];
-      else if(name==='condition')result='Condition-'+generation;
+      else if(name==='condition'){result='Condition-'+generation;if(fixture.holdCondition)state=':running';}
       else if(name==='restarts')result=[{index:0,name:'CONTINUE-'+generation,description:'Continue fixture','default-p':true}];
       else if(name==='current-frame')result=frame();
       else if(name==='evaluate')result=['HISTORY-'+generation];
@@ -81,7 +81,28 @@ async function seedHistory() {
 const evidence={fixtureOnly:true,guestRequests:0,cases:[]};
 try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument',{source:'('+fixtureBootstrap.toString()+')()'});
-  await browser.send('Page.navigate',{url});await ready();
+  await browser.send('Page.navigate',{url});
+  await browser.waitFor("typeof fixture!=='undefined' && fixture.results.some(row=>row.operation===':condition' && row.state===':running') && !busy");
+  const pendingStart=await browser.evaluate("({time:performance.now(),calls:fixture.calls.length})");
+  await browser.evaluate("void run(()=>{fixture.queuedAction='completed'})");
+  await browser.waitFor("fixture.queuedAction==='completed' && performance.now()-"+pendingStart.time+">=3500 && !busy");
+  const pendingEnd=await browser.evaluate("({time:performance.now(),calls:fixture.calls,results:fixture.results})");
+  const pendingPolls=pendingEnd.calls.slice(pendingStart.calls).filter(row=>row.operation==='monitor-state').length;
+  assert(pendingPolls>=2&&pendingPolls<=3,'Pending inspection must retain ordinary timed polling');
+  assert.equal(pendingEnd.calls.filter(row=>row.operation==='submit'&&row.command==='condition').length,1);
+  assert.equal(pendingEnd.calls.filter(row=>row.operation==='submit'&&row.command==='current-frame').length,0);
+  const initialSubmits=pendingEnd.calls.filter(row=>row.operation==='submit');
+  assert.deepEqual(initialSubmits.map(row=>row.command),['frames','restarts','condition']);
+  const initialSpacing=initialSubmits.slice(1).map((row,index)=>row.time-initialSubmits[index].time);
+  assert(initialSpacing.every(milliseconds=>milliseconds<1000),'Terminal inspections waited for timer polling');
+  evidence.inspectionQueue={pendingStart,pendingEnd,pendingPolls,initialSpacing};
+  await browser.evaluate("fixture.results.find(row=>row.operation===':condition').state=':returned';fixture.holdCondition=false;void run(refresh)");
+  await ready();
+  assert.deepEqual(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').map(row=>row.command)"),['frames','restarts','condition','current-frame']);
+  await browser.evaluate("fixture.postTerminalOrder=[];void run(()=>{fixture.postTerminalOrder.push('first')});void run(()=>{fixture.postTerminalOrder.push('second')})");
+  await browser.waitFor("fixture.postTerminalOrder.length===2&&!busy");
+  evidence.postTerminalFifo=await browser.evaluate('fixture.postTerminalOrder');
+  assert.deepEqual(evidence.postTerminalFifo,['first','second']);
   await seedHistory();
   const before=await snapshot();evidence.before=before;
   assert.equal(before.frame.result.function,'FUNCTION-0');
@@ -142,9 +163,12 @@ try {
   await browser.screenshot(output+'/observed-debugger.png');
   assert.deepEqual(browser.errors,[]);
   await writeFile(output+'/result.json',JSON.stringify({...evidence,errors:browser.errors},null,2)+'\n');
-  console.log('PASS observed/missed Single Step transitions, stepping reload/association, both editor drafts/cursors, generation-filtered live views, disabled historical Inspector references, transcript and exact-ID replay; fixture-only, zero guest requests');
+  console.log('PASS immediate/pending inspection queue, observed/missed Single Step transitions, stepping reload/association, both editor drafts/cursors, generation-filtered live views, disabled historical Inspector references, transcript and exact-ID replay; fixture-only, zero guest requests');
 } catch(error) {
   await browser.screenshot(output+'/failure.png');
   await writeFile(output+'/failure.json',JSON.stringify({error:error.stack,snapshot:await snapshot(),errors:browser.errors},null,2)+'\n');
   throw error;
-} finally {await browser.close();}
+} finally {
+  await browser.close();
+  await writeFile(output+'/browser-process-events.json',JSON.stringify(browser.processEvents,null,2)+'\n');
+}
