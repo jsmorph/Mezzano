@@ -187,11 +187,7 @@
                          (lambda-information-enable-keys info)
                          (lambda-information-allow-other-keys info)))))
         ;; Add declarations to the environment.
-        (let* ((env (extend-environment env
-                                        :variables (mapcar (lambda (x)
-                                                             (list x (make-instance 'special-variable :name x)))
-                                                           (pick-variables 'special declares))
-                                        :declarations declares))
+        (let* ((env (extend-environment env :declarations declares))
                ;; Process lambda body.
                (body-ast (pass1-wrap-body-with-type-declarations
                           (pass1-form `(progn ,@body) env)

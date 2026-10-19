@@ -307,6 +307,16 @@ Lexical parameters use existing #(:BINDING name) descriptors.  A special paramet
 
 The internal service reader returns the layout, (descriptor value available) observations, and a record-level unavailability reason.  It validates the live owning x86-64 frame first and reads through existing locations.  Before binding, missing storage reports an unavailable value.  An unbound special cell also reports an unavailable value.  A bound NIL remains available.  Malformed metadata and accessible-storage errors propagate.  Reading these bindings does not reconstruct a new invocation's argument list.
 
+## Parameter type scopes
+
+At function DEBUG 3, each instruction's source scope contains :PARAMETER-TYPES entries of the form (descriptor type).  A lexical parameter uses its existing binding descriptor.  A special parameter uses its hidden saved-cell descriptor, and the type describes the cell's value.  Required, optional, rest, keyword, and declared supplied-p bindings participate.
+
+The compiler reads the type table by parameter binding identity in that instruction's environment.  A LOCALLY declaration can narrow the parameter's type even when a later same-name binding hides it.  The hidden parameter retains that narrowing, and leaving LOCALLY restores the broader declaration.  Visible :VARIABLES records continue to describe the inner binding.
+
+A present T type is known and unrestricted.  A present NIL type is the empty type.  An absent entry means the compiler lacks that parameter's declaration at the instruction.  An empty list describes a known layout with no available type entries.  Missing parameter context records :UNKNOWN.  The seven-element parameter layout, location records, and GC metadata retain their representations.
+
+Native x86-64 DEBUG 3/SAFETY 3/SPEED 1 tests cover current-PC declarations, lexical and special shadowing, optional defaults, supplied-p bindings, AST copying before and after lowering, compiled-file descriptor identity, and moving full GC.  DEBUG 0 emission checks unavailable context.  Both architecture emitters passed metadata tests.  ARM64 execution and saved-image execution of this metadata remain untested.
+
 ## Callable provenance metadata
 
 Function debug-info field 14, at zero-based list index 13, records callable provenance at DEBUG 3:

@@ -55,6 +55,8 @@ COPY-FORM initializes the copied lambda's layout from the source layout.  COPY-V
 
 For each special parameter, LOWER-SPECIAL-BINDINGS preserves the special-stack cell immediately after its existing %%BIND, through one hidden lexical variable.  The descriptor therefore identifies the parameter's cell despite later rebinding of the same symbol.  Before parameter binding, that location is unavailable.  The additional value uses existing debug liveness and GC roots.  [The backend metadata reference](compiler-backend.md#source-parameter-metadata) describes its emitted representation.
 
+PASS1 reuses each explicit special parameter object when extending the body environment for declarations.  The parameter record and instruction type table therefore retain the same compiler binding identity.  Per-instruction [parameter type scopes](compiler-backend.md#parameter-type-scopes) preserve declarations for a parameter hidden by a later same-name binding.
+
 ## Global definition provenance
 
 The internal declaration (LAMBDA-NAME name :GLOBAL T) identifies a global definition separately from its display name.  Native and cross DEFUN expansions emit it.  Named COMPILE adds it when compiling nonmacro lambda source.  Installing an already compiled function under another name preserves that function's source provenance.

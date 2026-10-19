@@ -194,6 +194,12 @@
         (let ((*emitted-lap* '())
               (debug-layouts (make-hash-table :test 'eq))
               (debug-scopes (make-hash-table :test 'eq))
+              (source-parameters
+                (let ((lambda (ir::ast backend-function)))
+                  (when (and (= (c::optimize-quality lambda 'debug) 3)
+                             (not (getf (c:lambda-information-plist lambda)
+                                        'c::unwind-protect-cleanup)))
+                    (c::lambda-information-source-parameters lambda))))
               (*callee-save-loc* (loop for reg in uses-callee-save-regs
                                        collect (cons reg (allocate-stack-slots 1))))
               (*current-frame-layout* (coerce (loop
@@ -236,7 +242,7 @@
             (emit-debug-info
              (gethash inst-or-label debug-map '()) *spill-locations* debug-layouts
              (c::debug-source-scope (ir:instruction-source-environment inst-or-label)
-                                   *target* debug-scopes))
+                                   *target* debug-scopes source-parameters))
             (cond ((typep inst-or-label 'ir:label)
                    (push (gethash inst-or-label *labels*) *emitted-lap*))
                   (t

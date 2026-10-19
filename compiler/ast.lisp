@@ -231,7 +231,32 @@
                      (push (debug-variable-identity binding) result)))))
     (nreverse result)))
 
-(defun debug-source-scope (environment &optional target-architecture cache)
+(defun debug-parameter-types (environment parameters)
+  (unless parameters
+    (return-from debug-parameter-types :unknown))
+  (let ((declarations (slot-value environment '%variable-type-decls))
+        (result nil))
+    (flet ((parameter (binding)
+             (when binding
+               (multiple-value-bind (variable storage)
+                   (etypecase binding
+                     (lexical-variable (values binding binding))
+                     (simple-vector (values (svref binding 1) (svref binding 2))))
+                 (let ((declaration (assoc variable declarations :test #'eq)))
+                   (when (and declaration storage)
+                     (push (list (debug-variable-identity storage) (second declaration))
+                           result)))))))
+      (dolist (binding (svref parameters 1)) (parameter binding))
+      (dolist (entry (svref parameters 2))
+        (parameter (first entry))
+        (parameter (second entry)))
+      (parameter (svref parameters 3))
+      (dolist (entry (svref parameters 4))
+        (parameter (second entry))
+        (parameter (third entry))))
+    (nreverse result)))
+
+(defun debug-source-scope (environment &optional target-architecture cache parameters)
   (when (member environment '(nil :unknown))
     (return-from debug-source-scope environment))
   (check-type environment lexical-environment)
@@ -239,13 +264,14 @@
     (return-from debug-source-scope
       (or (gethash environment cache)
           (setf (gethash environment cache)
-                (debug-source-scope environment target-architecture)))))
+                (debug-source-scope environment target-architecture nil parameters)))))
   (let ((target (canonicalize-target target-architecture)))
     (flet ((bindings (slot)
              (remove-duplicates (slot-value environment slot)
                                 :test #'equal :key #'first :from-end t)))
       (list
        :lexical-environment (debug-lexical-ancestry environment)
+       :parameter-types (debug-parameter-types environment parameters)
        :variables
        (loop for (name binding) in (bindings '%variables)
              collect
