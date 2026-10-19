@@ -27,6 +27,8 @@ function fixtureBootstrap() {
       stops:[{token:token(session),information:information()}]};
     else if(operation==='information')value=information();
     else if(operation==='result')value=fixture.results[args.id];
+    else if(operation==='document-query'&&args.action==='catalog')value={title:'All Documents',topics:[],
+      'search-options':{adjacent:null,mode:':substring',modes:[{label:'Exact',value:':exact'},{label:'Initial',value:':initial'},{label:'Substring',value:':substring'}]}};
     else if(operation==='listener-assistance') {
       const text=args.source.trim();
       if(args.action==='parse') {
@@ -35,6 +37,7 @@ function fixtureBootstrap() {
         value={operation:name,argument:name==='evaluate'?text:null,'complete-p':true};
       } else value={text:args.source,cursor:args.cursor};
     } else if(operation==='submit') {
+      if(fixture.rejectNext){fixture.rejectNext=false;store();return new Response(JSON.stringify({error:':stop-busy',uncertain:false}),{status:409});}
       if(args.id<fixture.results.length) {
         const previous=fixture.results[args.id];
         if(previous.operation!==':'+args.command||previous.argument!==args.argument)throw Error('Conflicting fixture replay');
@@ -103,7 +106,31 @@ try {
   await browser.waitFor("fixture.postTerminalOrder.length===2&&!busy");
   evidence.postTerminalFifo=await browser.evaluate('fixture.postTerminalOrder');
   assert.deepEqual(evidence.postTerminalFifo,['first','second']);
+  const messageDraft='(values :message-recovery)';
+  await browser.evaluate(`fixture.rejectNext=true;setEditor($('source'),${q(messageDraft)},${messageDraft.length});void queueEvaluation()`);
+  await ready();
+  const rejectedMessage=await browser.evaluate(`({message:$('message').textContent,draft:$('source').value,next:fixture.results.length,record:state.pending.findLast(row=>row.status==='rejected')})`);
+  assert.equal(rejectedMessage.message,':stop-busy');assert.equal(rejectedMessage.draft,messageDraft);
+  assert.equal(rejectedMessage.record.error,':stop-busy');
+  const messageWait=await browser.evaluate('performance.now()');
+  await browser.waitFor(`performance.now()-${messageWait}>=1700&&!busy`);
+  assert.equal(await browser.evaluate("$('message').textContent"),':stop-busy');
+  assert.equal(await browser.evaluate('fixture.results.length'),rejectedMessage.next);
+  await browser.evaluate('void queueEvaluation()');await ready();
+  assert.equal(await browser.evaluate("$('message').textContent"),'');
+  assert.deepEqual(await browser.evaluate(`state.pending.find(row=>row.id===${q(rejectedMessage.record.id)})`),rejectedMessage.record);
+  await browser.evaluate("report(new Error('Earlier failure'));void run(async()=>{report(new Error('Newer failure'))})");await ready();
+  assert.equal(await browser.evaluate("$('message').textContent"),'Newer failure');
+  await browser.evaluate("void run(async()=>{showActivity('examiner');report(new Error('Nested restore failure'))},{background:true})");await ready();
+  assert.equal(await browser.evaluate("$('message').textContent"),'Nested restore failure');
+  assert.deepEqual(await browser.evaluate("fixture.calls.filter(row=>row.operation==='document-query').map(row=>row.action)"),['catalog']);
+  await browser.evaluate("showActivity('listener')");
+  await browser.evaluate("void run(async()=>{throw new Error('Explicit failure')})");await ready();
+  assert.equal(await browser.evaluate("$('message').textContent"),'Explicit failure');
+  await browser.evaluate("message('Informational notice')");
   await seedHistory();
+  assert.equal(await browser.evaluate("$('message').textContent"),'Informational notice');
+  evidence.messageLifetime={rejectedMessage,backgroundPreserved:true,successfulExplicitRecoveryCleared:true,requestHistoryPreserved:true,newerFailurePreserved:true,nestedActivityFailurePreserved:true,failingActionReported:true,informationalNoticePreserved:true};
   const before=await snapshot();evidence.before=before;
   assert.equal(before.frame.result.function,'FUNCTION-0');
   const draft='(values :preserved-draft)';
@@ -162,6 +189,8 @@ try {
   assert.deepEqual(await browser.evaluate("[$('debugger-command').value,$('debugger-command').selectionStart,$('debugger-command').selectionEnd]"),['standalone draft',3,9]);
   await browser.screenshot(output+'/observed-debugger.png');
   assert.deepEqual(browser.errors,[]);
+  const escapedApiRequests=browser.network.filter(row=>row.method==='Network.requestWillBeSent'&&new URL(row.parameters.request.url).pathname==='/api');
+  assert.deepEqual(escapedApiRequests,[]);evidence.apiRequestsSentOverHttp=escapedApiRequests.length;
   await writeFile(output+'/result.json',JSON.stringify({...evidence,errors:browser.errors},null,2)+'\n');
   console.log('PASS immediate/pending inspection queue, observed/missed Single Step transitions, stepping reload/association, both editor drafts/cursors, generation-filtered live views, disabled historical Inspector references, transcript and exact-ID replay; fixture-only, zero guest requests');
 } catch(error) {

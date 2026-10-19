@@ -513,7 +513,7 @@ const examiner = (() => {
       updatePaneTracks();
       if (content.id === "examiner-pages" && !typeout && !loading) {
         viewer().scroll = content.scrollTop;
-        clearTimeout(scrollTimer); scrollTimer = setTimeout(() => run(async () => persist()), 200);
+        clearTimeout(scrollTimer); scrollTimer = setTimeout(() => run(async () => persist(), {background: true}), 200);
       }
     };
     track.onclick = event => {

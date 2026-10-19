@@ -20,6 +20,7 @@ for (const [index, item] of state.inputHistory.entries()) {
 let connected = false;
 let busy = false;
 let actions = Promise.resolve();
+let reportedError = null;
 let activity = "listener";
 let selectedStop = null;
 const frameCommands = ["current-frame", "select-frame", "next-frame", "previous-frame", "top-frame", "bottom-frame"];
@@ -55,6 +56,7 @@ function same(left, right) {
 }
 function message(text) {
   $("message").textContent = text;
+  reportedError = null;
 }
 function node(tag, text, className) {
   const element = document.createElement(tag);
@@ -100,16 +102,19 @@ function report(error) {
     : [":released-inspection-reference", ":expired-inspection-reference"].includes(error.reason)
       ? "This Inspector reference is no longer valid. Inspect the value again."
     : error.message || String(error));
+  reportedError = {};
   if (error.reason === ":expired-session") connected = false;
   $("process-state").textContent = connected ? "Request Error" : "Disconnected";
 }
-function run(action) {
+function run(action, {background = false} = {}) {
   const perform = async () => {
     busy = true;
     updateStatus();
     let completed = false;
+    const priorError = reportedError;
     try {
       await action();
+      if (!background && priorError && reportedError === priorError) message("");
       completed = true;
     } catch (error) {
       report(error);
@@ -127,8 +132,8 @@ function run(action) {
       if (completed && (nextCommandOutput() || nextHistoricalCommand())) setTimeout(() => {
         if (connected && !busy) {
           const output = nextCommandOutput();
-          if (output) run(() => loadCommandOutput(output));
-          else if (nextHistoricalCommand()) run(loadHistoricalCommand);
+          if (output) run(() => loadCommandOutput(output), {background: true});
+          else if (nextHistoricalCommand()) run(loadHistoricalCommand, {background: true});
         }
       }, 0);
     }
@@ -383,7 +388,7 @@ function showActivity(name) {
   $("system-menu").close();
   if (name === "listener") $("source").focus();
   else if (name === "debugger" && selectedStop) $("debugger-command").focus();
-  else if (name === "examiner") { $("examiner-command").focus(); run(() => examiner.show()); }
+  else if (name === "examiner") { $("examiner-command").focus(); run(() => examiner.show(), {background: true}); }
   else $("page").focus();
   updateListenerInput(name === "listener");
   renderStops();
@@ -486,7 +491,7 @@ function scheduleAssistance(editor, action, presentation) {
         && (editor.value !== source || editorCursor(editor) !== cursor)) {
       scheduleAssistance(editor, "inspect");
     }
-  });
+  }, {background: action === "inspect"});
   if (action === "inspect") assistanceTimers.set(editor, setTimeout(request, 150));
   else request();
 }
@@ -930,7 +935,7 @@ async function inspectSelectedStop() {
   if (command) {
     await mutate("submit", {stop: selectedStop,
       id: selected.info["next-command-id"], command, argument: null});
-    run(refresh);
+    run(refresh, {background: true});
   }
 }
 function currentCommandGeneration(command) {
@@ -1716,6 +1721,6 @@ setInterval(() => {
     month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false});
   for (const element of $("who-line").children) placeTextOnPixels(element);
 }, 1000);
-setInterval(() => { if (connected && !busy) run(refresh); }, 1500);
+setInterval(() => { if (connected && !busy) run(refresh, {background: true}); }, 1500);
 if (storageError) report(storageError);
-else run(connect);
+else run(connect, {background: true});

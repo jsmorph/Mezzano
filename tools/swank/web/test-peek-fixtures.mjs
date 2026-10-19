@@ -4,6 +4,7 @@ import {join,resolve} from 'node:path';
 import {openBrowser} from './browser-test-support.mjs';
 
 const url=process.argv[2] ?? 'http://127.0.0.1:8765/';
+assert.equal(new URL(url).hostname,'127.0.0.1','This intercepted fixture only uses local static files');
 const output=resolve(process.argv[3] ?? 'peek-fixture-results');
 await mkdir(output,{recursive:true});
 const browser=await openBrowser('about:blank');
@@ -12,7 +13,7 @@ async function key(key,code,number){
 }
 try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument',{source:`
-    window.peekFixture={count:0,active:0,maximum:0,delay:0,errors:[],sample:{title:'Processes',
+    window.peekFixture={count:0,active:0,maximum:0,delay:0,errors:[],calls:[],commands:{},sample:{title:'Processes',
       'run-time-units-per-second':1000000,threads:[
         {name:'Notifications 1',state:':sleeping',priority:':normal','wait-kind':':condition-variable',wait:'User Input','run-time':1234567,stops:[]},
         {name:'same <img src=x>',state:':waiting-for-page-write',priority:':normal','wait-kind':null,wait:null,'run-time':0,stops:[]},
@@ -20,12 +21,32 @@ try {
       ]}};
     window.fetch=async (url,options)=>{
       if(url!=='/api')throw new Error('Unexpected fixture fetch '+url);
-      const request=JSON.parse(options.body);let value;
+      const request=JSON.parse(options.body);peekFixture.calls.push(request);let value;
       switch(request.operation){
         case 'open-session':case 'resume-session':case 'release-session':value={};break;
         case 'jobs':case 'stops':value=[];break;
         case 'monitor-state': value={listener:{package:'COMMON-LISP-USER',mode:':command-preferred',prompt:'Command: ','busy-p':false,'default-pathname':'SYS:HOME;'},jobs:[],stops:window.peekFixture.stops || []};break;
         case 'listener-information':value={package:'COMMON-LISP-USER',mode:':command-preferred',prompt:'Command: ','busy-p':false,'default-pathname':'SYS:HOME;'};break;
+        case 'submit':{
+          const args=request.arguments,record=peekFixture.stops.find(row=>JSON.stringify(row.token)===JSON.stringify(args.stop));
+          if(!record||args.stop[1]!==request.session||args.argument!==null||record.information.generation!==0||record.information.child)throw new Error('Unexpected Peek inspection stop or argument');
+          const commands=peekFixture.commands[args.stop[2]]??=[];
+          if(args.id!==commands.length||args.command!==['frames','restarts','condition','current-frame'][commands.length])throw new Error('Unexpected Peek command ID or operation');
+          let result;
+          if(args.command==='frames')result=[{frame:[':frame',request.session,100+args.stop[2]],function:'Peek fixture function'}];
+          else if(args.command==='restarts')result=[];
+          else if(args.command==='condition')result='Peek fixture stop '+args.stop[2];
+          else if(args.command==='current-frame')result={index:0,function:'Peek fixture function',locals:[]};
+          else throw new Error('Unexpected Peek debugger command '+args.command);
+          commands.push({state:':returned',operation:':'+args.command,generation:0,result,'current-boot-p':true,'output-length':0});
+          record.information['next-command-id']=commands.length;value=args.id;break;
+        }
+        case 'result':{
+          const args=request.arguments,record=peekFixture.stops.find(row=>JSON.stringify(row.token)===JSON.stringify(args.stop));
+          const commands=record&&peekFixture.commands[args.stop[2]];
+          if(!record||args.stop[1]!==request.session||!Number.isInteger(args.id)||args.id<0||args.id>=(commands?.length??0))throw new Error('Unexpected Peek result stop or command ID');
+          value=commands[args.id];break;
+        }
         case 'processes':{
           const f=window.peekFixture;f.count++;f.active++;f.maximum=Math.max(f.maximum,f.active);
           try{
@@ -56,6 +77,15 @@ try {
     const range=document.createRange();range.selectNodeContents(element);
     return range.getBoundingClientRect().right <= element.getBoundingClientRect().right;
   })()`));
+  await browser.waitFor('!busy&&peekFixture.active===0');
+  const nestedBefore=await browser.evaluate('peekFixture.count');
+  await browser.evaluate("void run(async()=>{showActivity('peek');report(new Error('Nested Peek failure'))},{background:true})");
+  await browser.waitFor(`peekFixture.count>${nestedBefore}&&!busy&&peekFixture.active===0`);
+  assert.equal(await browser.evaluate("$('message').textContent"),'Nested Peek failure');
+  const explicitBefore=await browser.evaluate('peekFixture.count');
+  await key(' ','Space',32);
+  await browser.waitFor(`peekFixture.count>${explicitBefore}&&!busy&&peekFixture.active===0`);
+  assert.equal(await browser.evaluate("$('message').textContent"),'');
   await browser.screenshot(join(output,'processes.png'));
   await browser.click('.process-name');
   await browser.waitFor('document.querySelector("#peek-process-menu").open');
@@ -71,8 +101,8 @@ try {
     const parent=[':stop',state.session,18],child=[':stop',state.session,19];
     peekFixture.sample.threads[2].stops.push(parent,child);
     peekFixture.stops=[
-      {token:parent,information:{id:18,thread:'same <img src=x>',state:':stopped',parent:null,child,'next-command-id':0}},
-      {token:child,information:{id:19,thread:'same <img src=x>',state:':stopped',parent,child:null,'next-command-id':0}}
+      {token:parent,information:{id:18,thread:'same <img src=x>',state:':stopped',generation:0,'current-frame':0,parent:null,child,'next-command-id':0}},
+      {token:child,information:{id:19,thread:'same <img src=x>',state:':stopped',generation:0,'current-frame':0,parent,child:null,'next-command-id':0}}
     ];
   })()`);
   await key(' ','Space',32);
@@ -113,6 +143,7 @@ try {
   assert(await browser.evaluate('document.querySelector("#peek-sample-status").textContent.includes("Update interval: 1 seconds.")'));
   const before=await browser.evaluate('peekFixture.count');
   await browser.waitFor(`peekFixture.count >= ${before+2}`);
+  assert.equal(await browser.evaluate("$('message').textContent"),'Peek update interval: 1 seconds.');
   await key('F12','F12',123);
   const helpCount=await browser.evaluate('peekFixture.count');
   await new Promise(resolve=>setTimeout(resolve,1250));
@@ -128,6 +159,7 @@ try {
   assert.equal(await browser.evaluate('document.querySelectorAll(".process-name").length'),3);
   await browser.screenshot(join(output,'stale409.png'));
   await browser.waitFor('document.querySelector("#peek-sample-status").dataset.state === "sampled"');
+  assert.equal(await browser.evaluate("$('message').textContent"),':released-stop');
   await browser.evaluate('peekFixture.errors=[502]');await key(' ','Space',32);
   await browser.waitFor('!connected && document.querySelector("#peek-sample-status").dataset.state === "stale"');
   const disconnectedCount=await browser.evaluate('peekFixture.count');
@@ -139,11 +171,15 @@ try {
   const hiddenCount=await browser.evaluate('peekFixture.count');
   await new Promise(resolve=>setTimeout(resolve,1250));
   assert.equal(await browser.evaluate('peekFixture.count'),hiddenCount);
-  await browser.evaluate("delete document.hidden;document.dispatchEvent(new Event('visibilitychange'))");
+  await browser.evaluate("report(new Error('Visibility refresh failure'));delete document.hidden;document.dispatchEvent(new Event('visibilitychange'))");
   await browser.waitFor(`peekFixture.count > ${hiddenCount}`);
+  await browser.waitFor('!busy&&peekFixture.active===0');
+  assert.equal(await browser.evaluate("$('message').textContent"),'Visibility refresh failure');
   await browser.evaluate("peekFixture.sample.threads[0].name = 'x'.repeat(160)");
   await key(' ','Space',32);
   await browser.waitFor('document.querySelector(".process-name").textContent.length === 160');
+  await browser.waitFor('!busy&&peekFixture.active===0');
+  assert.equal(await browser.evaluate("$('message').textContent"),'');
   await browser.send('Emulation.setDeviceMetricsOverride',{width:640,height:720,deviceScaleFactor:1,mobile:false});
   assert(await browser.evaluate('document.documentElement.scrollWidth <= innerWidth'));
   assert(await browser.evaluate('document.querySelector("#page").scrollWidth > document.querySelector("#page").clientWidth'));
@@ -155,9 +191,13 @@ try {
   await new Promise(resolve=>setTimeout(resolve,1250));
   assert.equal(await browser.evaluate('peekFixture.count'),otherCount);
   assert.deepEqual(browser.errors,[]);
-  const result={fixtureOnly:true,guestRequests:0,count:otherCount,maximum:await browser.evaluate('peekFixture.maximum'),errors:browser.errors};
+  const escapedApiRequests=browser.network.filter(row=>row.method==='Network.requestWillBeSent'&&new URL(row.parameters.request.url).pathname==='/api');assert.deepEqual(escapedApiRequests,[]);
+  const requestCoverage=await browser.evaluate('peekFixture.calls');
+  assert.deepEqual(requestCoverage.filter(row=>row.operation==='submit').map(row=>row.arguments.command),['frames','restarts','condition','current-frame']);
+  assert.deepEqual(requestCoverage.filter(row=>row.operation==='submit').map(row=>[row.arguments.stop[2],row.arguments.id,row.arguments.argument]),[[19,0,null],[19,1,null],[19,2,null],[19,3,null]]);
+  const result={fixtureOnly:true,guestRequests:0,apiRequestsSentOverHttp:escapedApiRequests.length,requestCoverage,messageLifetime:{nestedPeekPreserved:true,explicitSampleCleared:true,timerPreservedErrorAndNotice:true,visibilitySamplePreserved:true},count:otherCount,maximum:await browser.evaluate('peekFixture.maximum'),errors:browser.errors};
   await writeFile(join(output,'result.json'),JSON.stringify(result,null,2));
   console.log('PASS fixture Peek rows, clipped state text, safe text, Describe, expired-session links, exact nested-stop selection, interval bounds/rejection, timed/manual refresh, hidden mode/activity/tab, nonoverlap, stale409 retry, transport reconnect, narrow horizontal scrolling, and Quit');
   console.log(JSON.stringify(result));
-}catch(error){await browser.screenshot(join(output,'failure.png'));throw error}
-finally{await browser.close()}
+}catch(error){await writeFile(join(output,'failure.json'),JSON.stringify({error:error.stack,observed:await browser.evaluate("({activity,connected,busy,message:$('message').textContent,peekFixture})"),errors:browser.errors},null,2)+'\n');await browser.screenshot(join(output,'failure.png'));throw error}
+finally{await browser.close();await writeFile(join(output,'browser-process-events.json'),JSON.stringify(browser.processEvents,null,2)+'\n')}

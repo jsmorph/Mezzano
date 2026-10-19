@@ -17,7 +17,7 @@
   }
   function schedule() {
     stopTimer();
-    if (visible() && !pending) timer = setTimeout(() => refreshSample(), interval * 1000);
+    if (visible() && !pending) timer = setTimeout(() => refreshSample(true), interval * 1000);
   }
   function status(error) {
     const element = $("peek-sample-status");
@@ -80,7 +80,7 @@
     status();
     updateTracks();
   }
-  function refreshSample() {
+  function refreshSample(background = false) {
     if (!visible() || pending) return;
     stopTimer();
     pending = true;
@@ -99,9 +99,9 @@
         pending = false;
         schedule();
       }
-    });
+    }, {background});
   }
-  function setMode(next) {
+  function setMode(next, background = false) {
     mode = next;
     digits = "";
     stopTimer();
@@ -111,7 +111,7 @@
       item.setAttribute("aria-pressed", String(item.dataset.peekMode === mode));
     }
     if (activity === "peek") $("window-label").textContent = mode === "processes" ? "Processes" : "Peek Help";
-    if (mode === "processes") refreshSample();
+    if (mode === "processes") refreshSample(background);
     $("page").focus();
     updateTracks();
   }
@@ -125,13 +125,13 @@
     $("peek-modes").hidden = name !== "peek";
     if (name === "peek") {
       if (previous !== "peek") previousActivity = previous;
-      setMode(mode);
+      setMode(mode, true);
       $("mouse-help").textContent = $("peek").dataset.help;
     } else stopTimer();
   });
   document.addEventListener("visibilitychange", () => {
     stopTimer();
-    if (visible()) refreshSample();
+    if (visible()) refreshSample(true);
   });
   document.addEventListener("keydown", event => {
     if (activity !== "peek" || document.querySelector("dialog[open]") || event.ctrlKey || event.altKey || event.metaKey) return;
