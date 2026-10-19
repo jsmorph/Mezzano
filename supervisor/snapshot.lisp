@@ -3,6 +3,7 @@
 (in-package :mezzano.supervisor)
 
 (sys.int::defglobal *snapshot-in-progress* nil)
+(sys.int::defglobal *snapshot-writeout-in-progress* nil)
 (sys.int::defglobal *snapshot-state*)
 (sys.int::defglobal *snapshot-inhibit*)
 
@@ -376,7 +377,8 @@ Returns 4 values:
         (setf bml4-block (snapshot-block-map))
         (debug-print-line "Updating freelist.")
         (setf (values freelist-block previously-deferred-free-blocks)
-              (snapshot-freelist))))
+              (snapshot-freelist)))
+      (setf *snapshot-writeout-in-progress* t))
     (snapshot-write-back-pages)
     ;; Update the block map & freelist entries in the header.
     (debug-print-line "Updating disk header.")
@@ -397,6 +399,7 @@ Returns 4 values:
       (free-page header))
     (with-rw-lock-write (*vm-lock*)
       (store-release-deferred-blocks previously-deferred-free-blocks)))
+  (setf *snapshot-writeout-in-progress* nil)
   (set-snapshot-light nil)
   (debug-print-line "End snapshot."))
 
@@ -449,6 +452,7 @@ This event will be signalled when the epoch changes."
 (defun initialize-snapshot ()
   (when (not (boundp '*snapshot-state*))
     (setf *snapshot-state* (make-event :name 'snapshot-not-in-progress)))
+  (setf *snapshot-writeout-in-progress* nil)
   (setf (event-state *snapshot-state*) t)
   (cond ((boundp '*snapshot-epoch*)
          (setf (event-state *snapshot-epoch*) t)

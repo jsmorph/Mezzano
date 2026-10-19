@@ -2151,6 +2151,9 @@ Additionally update the card table offset fields and clear the mark bits."
   "The GC will always do a major cycle if there is is less than this much memory available.")
 
 (defun gc-cycle (force-major)
+  ;; Snapshot releases deferred store blocks after committing its header.
+  (when mezzano.supervisor::*snapshot-writeout-in-progress*
+    (mezzano.supervisor:wait-for-snapshot-completion))
   (mezzano.supervisor::set-gc-light t)
   (gc-log "GC in progress... " force-major)
   (incf *gc-cycles*)

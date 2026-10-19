@@ -73,6 +73,10 @@ Each mapped page contributes at most one reservation.  Wired pages retain their 
 
 `MEZZANO.SUPERVISOR::BLOCK-RESERVATION-STATISTICS` returns the computed page reservations, recorded reservation counter, and free backing-store blocks as three values.  The function runs in wired memory, inhibits snapshots, and reads the map and counters under the VM lock.  It returns before the caller allocates or prints.  For a writable hosted image, the counter equals the computed page reservations plus 256.  The read-only and freestanding accounting policies differ.
 
+Snapshot preparation can increase replacement reservations while old image blocks remain allocated.  `TAKE-SNAPSHOT` marks prepared writeout before resuming ordinary threads.  `GC-CYCLE`, whose caller already owns the stopped world, waits on the existing Snapshot-completion event during this phase.  Snapshot, disk, and pager supervisor threads continue.  Header commit and deferred-block release precede phase completion.  Collection then begins its counters and semispace changes.  The reported collection pause includes this wait.
+
+A requested but inhibited Snapshot has no prepared writeout, so collection can proceed.  Snapshot initialization clears the writeout phase before signaling the preserved completion event after boot.  This sequencing prevents collection from using the temporarily reduced reserve during writeout.  Image capacity still limits the heap and collection destinations.
+
 These counters describe page reservations and allocator capacity.  They do not establish that every allocated disk block remains reachable from the saved image.
 
 Disk page-in

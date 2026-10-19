@@ -717,13 +717,16 @@ To test a restart argument reader across restoration, compile the control fixtur
 
 After the saved image restarts, call `(lispm-debugger-control-test:finish-argument-restore)`.  It verifies expired control, rejected prior-boot replay, the preserved input wait, completion after full GC, and one argument evaluation, restart invocation, and cleanup.  Successful completion releases its job and stop.
 
-The x86-64 copy-on-write test compiles into wired memory and uses a private page to check protection transitions.  Its save test pauses snapshot writeback, runs a minor collection, and changes an 8192-element vector after capture:
+The x86-64 copy-on-write fixture uses a private page to check protection transitions.  Load its resident kernel helpers first, then load the coordinator with the default allocation policy:
 
 ```lisp
-(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SNAPSHOT-COW.LISP")
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SNAPSHOT-COW-KERNEL.LISP")
       :wired t)
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-SNAPSHOT-COW.LISP"))
 (lispm-snapshot-cow-test:run)
 (lispm-snapshot-cow-test:save-with-collection)
 ```
 
-Wait for the save call to return, then restart that image and call (lispm-snapshot-cow-test:finish-restore).  The restored test invocation removes its writeback hook without repeating the collection or mutation.  FINISH-RESTORE checks that all 8192 values retain their pre-save value, 1111.  The live values after the completed save are 2222.
+The save test first requests an inhibited Snapshot and requires a full collection to complete.  It then holds prepared writeout until the collector owns the stopped world and waits on the Snapshot-completion event.  Collection counters, epoch, and semispace selections must remain unchanged during that wait.  The resident observer then permits real writeout.  The test requires header commit, deferred-block release, and collection completion, with consistent backing-store reservations.  An 8192-element vector changes from 1111 to 2222 after capture.
+
+Wait for the save call to return, then restart that image without another Snapshot.  Call `(lispm-snapshot-cow-test:finish-restore)` without reloading the fixture.  The saved coordinator checks its boot identity before mutation or cleanup.  FINISH-RESTORE removes the saved hook, checks the cleared writeout phase and all 8192 saved values of 1111, performs a full collection, and checks reservations again.
