@@ -92,7 +92,7 @@
        :keywords (("All" :boolean "No" "Yes")))
       (:name "Show Backtrace" :id :show-backtrace :help "Display retained call frames.")
       (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
-      (:name "Show Frame" :id :show-frame :help "Display the selected frame and available locals. Original argument values are unavailable.")
+      (:name "Show Frame" :id :show-frame :help "Display the selected function, original supplied arguments, current source parameters, and available locals.")
       (:name "Show Local" :id :show-local :type :local :help "Display All locals, or a local by its zero-based decimal index.")
       (:name "Set Current Frame" :id :set-current-frame :type :frame :help "Select a zero-based frame index from Show Backtrace.")
       (:name "Top Of Stack" :id :top-frame :help "Select and display the newest retained frame.")
