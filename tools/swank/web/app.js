@@ -1379,7 +1379,7 @@ function renderStops() {
     inspect.disabled = !available;
     menuChildren.push(inspect);
     for (const name of [":Single Step", ":Return", ":Reinvoke", ":Reinvoke :Original Args", ":Reinvoke :New Args",
-                        ":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Rest Argument", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
+                        ":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Argument", ":Show Rest Argument", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
                         ":Show Function", ":Show Compiled Code", ":Show Instruction", ":Show Lexical Environment", ":Show Standard Value Warnings",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
                         ":Inspect", ":Describe Last", ":Clear Inspector",
@@ -1488,11 +1488,11 @@ function renderStops() {
       output = node("div", undefined, "debugger-description");
       output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
-    } else if (["single-step", "return", "reinvoke", "arglist", "rest-argument", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
+    } else if (["single-step", "return", "reinvoke", "arglist", "argument", "rest-argument", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                 "set-breakpoint", "clear-breakpoint", "clear-all-breakpoints", "breakpoints",
                 "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
       output = node("div", undefined, "debugger-" + command.command);
-      const name = {"single-step": ":Single Step", return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", "rest-argument": ":Show Rest Argument", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
+      const name = {"single-step": ":Single Step", return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", argument: ":Show Argument", "rest-argument": ":Show Rest Argument", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
         instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
         "standard-value-warnings": ":Show Standard Value Warnings", special: ":Show Special",

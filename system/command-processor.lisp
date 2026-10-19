@@ -65,6 +65,8 @@
       (:name "Describe Last" :id :describe-last :help "Describe this debugger level's * value.")
       (:name "Clear Inspector" :id :clear-inspector :help "Release this debugger level's retained Inspector references.")
       (:name "Show Arglist" :id :show-arglist :help "Display the selected compiled function's argument list.")
+      (:name "Show Argument" :id :show-argument :type :argument
+       :help "Display All current source arguments, or one by its zero-based index. An available indexed value becomes *.")
       (:name "Show Rest Argument" :id :show-rest-argument
        :help "Display the selected frame's current &REST parameter and assign it to *.")
       (:name "Show Function" :id :show-function :help "Display the selected frame's function and assign it to *.")
@@ -207,7 +209,7 @@
     (:pathname (namestring (listener-pathname listener)))
     (:directory (namestring (make-pathname :name :wild :type :wild :version :wild
                                           :defaults (listener-pathname listener))))
-    (:local "All")
+    ((:local :argument) "All")
     (:restart "Default")))
 
 (defun argument-choices (type)
@@ -219,7 +221,7 @@
     (:format '("Brief" "Detailed"))
     (:boolean '("Yes" "No"))
     (:special-environment '("Program" "Debugger" "Streams"))
-    (:local '("All"))
+    ((:local :argument) '("All"))
     (:restart '("Default"))))
 
 (defun argument-prompt (type default)
@@ -228,7 +230,7 @@
                 (:format "Brief or Detailed") (:boolean "Yes or No") (:string "string")
                 (:symbol-source "symbol") (:function-name "compiled function name")
                 (:code-offset "nonnegative decimal or #x hexadecimal byte offset") (:special-environment "Program, Debugger, or Streams")
-                (:local "local index or All") (:frame "frame index")
+                (:argument "argument index or All") (:local "local index or All") (:frame "frame index")
                 (:restart "restart index or Default") (:count "nonnegative frame count"))
           default))
 
@@ -240,7 +242,7 @@
       (cond (exact (setf text exact))
             ((= (length matches) 1) (setf text (first matches)))
             ((> (length matches) 1) (input-error "Ambiguous argument ~S: ~{~A~^, ~}." text matches))
-            ((not (member type '(:local :restart))) (input-error "Invalid argument ~S. Expected ~{~A~^ or ~}." text choices))))
+            ((not (member type '(:argument :local :restart))) (input-error "Invalid argument ~S. Expected ~{~A~^ or ~}." text choices))))
     (case type
       (:package (or (find-package text) (input-error "No package named ~S." text)))
       ((:pathname :directory)
@@ -264,8 +266,8 @@
              ((string-equal text "Streams") :streams)))
       (:boolean (string-equal text "Yes"))
       (:format (if (string-equal text "Detailed") :detailed :brief))
-      ((:frame :local :restart :count)
-       (cond ((and (eq type :local) (string-equal text "All")) :all)
+      ((:frame :argument :local :restart :count)
+       (cond ((and (member type '(:argument :local)) (string-equal text "All")) :all)
              ((and (eq type :restart) (string-equal text "Default")) :default)
              (t (or (and (plusp (length text)) (every #'digit-char-p text) (parse-integer text))
                     (input-error "Expected a nonnegative decimal integer, received ~S." text))))))))
@@ -539,6 +541,8 @@
     (:describe-last (list :operation "describe-object" :display :description))
     (:clear-inspector (list :operation "clear-inspection" :display :inspector))
     (:show-arglist (list :operation "arglist"))
+    (:show-argument (list :operation "argument"
+                          :argument (unless (eq argument :all) argument)))
     (:show-rest-argument (list :operation "rest-argument"))
     (:show-function (list :operation "function"))
     (:show-compiled-code (list :operation "compiled-code"))

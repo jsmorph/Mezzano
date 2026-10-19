@@ -283,7 +283,7 @@ try {
 
   await evaluation('(values 10 20)', ['10', '20']);
   const expectedArglist = `The argument list for ${target} is (REQUIRED &OPTIONAL OPTIONAL &KEY KEY).`;
-  await fill('#source', ':Show Arg');
+  await fill('#source', ':Show Argl');
   await key(' ', 'Space', 32);
   await browser.waitFor("document.querySelector('#source').value.startsWith(':Show Arglist') && !busy");
   await key('Enter', 'Enter', 13);

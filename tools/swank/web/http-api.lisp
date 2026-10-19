@@ -85,7 +85,7 @@
     ("reinvoke" . :reinvoke) ("help" . :help) ("inspect" . :inspect)
     ("modify" . :modify) ("describe-object" . :describe-object)
     ("clear-inspection" . :clear-inspection) ("arglist" . :arglist)
-    ("rest-argument" . :rest-argument)
+    ("argument" . :argument) ("rest-argument" . :rest-argument)
     ("bindings" . :bindings) ("handlers" . :handlers) ("catches" . :catches)
     ("function" . :function) ("compiled-code" . :compiled-code)
     ("instruction" . :instruction) ("single-step" . :single-step)
@@ -138,7 +138,7 @@
      (unless (eq argument 'null) (token argument :object session)))
     ((:invoke-restart :invoke-restart-interactively :select-frame :next-frame :previous-frame)
      (require-integer argument))
-    (:invoke-restart-with-arguments
+    ((:argument :invoke-restart-with-arguments)
      (unless (eq argument 'null) (require-integer argument)))
     (otherwise
      (unless (eq argument 'null) (reject "This debugger command takes no argument."))

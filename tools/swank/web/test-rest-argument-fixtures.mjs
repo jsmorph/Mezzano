@@ -12,8 +12,10 @@ const evidence={fixtureOnly:true,guestRequests:0,checks:[]};
 function bootstrap() {
   const session='a'.repeat(64),stop=[':stop',session,1];
   window.fixture=JSON.parse(sessionStorage.getItem('rest-argument-fixture')||'null')||{
-    records:[],calls:[],executions:0,replays:0,state:':stopped',dropNext:false,index:1,omitArguments:false,
-    frameArguments:'Original positions: 0 = <a> & λ\nCurrent parameters: REST [rest] = NIL\n<img src=x onerror=window.argumentMarkupExecuted=true>',
+    records:[],acceptedArguments:[],calls:[],executions:0,replays:0,argumentExecutions:0,argumentReplays:0,state:':stopped',dropNext:false,argumentDropNext:false,index:1,omitArguments:false,
+    argumentAll:'Arg 0 (Required MARKER): <marker & λ>\nArg 1 (Rest REST): NIL\n<img src=x onerror=window.argumentMarkupExecuted=true>',
+    argumentValues:['Argument 0 (MARKER) = :CURRENT-MARKER.','Argument 1 (REST) = (:CURRENT-TAIL).'],
+    frameArguments:'Original positions: 0 = <a> & λ\nCurrent source parameters:\n  Arg 0 (Required MARKER): :CURRENT-MARKER\n  Arg 1 (Rest REST): (:CURRENT-TAIL)\n<img src=x onerror=window.argumentMarkupExecuted=true>',
     text:'Rest argument REST = (1 "two" λ).'};
   const store=()=>sessionStorage.setItem('rest-argument-fixture',JSON.stringify(fixture));
   const information=()=>({id:1,state:fixture.state,generation:0,thread:'Rest argument fixture',
@@ -47,6 +49,10 @@ function bootstrap() {
       if(args.action==='parse'){
         if(args.cursor!==Array.from(args.source).length)throw Error('Unexpected parser cursor');
         const plans={':Show Rest Argument':{operation:'rest-argument',argument:null},
+          ':Show Argument':{operation:'argument',argument:null},
+          ':Show Argument All':{operation:'argument',argument:null},
+          ':Show Argument 0':{operation:'argument',argument:0},
+          ':Show Argument 1':{operation:'argument',argument:1},
           ':Show Frame':{operation:'current-frame',argument:null,display:':frame'},
           ':Show Local All':{operation:'current-frame',argument:null,display:':locals'},
           ':Show Local 1':{operation:'current-frame',argument:null,display:':locals','local-index':1},
@@ -58,24 +64,28 @@ function bootstrap() {
       else throw Error('Unexpected fixture assistance action');
     }else if(operation==='submit'){
       checkStop(args);
-      const operand=args.command==='select-frame'?0:args.command==='next-frame'?1:null;
+      const operand=args.command==='select-frame'?0:args.command==='next-frame'?1:args.command==='argument'?args.argument:null;
+      if(args.command==='argument'&&args.argument!==null&&![0,1].includes(args.argument))throw Error('Unknown fixture argument index');
       if(args.argument!==operand||!Number.isSafeInteger(args.id)||args.id<0)throw Error('Malformed fixture submission');
       if(args.id<fixture.records.length){
         const previous=fixture.records[args.id];
-        if(previous.operation!==':'+args.command)throw Error('Conflicting fixture replay');
-        fixture.replays++;store();return new Response(JSON.stringify({value:args.id,diagnostics:[]}),{status:200});
+        if(previous.operation!==':'+args.command||JSON.stringify(args)!==JSON.stringify(fixture.acceptedArguments[args.id]))throw Error('Conflicting fixture replay');
+        if(args.command==='argument')fixture.argumentReplays++;else fixture.replays++;store();return new Response(JSON.stringify({value:args.id,diagnostics:[]}),{status:200});
       }
       if(args.id!==fixture.records.length||fixture.state!==':stopped')throw Error('Invalid fixture next ID/state');
       if(args.command==='select-frame')fixture.index=args.argument;
       if(args.command==='next-frame')fixture.index+=args.argument;
       if(fixture.index<0||fixture.index>1)throw Error('Invalid fixture selected frame');
-      const text=args.command==='rest-argument'?fixture.text:['current-frame','select-frame','next-frame'].includes(args.command)?frame():values[args.command];
+      const text=args.command==='argument'?(args.argument===null?fixture.argumentAll:fixture.argumentValues[args.argument]):args.command==='rest-argument'?fixture.text:['current-frame','select-frame','next-frame'].includes(args.command)?frame():values[args.command];
       if(text===undefined)throw Error('Unexpected fixture submit '+args.command);
       fixture.records.push({operation:':'+args.command,generation:0,state:':returned',source:null,
         result:text,'current-boot-p':true,'input-length':0,'input-eof-p':null,'input-waiting-p':null,'output-length':0});
+      fixture.acceptedArguments.push(args);
       if(args.command==='rest-argument')fixture.executions++;
+      if(args.command==='argument')fixture.argumentExecutions++;
       result=args.id;
       if(args.command==='rest-argument'&&fixture.dropNext){fixture.dropNext=false;store();throw Error('Fixture discards accepted rest-argument reply');}
+      if(args.command==='argument'&&fixture.argumentDropNext){fixture.argumentDropNext=false;store();throw Error('Fixture discards accepted argument reply');}
     }else throw Error('Unexpected fixture operation '+operation);
     store();return new Response(JSON.stringify({value:result,diagnostics:[]}),{status:200});
   };
@@ -152,6 +162,53 @@ try {
   assert.equal(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length"),submissionsBeforeReload);
   evidence.frameArguments={full,oneLocal,allLocals,selected,navigated,reloaded,frameCalls,submissionsBeforeReload};
   evidence.checks.push('Opaque Unicode/angle-bracket frame text, local-only filtering, selection/navigation and reload use the existing frame result only.');
+  const argumentRows=()=>browser.evaluate("[...document.querySelectorAll('.debugger-argument')].map(node=>({id:Number(node.dataset.commandId),caption:node.querySelector('.debugger-transcript').textContent,text:node.querySelector('.argument-result').textContent,tagCount:node.querySelector('.argument-result').childElementCount}))");
+  assert.equal(await browser.evaluate('activity'),'listener');
+  const allArgumentText=await browser.evaluate('fixture.argumentAll');
+  await enter('#source',':Show Argument');await ready();
+  await enter('#source',':Show Argument All');await ready();
+  await enter('#source',':Show Argument 0');await ready();
+  let argumentsRendered=await argumentRows();
+  assert.deepEqual(argumentsRendered.map(row=>row.text),[allArgumentText,allArgumentText,'Argument 0 (MARKER) = :CURRENT-MARKER.']);
+  await browser.evaluate("document.querySelector('#system-menu').showModal();document.querySelector('[data-activity=debugger]').click()");await ready();
+  await browser.evaluate("fixture.argumentDropNext=true;document.querySelector('#system-menu').showModal();[...document.querySelectorAll('#debugger-menu button')].find(node=>node.textContent===':Show Argument').click()");
+  await browser.waitFor("!connected&&!busy&&state.pending.some(row=>row.operation==='submit'&&row.status==='outcome unknown')");
+  evidence.argumentUncertain=await browser.evaluate("state.pending.find(row=>row.operation==='submit'&&row.status==='outcome unknown')");
+  assert.equal(evidence.argumentUncertain.arguments.command,'argument');assert.equal(evidence.argumentUncertain.arguments.argument,null);
+  const argumentAcceptedId=evidence.argumentUncertain.arguments.id;
+  assert.equal(await browser.evaluate('fixture.argumentExecutions'),4);
+  await browser.send('Page.reload');await ready();
+  argumentsRendered=await argumentRows();assert.equal(argumentsRendered.length,4);assert.equal(argumentsRendered.at(-1).caption,'→ :Show Argument');
+  evidence.argumentRecovered=await browser.evaluate(`state.commands.find(row=>row.id===${argumentAcceptedId})`);
+  assert.equal(evidence.argumentRecovered.command,'argument');assert.equal(evidence.argumentRecovered.source,undefined);
+  await browser.evaluate("[...document.querySelectorAll('#pending button')].find(node=>node.textContent==='Repeat Original Request').click()");await ready();
+  assert.equal(await browser.evaluate('fixture.argumentExecutions'),4);assert.equal(await browser.evaluate('fixture.argumentReplays'),1);
+  assert.equal(await browser.evaluate('state.pending.length'),0);
+  const argumentReplayCalls=await browser.evaluate(`fixture.calls.filter(row=>row.operation==='submit'&&row.id===${argumentAcceptedId})`);
+  assert.equal(argumentReplayCalls.length,2);assert.deepEqual(argumentReplayCalls[0],argumentReplayCalls[1]);
+  await browser.evaluate("document.querySelector('#system-menu').showModal();document.querySelector('[data-activity=debugger]').click()");await ready();
+  await enter('#debugger-command',':Show Argument 1');await ready();
+  const argumentVariants=['Argument 1 (REST) = NIL.','[Fixture unavailable storage <λ> & reason.]'];
+  for(const text of argumentVariants){
+    await browser.evaluate(`fixture.argumentValues[1]=${JSON.stringify(text)}`);await enter('#debugger-command',':Show Argument 1');await ready();
+    assert.equal((await argumentRows()).at(-1).text,text);
+  }
+  const expectedArgumentTexts=[allArgumentText,allArgumentText,'Argument 0 (MARKER) = :CURRENT-MARKER.',allArgumentText,'Argument 1 (REST) = (:CURRENT-TAIL).',...argumentVariants];
+  const expectedArgumentCaptions=['→ :Show Argument','→ :Show Argument All','→ :Show Argument 0','→ :Show Argument','→ :Show Argument 1','→ :Show Argument 1','→ :Show Argument 1'];
+  argumentsRendered=await argumentRows();assert.deepEqual(argumentsRendered.map(row=>row.text),expectedArgumentTexts);assert.deepEqual(argumentsRendered.map(row=>row.caption),expectedArgumentCaptions);assert(argumentsRendered.every(row=>row.tagCount===0));
+  assert.equal(await browser.evaluate('window.argumentMarkupExecuted===true'),false);
+  assert.equal(await browser.evaluate('stops[0].info["current-frame"]'),1);
+  assert.equal(await browser.evaluate('stops[0].info.generation'),0);
+  const argumentSubmissions=await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit'&&row.command==='argument')");
+  assert.deepEqual(argumentSubmissions.map(row=>row.argument),[null,null,0,null,null,1,1,1]);
+  const finalSubmissionsBeforeReload=await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length");
+  await browser.send('Page.reload');await ready();
+  assert.deepEqual((await argumentRows()).map(row=>row.text),expectedArgumentTexts);
+  assert.equal(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length"),finalSubmissionsBeforeReload);
+  evidence.arguments={expectedTexts:expectedArgumentTexts,captions:expectedArgumentCaptions,submissions:argumentSubmissions,replayCalls:argumentReplayCalls,finalSubmissionsBeforeReload};
+  evidence.checks.push('Show Argument default/All/index, both editors/menu, canonical recovery and exact accepted replay retain opaque text without resubmission.');
+  await browser.evaluate("document.querySelector('.debugger-argument').scrollIntoView({block:'start'})");await browser.screenshot(output+'/argument-results.png');
+  await browser.evaluate("document.querySelector('.frame-arguments').scrollIntoView({block:'start'})");
   await browser.screenshot(output+'/rest-argument.png');
   await browser.evaluate("fixture.state=':closed';fixture.records.forEach(row=>row['current-boot-p']=false);sessionStorage.setItem('rest-argument-fixture',JSON.stringify(fixture))");
   await browser.send('Page.reload');await ready();
@@ -163,6 +220,12 @@ try {
   assert.equal(await browser.evaluate("document.querySelector('#debugger-command').disabled"),true);
   evidence.checks.push('Standalone typed input, reload, closed-stop text and prior-boot labels retain all seven results without another submission.');
   await browser.screenshot(output+'/rest-argument-recorded.png');
+  assert.deepEqual((await argumentRows()).map(row=>row.text),expectedArgumentTexts);
+  assert.deepEqual((await argumentRows()).map(row=>row.caption),expectedArgumentCaptions);
+  assert.equal(await browser.evaluate("document.querySelectorAll('.debugger-argument .historical-command').length"),7);
+  assert.equal(await browser.evaluate('fixture.argumentExecutions'),7);
+  await browser.evaluate("document.querySelector('.debugger-argument').scrollIntoView({block:'start'})");await browser.screenshot(output+'/argument-recorded.png');
+  evidence.checks.push('Recorded closed arguments preserve seven outputs/captions and prior-boot labels, including available NIL and opaque unavailable text.');
   const recorded=await frameSnapshot();assert.equal(recorded.arguments,argumentText);assert.equal(recorded.locals.length,2);
   await browser.evaluate("fixture.omitArguments=true;sessionStorage.setItem('rest-argument-fixture',JSON.stringify(fixture))");
   await browser.send('Page.reload');await ready();
@@ -170,7 +233,7 @@ try {
   await browser.evaluate("[...document.querySelectorAll('#stops button')].find(node=>node.textContent.startsWith('Stop 1  ')).click()");await ready();
   const historicalMissing=await frameSnapshot();assert.equal(historicalMissing.arguments,null);assert.equal(historicalMissing.locals.length,2);
   assert.equal(await browser.evaluate("document.querySelector('#stop-detail').textContent.includes('Original caller arguments are unavailable.')"),false);
-  assert.equal(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length"),submissionsBeforeReload);
+  assert.equal(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length"),finalSubmissionsBeforeReload);
   evidence.frameArguments.recorded=recorded;evidence.frameArguments.historicalMissing=historicalMissing;
   evidence.checks.push('Recorded arguments survive closed reload; a historical response without the optional field preserves locals and invents no reason.');
   await browser.screenshot(output+'/historical-frame-without-arguments.png');
@@ -179,8 +242,11 @@ try {
   assert.equal(evidence.fixture.calls.filter(row=>row.operation==='submit'&&row.command==='rest-argument').length,8);
   assert.deepEqual(browser.errors,[]);
   assert.equal(browser.network.filter(row=>row.method==='Network.requestWillBeSent'&&new URL(row.parameters.request.url).pathname==='/api').length,0);
+  assert.equal(evidence.fixture.calls.filter(row=>row.operation==='listener-assistance'&&row.action==='parse'&&row.source.startsWith(':Show Argument')).length,7);
+  assert.equal(evidence.fixture.calls.filter(row=>row.operation==='submit'&&row.command==='argument').length,8);
+  assert.equal(evidence.fixture.argumentExecutions,7);assert.equal(evidence.fixture.argumentReplays,1);
   evidence.apiHttpRequests=0;evidence.errors=browser.errors;
-  console.log('PASS frame argument text/full-local display, selection/navigation and recorded history; zero guest requests');
+  console.log('PASS rest/frame/Show Argument text, both editors/menu, accepted replay and recorded history; zero guest requests');
 }catch(error){
   evidence.failure=error.stack;evidence.fixture=await browser.evaluate('fixture');evidence.errors=browser.errors;
   await browser.screenshot(output+'/failure.png');throw error;

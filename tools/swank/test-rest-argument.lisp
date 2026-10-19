@@ -85,7 +85,29 @@
       (assert (equal (getf reply :text) ":Show Rest Argument ")))
     (let* ((source ":Show Rest Argument 0")
            (reply (cp:assistance listener source (length source) :parse :context :debugger)))
-      (assert (getf reply :error)))))
+      (assert (getf reply :error)))
+    (dolist (case '((":Show Argument" nil) (":Show Argument All" nil)
+                    (":Show Argument 0" 0) (":Show Argument 3" 3)))
+      (let* ((source (first case))
+             (plan (cp:assistance listener source (length source) :parse :context :debugger)))
+        (assert (and (getf plan :complete-p) (not (getf plan :error))))
+        (assert (equal (getf plan :operation) "argument"))
+        (assert (eql (getf plan :argument) (second case)))))
+    (let* ((source ":Show Argument A")
+           (reply (cp:assistance listener source (length source) :space :context :debugger)))
+      (assert (equal (getf reply :text) ":Show Argument All ")))
+    (let* ((source ":Show Arg")
+           (reply (cp:assistance listener source (length source) :space :context :debugger))
+           (names (mapcar (lambda (candidate) (getf candidate :label)) (getf reply :candidates))))
+      (assert (equal (getf reply :text) source))
+      (assert (member "Show Argument" names :test #'equal))
+      (assert (member "Show Arglist" names :test #'equal)))
+    (let* ((source ":Show Argl")
+           (reply (cp:assistance listener source (length source) :space :context :debugger)))
+      (assert (equal (getf reply :text) ":Show Arglist ")))
+    (dolist (source '(":Show Argument -1" ":Show Argument 1x" ":Show Argument 0 1"))
+      (assert (getf (cp:assistance listener source (length source) :parse :context :debugger)
+                    :error)))))
 
 (defun check-state (stop history selection)
   (assert (= (length history) (length (d::service-stop-evaluation-history stop)) 9))
@@ -119,6 +141,83 @@
          (selected (aref (d::service-stop-frames stop) (d::service-stop-current-frame stop))))
     (setf *observation* (multiple-value-list (d::service-frame-parameter-context selected))))
   :captured)
+
+(defun check-argument (handle lease index expected &optional assigned-name)
+  (let* ((stop (d::service-handle-stop handle))
+         (selection (d::service-stop-current-frame stop))
+         (before (copy-list (d::service-stop-evaluation-history stop)))
+         (history (copy-list before))
+         (id (getf (debugger-stop-information handle) :next-command-id)))
+    (when assigned-name
+      (let ((observation (find assigned-name (second *observation*)
+                               :key (lambda (entry) (svref (first entry) 1)) :test #'eq)))
+        (assert (and observation (third observation)))
+        (setf (fourth history) (second observation))))
+    (let ((result (test::command handle lease :argument index)))
+      (assert (equal result expected) () "Argument ~S returned ~S, expected ~S." index result expected)
+      (check-state stop history selection)
+      (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+        (assert (= (submit-debugger-command lease id :argument index) id))
+        (assert (equal result (getf (test::completed-command handle id) :result)))
+        (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
+      (check-state stop history selection)
+      (when assigned-name
+        (setf (fourth (d::service-stop-evaluation-history stop)) (fourth before)))
+      (check-state stop before selection)
+      result)))
+
+(defun check-all-arguments (handle lease frame-text)
+  (let* ((start (search "Current source parameters:" frame-text))
+         (stop (d::service-handle-stop handle))
+         (selection (d::service-stop-current-frame stop))
+         (history (copy-list (d::service-stop-evaluation-history stop)))
+         (id (getf (debugger-stop-information handle) :next-command-id))
+         (result (test::command handle lease :argument)))
+    (assert start)
+    (assert (eql (search (format nil "Arguments for frame ~D " selection) result) 0))
+    (let ((current (search "Current source parameters:" result)))
+      (assert current)
+      (assert (equal (subseq result current) (subseq frame-text start))))
+    (assert (not (search "Original supplied arguments" result)))
+    (check-state stop history selection)
+    (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+      (assert (= (submit-debugger-command lease id :argument) id))
+      (assert (equal result (getf (test::completed-command handle id) :result)))
+      (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
+    (check-state stop history selection)))
+
+(defun check-invalid-indices (handle lease)
+  (let* ((stop (d::service-handle-stop handle))
+         (selection (d::service-stop-current-frame stop))
+         (history (copy-list (d::service-stop-evaluation-history stop)))
+         (id (getf (debugger-stop-information handle) :next-command-id)))
+    (dolist (index '(-1 :all "0" (0)))
+      (test::expect-error :invalid-argument-index
+                          (lambda () (submit-debugger-command lease id :argument index)))
+      (assert (= id (getf (debugger-stop-information handle) :next-command-id)))
+      (assert (null (getf (debugger-stop-information handle) :child)))
+      (check-state stop history selection))))
+
+(defun check-out-of-range (handle lease controller index)
+  (let* ((stop (d::service-handle-stop handle))
+         (selection (d::service-stop-current-frame stop))
+         (history (copy-list (d::service-stop-evaluation-history stop)))
+         (id (getf (debugger-stop-information handle) :next-command-id)))
+    (submit-debugger-command lease id :argument index)
+    (let* ((child (test::await (lambda () (getf (debugger-stop-information handle) :child))))
+           (condition (d::service-stop-condition (d::service-handle-stop child))))
+      (assert (typep condition 'debugger-service-error))
+      (assert (eq (debugger-service-error-reason condition) :invalid-argument-index))
+      (assert (zerop (getf (debugger-command-result handle id) :output-length)))
+      (check-state stop history selection)
+      (frame::release-test-stop child controller))
+    (assert (eq (getf (test::completed-command handle id) :state) :unwound))
+    (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+      (assert (= (submit-debugger-command lease id :argument index) id))
+      (assert (eq (getf (test::completed-command handle id) :state) :unwound))
+      (assert (= next (getf (debugger-stop-information handle) :next-command-id)))
+      (assert (null (getf (debugger-stop-information handle) :child))))
+    (check-state stop history selection)))
 
 (defun check-display (handle lease controller mode)
   (declare (ignore controller))
@@ -182,6 +281,9 @@
                  handle lease
                  '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
                    "Current parameter data unavailable: :UNAVAILABLE-PARAMETER-DATA."))
+                (dolist (index '(nil 99))
+                  (check-argument handle lease index
+                                  "Argument data unavailable: :UNAVAILABLE-PARAMETER-DATA."))
                 (check-display handle lease controller :metadata))
       (setf (nth 12 info) layout))))
 
@@ -192,23 +294,31 @@
     (assert (typep entry '(simple-vector 3)))
     (assert (eq (svref entry 0) :entry-arguments))
     (assert (i::debug-binding-p (svref entry 1)))
-    (check-frame-display handle lease
-                         '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
-                           "Current source parameters:" "Rest REST: (:CHANGED :ORIGINAL)"))
+    (check-all-arguments
+     handle lease
+     (check-frame-display handle lease
+                          '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
+                            "Current source parameters:" "Arg 0 (Rest REST): (:CHANGED :ORIGINAL)")))
     (unwind-protect
          (progn
            (setf (nth 11 info) nil)
-           (check-frame-display
+           (check-all-arguments
             handle lease
-            '("Original entry context unavailable: :UNAVAILABLE-ENTRY-DATA."
-              "Current source parameters:" "Rest REST: (:CHANGED :ORIGINAL)"))
+            (check-frame-display
+             handle lease
+             '("Original entry context unavailable: :UNAVAILABLE-ENTRY-DATA."
+               "Current source parameters:" "Arg 0 (Rest REST): (:CHANGED :ORIGINAL)")))
+           (check-argument handle lease 0 "Argument 0 (REST) = (:CHANGED :ORIGINAL)." 'rest)
            (let ((injected (copy-seq entry)))
              (setf (svref injected 2) (vector :binding (gensym "UNAVAILABLE-CALLABLE-"))
                    (nth 11 info) injected)
-             (check-frame-display
+             (check-all-arguments
               handle lease
-              '("Original entry context unavailable: :UNAVAILABLE-ENTRY-CALLABLE."
-                "Current source parameters:" "Rest REST: (:CHANGED :ORIGINAL)"))))
+              (check-frame-display
+               handle lease
+               '("Original entry context unavailable: :UNAVAILABLE-ENTRY-CALLABLE."
+                 "Current source parameters:" "Arg 0 (Rest REST): (:CHANGED :ORIGINAL)")))
+             (check-argument handle lease 0 "Argument 0 (REST) = (:CHANGED :ORIGINAL)." 'rest)))
       (setf (nth 11 info) entry))
     (format t "~&PASS injected missing entry record and unavailable callable binding; original metadata restored.~%")))
 
@@ -235,7 +345,45 @@
         (assert (= (slot-value printer 'count) 2))
         (check-state stop history selection)))))
 
-(defun check-frame-printer (handle lease controller)
+(defun check-argument-printer (handle lease controller)
+  (let* ((stop (d::service-handle-stop handle))
+         (selection (d::service-stop-current-frame stop))
+         (before (copy-list (d::service-stop-evaluation-history stop)))
+         (history (copy-list before))
+         (id (getf (debugger-stop-information handle) :next-command-id)))
+    (destructuring-bind (layout observations reason) *observation*
+      (assert (null reason))
+      (let* ((value (second (assoc (svref layout 3) observations :test #'eq)))
+             (printer (second value)))
+        (setf (fourth history) value
+              (slot-value printer 'count) 0 (slot-value printer 'fail-p) t)
+        (submit-debugger-command lease id :argument 0)
+        (let ((child (test::await (lambda () (getf (debugger-stop-information handle) :child)))))
+          (assert (typep (d::service-stop-condition (d::service-handle-stop child)) 'rest-print-error))
+          (check-state stop history selection)
+          (frame::release-test-stop child controller))
+        (assert (eq (getf (test::completed-command handle id) :state) :unwound))
+        (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+          (assert (= (submit-debugger-command lease id :argument 0) id))
+          (assert (eq (getf (test::completed-command handle id) :state) :unwound))
+          (assert (= next (getf (debugger-stop-information handle) :next-command-id)))
+          (assert (null (getf (debugger-stop-information handle) :child)))
+          (assert (= (slot-value printer 'count) 1)))
+        (check-state stop history selection)
+        (let* ((fresh (getf (debugger-stop-information handle) :next-command-id))
+               (result (test::command handle lease :argument 0))
+               (next (getf (debugger-stop-information handle) :next-command-id)))
+          (assert (equal result "Argument 0 (REST) = (:CHANGED #<Rest-printer>)."))
+          (assert (= (slot-value printer 'count) 2))
+          (assert (= (submit-debugger-command lease fresh :argument 0) fresh))
+          (assert (equal result (getf (test::completed-command handle fresh) :result)))
+          (assert (= (slot-value printer 'count) 2))
+          (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
+        (check-state stop history selection)
+        (setf (fourth (d::service-stop-evaluation-history stop)) (fourth before))
+        (check-state stop before selection)))))
+
+(defun check-frame-printer (handle lease controller &optional (operation :current-frame))
   (let* ((stop (d::service-handle-stop handle))
          (selection (d::service-stop-current-frame stop))
          (history (copy-list (d::service-stop-evaluation-history stop)))
@@ -245,24 +393,25 @@
       (let* ((value (second (assoc (svref layout 3) observations :test #'eq)))
              (printer (second value)))
         (setf (slot-value printer 'count) 0 (slot-value printer 'fail-p) t)
-        (submit-debugger-command lease id :current-frame)
+        (submit-debugger-command lease id operation)
         (let ((child (test::await (lambda () (getf (debugger-stop-information handle) :child)))))
           (assert (typep (d::service-stop-condition (d::service-handle-stop child)) 'rest-print-error))
           (check-state stop history selection)
           (frame::release-test-stop child controller))
         (assert (eq (getf (test::completed-command handle id) :state) :unwound))
         (let ((next (getf (debugger-stop-information handle) :next-command-id)))
-          (assert (= (submit-debugger-command lease id :current-frame) id))
+          (assert (= (submit-debugger-command lease id operation) id))
           (assert (= next (getf (debugger-stop-information handle) :next-command-id)))
           (assert (= (slot-value printer 'count) 1)))
         (check-state stop history selection)
         (let* ((fresh (getf (debugger-stop-information handle) :next-command-id))
-               (result (test::command handle lease :current-frame))
+               (result (test::command handle lease operation))
                (count (slot-value printer 'count))
                (next (getf (debugger-stop-information handle) :next-command-id)))
-          (assert (search "#<Rest-printer>" (getf result :arguments)))
+          (assert (search "#<Rest-printer>" (if (eq operation :current-frame)
+                                              (getf result :arguments) result)))
           (assert (> count 1))
-          (assert (= (submit-debugger-command lease fresh :current-frame) fresh))
+          (assert (= (submit-debugger-command lease fresh operation) fresh))
           (assert (equal result (getf (test::completed-command handle fresh) :result)))
           (assert (= (slot-value printer 'count) count))
           (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
@@ -285,7 +434,9 @@
       (test::command handle lease :evaluate "(lispm-rest-argument-test::capture-context)")
       (dolist (source '("(values 1 2)" "(values 3 4)" "(values 5 6)"))
         (test::command handle lease :evaluate source))
-      (assert (search "Show Rest Argument" (test::command handle lease :help)))
+      (let ((help (test::command handle lease :help)))
+        (assert (search "Show Rest Argument" help))
+        (assert (search "Show Argument" help)))
       (funcall inspect handle lease controller)
       (setf *observation* nil)
       (let ((id (getf (debugger-stop-information handle) :next-command-id)))
@@ -308,34 +459,50 @@
             (list
              (list #'lexical-target "(lexical-target :original)" :value
                    '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
-                     "Current source parameters:" "Rest REST: (:CHANGED :ORIGINAL)"))
+                     "Current source parameters:" "Arg 0 (Rest REST): (:CHANGED :ORIGINAL)"))
              (list #'lexical-target "(lexical-target)" :nil
                    (list (format nil "Original supplied arguments (0):~%  None.~%")
-                         "Current source parameters:" "Rest REST: NIL"))
+                         "Current source parameters:" "Arg 0 (Rest REST): NIL"))
              (list #'special-target "(special-target :original)" :value
                    '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
-                     "Current source parameters:" "Rest *REST*: (:CHANGED :ORIGINAL)"))
+                     "Current source parameters:" "Arg 0 (Rest *REST*): (:CHANGED :ORIGINAL)"))
              (list #'unbound-target "(unbound-target)" :storage
                    (list (format nil "Original supplied arguments (0):~%  None.~%")
-                         "Current source parameters:" "Rest *REST*: [unavailable]"))
+                         "Current source parameters:" "Arg 0 (Rest *REST*): [unavailable]"))
              (list #'no-rest-target "(no-rest-target)" :none
                    (list (format nil "Original supplied arguments (0):~%  None.~%")
                          (format nil "Current source parameters:~%  None.~%")))
              (list #'stack-target "(stack-target :stack)" :stack
                    '("Original supplied arguments (1):" "Arg 0: :STACK"
-                     "Current source parameters:" "Rest REST: (:STACK)"))))
+                     "Current source parameters:" "Arg 0 (Rest REST): (:STACK)"))))
     (run-case (first case) (second case)
               (lambda (handle lease controller)
-                (check-frame-display handle lease (fourth case) '(":SHADOW"))
+                (check-all-arguments
+                 handle lease (check-frame-display handle lease (fourth case) '(":SHADOW")))
+                (case (third case)
+                  (:value
+                   (let ((name (if (eq (first case) #'special-target) '*rest* 'rest)))
+                     (check-argument handle lease 0
+                                     (format nil "Argument 0 (~A) = (:CHANGED :ORIGINAL)." name)
+                                     name)))
+                  (:nil (check-argument handle lease 0 "Argument 0 (REST) = NIL." 'rest))
+                  (:storage
+                   (check-argument handle lease 0 "Argument 0 (*REST*) is unavailable."))
+                  (:none (check-out-of-range handle lease controller 0))
+                  (:stack (check-argument handle lease 0 "Argument 0 (REST) = (:STACK)." 'rest)))
                 (check-display handle lease controller (third case)))))
   (run-case #'nil-key-target "(nil-key-target nil nil)"
             (lambda (handle lease controller)
               (declare (ignore controller))
-              (check-frame-display
+              (check-invalid-indices handle lease)
+              (check-all-arguments
                handle lease
-               '("Original supplied arguments (2):" "Arg 0: NIL" "Arg 1: NIL"
-                 "Current source parameters:" "Keyword NIL VALUE: NIL"
-                 "Keyword supplied-p NIL SUPPLIED: T"))))
+               (check-frame-display
+                handle lease
+                '("Original supplied arguments (2):" "Arg 0: NIL" "Arg 1: NIL"
+                  "Current source parameters:" "Arg 0 (Keyword NIL VALUE): NIL"
+                  "Keyword supplied-p NIL SUPPLIED: T")))
+              (check-argument handle lease 0 "Argument 0 (VALUE) = NIL." 'value)))
   (run-case #'lexical-target "(lexical-target :original)" #'check-metadata)
   (run-case #'lexical-target "(lexical-target :original)" #'check-entry-metadata)
   (setf *optional-default-count* 0)
@@ -344,25 +511,33 @@
     (run-case
      #'mixed-target source
      (lambda (handle lease controller)
-       (declare (ignore controller))
-       (check-frame-display
+       (check-all-arguments
         handle lease
-        (append
-         (if (zerop *optional-default-count*)
-             '("Original supplied arguments (8):"
-               "Arg 0: :ORIGINAL-REQUIRED" "Arg 1: :ORIGINAL-OPTIONAL"
-               "Arg 2: :KEY" "Arg 3: :FIRST" "Arg 4: :KEY" "Arg 5: :DUPLICATE"
-               "Arg 6: :UNKNOWN" "Arg 7: :PERMITTED")
-             '("Original supplied arguments (1):" "Arg 0: :ORIGINAL-REQUIRED"))
-         '("Current source parameters:" "Required REQUIRED: :CURRENT-REQUIRED"
-           "Optional OPTIONAL: NIL" "Optional supplied-p OPTIONAL-P: :EDITED-OPTIONAL-P"
-           "Rest REST: (:CURRENT-TAIL)" "Keyword :KEY KEY: :CURRENT-KEY"
-           "Keyword supplied-p :KEY KEY-P: :EDITED-KEY-P"))
-        '("AUX" ":SHADOW")))))
+        (check-frame-display
+         handle lease
+         (append
+          (if (zerop *optional-default-count*)
+              '("Original supplied arguments (8):"
+                "Arg 0: :ORIGINAL-REQUIRED" "Arg 1: :ORIGINAL-OPTIONAL"
+                "Arg 2: :KEY" "Arg 3: :FIRST" "Arg 4: :KEY" "Arg 5: :DUPLICATE"
+                "Arg 6: :UNKNOWN" "Arg 7: :PERMITTED")
+              '("Original supplied arguments (1):" "Arg 0: :ORIGINAL-REQUIRED"))
+          '("Current source parameters:" "Arg 0 (Required REQUIRED): :CURRENT-REQUIRED"
+            "Arg 1 (Optional OPTIONAL): NIL" "Optional supplied-p OPTIONAL-P: :EDITED-OPTIONAL-P"
+            "Arg 2 (Rest REST): (:CURRENT-TAIL)" "Arg 3 (Keyword :KEY KEY): :CURRENT-KEY"
+            "Keyword supplied-p :KEY KEY-P: :EDITED-KEY-P"))
+         '("AUX" ":SHADOW")))
+       (check-argument handle lease 0 "Argument 0 (REQUIRED) = :CURRENT-REQUIRED." 'required)
+       (check-argument handle lease 1 "Argument 1 (OPTIONAL) = NIL." 'optional)
+       (check-argument handle lease 2 "Argument 2 (REST) = (:CURRENT-TAIL)." 'rest)
+       (check-argument handle lease 3 "Argument 3 (KEY) = :CURRENT-KEY." 'key)
+       (check-out-of-range handle lease controller 4))))
   (assert (= *optional-default-count* 1))
   (run-case #'lexical-target "(lexical-target (make-instance 'printer))"
             (lambda (handle lease controller)
+              (check-argument-printer handle lease controller)
               (check-printer handle lease controller)
-              (check-frame-printer handle lease controller)))
-  (format t "~&PASS original/current frame arguments, rest display, exact special bindings, NIL/absent/unavailable, injected metadata, optional/key writes, history, replay, live DX, GC, printer Abort, values and cleanup.~%")
+              (check-frame-printer handle lease controller)
+              (check-frame-printer handle lease controller :argument)))
+  (format t "~&PASS original/current frame arguments, indexed/All argument and rest display, exact special bindings, NIL/absent/unavailable, injected metadata, optional/key writes, range rejection, history, replay, live DX, GC, printer Abort, values and cleanup.~%")
   t)

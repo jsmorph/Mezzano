@@ -464,6 +464,9 @@
                 (service-stop-child stop))
         (service-error :stop-busy))
       (case operation
+        (:argument
+         (unless (typep argument '(or null (integer 0 *)))
+           (service-error :invalid-argument-index)))
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
           :function :rest-argument :compiled-code :instruction :lexical-environment
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
@@ -1395,6 +1398,42 @@ NIL with true availability denotes an absent global cell."
     (setf (fourth (service-stop-evaluation-history stop)) function)
     (format nil "Function = ~A." (service-print function))))
 
+(defun service-source-argument-bindings (layout)
+  (append (svref layout 1)
+          (mapcar #'first (svref layout 2))
+          (when (svref layout 3) (list (svref layout 3)))
+          (mapcar #'second (svref layout 4))))
+
+(defun service-print-parameter-context (layout observations stream)
+  (let ((bindings (service-source-argument-bindings layout)))
+    (labels ((parameter (kind binding &optional (keyword nil keyword-p))
+               (let ((observation (assoc binding observations :test #'eq))
+                     (index (position binding bindings :test #'eq)))
+                 (unless observation
+                   (error "Source parameter has no current observation."))
+                 (if index
+                     (format stream "  Arg ~D (~A " index kind)
+                     (format stream "  ~A " kind))
+                 (when keyword-p (format stream "~A " (service-print keyword)))
+                 (format stream "~A~A: ~A~%"
+                         (service-print (svref binding 1))
+                         (if index ")" "")
+                         (if (third observation)
+                             (service-print (second observation))
+                             "[unavailable]")))))
+      (write-line "Current source parameters:" stream)
+      (unless bindings (write-line "  None." stream))
+      (dolist (binding (svref layout 1)) (parameter "Required" binding))
+      (dolist (entry (svref layout 2))
+        (destructuring-bind (binding supplied) entry
+          (parameter "Optional" binding)
+          (when supplied (parameter "Optional supplied-p" supplied))))
+      (when (svref layout 3) (parameter "Rest" (svref layout 3)))
+      (dolist (entry (svref layout 4))
+        (destructuring-bind (keyword binding supplied) entry
+          (parameter "Keyword" binding keyword)
+          (when supplied (parameter "Keyword supplied-p" supplied keyword)))))))
+
 (defun service-frame-arguments (frame)
   (with-output-to-string (stream)
     (multiple-value-bind (arguments callable reason)
@@ -1411,31 +1450,32 @@ NIL with true availability denotes an absent global cell."
     (multiple-value-bind (layout observations reason) (service-frame-parameter-context frame)
       (if reason
           (format stream "Current parameter data unavailable: ~A.~%" (service-print reason))
-          (labels ((parameter (kind binding &optional (keyword nil keyword-p))
-                     (let ((observation (assoc binding observations :test #'eq)))
-                       (unless observation
-                         (error "Source parameter has no current observation."))
-                       (format stream "  ~A " kind)
-                       (when keyword-p (format stream "~A " (service-print keyword)))
-                       (format stream "~A: ~A~%"
-                               (service-print (svref binding 1))
-                               (if (third observation)
-                                   (service-print (second observation))
-                                   "[unavailable]")))))
-            (write-line "Current source parameters:" stream)
-            (unless (or (svref layout 1) (svref layout 2)
-                        (svref layout 3) (svref layout 4))
-              (write-line "  None." stream))
-            (dolist (binding (svref layout 1)) (parameter "Required" binding))
-            (dolist (entry (svref layout 2))
-              (destructuring-bind (binding supplied) entry
-                (parameter "Optional" binding)
-                (when supplied (parameter "Optional supplied-p" supplied))))
-            (when (svref layout 3) (parameter "Rest" (svref layout 3)))
-            (dolist (entry (svref layout 4))
-              (destructuring-bind (keyword binding supplied) entry
-                (parameter "Keyword" binding keyword)
-                (when supplied (parameter "Keyword supplied-p" supplied keyword)))))))))
+          (service-print-parameter-context layout observations stream)))))
+
+(defun service-show-argument (stop index)
+  (let ((frame (aref (service-stop-frames stop) (service-stop-current-frame stop))))
+    (multiple-value-bind (layout observations reason) (service-frame-parameter-context frame)
+      (when reason
+        (return-from service-show-argument
+          (format nil "Argument data unavailable: ~A." (service-print reason))))
+      (let ((bindings (service-source-argument-bindings layout)))
+        (when (null index)
+          (return-from service-show-argument
+            (with-output-to-string (stream)
+              (format stream "Arguments for frame ~D ~A:~%"
+                      (service-stop-current-frame stop) (service-print (frame-function frame)))
+              (service-print-parameter-context layout observations stream))))
+        (unless (< index (length bindings)) (service-error :invalid-argument-index))
+        (let* ((binding (nth index bindings))
+               (observation (assoc binding observations :test #'eq)))
+          (unless observation (error "Source argument has no current observation."))
+          (if (third observation)
+              (progn
+                (setf (fourth (service-stop-evaluation-history stop)) (second observation))
+                (format nil "Argument ~D (~A) = ~A." index
+                        (service-print (svref binding 1)) (service-print (second observation))))
+              (format nil "Argument ~D (~A) is unavailable."
+                      index (service-print (svref binding 1)))))))))
 
 (defun service-show-rest-argument (stop)
   (let ((frame (aref (service-stop-frames stop) (service-stop-current-frame stop))))
@@ -1676,6 +1716,7 @@ NIL with true availability denotes an absent global cell."
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
     (:function (service-show-function stop))
+    (:argument (service-show-argument stop (service-command-argument command)))
     (:rest-argument (service-show-rest-argument stop))
     (:compiled-code (service-show-code stop nil))
     (:instruction (service-show-code stop t))
