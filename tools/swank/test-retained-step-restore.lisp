@@ -327,7 +327,8 @@
     (assert (equalp (hw::code-bytes #'raw::step-body) (getf entry :bytes))))
   t)
 
-(defun prepare-queued ()
+(defun prepare-queued (&optional (prompt-depth 0))
+  (check-type prompt-depth (member 0 2))
   (assert (null *state*))
   (assert (null (d:debugger-stops :include-closed t)))
   (assert (null (s::instruction-breakpoints)))
@@ -336,7 +337,7 @@
   (assert (not s::*snapshot-in-progress*))
   (assert (zerop s::*snapshot-inhibit*))
   (assert (>= s::*n-up-cpus* 2))
-  (let* ((record (retained::start-case 0 #'raw::step-body 25))
+  (let* ((record (retained::start-case prompt-depth #'raw::step-body 25))
          (stop (fifth record))
          (information (d:debugger-stop-information stop))
          (original-exit #'d::service-step-exit)
@@ -353,10 +354,12 @@
                       :bytes (hw::code-bytes #'raw::step-body) :released nil))
          (marker-address nil))
     (setf *state* (list :kind :queued :phase :preparing :boot boot
+                       :prompt-depth prompt-depth
                        :step-exit original-exit :deliver-step original-delivery
                        :instruction-delivery #'s::deliver-instruction-step
                        :cases (list entry) :pager-gate gate :gate-start start
                        :gate-thread nil :snapshot-epoch nil))
+    (assert (= (aref (getf entry :marker) 1) prompt-depth))
     (setf (q::gate-target gate) (third record)
           (getf *state* :gate-thread)
           (s:make-thread
@@ -421,7 +424,7 @@
     (assert (equal (s:thread-join (q::gate-caller gate) nil) '(:complete)))
     (check-queued-delivery entry)
     (setf (getf *state* :phase) :complete))
-  (format t "Prepared and saved one queued pager NOP step at zero prompts.~%")
+  (format t "Prepared and saved one queued pager NOP step at ~D prompts.~%" prompt-depth)
   t)
 
 (defun finish-queued ()
@@ -430,10 +433,13 @@
   (let* ((entry (first (getf *state* :cases)))
          (record (getf entry :record))
          (gate (getf *state* :pager-gate))
+         (prompt-depth (getf *state* :prompt-depth))
          (old-stop (fifth record))
          (old-controller (fourth record))
          (old-lease (sixth record)))
     (assert (eq (getf *state* :phase) :saving))
+    (check-type prompt-depth (member 0 2))
+    (assert (= (aref (getf entry :marker) 1) prompt-depth))
     (assert (eq (s:current-snapshot-epoch) (getf *state* :snapshot-epoch)))
     (assert (eq (fdefinition 'd::service-step-exit) (getf *state* :step-exit)))
     (assert (eq (fdefinition 'd::service-deliver-step) (getf *state* :deliver-step)))
