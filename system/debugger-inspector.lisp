@@ -105,6 +105,10 @@
                       (incf total))
                     object)))
         (function)
+        (service-frame-variable
+         (multiple-value-bind (value available unbound-p) (service-frame-variable-observation object)
+           (unless (or available unbound-p) (service-error :unavailable-binding))
+           (item "Value" value available :frame-variable)))
         ((or standard-object structure-object)
          (let ((class (class-of object)))
            (dolist (slot (mezzano.clos:class-slots class))
@@ -161,6 +165,7 @@
        (unless (nth-value 1 (gethash key object)) (service-error :expired-inspection-part))
        (setf (gethash key object) value))
       (:slot (setf (slot-value object key) value))
+      (:frame-variable (setf (mezzano.debugger:location-value object) value))
       (:structure-vector
        (unless (< key (mezzano.clos::structure-slot-definition-fixed-vector slot))
          (service-error :expired-inspection-part))

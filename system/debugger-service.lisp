@@ -56,6 +56,7 @@
 (defvar *service-next-stop-id* 0)
 (defvar *service-current-stop* nil)
 (defvar *service-current-command* nil)
+(defvar *service-evaluation-frame* nil)
 
 (defmacro with-service-lock (&body body)
   `(handler-case
@@ -124,27 +125,94 @@
         (service-error :foreign-frame-thread))
       (aref (service-stop-frames stop) (service-frame-index reference)))))
 
+(defun service-parameter-storage (binding)
+  (if (mezzano.internals::debug-binding-p binding)
+      binding
+      (progn
+        (check-type binding (simple-vector 3))
+        (unless (and (eq (svref binding 0) :special)
+                     (symbolp (svref binding 1))
+                     (or (null (svref binding 2))
+                         (mezzano.internals::debug-binding-p (svref binding 2))))
+          (error "Invalid special parameter debug metadata."))
+        (svref binding 2))))
+
+(defun service-read-frame-binding
+    (raw binding &optional (locals (mezzano.internals::frame-locals raw :show-hidden t)))
+  (let ((local (when binding (find binding locals :key #'fifth :test #'eq))))
+    (if local
+        (mezzano.internals::read-frame-slot raw (third local) (fourth local))
+        (values nil nil))))
+
+(defun service-parameter-special-cell
+    (raw binding &optional (locals (mezzano.internals::frame-locals raw :show-hidden t)))
+  (multiple-value-bind (cell available)
+      (service-read-frame-binding raw (service-parameter-storage binding) locals)
+    (when available
+      (unless (and (mezzano.runtime::symbol-value-cell-p cell)
+                   (eq (mezzano.runtime::symbol-value-cell-symbol cell) (svref binding 1)))
+        (error "Invalid saved parameter binding cell."))
+      (values cell t))))
+
+(defun service-read-parameter-binding
+    (raw binding &optional (locals (mezzano.internals::frame-locals raw :show-hidden t)))
+  (if (mezzano.internals::debug-binding-p binding)
+      (service-read-frame-binding raw binding locals)
+      (multiple-value-bind (cell available)
+          (service-parameter-special-cell raw binding locals)
+        (when available
+          (if (mezzano.runtime::symbol-value-cell-boundp cell)
+              (values (mezzano.runtime::symbol-value-cell-value cell) t)
+              (values nil nil t))))))
+
+(defun service-frame-variable-observation (variable)
+  (let ((frame (service-frame-for-access (service-variable-reference variable))))
+    (service-read-parameter-binding (mezzano.internals::frame-raw-data frame)
+                                    (service-variable-binding variable))))
+
 (defun service-variable-location (variable)
   (let* ((frame (service-frame-for-access (service-variable-reference variable)))
          (raw (mezzano.internals::frame-raw-data frame))
          (local (find (service-variable-binding variable)
-                      (mezzano.internals::frame-locals raw) :key #'fifth)))
+                      (mezzano.internals::frame-locals raw :show-hidden t)
+                      :key #'fifth :test #'eq)))
     (unless local (service-error :unavailable-binding))
     (values raw local)))
 
 (defmethod mezzano.full-eval::variable-value ((variable service-frame-variable))
-  (multiple-value-bind (raw local) (service-variable-location variable)
-    (multiple-value-bind (value available-p)
-        (mezzano.internals::read-frame-slot raw (third local) (fourth local))
-      (unless available-p (service-error :unavailable-binding))
-      value)))
+  (multiple-value-bind (value available-p unbound-p)
+      (service-frame-variable-observation variable)
+    (when unbound-p
+      (error 'unbound-variable :name (svref (service-variable-binding variable) 1)))
+    (unless available-p (service-error :unavailable-binding))
+    value))
 
 (defmethod (setf mezzano.full-eval::variable-value) (value (variable service-frame-variable))
-  (multiple-value-bind (raw local) (service-variable-location variable)
+  (let ((binding (service-variable-binding variable)))
+    (service-frame-for-access (service-variable-reference variable))
+    (service-parameter-storage binding)
     (unless (typep value (service-variable-type variable))
       (error 'type-error :datum value :expected-type (service-variable-type variable)))
-    (mezzano.internals::write-frame-slot raw (third local) value (fourth local))
-    value))
+    (if (mezzano.internals::debug-binding-p binding)
+        (multiple-value-bind (raw local) (service-variable-location variable)
+          (mezzano.internals::write-frame-slot raw (third local) value (fourth local)))
+        (progn
+          (mezzano.runtime::modifying-symbol-value (svref binding 1))
+          (mezzano.runtime::check-symbol-value-type value (svref binding 1))
+          (let ((frame (service-frame-for-access (service-variable-reference variable))))
+            (multiple-value-bind (cell available)
+                (service-parameter-special-cell (mezzano.internals::frame-raw-data frame) binding)
+              (unless available (service-error :unavailable-binding))
+              (setf (mezzano.runtime::symbol-value-cell-value cell) value))))))
+  value)
+
+(defun mezzano.debugger:location-value (location)
+  (check-type location service-frame-variable)
+  (mezzano.full-eval::variable-value location))
+
+(defun (setf mezzano.debugger:location-value) (value location)
+  (check-type location service-frame-variable)
+  (setf (mezzano.full-eval::variable-value location) value))
 
 (defmethod make-load-form ((variable service-frame-variable) &optional environment)
   (declare (ignore environment))
@@ -210,7 +278,8 @@
       (unless read-p (clear-input *query-io*)))))
 
 (defun service-evaluate-input (stop reader &optional print-p)
-  (let* ((reference (%make-service-frame
+  (let* ((*service-evaluation-frame* nil)
+         (reference (%make-service-frame
                      (service-handle stop)
                      (service-stop-generation stop)
                      (service-stop-current-frame stop)))
@@ -225,7 +294,8 @@
                     (let* ((form (funcall reader))
                            (- form)
                            (values (multiple-value-list
-                                    (mezzano.full-eval:eval-in-lexenv form environment))))
+                                    (let ((*service-evaluation-frame* reference))
+                                      (mezzano.full-eval:eval-in-lexenv form environment)))))
                       (declare (special -))
                       (setf +++ ++ ++ + + form
                             *** ** ** * * (first values)
@@ -721,58 +791,41 @@
   #-x86-64
   (values nil nil))
 
-(defun service-frame-parameter-context (frame)
+(defun service-frame-parameter-layout (frame)
   (let ((reason (nth-value 2 (mezzano.internals::frame-return-context frame))))
     (when reason
-      (return-from service-frame-parameter-context (values nil nil reason))))
-  (let* ((raw (mezzano.internals::frame-raw-data frame))
-         (function (nth-value 1 (mezzano.internals::frame-function frame)))
+      (return-from service-frame-parameter-layout (values nil reason))))
+  (let* ((function (nth-value 1 (mezzano.internals::frame-function frame)))
          (layout (nth 12 (mezzano.internals::function-debug-info function))))
     (unless layout
-      (return-from service-frame-parameter-context
-        (values nil nil :unavailable-parameter-data)))
+      (return-from service-frame-parameter-layout (values nil :unavailable-parameter-data)))
     (check-type layout (simple-vector 7))
     (unless (eq (svref layout 0) :parameters)
       (error "Invalid source parameter debug metadata."))
-    (let ((locals (mezzano.internals::frame-locals raw :show-hidden t)))
-      (labels ((read-local (binding)
-                 (let ((local (when binding (find binding locals :key #'fifth :test #'eq))))
-                   (if local
-                       (mezzano.internals::read-frame-slot raw (third local) (fourth local))
-                       (values nil nil))))
-               (read-binding (binding)
-                 (if (mezzano.internals::debug-binding-p binding)
-                     (read-local binding)
-                     (progn
-                       (check-type binding (simple-vector 3))
-                       (unless (and (eq (svref binding 0) :special)
-                                    (symbolp (svref binding 1))
-                                    (or (null (svref binding 2))
-                                        (mezzano.internals::debug-binding-p (svref binding 2))))
-                         (error "Invalid special parameter debug metadata."))
-                       (multiple-value-bind (cell available) (read-local (svref binding 2))
-                         (when available
-                           (unless (and (mezzano.runtime::symbol-value-cell-p cell)
-                                        (eq (mezzano.runtime::symbol-value-cell-symbol cell)
-                                            (svref binding 1)))
-                             (error "Invalid saved parameter binding cell."))
-                           (when (mezzano.runtime::symbol-value-cell-boundp cell)
-                             (values (mezzano.runtime::symbol-value-cell-value cell) t))))))))
-        (let ((bindings
-                (append (svref layout 1)
-                        (loop for entry in (svref layout 2)
-                              append (destructuring-bind (binding supplied) entry
-                                       (if supplied (list binding supplied) (list binding))))
-                        (when (svref layout 3) (list (svref layout 3)))
-                        (loop for entry in (svref layout 4)
-                              append (destructuring-bind (keyword binding supplied) entry
-                                       (check-type keyword symbol)
-                                       (if supplied (list binding supplied) (list binding)))))))
-          (values layout
-                  (loop for binding in (remove-duplicates bindings :test #'eq)
-                        collect (multiple-value-bind (value available) (read-binding binding)
-                                  (list binding value available)))
-                  nil))))))
+    (values layout nil)))
+
+(defun service-frame-parameter-context (frame)
+  (multiple-value-bind (layout reason) (service-frame-parameter-layout frame)
+    (when reason
+      (return-from service-frame-parameter-context (values nil nil reason)))
+    (let* ((raw (mezzano.internals::frame-raw-data frame))
+           (locals (mezzano.internals::frame-locals raw :show-hidden t))
+           (bindings
+             (append (svref layout 1)
+                     (loop for entry in (svref layout 2)
+                           append (destructuring-bind (binding supplied) entry
+                                    (if supplied (list binding supplied) (list binding))))
+                     (when (svref layout 3) (list (svref layout 3)))
+                     (loop for entry in (svref layout 4)
+                           append (destructuring-bind (keyword binding supplied) entry
+                                    (check-type keyword symbol)
+                                    (if supplied (list binding supplied) (list binding)))))))
+      (values layout
+              (loop for binding in (remove-duplicates bindings :test #'eq)
+                    collect (multiple-value-bind (value available)
+                                (service-read-parameter-binding raw binding locals)
+                              (list binding value available)))
+              nil))))
 
 (defun service-reinvoke-arguments (layout observations original)
   (check-type layout (simple-vector 7))
@@ -1404,6 +1457,70 @@ NIL with true availability denotes an absent global cell."
           (when (svref layout 3) (list (svref layout 3)))
           (mapcar #'second (svref layout 4))))
 
+(defun service-select-source-argument (layout selector)
+  (check-type selector (or (integer 0 *) symbol))
+  (let ((bindings (service-source-argument-bindings layout)))
+    (if (integerp selector)
+        (if (< selector (length bindings))
+            (nth selector bindings)
+            (service-error :invalid-argument-index))
+        (or (find selector bindings :key (lambda (binding) (svref binding 1)) :test #'eq)
+            (service-error :invalid-argument-name)))))
+
+(defun make-service-argument-location (reference binding)
+  (let ((frame (service-frame-for-access reference)))
+    (multiple-value-bind (layout reason) (service-frame-parameter-layout frame)
+      (when reason
+        (return-from make-service-argument-location (values nil reason)))
+      (unless (member binding (service-source-argument-bindings layout) :test #'eq)
+        (service-error :invalid-argument-binding)))
+    (multiple-value-bind (function offset)
+        (mezzano.internals::function-from-frame (mezzano.internals::frame-raw-data frame))
+      (let* ((scope (mezzano.internals::source-scope-at-offset function offset))
+             (types (if (member scope '(nil :unknown))
+                        :unknown
+                        (getf scope :parameter-types :unknown)))
+             (storage (service-parameter-storage binding)))
+        (when (or (eq types :unknown) (null storage))
+          (return-from make-service-argument-location (values nil :unavailable-parameter-type)))
+        (check-type types list)
+        (let ((entry (assoc storage types :test #'eq)))
+          (unless entry
+            (return-from make-service-argument-location
+              (values nil :unavailable-parameter-type)))
+          (destructuring-bind (descriptor type) entry
+            (declare (ignore descriptor))
+            (values (make-instance 'service-frame-variable
+                                   :name (svref binding 1) :reference reference
+                                   :binding binding :type type)
+                    nil)))))))
+
+(defun service-evaluation-argument (selector)
+  (let ((reference *service-evaluation-frame*))
+    (unless (and (service-frame-p reference)
+                 (eq (service-handle-stop (service-frame-handle reference)) *service-current-stop*))
+      (service-error :not-in-debugger-evaluation))
+    (let ((frame (service-frame-for-access reference)))
+      (multiple-value-bind (layout reason) (service-frame-parameter-layout frame)
+        (when reason (service-error reason))
+        (values reference frame (service-select-source-argument layout selector))))))
+
+(defun mezzano.debugger:arg (selector)
+  (multiple-value-bind (reference frame binding) (service-evaluation-argument selector)
+    (declare (ignore reference))
+    (multiple-value-bind (value available unbound-p)
+        (service-read-parameter-binding (mezzano.internals::frame-raw-data frame) binding)
+      (when unbound-p (error 'unbound-variable :name (svref binding 1)))
+      (unless available (service-error :unavailable-binding))
+      value)))
+
+(defun (setf mezzano.debugger:arg) (value selector)
+  (multiple-value-bind (reference frame binding) (service-evaluation-argument selector)
+    (declare (ignore frame))
+    (multiple-value-bind (location reason) (make-service-argument-location reference binding)
+      (unless location (service-error reason))
+      (setf (mezzano.debugger:location-value location) value))))
+
 (defun service-print-parameter-context (layout observations stream)
   (let ((bindings (service-source-argument-bindings layout)))
     (labels ((parameter (kind binding &optional (keyword nil keyword-p))
@@ -1458,24 +1575,30 @@ NIL with true availability denotes an absent global cell."
       (when reason
         (return-from service-show-argument
           (format nil "Argument data unavailable: ~A." (service-print reason))))
-      (let ((bindings (service-source-argument-bindings layout)))
-        (when (null index)
-          (return-from service-show-argument
-            (with-output-to-string (stream)
-              (format stream "Arguments for frame ~D ~A:~%"
-                      (service-stop-current-frame stop) (service-print (frame-function frame)))
-              (service-print-parameter-context layout observations stream))))
-        (unless (< index (length bindings)) (service-error :invalid-argument-index))
-        (let* ((binding (nth index bindings))
-               (observation (assoc binding observations :test #'eq)))
-          (unless observation (error "Source argument has no current observation."))
-          (if (third observation)
-              (progn
-                (setf (fourth (service-stop-evaluation-history stop)) (second observation))
-                (format nil "Argument ~D (~A) = ~A." index
-                        (service-print (svref binding 1)) (service-print (second observation))))
-              (format nil "Argument ~D (~A) is unavailable."
-                      index (service-print (svref binding 1)))))))))
+      (when (null index)
+        (return-from service-show-argument
+          (with-output-to-string (stream)
+            (format stream "Arguments for frame ~D ~A:~%"
+                    (service-stop-current-frame stop) (service-print (frame-function frame)))
+            (service-print-parameter-context layout observations stream))))
+      (let* ((binding (service-select-source-argument layout index))
+             (observation (assoc binding observations :test #'eq)))
+        (unless observation (error "Source argument has no current observation."))
+        (if (third observation)
+            (multiple-value-bind (location location-reason)
+                (make-service-argument-location
+                 (%make-service-frame (service-handle stop) (service-stop-generation stop)
+                                      (service-stop-current-frame stop))
+                 binding)
+              (let ((history (copy-list (service-stop-evaluation-history stop))))
+                (setf (first history) location
+                      (fourth history) (second observation)
+                      (service-stop-evaluation-history stop) history))
+              (format nil "Argument ~D (~A) = ~A.~@[ Location unavailable: ~A.~]" index
+                      (service-print (svref binding 1)) (service-print (second observation))
+                      (when location-reason (service-print location-reason))))
+            (format nil "Argument ~D (~A) is unavailable."
+                    index (service-print (svref binding 1))))))))
 
 (defun service-show-rest-argument (stop)
   (let ((frame (aref (service-stop-frames stop) (service-stop-current-frame stop))))

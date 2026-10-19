@@ -281,6 +281,11 @@
                     (:sys.lap-x86 :mezzano.lap.x86)
                     (:dis :mezzano.disassemble)))
 
+(defpackage :mezzano.debugger
+  (:nicknames :dbg)
+  (:use :cl)
+  (:export #:arg #:location-value))
+
 (defpackage :mezzano.debug
   (:use :cl)
   (:export

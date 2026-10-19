@@ -114,7 +114,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Show Breakpoints | Prints all installed function/offset locations. |
 | :Show Instruction | Displays the instruction containing the selected saved caller location or interrupted program counter. |
 | :Show Arglist | Prints the selected compiled function's stored lambda list, preserving selection and evaluation history.  Missing metadata reports unavailable. |
-| :Show Argument [index or All] | Displays current source arguments.  All is the default.  An available indexed value becomes *.  Show Frame displays the same source-parameter indices. |
+| :Show Argument [index or All] | Displays current source arguments.  All is the default.  An available indexed value becomes *, and + receives its checked location.  Show Frame displays the same source-parameter indices. |
 | :Show Rest Argument | Displays the selected frame's current rest parameter and assigns only *.  Available NIL, absent rest, and unavailable storage have distinct displays. |
 | :Use Dynamic Environment | Selects the debugger's global evaluation context. |
 | :Use Lexical Environment | Selects the current frame's live lexical context. |
