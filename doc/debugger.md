@@ -336,6 +336,8 @@ Values are printed on the stopped thread with `*print-readably* NIL`, `*print-ci
 
 Within one boot, an accepted command executes at most once under its recorded ID.  After reconnecting, a client reacquires control, queries that ID, and can repeat the identical submission.  Releasing the stop discards this record.
 
+Raw SWANK RPC workers belong to their connection.  Image restoration invalidates the saved TCP connections, and SWANK requests unwinding termination of their workers.  Retained debugger stops and evaluation jobs have the guest-owned lifetimes described here.
+
 An image restore resumes the saved guest state and establishes a new boot event.  Old handles, controllers, leases, frames, and remote sessions expire.  A fresh session can discover a restored stop and read retained command history.  Each result reports whether its command belongs to the current boot.  A historical frame result can receive a new session token while its guest frame reference remains expired.
 
 A queued command expires without execution when selected after restore.  A running command blocked on a Lisp event can resume its saved invocation, retain its prior-boot identity, reject resubmission, and record its result.  Restore support covers parked stops, completed-command history, and this event-waiting state.  Other running-command positions and external I/O have no restore guarantee.  Restoring an earlier image restores an earlier command history.  At-most-once execution within a boot does not prevent repetition of external effects across image rollback.
