@@ -5667,7 +5667,7 @@ Test byte register/immediate/memory forms and unchanged operands, shift counts z
 
 - [x] Review register metadata and implement ordinary integer fixtures and acceptance.
 - [x] Compile and pass native operand/flag and complete normal-body walks.
-- [ ] Pass typed browser steps, document, review, commit and push.
+- [x] Pass typed browser step assertions, document, review, commit and push.
 
 The new ordinary fixture has 32 byte targets, 26 shift targets and 32 conditional-move targets: 244 operand/flag cases at zero/two prompts.  SHR tests immediate/CL counts 0, 1, 4, 31, 32 and 33, preserved memory upper halves and register zero-extension.  Its raw RAX/RDX and two raw stack slots use no extra-register roots and layout #*1100, which the compiler metadata test verified after every SHR.  Full collection while stopped after each SHR must preserve its raw results.  Byte tests check source register/stack operands and preserved adjacent bytes.  CMOV tests all sixteen decoded conditions with true/false register/memory-source cases.
 
@@ -5750,3 +5750,15 @@ The execution observer reported exit 143 after the original driver's final PASS,
 ### Integer source/catalog release recommendation
 
 Publish the committed integer implementation and completed browser-check documentation through the existing immutable source/catalog procedure.  Preserve the current HTTP server/handler, twenty 218 assets, HOME and ordinary step-function identity.  Test the actual documentation API for MOV8, CMP8, AND8, SHR32, all sixteen 64-bit conditional moves, 292 native operand cases, six native full-body walks and 337 typed browser steps.  Retain the original 244-case and supplemental 48-case native proofs separately and identify current LLF 140923e0.  Record the unresolved host exit in the release provenance.  Then perform one clean normal Snapshot with its original RPC, flag/event and serial evidence, followed by the established empty-state, full-GC, process, scratch and HTTP checks.  This release updates source/catalog metadata and saves the tested guest state.
+
+### Integer source/catalog release: 2026-10-19
+
+Commit 4a0b3a4ce6ca4c2d9026957883d969413389703c is pushed and published as the guest's immutable 713-file source/catalog pin.  Sixteen books and twenty unchanged 218 assets passed actual API checks.  One normal Snapshot completed at 15:50:47.367893 UTC with its original RPC, flag/event and serial Begin/End.  Final full-GC/two-CPU/residency/source/ordinary-114-target and empty-state checks passed.  All fourteen protected processes, nine other QEMUs and scratch stayed unchanged, and both native HTTP aliases and the earlier HTTP endpoint returned 200.  Server, handler, step-function and HOME identities were preserved.  Root verified all forty receipt hashes.  Evidence: integer-step-release-20261019/result.json, SHA-256 db5043958247f6dbd3f81812452ff814231a61a8e213344ce51b967d74dac512.  The receipt retains the original browser runner's unresolved exit 143 alongside its completed functional checks.
+
+The first freeze attempt added a remote Git check in a plain Tailscale session.  It failed GitHub authentication because that session lacked the forwarded SSH agent used by the established -A Git commands.  The failure occurred before source-pin creation or guest traffic.  The corrected freeze used root's completed push/ref verification and checked exact local HEAD/tracking bytes.  A separate local quoting error stopped one script-generation invocation before SSH; rendering through the existing single-quote escaping helper corrected it.  Both preparation failures and the original scripts/logs remain in the release evidence.  The guest configuration and Snapshot each ran once.
+
+### Trapped fixture compilation preparation
+
+The approved trapped-request fixture draft is staged at trapped-step-restore-20261019/source/test-retained-step-restore.lisp, SHA-256 a4af0953fdf4f9dd4912c40a1b44d0b30624ac8f216eab9aac72b0f7acc65088.  It adds the pre-removal delivery gate and stage-specific checks to the existing fixture.  PREPARE defaults to all three stages, while the next execution selects only :TRAPPED at zero/two prompts.
+
+Compile this staged file at ordinary SAFETY 3/DEBUG 3/SPEED 1 while the Web agent prepares its host files.  Require warnings/failure NIL and unchanged live PREPARE/FINISH/CLEANUP and service function identities, source pin, empty test state and debugger records.  Preserve the exact LLF and compilation receipt.  Load the LLF during later trapped preparation after the accepted UI baseline, then execute the two approved saved-image cases through the reviewed lifecycle.
