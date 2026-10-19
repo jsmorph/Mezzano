@@ -44,7 +44,7 @@ Each driver starts a separate headless browser profile and removes that profile 
 
 Lost-reply tests discard a completed HTTP response after server dispatch.  They exercise saved-request recovery rather than every possible transport failure point.  Print tests intercept print dispatch.  They do not verify physical printer output.  Browser screenshots require separate comparison before supporting a visual-fidelity claim.
 
-## Current rest argument
+## Frame and rest arguments
 
 The intercepted fixture serves the Web files locally and replaces every API request:
 
@@ -53,9 +53,9 @@ node tools/swank/web/test-rest-argument-fixtures.mjs \
   http://127.0.0.1:8786/ /tmp/mezzano-rest-argument-fixtures
 ```
 
-It checks typed and menu parsing, null operands, opaque guest text for available NIL/absent/unavailable states, canonical captions, same-ID replay after a lost accepted reply, both editors, reload, and closed/prior-boot history.  It requires zero API HTTP requests.
+It checks typed and menu parsing, null operands, opaque guest text for available NIL/absent/unavailable states, canonical captions, same-ID replay after a lost accepted reply, both editors, reload, and closed/prior-boot history.  The same fixture checks full-frame argument text as an opaque multiline Unicode string, local-only filtering, frame movement, active/closed reload without resubmission, and historical results lacking the field.  It requires zero API HTTP requests.
 
-One native headless Chromium case compiled a named DEBUG 3/SAFETY 3/SPEED 1 rest target in the Listener.  Typed Show Rest Argument displayed the current list, assigned only * with all nine history identities checked, and preserved selected frame/generation.  Proceed returned the original values and ran one cleanup.  The test released its stop, four helper jobs, Listener job, symbols/function and session.  Node, Chromium, wrapper and execution observer exited zero.  Native unavailable-value, printer-error and declared-DX semantics belong to the [guest fixture](../TESTING.md), which passed eight cases.  Restoration of this command across a saved-image boot remains untested.
+One native headless Chromium case compiled a named DEBUG 3/SAFETY 3/SPEED 1 rest target in the Listener.  Typed Show Rest Argument displayed the current list, assigned only * with all nine history identities checked, and preserved selected frame/generation.  Proceed returned the original values and ran one cleanup.  The test released its stop, four helper jobs, Listener job, symbols/function and session.  Node, Chromium, wrapper and execution observer exited zero.  Native unavailable-value, printer-error and declared-DX semantics belong to the [guest fixture](../TESTING.md), which passed twelve cases.  Restoration of this command across a saved-image boot remains untested.
 
 ## Debugger frame evaluation
 

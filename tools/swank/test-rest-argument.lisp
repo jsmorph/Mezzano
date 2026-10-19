@@ -41,6 +41,29 @@
   (break "Owned absent rest display test.")
   (values 42 43))
 
+(defvar *optional-default-count* 0)
+
+(defun mixed-target (required &optional
+                              (optional (progn (incf *optional-default-count*) :default) optional-p)
+                              &rest rest
+                              &key (key :key-default key-p) &allow-other-keys
+                              &aux (aux :aux-value))
+  (assert (eq aux :aux-value))
+  (setf required :current-required optional nil optional-p :edited-optional-p
+        rest (list :current-tail) key :current-key key-p :edited-key-p)
+  (let ((required :shadow-required) (optional :shadow-optional)
+        (rest :shadow-rest) (key :shadow-key) (aux :shadow-aux))
+    (break "Owned mixed frame argument display test.")
+    (assert (equal (list required optional rest key aux)
+                   '(:shadow-required :shadow-optional :shadow-rest :shadow-key :shadow-aux))))
+  (values 42 43))
+
+(defun nil-key-target (&key ((nil value) :default supplied))
+  (assert supplied)
+  (break "Owned NIL keyword argument display test.")
+  (assert (null value))
+  (values 42 43))
+
 (define-condition rest-print-error (error) ())
 (defclass printer () ((fail-p :initform nil) (count :initform 0)))
 (defmethod print-object ((object printer) stream)
@@ -68,6 +91,28 @@
   (assert (= (length history) (length (d::service-stop-evaluation-history stop)) 9))
   (assert (every #'eq history (d::service-stop-evaluation-history stop)))
   (assert (= selection (d::service-stop-current-frame stop))))
+
+(defun check-frame-display (handle lease required &optional forbidden)
+  (let* ((stop (d::service-handle-stop handle))
+         (selection (d::service-stop-current-frame stop))
+         (history (copy-list (d::service-stop-evaluation-history stop)))
+         (id (getf (debugger-stop-information handle) :next-command-id))
+         (result (test::command handle lease :current-frame))
+         (arguments (getf result :arguments)))
+    (assert (= (getf result :index) selection))
+    (assert (stringp arguments))
+    (dolist (text required)
+      (assert (search text arguments) () "Missing ~S in ~S." text arguments))
+    (dolist (text forbidden)
+      (assert (not (search text arguments)) () "Unexpected ~S in ~S." text arguments))
+    (check-state stop history selection)
+    (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+      (assert (= (submit-debugger-command lease id :current-frame) id))
+      (assert (equal result (getf (test::completed-command handle id) :result)))
+      (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
+    (check-state stop history selection)
+    (format t "~&Frame arguments:~%~A" arguments)
+    arguments))
 
 (defun capture-context ()
   (let* ((stop (d::service-handle-stop (getf *case* :handle)))
@@ -133,8 +178,39 @@
     (unwind-protect
          (progn (setf (nth 12 info) nil)
                 (test::command handle lease :evaluate "(lispm-rest-argument-test::capture-context)")
+                (check-frame-display
+                 handle lease
+                 '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
+                   "Current parameter data unavailable: :UNAVAILABLE-PARAMETER-DATA."))
                 (check-display handle lease controller :metadata))
       (setf (nth 12 info) layout))))
+
+(defun check-entry-metadata (handle lease controller)
+  (declare (ignore controller))
+  (let* ((info (i::function-debug-info #'lexical-target))
+         (entry (nth 11 info)))
+    (assert (typep entry '(simple-vector 3)))
+    (assert (eq (svref entry 0) :entry-arguments))
+    (assert (i::debug-binding-p (svref entry 1)))
+    (check-frame-display handle lease
+                         '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
+                           "Current source parameters:" "Rest REST: (:CHANGED :ORIGINAL)"))
+    (unwind-protect
+         (progn
+           (setf (nth 11 info) nil)
+           (check-frame-display
+            handle lease
+            '("Original entry context unavailable: :UNAVAILABLE-ENTRY-DATA."
+              "Current source parameters:" "Rest REST: (:CHANGED :ORIGINAL)"))
+           (let ((injected (copy-seq entry)))
+             (setf (svref injected 2) (vector :binding (gensym "UNAVAILABLE-CALLABLE-"))
+                   (nth 11 info) injected)
+             (check-frame-display
+              handle lease
+              '("Original entry context unavailable: :UNAVAILABLE-ENTRY-CALLABLE."
+                "Current source parameters:" "Rest REST: (:CHANGED :ORIGINAL)"))))
+      (setf (nth 11 info) entry))
+    (format t "~&PASS injected missing entry record and unavailable callable binding; original metadata restored.~%")))
 
 (defun check-printer (handle lease controller)
   (let* ((stop (d::service-handle-stop handle))
@@ -157,6 +233,39 @@
         (assert (= (slot-value printer 'count) 1))
         (assert (search "#<Rest-printer>" (test::command handle lease :rest-argument)))
         (assert (= (slot-value printer 'count) 2))
+        (check-state stop history selection)))))
+
+(defun check-frame-printer (handle lease controller)
+  (let* ((stop (d::service-handle-stop handle))
+         (selection (d::service-stop-current-frame stop))
+         (history (copy-list (d::service-stop-evaluation-history stop)))
+         (id (getf (debugger-stop-information handle) :next-command-id)))
+    (destructuring-bind (layout observations reason) *observation*
+      (assert (null reason))
+      (let* ((value (second (assoc (svref layout 3) observations :test #'eq)))
+             (printer (second value)))
+        (setf (slot-value printer 'count) 0 (slot-value printer 'fail-p) t)
+        (submit-debugger-command lease id :current-frame)
+        (let ((child (test::await (lambda () (getf (debugger-stop-information handle) :child)))))
+          (assert (typep (d::service-stop-condition (d::service-handle-stop child)) 'rest-print-error))
+          (check-state stop history selection)
+          (frame::release-test-stop child controller))
+        (assert (eq (getf (test::completed-command handle id) :state) :unwound))
+        (let ((next (getf (debugger-stop-information handle) :next-command-id)))
+          (assert (= (submit-debugger-command lease id :current-frame) id))
+          (assert (= next (getf (debugger-stop-information handle) :next-command-id)))
+          (assert (= (slot-value printer 'count) 1)))
+        (check-state stop history selection)
+        (let* ((fresh (getf (debugger-stop-information handle) :next-command-id))
+               (result (test::command handle lease :current-frame))
+               (count (slot-value printer 'count))
+               (next (getf (debugger-stop-information handle) :next-command-id)))
+          (assert (search "#<Rest-printer>" (getf result :arguments)))
+          (assert (> count 1))
+          (assert (= (submit-debugger-command lease fresh :current-frame) fresh))
+          (assert (equal result (getf (test::completed-command handle fresh) :result)))
+          (assert (= (slot-value printer 'count) count))
+          (assert (= next (getf (debugger-stop-information handle) :next-command-id))))
         (check-state stop history selection)))))
 
 (defun run-case (function source inspect)
@@ -195,16 +304,65 @@
 
 (defun run ()
   (check-parser)
-  (dolist (case (list (list #'lexical-target "(lexical-target :original)" :value)
-                     (list #'lexical-target "(lexical-target)" :nil)
-                     (list #'special-target "(special-target :original)" :value)
-                     (list #'unbound-target "(unbound-target)" :storage)
-                     (list #'no-rest-target "(no-rest-target)" :none)
-                     (list #'stack-target "(stack-target :stack)" :stack)))
+  (dolist (case
+            (list
+             (list #'lexical-target "(lexical-target :original)" :value
+                   '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
+                     "Current source parameters:" "Rest REST: (:CHANGED :ORIGINAL)"))
+             (list #'lexical-target "(lexical-target)" :nil
+                   (list (format nil "Original supplied arguments (0):~%  None.~%")
+                         "Current source parameters:" "Rest REST: NIL"))
+             (list #'special-target "(special-target :original)" :value
+                   '("Original supplied arguments (1):" "Arg 0: :ORIGINAL"
+                     "Current source parameters:" "Rest *REST*: (:CHANGED :ORIGINAL)"))
+             (list #'unbound-target "(unbound-target)" :storage
+                   (list (format nil "Original supplied arguments (0):~%  None.~%")
+                         "Current source parameters:" "Rest *REST*: [unavailable]"))
+             (list #'no-rest-target "(no-rest-target)" :none
+                   (list (format nil "Original supplied arguments (0):~%  None.~%")
+                         (format nil "Current source parameters:~%  None.~%")))
+             (list #'stack-target "(stack-target :stack)" :stack
+                   '("Original supplied arguments (1):" "Arg 0: :STACK"
+                     "Current source parameters:" "Rest REST: (:STACK)"))))
     (run-case (first case) (second case)
               (lambda (handle lease controller)
+                (check-frame-display handle lease (fourth case) '(":SHADOW"))
                 (check-display handle lease controller (third case)))))
+  (run-case #'nil-key-target "(nil-key-target nil nil)"
+            (lambda (handle lease controller)
+              (declare (ignore controller))
+              (check-frame-display
+               handle lease
+               '("Original supplied arguments (2):" "Arg 0: NIL" "Arg 1: NIL"
+                 "Current source parameters:" "Keyword NIL VALUE: NIL"
+                 "Keyword supplied-p NIL SUPPLIED: T"))))
   (run-case #'lexical-target "(lexical-target :original)" #'check-metadata)
-  (run-case #'lexical-target "(lexical-target (make-instance 'printer))" #'check-printer)
-  (format t "PASS rest display, current and exact special bindings, NIL/absent/unavailable, history, replay, live DX, GC, printer Abort, continuation and cleanup.~%")
+  (run-case #'lexical-target "(lexical-target :original)" #'check-entry-metadata)
+  (setf *optional-default-count* 0)
+  (dolist (source '("(mixed-target :original-required :original-optional :key :first :key :duplicate :unknown :permitted)"
+                    "(mixed-target :original-required)"))
+    (run-case
+     #'mixed-target source
+     (lambda (handle lease controller)
+       (declare (ignore controller))
+       (check-frame-display
+        handle lease
+        (append
+         (if (zerop *optional-default-count*)
+             '("Original supplied arguments (8):"
+               "Arg 0: :ORIGINAL-REQUIRED" "Arg 1: :ORIGINAL-OPTIONAL"
+               "Arg 2: :KEY" "Arg 3: :FIRST" "Arg 4: :KEY" "Arg 5: :DUPLICATE"
+               "Arg 6: :UNKNOWN" "Arg 7: :PERMITTED")
+             '("Original supplied arguments (1):" "Arg 0: :ORIGINAL-REQUIRED"))
+         '("Current source parameters:" "Required REQUIRED: :CURRENT-REQUIRED"
+           "Optional OPTIONAL: NIL" "Optional supplied-p OPTIONAL-P: :EDITED-OPTIONAL-P"
+           "Rest REST: (:CURRENT-TAIL)" "Keyword :KEY KEY: :CURRENT-KEY"
+           "Keyword supplied-p :KEY KEY-P: :EDITED-KEY-P"))
+        '("AUX" ":SHADOW")))))
+  (assert (= *optional-default-count* 1))
+  (run-case #'lexical-target "(lexical-target (make-instance 'printer))"
+            (lambda (handle lease controller)
+              (check-printer handle lease controller)
+              (check-frame-printer handle lease controller)))
+  (format t "~&PASS original/current frame arguments, rest display, exact special bindings, NIL/absent/unavailable, injected metadata, optional/key writes, history, replay, live DX, GC, printer Abort, values and cleanup.~%")
   t)

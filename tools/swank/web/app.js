@@ -1412,8 +1412,8 @@ function renderStops() {
     if (info.state === ":closed") detailChildren.push(node("pre", "Recorded frame " + frame.index + " from this closed stop.", "recorded-frame"));
     detailChildren.push(node("pre", frame.function, "current-function"));
     const locals = frame.locals || [];
-    if (request.display === ":frame") {
-      detailChildren.push(node("pre", "Original caller arguments are unavailable. Available lexical locals follow."));
+    if (request.display === ":frame" && typeof frame.arguments === "string") {
+      detailChildren.push(node("pre", frame.arguments, "frame-arguments"));
     }
     const visibleLocals = request.localIndex == null ? locals : locals.filter(local => local.index === request.localIndex);
     if (!visibleLocals.length) detailChildren.push(node("pre", request.localIndex == null

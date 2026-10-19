@@ -129,7 +129,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Bottom Of Stack | Selects the oldest retained frame and displays its available locals. |
 | :Next Frame | Moves toward older callers and displays the selected frame.  :Nframes takes a nonnegative decimal count, defaulting to one. |
 | :Previous Frame | Moves toward newer callees and displays the selected frame.  :Nframes takes a nonnegative decimal count, defaulting to one. |
-| :Show Frame | Displays the selected function and available locals.  Original argument values remain unavailable. |
+| :Show Frame | Displays the selected function, original supplied arguments, current source parameters, and available locals.  Missing metadata and unavailable values remain explicit. |
 | :Show Local All | Displays all available local records for the selected frame.  All is the default. |
 | :Show Local index | Displays one local by its zero-based decimal index. |
 | :Return | Reads one expression supplying all return values, displays them, and asks for confirmation before returning from the selected frame. |

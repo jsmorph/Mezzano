@@ -1395,6 +1395,48 @@ NIL with true availability denotes an absent global cell."
     (setf (fourth (service-stop-evaluation-history stop)) function)
     (format nil "Function = ~A." (service-print function))))
 
+(defun service-frame-arguments (frame)
+  (with-output-to-string (stream)
+    (multiple-value-bind (arguments callable reason)
+        (mezzano.internals::frame-entry-context frame)
+      (declare (ignore callable))
+      (if reason
+          (format stream "Original entry context unavailable: ~A.~%" (service-print reason))
+          (progn
+            (format stream "Original supplied arguments (~D):~%" (length arguments))
+            (if arguments
+                (loop for value in arguments for index from 0
+                      do (format stream "  Arg ~D: ~A~%" index (service-print value)))
+                (write-line "  None." stream)))))
+    (multiple-value-bind (layout observations reason) (service-frame-parameter-context frame)
+      (if reason
+          (format stream "Current parameter data unavailable: ~A.~%" (service-print reason))
+          (labels ((parameter (kind binding &optional (keyword nil keyword-p))
+                     (let ((observation (assoc binding observations :test #'eq)))
+                       (unless observation
+                         (error "Source parameter has no current observation."))
+                       (format stream "  ~A " kind)
+                       (when keyword-p (format stream "~A " (service-print keyword)))
+                       (format stream "~A: ~A~%"
+                               (service-print (svref binding 1))
+                               (if (third observation)
+                                   (service-print (second observation))
+                                   "[unavailable]")))))
+            (write-line "Current source parameters:" stream)
+            (unless (or (svref layout 1) (svref layout 2)
+                        (svref layout 3) (svref layout 4))
+              (write-line "  None." stream))
+            (dolist (binding (svref layout 1)) (parameter "Required" binding))
+            (dolist (entry (svref layout 2))
+              (destructuring-bind (binding supplied) entry
+                (parameter "Optional" binding)
+                (when supplied (parameter "Optional supplied-p" supplied))))
+            (when (svref layout 3) (parameter "Rest" (svref layout 3)))
+            (dolist (entry (svref layout 4))
+              (destructuring-bind (keyword binding supplied) entry
+                (parameter "Keyword" binding keyword)
+                (when supplied (parameter "Keyword supplied-p" supplied keyword)))))))))
+
 (defun service-show-rest-argument (stop)
   (let ((frame (aref (service-stop-frames stop) (service-stop-current-frame stop))))
     (multiple-value-bind (layout observations reason) (service-frame-parameter-context frame)
@@ -1666,6 +1708,7 @@ NIL with true availability denotes an absent global cell."
              (values (aref (service-stop-frames stop) index) index)))
        (list :index index
              :function (service-print (frame-function frame))
+             :arguments (service-frame-arguments frame)
              :locals (service-frame-locals frame))))
     ((:invoke-restart :invoke-restart-interactively)
      (mapcar #'service-print
