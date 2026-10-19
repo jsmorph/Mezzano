@@ -284,7 +284,7 @@
 (defpackage :mezzano.debugger
   (:nicknames :dbg)
   (:use :cl)
-  (:export #:arg #:location-value))
+  (:export #:arg #:loc #:location-value))
 
 (defpackage :mezzano.debug
   (:use :cl)

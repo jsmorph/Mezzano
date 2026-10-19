@@ -1488,11 +1488,11 @@ function renderStops() {
       output = node("div", undefined, "debugger-description");
       output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
-    } else if (["single-step", "return", "reinvoke", "arglist", "argument", "rest-argument", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
+    } else if (["single-step", "return", "reinvoke", "arglist", "argument", "local", "rest-argument", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                 "set-breakpoint", "clear-breakpoint", "clear-all-breakpoints", "breakpoints",
                 "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
       output = node("div", undefined, "debugger-" + command.command);
-      const name = {"single-step": ":Single Step", return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", argument: ":Show Argument", "rest-argument": ":Show Rest Argument", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
+      const name = {"single-step": ":Single Step", return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", argument: ":Show Argument", local: ":Show Local", "rest-argument": ":Show Rest Argument", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
         instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
         "standard-value-warnings": ":Show Standard Value Warnings", special: ":Show Special",

@@ -14,7 +14,7 @@
 (defun run-frame-tests ()
   (let ((listener (mezzano.command-processor:make-listener)))
     (dolist (entry '((":Show Frame" "current-frame" nil)
-                     (":Show Local 2" "current-frame" nil)
+                     (":Show Local 2" "local" 2)
                      (":Set Current Frame 3" "select-frame" 3)
                      (":Top Of Stack" "top-frame" nil)
                      (":Bottom Of Stack" "bottom-frame" nil)

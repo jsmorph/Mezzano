@@ -534,9 +534,9 @@
                 (service-stop-child stop))
         (service-error :stop-busy))
       (case operation
-        (:argument
+        ((:argument :local)
          (unless (typep argument '(or null (integer 0 *)))
-           (service-error :invalid-argument-index)))
+           (service-error (if (eq operation :local) :invalid-local-index :invalid-argument-index))))
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
           :function :rest-argument :compiled-code :instruction :lexical-environment
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
@@ -1495,15 +1495,19 @@ NIL with true availability denotes an absent global cell."
                                    :binding binding :type type)
                     nil)))))))
 
-(defun service-evaluation-argument (selector)
+(defun service-evaluation-reference ()
   (let ((reference *service-evaluation-frame*))
     (unless (and (service-frame-p reference)
                  (eq (service-handle-stop (service-frame-handle reference)) *service-current-stop*))
       (service-error :not-in-debugger-evaluation))
-    (let ((frame (service-frame-for-access reference)))
-      (multiple-value-bind (layout reason) (service-frame-parameter-layout frame)
-        (when reason (service-error reason))
-        (values reference frame (service-select-source-argument layout selector))))))
+    reference))
+
+(defun service-evaluation-argument (selector)
+  (let* ((reference (service-evaluation-reference))
+         (frame (service-frame-for-access reference)))
+    (multiple-value-bind (layout reason) (service-frame-parameter-layout frame)
+      (when reason (service-error reason))
+      (values reference frame (service-select-source-argument layout selector)))))
 
 (defun mezzano.debugger:arg (selector)
   (multiple-value-bind (reference frame binding) (service-evaluation-argument selector)
@@ -1568,6 +1572,94 @@ NIL with true availability denotes an absent global cell."
       (if reason
           (format stream "Current parameter data unavailable: ~A.~%" (service-print reason))
           (service-print-parameter-context layout observations stream)))))
+
+(defun service-select-local (frame index)
+  (check-type index (integer 0 *))
+  (or (nth index (mezzano.internals::frame-locals (mezzano.internals::frame-raw-data frame)))
+      (service-error :invalid-local-index)))
+
+(defun make-service-local-location (reference local)
+  (let* ((frame (service-frame-for-access reference))
+         (binding (fifth local)))
+    (unless (mezzano.internals::debug-binding-p binding)
+      (return-from make-service-local-location (values nil :unavailable-local-type)))
+    (multiple-value-bind (function offset)
+        (mezzano.internals::function-from-frame (mezzano.internals::frame-raw-data frame))
+      (when (mezzano.internals::function-reference-p function)
+        (setf function (mezzano.internals::function-reference-function function)
+              offset 0))
+      (let* ((scope (when function (mezzano.internals::source-scope-at-offset function offset)))
+             (entry (unless (eq scope :unknown)
+                      (find-if (lambda (entry)
+                                 (and (eq (second entry) :lexical)
+                                      (eq (third entry) binding)))
+                               (getf scope :variables))))
+             (function-entry
+               (unless (or entry (eq scope :unknown))
+                 (find-if (lambda (entry)
+                            (and (eq (second entry) :lexical)
+                                 (eq (third entry) binding)))
+                          (getf scope :functions)))))
+        (unless (or entry function-entry)
+          (return-from make-service-local-location (values nil :unavailable-local-type)))
+        (values (make-instance 'service-frame-variable
+                               :name (first local) :reference reference :binding binding
+                               :type (if entry (fourth entry) 'function))
+                nil)))))
+
+(defun service-evaluation-local (index)
+  (let* ((reference (service-evaluation-reference))
+         (frame (service-frame-for-access reference)))
+    (values reference frame (service-select-local frame index))))
+
+(defun mezzano.debugger:loc (index)
+  (multiple-value-bind (reference frame local) (service-evaluation-local index)
+    (declare (ignore reference))
+    (multiple-value-bind (value available)
+        (mezzano.internals::read-frame-slot (mezzano.internals::frame-raw-data frame)
+                                           (third local) (fourth local))
+      (unless available (service-error :unavailable-binding))
+      value)))
+
+(defun (setf mezzano.debugger:loc) (value index)
+  (multiple-value-bind (reference frame local) (service-evaluation-local index)
+    (declare (ignore frame))
+    (multiple-value-bind (location reason) (make-service-local-location reference local)
+      (unless location (service-error reason))
+      (setf (mezzano.debugger:location-value location) value))))
+
+(defun service-show-local (stop index)
+  (let* ((selection (service-stop-current-frame stop))
+         (frame (aref (service-stop-frames stop) selection))
+         (raw (mezzano.internals::frame-raw-data frame))
+         (locals (mezzano.internals::frame-locals raw)))
+    (when (null index)
+      (return-from service-show-local
+        (with-output-to-string (stream)
+          (format stream "Locals for frame ~D ~A:~%" selection (service-print (frame-function frame)))
+          (if locals
+              (loop for local in locals for number from 0
+                    do (multiple-value-bind (value available)
+                           (mezzano.internals::read-frame-slot raw (third local) (fourth local))
+                         (format stream "  Local ~D (~A): ~A~%" number (service-print (first local))
+                                 (if available (service-print value) "[unavailable]"))))
+              (write-line "  No locals recorded." stream)))))
+    (let ((local (or (nth index locals) (service-error :invalid-local-index))))
+      (multiple-value-bind (value available)
+          (mezzano.internals::read-frame-slot raw (third local) (fourth local))
+        (if available
+            (multiple-value-bind (location reason)
+                (make-service-local-location
+                 (%make-service-frame (service-handle stop) (service-stop-generation stop) selection)
+                 local)
+              (let ((history (copy-list (service-stop-evaluation-history stop))))
+                (setf (first history) location
+                      (fourth history) value
+                      (service-stop-evaluation-history stop) history))
+              (format nil "Local ~D (~A) = ~A.~@[ Location unavailable: ~A.~]" index
+                      (service-print (first local)) (service-print value)
+                      (when reason (service-print reason))))
+            (format nil "Local ~D (~A) is unavailable." index (service-print (first local))))))))
 
 (defun service-show-argument (stop index)
   (let ((frame (aref (service-stop-frames stop) (service-stop-current-frame stop))))
@@ -1840,6 +1932,7 @@ NIL with true availability denotes an absent global cell."
                          :function (service-print (frame-function frame)))))
     (:function (service-show-function stop))
     (:argument (service-show-argument stop (service-command-argument command)))
+    (:local (service-show-local stop (service-command-argument command)))
     (:rest-argument (service-show-rest-argument stop))
     (:compiled-code (service-show-code stop nil))
     (:instruction (service-show-code stop t))

@@ -567,8 +567,8 @@
     (:show-backtrace (list :operation "frames"))
     (:show-proceed-options (list :operation "restarts"))
     (:show-frame (list :operation "current-frame" :display :frame))
-    (:show-local (list :operation "current-frame" :argument nil :display :locals
-                       :local-index (unless (eq argument :all) argument)))
+    (:show-local (list :operation "local"
+                      :argument (unless (eq argument :all) argument)))
     (:set-current-frame (list :operation "select-frame" :argument argument :display :frame))
     (:top-frame (list :operation "top-frame" :display :frame))
     (:bottom-frame (list :operation "bottom-frame" :display :frame))

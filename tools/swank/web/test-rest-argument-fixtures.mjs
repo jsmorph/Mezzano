@@ -12,9 +12,11 @@ const evidence={fixtureOnly:true,guestRequests:0,checks:[]};
 function bootstrap() {
   const session='a'.repeat(64),stop=[':stop',session,1];
   window.fixture=JSON.parse(sessionStorage.getItem('rest-argument-fixture')||'null')||{
-    records:[],acceptedArguments:[],calls:[],executions:0,replays:0,argumentExecutions:0,argumentReplays:0,state:':stopped',dropNext:false,argumentDropNext:false,index:1,omitArguments:false,
+    records:[],acceptedArguments:[],calls:[],executions:0,replays:0,argumentExecutions:0,argumentReplays:0,localExecutions:0,localReplays:0,state:':stopped',dropNext:false,argumentDropNext:false,localDropNext:false,index:1,omitArguments:false,
     argumentAll:'Arg 0 (Required MARKER): <marker & λ>\nArg 1 (Rest REST): NIL\n<img src=x onerror=window.argumentMarkupExecuted=true>',
     argumentValues:['Argument 0 (MARKER) = :CURRENT-MARKER.','Argument 1 (REST) = (:CURRENT-TAIL).'],
+    localAll:'Fixture locals:\n0 A = <local & λ>\n1 B = NIL\n<img src=x onerror=window.localMarkupExecuted=true>',
+    localValues:['Fixture local 0 (A) = <local & λ>.','Fixture local 1 (B) = NIL.'],
     frameArguments:'Original positions: 0 = <a> & λ\nCurrent source parameters:\n  Arg 0 (Required MARKER): :CURRENT-MARKER\n  Arg 1 (Rest REST): (:CURRENT-TAIL)\n<img src=x onerror=window.argumentMarkupExecuted=true>',
     text:'Rest argument REST = (1 "two" λ).'};
   const store=()=>sessionStorage.setItem('rest-argument-fixture',JSON.stringify(fixture));
@@ -54,8 +56,10 @@ function bootstrap() {
           ':Show Argument 0':{operation:'argument',argument:0},
           ':Show Argument 1':{operation:'argument',argument:1},
           ':Show Frame':{operation:'current-frame',argument:null,display:':frame'},
-          ':Show Local All':{operation:'current-frame',argument:null,display:':locals'},
-          ':Show Local 1':{operation:'current-frame',argument:null,display:':locals','local-index':1},
+          ':Show Local':{operation:'local',argument:null},
+          ':Show Local All':{operation:'local',argument:null},
+          ':Show Local 0':{operation:'local',argument:0},
+          ':Show Local 1':{operation:'local',argument:1},
           ':Set Current Frame 0':{operation:'select-frame',argument:0,display:':frame'},
           ':Next Frame':{operation:'next-frame',argument:1,display:':frame'}};
         if(!plans[args.source])throw Error('Unexpected fixture source '+args.source);
@@ -64,28 +68,30 @@ function bootstrap() {
       else throw Error('Unexpected fixture assistance action');
     }else if(operation==='submit'){
       checkStop(args);
-      const operand=args.command==='select-frame'?0:args.command==='next-frame'?1:args.command==='argument'?args.argument:null;
-      if(args.command==='argument'&&args.argument!==null&&![0,1].includes(args.argument))throw Error('Unknown fixture argument index');
+      const operand=args.command==='select-frame'?0:args.command==='next-frame'?1:['argument','local'].includes(args.command)?args.argument:null;
+      if(['argument','local'].includes(args.command)&&args.argument!==null&&![0,1].includes(args.argument))throw Error('Unknown fixture argument/local index');
       if(args.argument!==operand||!Number.isSafeInteger(args.id)||args.id<0)throw Error('Malformed fixture submission');
       if(args.id<fixture.records.length){
         const previous=fixture.records[args.id];
         if(previous.operation!==':'+args.command||JSON.stringify(args)!==JSON.stringify(fixture.acceptedArguments[args.id]))throw Error('Conflicting fixture replay');
-        if(args.command==='argument')fixture.argumentReplays++;else fixture.replays++;store();return new Response(JSON.stringify({value:args.id,diagnostics:[]}),{status:200});
+        if(args.command==='argument')fixture.argumentReplays++;else if(args.command==='local')fixture.localReplays++;else fixture.replays++;store();return new Response(JSON.stringify({value:args.id,diagnostics:[]}),{status:200});
       }
       if(args.id!==fixture.records.length||fixture.state!==':stopped')throw Error('Invalid fixture next ID/state');
       if(args.command==='select-frame')fixture.index=args.argument;
       if(args.command==='next-frame')fixture.index+=args.argument;
       if(fixture.index<0||fixture.index>1)throw Error('Invalid fixture selected frame');
-      const text=args.command==='argument'?(args.argument===null?fixture.argumentAll:fixture.argumentValues[args.argument]):args.command==='rest-argument'?fixture.text:['current-frame','select-frame','next-frame'].includes(args.command)?frame():values[args.command];
+      const text=args.command==='local'?(args.argument===null?fixture.localAll:fixture.localValues[args.argument]):args.command==='argument'?(args.argument===null?fixture.argumentAll:fixture.argumentValues[args.argument]):args.command==='rest-argument'?fixture.text:['current-frame','select-frame','next-frame'].includes(args.command)?frame():values[args.command];
       if(text===undefined)throw Error('Unexpected fixture submit '+args.command);
       fixture.records.push({operation:':'+args.command,generation:0,state:':returned',source:null,
         result:text,'current-boot-p':true,'input-length':0,'input-eof-p':null,'input-waiting-p':null,'output-length':0});
       fixture.acceptedArguments.push(args);
       if(args.command==='rest-argument')fixture.executions++;
       if(args.command==='argument')fixture.argumentExecutions++;
+      if(args.command==='local')fixture.localExecutions++;
       result=args.id;
       if(args.command==='rest-argument'&&fixture.dropNext){fixture.dropNext=false;store();throw Error('Fixture discards accepted rest-argument reply');}
       if(args.command==='argument'&&fixture.argumentDropNext){fixture.argumentDropNext=false;store();throw Error('Fixture discards accepted argument reply');}
+      if(args.command==='local'&&fixture.localDropNext){fixture.localDropNext=false;store();throw Error('Fixture discards accepted local reply');}
     }else throw Error('Unexpected fixture operation '+operation);
     store();return new Response(JSON.stringify({value:result,diagnostics:[]}),{status:200});
   };
@@ -147,21 +153,23 @@ try {
   const full=await frameSnapshot();assert.equal(full.arguments,argumentText);assert.equal(full.tagCount,0);assert.equal(full.executedMarkup,false);assert.equal(full.locals.length,2);assert.equal(full.selected,1);assert.equal(full.generation,0);
   await browser.evaluate("document.querySelector('.frame-arguments').scrollIntoView({block:'start'})");await browser.screenshot(output+'/frame-arguments.png');
   await enter('#debugger-command',':Show Local 1');await ready();
-  const oneLocal=await frameSnapshot();assert.equal(oneLocal.arguments,null);assert.deepEqual(oneLocal.locals,['Local 1 (B):NIL']);assert.equal(oneLocal.selected,1);
+  const oneLocal=await frameSnapshot();assert.deepEqual(oneLocal,full);
+  assert.equal(await browser.evaluate("document.querySelector('.local-result').textContent"),'Fixture local 1 (B) = NIL.');
   await enter('#debugger-command',':Show Local All');await ready();
-  const allLocals=await frameSnapshot();assert.equal(allLocals.arguments,null);assert.equal(allLocals.locals.length,2);assert.equal(allLocals.selected,1);
+  const allLocals=await frameSnapshot();assert.deepEqual(allLocals,full);
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('.local-result')].at(-1).textContent"),await browser.evaluate('fixture.localAll'));
   await browser.evaluate("document.querySelector('#stop-detail .frame').click()");await ready();
   const selected=await frameSnapshot();assert.equal(selected.selected,0);assert.equal(selected.arguments,argumentText);
   await enter('#debugger-command',':Next Frame');await ready();
   const navigated=await frameSnapshot();assert.equal(navigated.selected,1);assert.equal(navigated.arguments,argumentText);assert.equal(navigated.generation,0);
   const frameCalls=await browser.evaluate(`fixture.calls.slice(${frameCallsStart}).filter(row=>row.operation==='submit')`);
-  assert.deepEqual(frameCalls.map(row=>[row.command,row.argument]),[['current-frame',null],['current-frame',null],['current-frame',null],['select-frame',0],['next-frame',1]],'Frame arguments must not request separate data or inspections');
+  assert.deepEqual(frameCalls.map(row=>[row.command,row.argument]),[['current-frame',null],['local',1],['local',null],['select-frame',0],['next-frame',1]],'Show Local text must preserve the existing frame inspection without another frame request');
   const submissionsBeforeReload=await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length");
   await browser.send('Page.reload');await ready();
   const reloaded=await frameSnapshot();assert.equal(reloaded.arguments,argumentText);assert.equal(reloaded.selected,1);assert.equal(reloaded.locals.length,2);
   assert.equal(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length"),submissionsBeforeReload);
   evidence.frameArguments={full,oneLocal,allLocals,selected,navigated,reloaded,frameCalls,submissionsBeforeReload};
-  evidence.checks.push('Opaque Unicode/angle-bracket frame text, local-only filtering, selection/navigation and reload use the existing frame result only.');
+  evidence.checks.push('Opaque frame text, frame-local tables, selection/navigation and reload remain intact; Show Local submits only its new text operation.');
   const argumentRows=()=>browser.evaluate("[...document.querySelectorAll('.debugger-argument')].map(node=>({id:Number(node.dataset.commandId),caption:node.querySelector('.debugger-transcript').textContent,text:node.querySelector('.argument-result').textContent,tagCount:node.querySelector('.argument-result').childElementCount}))");
   assert.equal(await browser.evaluate('activity'),'listener');
   const allArgumentText=await browser.evaluate('fixture.argumentAll');
@@ -201,15 +209,55 @@ try {
   assert.equal(await browser.evaluate('stops[0].info.generation'),0);
   const argumentSubmissions=await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit'&&row.command==='argument')");
   assert.deepEqual(argumentSubmissions.map(row=>row.argument),[null,null,0,null,null,1,1,1]);
-  const finalSubmissionsBeforeReload=await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length");
+  const argumentSubmissionsBeforeReload=await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length");
   await browser.send('Page.reload');await ready();
   assert.deepEqual((await argumentRows()).map(row=>row.text),expectedArgumentTexts);
-  assert.equal(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length"),finalSubmissionsBeforeReload);
-  evidence.arguments={expectedTexts:expectedArgumentTexts,captions:expectedArgumentCaptions,submissions:argumentSubmissions,replayCalls:argumentReplayCalls,finalSubmissionsBeforeReload};
+  assert.equal(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length"),argumentSubmissionsBeforeReload);
+  evidence.arguments={expectedTexts:expectedArgumentTexts,captions:expectedArgumentCaptions,submissions:argumentSubmissions,replayCalls:argumentReplayCalls,submissionsBeforeReload:argumentSubmissionsBeforeReload};
   evidence.checks.push('Show Argument default/All/index, both editors/menu, canonical recovery and exact accepted replay retain opaque text without resubmission.');
   await browser.evaluate("document.querySelector('.debugger-argument').scrollIntoView({block:'start'})");await browser.screenshot(output+'/argument-results.png');
   await browser.evaluate("document.querySelector('.frame-arguments').scrollIntoView({block:'start'})");
   await browser.screenshot(output+'/rest-argument.png');
+  const localRows=()=>browser.evaluate("[...document.querySelectorAll('.debugger-local')].map(node=>({id:Number(node.dataset.commandId),caption:node.querySelector('.debugger-transcript').textContent,text:node.querySelector('.local-result').textContent,tagCount:node.querySelector('.local-result').childElementCount}))");
+  const localAll=await browser.evaluate('fixture.localAll'),localZero=await browser.evaluate('fixture.localValues[0]'),localNil=await browser.evaluate('fixture.localValues[1]');
+  assert.equal(await browser.evaluate('activity'),'listener');
+  await enter('#source',':Show Local');await ready();
+  await enter('#source',':Show Local All');await ready();
+  await enter('#source',':Show Local 0');await ready();
+  await browser.evaluate("document.querySelector('#system-menu').showModal();document.querySelector('[data-activity=debugger]').click()");await ready();
+  await browser.evaluate("document.querySelector('#system-menu').showModal();[...document.querySelectorAll('#debugger-menu button')].find(node=>node.textContent===':Show Local All').click()");await ready();
+  await browser.evaluate('fixture.localDropNext=true');await enter('#debugger-command',':Show Local 1');
+  await browser.waitFor("!connected&&!busy&&state.pending.some(row=>row.operation==='submit'&&row.status==='outcome unknown')");
+  evidence.localUncertain=await browser.evaluate("state.pending.find(row=>row.operation==='submit'&&row.status==='outcome unknown')");
+  assert.equal(evidence.localUncertain.arguments.command,'local');assert.equal(evidence.localUncertain.arguments.argument,1);
+  const localAcceptedId=evidence.localUncertain.arguments.id;
+  assert.equal(await browser.evaluate('fixture.localExecutions'),7);
+  await browser.send('Page.reload');await ready();
+  let localsRendered=await localRows();assert.equal(localsRendered.length,7);assert.equal(localsRendered.at(-1).caption,'→ :Show Local');
+  evidence.localRecovered=await browser.evaluate(`state.commands.find(row=>row.id===${localAcceptedId})`);
+  assert.equal(evidence.localRecovered.command,'local');assert.equal(evidence.localRecovered.source,undefined);
+  await browser.evaluate("[...document.querySelectorAll('#pending button')].find(node=>node.textContent==='Repeat Original Request').click()");await ready();
+  assert.equal(await browser.evaluate('fixture.localExecutions'),7);assert.equal(await browser.evaluate('fixture.localReplays'),1);
+  assert.equal(await browser.evaluate('state.pending.length'),0);
+  const localReplayCalls=await browser.evaluate(`fixture.calls.filter(row=>row.operation==='submit'&&row.id===${localAcceptedId})`);
+  assert.equal(localReplayCalls.length,2);assert.deepEqual(localReplayCalls[0],localReplayCalls[1]);assert.equal(localReplayCalls[0].argument,1);
+  await browser.evaluate("document.querySelector('#system-menu').showModal();document.querySelector('[data-activity=debugger]').click()");await ready();
+  const localUnavailable='Fixture local unavailable <λ> & reason.';
+  await browser.evaluate(`fixture.localValues[1]=${JSON.stringify(localUnavailable)}`);await enter('#debugger-command',':Show Local 1');await ready();
+  const expectedLocalTexts=[localNil,localAll,localAll,localAll,localZero,localAll,localNil,localUnavailable];
+  const expectedLocalCaptions=['→ :Show Local 1','→ :Show Local All','→ :Show Local','→ :Show Local All','→ :Show Local 0','→ :Show Local All','→ :Show Local','→ :Show Local 1'];
+  localsRendered=await localRows();assert.deepEqual(localsRendered.map(row=>row.text),expectedLocalTexts);assert.deepEqual(localsRendered.map(row=>row.caption),expectedLocalCaptions);assert(localsRendered.every(row=>row.tagCount===0));
+  assert.equal(await browser.evaluate('window.localMarkupExecuted===true'),false);
+  assert.equal(await browser.evaluate('stops[0].info["current-frame"]'),1);assert.equal(await browser.evaluate('stops[0].info.generation'),0);
+  const localSubmissions=await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit'&&row.command==='local')");
+  assert.deepEqual(localSubmissions.map(row=>row.argument),[1,null,null,null,0,null,1,1,1]);
+  const finalSubmissionsBeforeReload=await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length");
+  await browser.send('Page.reload');await ready();
+  assert.deepEqual((await localRows()).map(row=>row.text),expectedLocalTexts);
+  assert.equal(await browser.evaluate("fixture.calls.filter(row=>row.operation==='submit').length"),finalSubmissionsBeforeReload);
+  evidence.locals={expectedTexts:expectedLocalTexts,captions:expectedLocalCaptions,submissions:localSubmissions,replayCalls:localReplayCalls,finalSubmissionsBeforeReload};
+  evidence.checks.push('Show Local default/All/index, both editors/menu, exact indexed replay and reload retain opaque text without changing frame tables or selection.');
+  await browser.evaluate("document.querySelectorAll('.debugger-local')[1].scrollIntoView({block:'start'})");await browser.screenshot(output+'/local-results.png');
   await browser.evaluate("fixture.state=':closed';fixture.records.forEach(row=>row['current-boot-p']=false);sessionStorage.setItem('rest-argument-fixture',JSON.stringify(fixture))");
   await browser.send('Page.reload');await ready();
   await browser.evaluate("document.querySelector('#system-menu').showModal();document.querySelector('[data-activity=debugger]').click()");await ready();
@@ -226,6 +274,11 @@ try {
   assert.equal(await browser.evaluate('fixture.argumentExecutions'),7);
   await browser.evaluate("document.querySelector('.debugger-argument').scrollIntoView({block:'start'})");await browser.screenshot(output+'/argument-recorded.png');
   evidence.checks.push('Recorded closed arguments preserve seven outputs/captions and prior-boot labels, including available NIL and opaque unavailable text.');
+  assert.deepEqual((await localRows()).map(row=>row.text),expectedLocalTexts);assert.deepEqual((await localRows()).map(row=>row.caption),expectedLocalCaptions);
+  assert.equal(await browser.evaluate("document.querySelectorAll('.debugger-local .historical-command').length"),8);
+  assert.equal(await browser.evaluate('fixture.localExecutions'),8);assert.equal(await browser.evaluate('fixture.localReplays'),1);
+  await browser.evaluate("document.querySelectorAll('.debugger-local')[1].scrollIntoView({block:'start'})");await browser.screenshot(output+'/local-recorded.png');
+  evidence.checks.push('Recorded closed local commands preserve eight opaque outputs/captions and prior-boot labels without resubmission.');
   const recorded=await frameSnapshot();assert.equal(recorded.arguments,argumentText);assert.equal(recorded.locals.length,2);
   await browser.evaluate("fixture.omitArguments=true;sessionStorage.setItem('rest-argument-fixture',JSON.stringify(fixture))");
   await browser.send('Page.reload');await ready();
@@ -245,12 +298,17 @@ try {
   assert.equal(evidence.fixture.calls.filter(row=>row.operation==='listener-assistance'&&row.action==='parse'&&row.source.startsWith(':Show Argument')).length,7);
   assert.equal(evidence.fixture.calls.filter(row=>row.operation==='submit'&&row.command==='argument').length,8);
   assert.equal(evidence.fixture.argumentExecutions,7);assert.equal(evidence.fixture.argumentReplays,1);
+  assert.equal(evidence.fixture.calls.filter(row=>row.operation==='listener-assistance'&&row.action==='parse'&&row.source.startsWith(':Show Local')).length,8);
+  assert.equal(evidence.fixture.calls.filter(row=>row.operation==='submit'&&row.command==='local').length,9);
+  assert.equal(evidence.fixture.localExecutions,8);assert.equal(evidence.fixture.localReplays,1);
   evidence.apiHttpRequests=0;evidence.errors=browser.errors;
-  console.log('PASS rest/frame/Show Argument text, both editors/menu, accepted replay and recorded history; zero guest requests');
+  console.log('PASS rest/frame/Show Argument/Show Local text, both editors/menu, accepted replay and recorded history; zero guest requests');
 }catch(error){
-  evidence.failure=error.stack;evidence.fixture=await browser.evaluate('fixture');evidence.errors=browser.errors;
-  await browser.screenshot(output+'/failure.png');throw error;
+  evidence.failure=error.stack;await writeFile(output+'/result.json',JSON.stringify(evidence,null,2)+'\n');
+  try{evidence.fixture=await browser.evaluate('fixture');evidence.errors=browser.errors;await browser.screenshot(output+'/failure.png');}
+  catch(diagnosticError){evidence.diagnosticFailure=diagnosticError.stack;}
+  throw error;
 }finally{
-  await browser.close();evidence.browserProcessEvents=browser.processEvents;
+  await browser.close();evidence.browserProcessEvents=browser.processEvents;evidence.network=browser.network;
   await writeFile(output+'/result.json',JSON.stringify(evidence,null,2)+'\n');
 }

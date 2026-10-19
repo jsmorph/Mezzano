@@ -131,8 +131,8 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Next Frame | Moves toward older callers and displays the selected frame.  :Nframes takes a nonnegative decimal count, defaulting to one. |
 | :Previous Frame | Moves toward newer callees and displays the selected frame.  :Nframes takes a nonnegative decimal count, defaulting to one. |
 | :Show Frame | Displays the selected function, original supplied arguments, current source parameters, and available locals.  Missing metadata and unavailable values remain explicit. |
-| :Show Local All | Displays all available local records for the selected frame.  All is the default. |
-| :Show Local index | Displays one local by its zero-based decimal index. |
+| :Show Local All | Displays recorded locals for the selected frame, preserving history.  All is the default. |
+| :Show Local index | Displays one recorded local by its zero-based decimal index.  An available value becomes *, and + receives its checked location when declaration metadata is available. |
 | :Return | Reads one expression supplying all return values, displays them, and asks for confirmation before returning from the selected frame. |
 | :Show Proceed Options | Displays retained restart choices and marks the default CONTINUE.  Selecting a choice invokes its interactive function in the guest to obtain any arguments. |
 
@@ -178,7 +178,7 @@ Listener state survives connection closure.  Session release or a new boot retir
 | start-listener | name, source, and optional interactive.  Returns an ordinary retained job token. |
 | listener-assistance | source, cursor, action, optional context and presentation.  Returns input classification, replacement text and cursor, prompt, default, expected-type, help, candidates, complete-p, and error. |
 
-Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display or local-index.  Frame selection plans carry a decimal index or movement count.  Current-frame inspection carries NIL, with an optional local-index identifying the displayed local.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
+Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display.  Frame selection plans carry a decimal index or movement count.  Current-frame inspection carries NIL.  Show Local uses operation local with NIL for All or a nonnegative index.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
 
 Job information adds :listener-result.  It is NIL for ordinary evaluation jobs.  A Listener result records :kind (:command or :form), optional :command, :effects, :presentations, and any command input :error.  An input error is printed and recorded.  Runtime conditions, including file and compiler errors, enter the retained debugger.
 
