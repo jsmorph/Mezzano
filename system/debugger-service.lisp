@@ -1229,7 +1229,10 @@ NIL with true availability denotes an absent global cell."
                            mezzano.lap.x86:lea64 mezzano.lap.x86:add64
                            mezzano.lap.x86:sub64 mezzano.lap.x86:cmp32
                            mezzano.lap.x86:cmp64 mezzano.lap.x86:test64
-                           mezzano.lap.x86:shl64 mezzano.lap.x86:leave) t)
+                           mezzano.lap.x86:shl64 mezzano.lap.x86:leave
+                           mezzano.lap.x86:and32 mezzano.lap.x86:and64
+                           mezzano.lap.x86:or32 mezzano.lap.x86:or64
+                           mezzano.lap.x86:xor32 mezzano.lap.x86:xor64) t)
                          ((mezzano.lap.x86:jmp
                            mezzano.lap.x86:jo mezzano.lap.x86:jno
                            mezzano.lap.x86:jb mezzano.lap.x86:jae
