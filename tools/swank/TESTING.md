@@ -170,6 +170,8 @@ Compile/load the matched complete SWANK core and REPL modules before `TEST-SWANK
 
 Each wait has a twenty-second deadline.  Failures retain `LISPM-SWANK-CONNECTION-CLEANUP-TEST::*CASE*`.  The test allocates every shared state field before starting workers.  Publication separately passed native complete-module compilation/LOAD, old-instance migration with its connection held open and idle, a newly owned RPC on that instance, and normal closure with worker/helper exit.  Pre-publication workers are not reconstructed from activity lists.  Stale-connection closure after image restoration and other backends require separate acceptance.
 
+The retained-job compatibility fixture is `TEST-SWANK-RETAINED-DISCONNECT.LISP`.  Compile/load it ordinarily at SAFETY 3/DEBUG 3/SPEED 1 after the cleanup fixture.  Call PREPARE in LISPM-SWANK-RETAINED-DISCONNECT-TEST, create a retained SWANK job whose source calls BODY, and call CHECK-RUNNING through native HTTP.  Close the SWANK connection and call CHECK-RUNNING again through HTTP.  Resume the job's session on a fresh connection, call FINISH through HTTP, then require job state :RETURNED and values 42/:DONE before releasing its job/session.  Native x86-64 acceptance passed: one body entry, continued execution after disconnect, exclusion from every connection ownership list, and one cleanup.  Failures preserve that package's *CASE*.
+
 ## Pager reservation tests
 
 From the Mezzano checkout, run the isolated host test:
