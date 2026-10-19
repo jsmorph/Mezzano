@@ -5626,3 +5626,29 @@ The first host freeze used browser_assets_match_ad290844 instead of the prior ma
 ### Proposed argument-entry stepping increment
 
 The x86-64 argument emitter uses TEST32 for a zero-argument count check and SUB32 for a required-plus-optional count range.  Both remain outside the retained acceptance list.  Recommendation: add those two ordinary instructions through the current TF path, preserving retained state, replay and cleanup.  Review requires checking that TEST leaves its operands unchanged, SUB32 zero-extends a register destination, and a memory destination preserves adjacent bytes.  Required tests include their defined flags, operand forms, moving roots, actual compiled zero-argument/optional entries, and typed browser steps.  Intel specifies these operations in [Volume 2B, SUB](https://cdrdv2-public.intel.com/782151/253667-sdm-vol-2b.pdf#page=675) and [TEST](https://cdrdv2-public.intel.com/782151/253667-sdm-vol-2b.pdf#page=705).  The scope question is pending under the current turn's approval rule.  No implementation has begun.
+
+### Argument-count stepping: approved scope and review
+
+The user approved TEST32 and SUB32.  Add only those two names to the ordinary TF acceptance list.  Reuse the accepted logical fixture's atomic uint32 register reader and word conversion helpers.  Use explicit operand/input cases covering TEST's unchanged operands, SUB's carry/overflow/auxiliary carry, 32-bit register zero-extension, memory upper-half preservation, exact PCs, replay, expired references, values and cleanup at zero/two prompts.  TEST supports register/register, register/immediate, memory/register and memory/immediate forms in the existing assembler.  SUB also supports a memory source.
+
+The existing ordinary branch fixture now reaches TEST32 as its unsupported probe.  Step TEST32 and use a following nonmutating TEST16 for that rejection check.  Extend its START-CASE helper with an optional entry function, defaulting to the stopped function, so an ordinary two-argument caller can invoke compiled zero-argument and one/two-argument optional targets.  This changes test code.  Retain the exact target function in its record for PC checks.
+
+Compiled integration must walk from each function entry through the new instruction and its successful argument-count branch, with moving marker roots and zero/two prompts, then Proceed and verify the original return and one cleanup.  The optional-value binder later emits CMOV64LE; this increment tests the count-check prefix and leaves conditional-move stepping pending.  Compile ordinary fixtures at SAFETY 3/DEBUG 3/SPEED 1, publish only canonical SERVICE-SINGLE-STEP, and run the affected old branch paths.  Follow native success with typed Chromium steps, product documentation, review, commit and push.
+
+- [x] Implement and compile TEST32/SUB32 fixtures and service acceptance.
+- [x] Pass native operand/flag, compiled count-check, and old branch tests.
+- [x] Pass browser steps, document, commit and push.
+
+Both modules compiled ordinarily in Mezzano with warnings/failure NIL: ordinary-step in 1.42 seconds and argument-step in 6.8 seconds.  All twenty-six operand targets decoded.  The actual zero-target prefix has TEST32 ECX,ECX followed by JZ; optional-target has SUB32 EAX,2, CMP32 EAX,2 and JBE before the later binder.  The compiler inspection therefore agrees with the bounded integration plan.  The original compilation job/session returned and released.  Frozen native inputs and actual LLFs: argument-step-native-20261019/source.json.  Service publication and native execution remain pending.
+
+### Argument-count native acceptance: 2026-10-19
+
+The original job returned :ARGUMENT-STEP-NATIVE-PASS and its observer exited 0 after releasing the job/session.  All 52 operand cases, three focused compiled checks, six compiled count checks, and four affected old branch paths passed.  Input/LLF hashes and panic-free serial passed; final full-GC/two-CPU/residency/source/TLF/empty-job-stop-point-request checks and fourteen protected process identities passed.  Evidence: argument-step-native-20261019/native-result.json.  The service is ordinary SAFETY 3/DEBUG 3/SPEED 1 at canonical top-level form 89.  Browser testing remains pending.
+
+While preparing the private final-audit helper, direct insertion of a Lisp quote into a Python string failed its local syntax check.  The helper was rebuilt by replacing the parsed string constant and passed syntax checking before its guest execution.  The native test job continued unchanged.
+
+### Argument-count browser acceptance: 2026-10-19
+
+Headless Chromium passed three compiled count-check cases and eight typed Single Step commands, with eight exact-ID replays.  Zero-target advanced 72 -> 74 -> 89 with TEST32 flags #x44; optional-target advanced 70 -> 73 -> 76 -> 91.  The one-argument call kept ECX 2 and produced RAX 0 with SUB flags #x44 and CMP/JBE flags #x91.  The two-argument call kept ECX 4 and produced RAX 2 with SUB flags 0 and CMP/JBE flags #x44.  Each call returned the original marker and :CALLER with one call/cleanup.  The three captures and all nineteen evidence payload hashes were reviewed.
+
+All 433 API responses returned HTTP 200.  All 448 HTTP starts completed: 447 returned 200 and the favicon returned 204, with zero failures/cancellations and browser errors.  All six before/final source, process and native guards passed.  Twenty owned jobs, three stops, descriptors/globals and the session were released; browser/profile closed.  Ownership returned to root.  Evidence: /tmp/web-argument-step-acceptance-8765-20261019-A.  Summary SHA-256: 6372ea0fb6e71996b59f41fea7d251f92437c44b464e6d920594c9741f86150e.  Manifest SHA-256: 13bef46153fcc2b98f2b7138e7f10a8ffb9ca3ab5086ad30fc4b69620881410c.

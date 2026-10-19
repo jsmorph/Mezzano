@@ -44,6 +44,7 @@
   (lap:mov32 :ecx #.(ash 2 i::+n-fixnum-bits+))
   (lap:and64 :rax -1)
   (lap:test32 :eax :eax)
+  (lap:test16 :ax :ax)
   (lap:call (:named-call hw::touch))
   (lap:leave)
   (:gc :no-frame :layout #*0 :multiple-values 0)
@@ -103,13 +104,14 @@
 (defun compiled-target (marker state)
   (hw::touch marker state))
 
-(defun start-case (function offset depth &optional (marker-value :hardware-breakpoint))
+(defun start-case (function offset depth &optional (marker-value :hardware-breakpoint) (entry function))
   (let ((point nil) (record nil) (prepared nil))
     (unwind-protect
          (progn
            (s:without-footholds
              (setf point (s::install-instruction-breakpoint function offset)))
-           (setf record (hw::make-case function offset depth marker-value))
+           (setf record (hw::make-case entry offset depth marker-value)
+                 (sixth record) function)
            (let* ((stop (test::await (lambda () (hw::thread-stop (third record)))))
                   (lease (d:attach-debugger-stop stop (second record))))
              (setf (fourth record) stop (fifth record) lease)
@@ -169,9 +171,10 @@
            (step-instruction record 'lap:pop)
            (step-instruction record 'lap:mov32)
            (step-instruction record 'lap:and64)
+           (step-instruction record 'lap:test32)
            (multiple-value-bind (instruction offset) (current-instruction record)
              (declare (ignore offset))
-             (assert (eq (x::inst-opcode instruction) 'lap:test32)))
+             (assert (eq (x::inst-opcode instruction) 'lap:test16)))
            (retained::rejected-command (fourth record) (fifth record)
                                       :unsupported-step-instruction)
            (hw::finish-case record nil))

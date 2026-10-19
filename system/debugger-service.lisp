@@ -1227,8 +1227,9 @@ NIL with true availability denotes an absent global cell."
                            mezzano.lap.x86:push mezzano.lap.x86:pop
                            mezzano.lap.x86:mov32 mezzano.lap.x86:mov64
                            mezzano.lap.x86:lea64 mezzano.lap.x86:add64
-                           mezzano.lap.x86:sub64 mezzano.lap.x86:cmp32
-                           mezzano.lap.x86:cmp64 mezzano.lap.x86:test64
+                           mezzano.lap.x86:sub32 mezzano.lap.x86:sub64 mezzano.lap.x86:cmp32
+                           mezzano.lap.x86:cmp64 mezzano.lap.x86:test32
+                           mezzano.lap.x86:test64
                            mezzano.lap.x86:shl64 mezzano.lap.x86:leave
                            mezzano.lap.x86:and32 mezzano.lap.x86:and64
                            mezzano.lap.x86:or32 mezzano.lap.x86:or64
