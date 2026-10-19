@@ -213,6 +213,66 @@
       (http:stop-server server)))
   (format t "PASS HTTP absolute receive deadline during partial input.~%"))
 
+(defun handler-wait-test ()
+  (let* ((timeout 1/5)
+         (entered (sup:make-event :name "HTTP handler entered"))
+         (release (sup:make-event :name "HTTP handler release"))
+         (body (bytes "abc"))
+         (handler-thread nil)
+         (handler-request nil)
+         (handler-start nil)
+         (entries 0)
+         (cleanups 0)
+         (server (http:start-server
+                  :address "127.0.0.1" :port 0 :timeout timeout
+                  :handler
+                  (lambda (request)
+                    (unwind-protect
+                         (progn
+                           (incf entries)
+                           (setf handler-thread (sup:current-thread)
+                                 handler-request request
+                                 handler-start (get-internal-run-time)
+                                 (sup:event-state entered) t)
+                           (await (lambda () (sup:event-state release)))
+                           (values 200 '(("Content-Type" . "application/octet-stream"))
+                                   body))
+                      (incf cleanups)))))
+         (stream nil))
+    (unwind-protect
+         (progn
+           (setf stream (connect server))
+           (write-sequence (bytes (wire "POST /deadline HTTP/1.1" "Host: test"
+                                        "Content-Length: 3" "")) stream)
+           (write-sequence body stream)
+           (await (lambda () (sup:event-state entered)))
+           (assert (= entries 1))
+           (assert (string= (http:request-method handler-request) "POST"))
+           (assert (equalp (http:request-body handler-request) body))
+           (let ((held-until (+ handler-start
+                                (ceiling (* timeout internal-time-units-per-second)))))
+             (await (lambda () (> (get-internal-run-time) held-until))))
+           (assert (zerop cleanups))
+           (setf (sup:event-state release) t)
+           (multiple-value-bind (status headers result) (response stream)
+             (declare (ignore headers))
+             (assert (= status 200))
+             (assert (equalp result body)))
+           (assert (null (http::next-byte stream (net::deadline-after 3) t)))
+           (await (lambda () (nth-value 1 (sup:thread-join handler-thread nil))))
+           (assert (= entries 1))
+           (assert (= cleanups 1))
+           (assert (null (http::server-connections server))))
+      (setf (sup:event-state release) t)
+      (unwind-protect
+           (when stream (close stream :abort t))
+        (unwind-protect
+             (http:stop-server server)
+          (when handler-thread
+            (await (lambda ()
+                     (nth-value 1 (sup:thread-join handler-thread nil)))))))))
+  (format t "PASS HTTP handler wait outlasts receive allowance with a fresh send deadline.~%"))
+
 (defvar *unexpected-cleanup-count* 0)
 
 (defun raise-handler-error (condition)
@@ -279,5 +339,6 @@
   (parser-tests)
   (loopback-tests)
   (timeout-test)
+  (handler-wait-test)
   (unexpected-error-test)
   t)
