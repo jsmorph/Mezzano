@@ -44,6 +44,19 @@ Each driver starts a separate headless browser profile and removes that profile 
 
 Lost-reply tests discard a completed HTTP response after server dispatch.  They exercise saved-request recovery rather than every possible transport failure point.  Print tests intercept print dispatch.  They do not verify physical printer output.  Browser screenshots require separate comparison before supporting a visual-fidelity claim.
 
+## Current rest argument
+
+The intercepted fixture serves the Web files locally and replaces every API request:
+
+```sh
+node tools/swank/web/test-rest-argument-fixtures.mjs \
+  http://127.0.0.1:8786/ /tmp/mezzano-rest-argument-fixtures
+```
+
+It checks typed and menu parsing, null operands, opaque guest text for available NIL/absent/unavailable states, canonical captions, same-ID replay after a lost accepted reply, both editors, reload, and closed/prior-boot history.  It requires zero API HTTP requests.
+
+One native headless Chromium case compiled a named DEBUG 3/SAFETY 3/SPEED 1 rest target in the Listener.  Typed Show Rest Argument displayed the current list, assigned only * with all nine history identities checked, and preserved selected frame/generation.  Proceed returned the original values and ran one cleanup.  The test released its stop, four helper jobs, Listener job, symbols/function and session.  Node, Chromium, wrapper and execution observer exited zero.  Native unavailable-value, printer-error and declared-DX semantics belong to the [guest fixture](../TESTING.md), which passed eight cases.  Restoration of this command across a saved-image boot remains untested.
+
 ## Debugger frame evaluation
 
 The frame-evaluation driver compiles a named DEBUG 3 target and enters forms through the inline and standalone debugger inputs.  It checks shadowed bindings, same-name variable and function namespaces, symbol and local macros, immediate shared-cell writes, multiple and zero values, and per-stop histories.  Reader and type errors must enter child stops, and typed :Abort must preserve the parent and its bindings.  The target's uniquely named caller models legacy missing scope information: the fixture saves and clears that owned function's scope table during invocation and restores it through UNWIND-PROTECT.  Evaluation in that caller must reject unavailable scope information and permit recovery to the target.  Shared system and CLOS function metadata remains unchanged.  The driver discards one accepted reply, repeats its original request, and verifies one binding increment.  Reload and stop closure must retain the printed form results.  Continuation must observe the writes, and the next Listener expression must succeed.

@@ -96,6 +96,7 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Show Special SYMBOL` | Displays the selected frame's special binding.  :Environment selects Program or Debugger. |
 | `:Show Standard Value Warnings` | Displays invalid or unbound reader/printer controls and their debugger replacements. |
 | `:Show Arglist` | Displays the selected compiled function's argument list, preserving the active definition after redefinition. |
+| `:Show Rest Argument` | Displays the current rest parameter and assigns it to this stop's * history value. |
 | `:Show Bindings` | Displays special-variable bindings established by the selected frame.  :All selects every frame.  :Matching filters symbol names. |
 | `:Show Condition Handlers` | Displays condition handlers established by the selected frame and their active status at stop entry.  :All selects every frame. |
 | `:Show Catch Blocks` | Displays catch tags and their destination functions and byte offsets.  :All selects every frame. |
@@ -131,6 +132,8 @@ Native instruction traps initially select the interrupted program frame, as desc
 :Show Lexical Environment takes no arguments.  It displays inherited variable and function bindings, excluding bindings established by the selected activation.  A current local captured by an inner closure remains a current binding.  Known-empty ancestry reports `This frame was not lexically called.`  Missing ancestry metadata reports `Lexical ancestry unavailable.`, and a binding without accessible storage displays `[unavailable]`.  The command preserves selection and evaluation history.  Printing errors enter a child debugger, and typed :Abort returns to the parent.  Reload and stop closure retain the printed output.  Unused outer capture after the defining activation returns remains a compiler limitation.
 
 :Show Arglist displays the argument list stored with the selected compiled function.  An empty list displays NIL.  Missing metadata produces an explicit unavailable message.  The command preserves frame selection and evaluation history, and its printed result survives reload.
+
+:Show Rest Argument takes no arguments and displays the selected frame's current rest parameter.  It assigns that object to * before printing and preserves the other eight history slots and selection.  Available NIL, absent rest, and unavailable metadata/storage have distinct displays.  A printer error can enter a child debugger, where :Abort returns to the enclosing stop.  Declared dynamic-extent values require their allocating extent.  The [current-rest reference](../../../doc/debugger.md#current-rest-argument) gives the native scope and tests.
 
 :Show Bindings lists repeated bindings in inner-to-outer order and distinguishes bound NIL from an unbound value.  :All defaults to No.  Mentioning :All without a value selects Yes.  :Matching requires a string and uses a case-sensitive literal substring of the symbol name.  Omitting it selects every name.  The command preserves frame selection and evaluation history.  Frameless and other unsupported frames produce an unavailable message.  Established x86-64 condition and hardware-stop frames passed binding-display tests.  ARM64 binding inspection and :Invisible are unsupported.
 
