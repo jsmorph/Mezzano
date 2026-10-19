@@ -38,7 +38,7 @@ The client accepts one source argument or reads standard input when the argument
 
 Defaults are host `127.0.0.1`, port `4005`, package `CL-USER`, and a 60-second timeout.  Options are `--host`, `--port`, `--package`, and `--timeout`.  Exit status is 0 for success, 1 for a guest condition, 2 for a client/transport error, and 124 for timeout.
 
-A guest condition enters SLDB.  This client reports it and requests the evaluation's abort restart.  A client timeout closes the connection, and the remote computation may continue.  Standard input within this evaluation is an empty stream.
+A guest condition enters SLDB.  This client reports it and requests the evaluation's abort restart.  A client timeout closes the connection.  When the guest closes a multithreaded SWANK connection, it requests unwinding termination of that connection's raw RPC workers and helpers.  Application cleanup can block, signal a condition, or supersede that exit.  Effects already performed remain.  Standard input within this evaluation is an empty stream.  Retained evaluation jobs have the separate lifetime described below.
 
 ## Retain an evaluation across connections
 

@@ -164,6 +164,12 @@ The browser fixture `test-web-single-step.lisp` uses the Listener's own evaluati
 
 Compile/load the current package-lock function and TEST-PACKAGE-LOCK-DEBUGGER.LISP ordinarily at SAFETY 3/DEBUG 3/SPEED 1, then call (lispm-package-lock-debugger-test::run).  It requires the service, frame-evaluation and managed-step helpers.  Four cases signal ERROR or STORAGE-CONDITION under the package mutex and use Continue or Abort.  A separate thread must acquire that mutex while the target remains stopped.  Continue verifies reacquisition, and both exits check one cleanup and release their owned stops.  Then run python3 tools/swank/test-package-lock-debugger.py --port PORT against the dedicated guest.  Its compiled Lisp function exhausts the stack under the package mutex.  The host client requires SLDB entry, sends its normal protocol Abort, and checks a positive unwind-cleanup count and fresh evaluation through a new connection.  It also requires empty retained stop/job tables and resets its counter.  These tests passed on x86-64 at SAFETY 3/DEBUG 3/SPEED 1.
 
+## SWANK connection cleanup
+
+Compile/load the matched complete SWANK core and REPL modules before `TEST-SWANK-CONNECTION-CLEANUP.LISP`.  Compile/load the fixture ordinarily at SAFETY 3/DEBUG 3/SPEED 1, reject warning/failure flags, and call `(lispm-swank-connection-cleanup-test:run)`.  Eight native Mezzano x86-64 :SPAWN cases passed: normal unregister, borrowed numeric thread survival, both constructor/closure orderings, replaced REPL/auto-flush helpers, ordered cleanup-error aggregation and later cleanup, private self-close rejection followed by asynchronous closure, and a real TCP worker stopped in SLDB before disconnect.  The last case checks one unwind, dead owned workers, and closed output/ping behavior at the flow-control limit.
+
+Each wait has a twenty-second deadline.  Failures retain `LISPM-SWANK-CONNECTION-CLEANUP-TEST::*CASE*`.  The test allocates every shared state field before starting workers.  Publication separately passed native complete-module compilation/LOAD, old-instance migration with its connection held open and idle, a newly owned RPC on that instance, and normal closure with worker/helper exit.  Pre-publication workers are not reconstructed from activity lists.  Stale-connection closure after image restoration and other backends require separate acceptance.
+
 ## Pager reservation tests
 
 From the Mezzano checkout, run the isolated host test:
