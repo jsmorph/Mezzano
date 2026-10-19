@@ -594,6 +594,8 @@ Headless Chromium tests through the guest Lisp HTTP server passed on the rebuilt
 
 Three further Chromium cases step compiled zero-argument and optional-argument count checks through TEST32/JZ and SUB32/CMP32/JBE.  Eight typed Single Step commands and their accepted-ID replays passed, followed by typed Proceed.  The tests verify exact PCs, count registers, defined flags, generation changes, original returned values, unchanged code, and one cleanup per call.  They cover the count-check prefix before argument binding.
 
+Three headless Chromium cases stepped the complete normal bodies of a zero-argument call, an optional call using its default under two prompts, and a call supplying the optional argument.  All 337 typed Single Step commands and their exact-ID replays passed, including nine CALL step-overs and three RET landings measured from saved return addresses.  The tests checked exact instruction locations, stop identities and generations, stack/frame/restart/condition results for each generation, optional-argument selection, unchanged code, original values, and one cleanup per call.  They used the same two-CPU x86-64 image and compilation policy.
+
 ## Compiler guarantees
 
 The image bootstrap policy is `(safety 3 debug 1 speed 1)`.  The compiler source initializes its default to `(safety 3 debug 3 speed 1)`, and an existing image can retain a different value.  `mezzano.compiler::*optimize-policy*` reports the current default.  Code already in an image retains the policy and debugger metadata from its compilation.
