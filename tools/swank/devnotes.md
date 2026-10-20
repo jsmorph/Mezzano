@@ -7675,3 +7675,17 @@ The narrow resident notifier compiled without warnings.  Its old function object
 All 32 RETURN/GO/THROW/internal-exit combinations at zero/two prompts and zero/one/three/eight values passed, followed by the two full-breakpoint-table cases.  The run took 120.54 seconds with moving collection, landing validation, replay, value checks, and cleanup.  Log SHA-256: `a63617b0bd6bdcd5b187395f678d985c7562c0acd6746e1efe9d6f13e207d60a`.  The strengthened caller-frame guard compiled without warnings and passed separately in 0.48 seconds, log SHA-256 `265acb11dfb2c9efb56b17cfe97f35ce66ffd88f6dcf01ca29cfb806d063c432`.
 
 The full stepping phase is running again.  Its new driver retains the existing resident test helper before recompilation, loads the strengthened ordinary guard, and preserves all previous assertions.  Integer stepping and networking will follow.  No cold-boot claim includes the live notifier correction yet.
+
+### Continuation error-report source finding
+
+Source review found a separate defect in %RESUME-DELIMITED-CONTINUATION-1's TOO-MANY-VALUES branch.  Its format string contains one ~S directive, but the ERROR call supplies only that string.  The continuation is in RBX, not among the supplied format arguments.  The report also misspells MULTIPLE-VALUES-LIMIT.  Test this branch with an argument count above its explicit guard, inspect the resulting SIMPLE-CONDITION-FORMAT-ARGUMENTS without printing first, and require the final report to print.  Then pass the continuation as the format argument and correct the spelling.  Preserve the current count policy pending a separate precise review.  This finding remains untested and unfixed while the complete native pipeline runs.
+
+### Find Frame reference review
+
+[Program Development Utilities](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf), printed pages 215–216 (zero-based PDF pages 220–221), defines Find Frame as a function-name substring search that selects and displays a match.  Reverse searches toward newer frames.  Detailed adds arguments, locals, and code.  Invisible includes hidden frames.  Each Boolean option defaults to No and to Yes when mentioned alone.  The manual does not specify case sensitivity, the initial search position, wrapping, or failure behavior in this entry.
+
+Review the existing frame selection, executing-function names, command parser, retained replay, and output before adding this operation.  Reuse guest-owned selection and the existing frame display.  Specify those undocumented search details explicitly for Mezzano.  Do not claim Genera-equivalent Invisible behavior without frame-visibility metadata.  Implementation remains pending the current runtime acceptance.
+
+### Complete stepping repeat passed
+
+The complete eleven-suite stepping phase passed with the resident notifier correction and strengthened caller-frame guard.  It compiled its ordinary fixtures without warnings, retained the old resident fixture helper before reloading that helper, and repeated native/hardware breakpoints, breakpoint management/commands, ordinary and managed stepping, CALL step-over, retained steps, call-return callbacks, retained CALL, and every nonlocal-exit case.  It took 485.13 seconds, log SHA-256 `f4ff78a1a18ca2e63db5cbf95a1e49b3a2797980ab38c0dcdd1466a9db4ee6c3`.  The original failing receipt and log remain preserved.  Integer-instruction tests and networking are still running or pending.
