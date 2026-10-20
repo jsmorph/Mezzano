@@ -7519,3 +7519,11 @@ All 16 callback-exit cases passed, covering THROW and an explicit ABORT restart,
 Replace the archived delivery fixture with the exact tested source and record the new invocation/scope.  Save the isolated world with its 16 exit observations and four latest returning-GC observations, then restore the accepted world's endpoints.  Normal prompt-return delivery, actual captured-state restoration, shared macro adoption and mutex transitions remain unfinished.
 
 Clarification of restore scope: saved prototype definitions and completed observations have survived restoration and subsequent tests.  A save with an active captured binding or pending callback has not yet been tested.  The prototype reference now names that remaining scope precisely and lists the executed case groups.
+
+### Callback-exit checkpoint and accepted guest restoration
+
+The isolated callback-exit guest completed its normal Snapshot and stopped.  Its read-only image SHA-256 is `5e5e7323239d8a8dd198753b4b59900d6c66c3144cae7a1616ab49869ea41a66`.  The checkpoint retains 16 passing THROW/ABORT cases and eight returning callback cases.  The receipt is `/home/somebody/src/mezzano-boot/worker-termination-20261020/foothold-exits/saved-diagnostic.json`.
+
+The accepted guest resumed from its unchanged working image as PID 1099020, start ticks 95051352.  Its current launch receipt is `/home/somebody/src/mezzano-boot/cold-debug-add32-20261020/accepted-checkpoint/exit-pause/resumed-vm-launch.json`.  Native readiness, arithmetic, retained compiler publication, the 29 unchanged file-compiler definitions, and absence of prototype definitions passed.  HTTP 8776 and 8777 each returned status 200 and the expected 14,377-byte page.  The 14 protected processes retained their identities.  The readiness receipt is in the same directory as `resumed-ready.json`.
+
+The first host readiness script replaced its imported HTTP module name with a list and raised AttributeError before requesting a page.  The corrected script passed.  No Lisp condition or HTTP failure occurred in that check.
