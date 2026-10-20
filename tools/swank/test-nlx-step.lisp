@@ -195,7 +195,13 @@
            (setf point (s::install-callback-instruction-step-breakpoint
                         #'call-site 16 (s:current-thread) 0 #'identity nil)
                  s::*instruction-step-nlx-hook*
-                 (lambda (point frame) (declare (ignore point frame)) (incf calls)))
+                 (lambda (point frame)
+                   (declare (ignore point))
+                   (assert (eq (nth-value 0
+                                 (i::return-address-to-function
+                                  (i::memref-unsigned-byte-64 frame 1)))
+                               #'guard-cases))
+                   (incf calls)))
            (i::%%debugger-nlx-entry)
            (assert (= calls 1))
            (helper-without-interrupts)

@@ -288,8 +288,8 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
       (let ((thread (current-thread)))
         (unless (or (member (thread-priority thread) '(:supervisor :idle))
                     (plusp (thread-inhibit-footholds thread)))
-          (without-footholds
-            (let ((frame (sys.int::read-frame-pointer)))
+          (let ((frame (sys.int::read-frame-pointer)))
+            (without-footholds
               (dotimes (index 4)
                 (let ((point (svref slots index)))
                   (when (and (callback-instruction-step-breakpoint-p point)

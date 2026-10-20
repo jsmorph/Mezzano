@@ -7651,3 +7651,27 @@ First boot passed at 18:24:14 UTC with the candidate's exact SOURCE/HOME, GLOBAL
 The maintained foothold/mutex suite, six compiler-worker lifetime combinations, and compilation-result tests passed in 23.31 seconds including their compilation.  The release-cleanup probes left no owner and UNLOCKED state.  The unchanged compiler worker test read both EXIT replies after both workers reached DEAD.  Nested permissions, normal/nonlocal cleanup, recursive ownership, contention/cancellation/handoff, and compiled macro continuations with moving GC passed.  Log SHA-256: `8dfedf4534bd5008be29c98059768c6a801f0cbaa3baaa23e6ed9c5d29d3060a`.
 
 Ten further production cases passed ordinary and resumed prompt returns with 0, 1, 5, 8, and 100 values.  The 100-value cases include explicit moving collection before and after return and require object identity preservation.  They took 13.52 seconds, log SHA-256 `a05693126c1b7150260d5a30600563db27c3cff67333b2b347e0b564f6c6cadc`.  Literal compilation/loading tests also passed in 11.27 seconds.  The remaining native phases, HTTP/HTTPS, saved-image restoration, and Chromium suites are still required.
+
+### Babel optimizer warning: diagnostic plan
+
+Use the compiler's existing `*REPORT-AFTER-OPTIMIZE-PASSES*` facility for a serial recompile of the candidate's Babel strings source into private diagnostic output.  Preserve the twenty-iteration limit, save the before/after AST reports and warning, and do not load the resulting file.  The unparser includes each lambda name, so this identifies the affected function and the pass changes without replacing compiler definitions or adding tracing infrastructure.  Run it after the native pipeline so compiler-worker publication fixtures cannot affect the diagnostic.  A completed compile does not resolve the nonconvergence warning.
+
+### Cold nonlocal-step failure: frame capture diagnosis
+
+The native pipeline passed its first ten phases.  Return/Reinvoke completed 1,585 and 1,357 transfers respectively with concurrent full collection.  The stepping phase failed in its first escaping RETURN case: SERVICE-INSTRUCTION-TRAP-CONTEXT reported CALL-WITH-FOOTHOLD-BINDING instead of the fixture TARGET.  Its retained job, stop, log, and receipt are preserved.  An SSH disconnection interrupted host observation, but the remote pipeline continued and stopped on this failed phase.  Integer stepping and networking did not run.
+
+The failure comes from %%DEBUGGER-NLX-ENTRY reading its frame pointer inside WITHOUT-FOOTHOLDS.  That macro now calls a dynamic-extent body through CALL-WITH-FOOTHOLD-BINDING.  The read therefore observes the new body frame.  SERVICE-NLX-ENTRY reads that frame's saved return address, which identifies CALL-WITH-FOOTHOLD-BINDING.  Capture %%DEBUGGER-NLX-ENTRY's frame before entering WITHOUT-FOOTHOLDS, then retain the existing protected hook dispatch.  This restores the notifier's existing frame API without filtering out runtime functions or changing expected landing locations.
+
+Review other raw frame/stack-pointer reads under the changed macros.  Retain the old resident notifier object before compiling/loading its narrow replacement.  Abort and release only the owned failed evaluation, test the nonlocal suite first, then repeat the complete stepping phase and remaining native phases.  Cold and live publication evidence must remain distinct.
+
+The pointer-read audit covered every tracked non-tool Lisp source.  Current-stack GC and backtrace readers establish their anchors directly in their own function bodies.  SERVICE-DEBUGGER records the boundary of its active protected body, rather than supplying a caller return-address slot.  No additional fixed-caller-frame use appeared in that audit.
+
+Strengthen the existing nonlocal-step guard test by requiring the hook's saved return address to identify GUARD-CASES.  The existing test checked only the call count.  This assertion detects the precise wrapper-frame error before the longer transfer matrix.  Keep its inhibition, interrupt, pseudo-atomic, and world-stop checks unchanged.
+
+### Notifier correction: targeted results
+
+The narrow resident notifier compiled without warnings.  Its old function object was retained before compilation/loading and remains rooted.  Publication receipt: `/home/somebody/src/mezzano-boot/cold-foothold-20261020/nlx-frame-update/publication.json`.  The candidate now has one resident live update, recorded in that directory's `vm-runtime.json`.  The frozen cold core remains `cf432ca9`.
+
+All 32 RETURN/GO/THROW/internal-exit combinations at zero/two prompts and zero/one/three/eight values passed, followed by the two full-breakpoint-table cases.  The run took 120.54 seconds with moving collection, landing validation, replay, value checks, and cleanup.  Log SHA-256: `a63617b0bd6bdcd5b187395f678d985c7562c0acd6746e1efe9d6f13e207d60a`.  The strengthened caller-frame guard compiled without warnings and passed separately in 0.48 seconds, log SHA-256 `265acb11dfb2c9efb56b17cfe97f35ce66ffd88f6dcf01ca29cfb806d063c432`.
+
+The full stepping phase is running again.  Its new driver retains the existing resident test helper before recompilation, loads the strengthened ordinary guard, and preserves all previous assertions.  Integer stepping and networking will follow.  No cold-boot claim includes the live notifier correction yet.
