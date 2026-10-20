@@ -162,6 +162,8 @@ Compile/load `test-nlx-step-restore.lisp` ordinarily after the nonlocal fixture 
 
 Completion checks old-control expiration, accepted-command history and replay, descriptor/thread/callback identities, measured landing PCs, moving roots, eight values, one cleanup per case, unchanged code, and a further supported instruction at THROW's runtime landing.  Same-boot preparation/completion uses FINISH without :REQUIRE-RESTORED and reports RESTORED NIL.  A failure preserves owned state for diagnosis.
 
+Native two-CPU x86-64 acceptance passed same-boot and actual saved-image cases at both depths.  The restored kernel includes the resident hardware-breakpoint decoder correction; ordinary fixture code uses SAFETY 3/DEBUG 3/SPEED 1.  Runtime provenance separately records the four ordinary file-compiler definitions used to load forward structure layouts.  The saved-image test does not establish ARM64 support or restoration during another step state.
+
 Repeat the forced retained CALL cancellation/termination cases and the raw step-over, managed call-return, retained-step, retained-CALL, and compiled ordinary-step suites.  Rebuild all system and dependency code before deployment.  An incremental live publication establishes only the tested paths through newly compiled destinations.
 
 The browser fixture `test-web-single-step.lisp` uses the Listener's own evaluation thread.  Compile/load it ordinarily after the nonlocal fixture.  The browser controls blocked CALL, RET, and escaping RETURN-FROM cases, including draft preservation, reload, stale-reference actions, fresh instruction display, accepted-ID replay, Proceed, exact values, and owned-resource cleanup.  Source and isolated client tests do not establish guest/HTTP/Chromium acceptance.
