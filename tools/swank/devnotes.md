@@ -7795,3 +7795,48 @@ The first 12-second SWANK readiness probe timed out while the serial log still s
 Fresh IPL passed: the guest reports the frozen source/HOME paths, NIL global startup debugger, desktop initialized, and all 543 constant-fold registry entries.  `ipl-ready.json` preserves the reply.  The owned native coordinator service has started the 19 native and eight post-native phases, with per-phase logs and source-hashed receipts.  No phase is accepted solely because it started.
 
 The first cold-functions phase failed on a test expectation: the cold assembler records `%RESUME-DELIMITED-CONTINUATION-1` with its absolute frozen source pathname, whereas the new driver expected a logical SYS pathname.  The condition, stack, restarts, raw inspection of all four corrected definitions, failed driver/plan/receipt, and cleanup are preserved under `cold-provenance-failure/`.  The other three corrected definitions match their exact SYS paths.  Abort released the owned failed job and stop, leaving both tables empty.  Correct the continuation assertion to the exact frozen absolute source path and rerun every phase.  No guest implementation changed.
+
+### Find Frame: reviewed implementation plan
+
+The next command increment follows [Program Development Utilities, printed pages 215–216](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf#page=221).  Genera searches function names, changes the current frame, reverses toward newer frames, and offers Detailed and Invisible options.  The manual does not specify matching case, initial position, wrapping, or a miss.  Mezzano has no hidden-frame classification.
+
+Recommendation after reviewing the frame service, retained-command validation, transports, and browser frame rendering: add one Find Frame operation to the existing command path.  Match a nonempty, case-sensitive substring of the executing definition's name.  Begin after the selected frame, move toward older callers by default or newer callees with Reverse, and stop at the end without wrapping.  A miss returns a message and preserves selection and history.  Reject malformed options before accepting an ID.  Invisible No is accepted.  Invisible Yes reports unsupported hidden-frame classification before acceptance.  Do not infer hidden status from function names or stack positions.
+
+Reuse the current frame result for a match.  Ordinary display includes arguments.  Detailed adds locals and the existing disassembly with its current instruction marked.  Detailed, Reverse, and Invisible default to No when omitted and Yes when mentioned.  Search, printing, and disassembly run in the owning command thread outside the service lock.  Select only after a name matches.  A later printing error follows the existing nested-command debugger behavior.  Retained arguments are copied and compared structurally for replay.  Browser changes render those existing frame fields and the optional code field.
+
+Required tests cover parsing/completion/defaults, forward/reverse duplicate names, boundaries and misses, malformed/replayed/conflicting requests, history preservation, GC and an active old definition after redefinition, detailed output, printer failure and Abort, HTTP validation, and Chromium command entry and selection.  Prepare source while cold acceptance runs, then test without altering that acceptance run's frozen source or live definitions.  This command remains unsupported until its native, transport, and browser tests pass.
+
+### Find Frame: Chromium test preparation
+
+Recommendation after reviewing the command parser, retained frame-search service, browser frame rendering, and existing Chromium drivers: prepare one focused live driver using the shared CDP support and a uniquely named private package.  Its compiled DEBUG 3, SAFETY 3, SPEED 1 recursive function supplies four same-name activations with distinct depth arguments.  Existing keyboard events exercise SPACE completion, F12 help, and typed commands in the Listener and separate Debugger editors.
+
+The driver will test forward and reverse searches excluding the selected frame, repeated matches, case-sensitive misses, boundary misses without wrapping, selection and evaluation-history preservation, brief arguments, Detailed locals and marked code, and unsupported Invisible without accepting a command ID.  Reload must retain the result and selection without another search.  An owned argument printer will raise a child error.  Typed :Abort must restore the parent selection and permit another search.  Proceed must run one cleanup, remove the owned package and definitions, and permit a subsequent Listener evaluation.
+
+Review retained the existing browser helper, finite deadlines, and success-only release of owned jobs, stops, and session.  Failure evidence will preserve the first failed state, screenshots, HTTP failures, console diagnostics, and Chromium exit events.  No dependency or product implementation change is needed.  This preparation belongs to the main checkout and must not change frozen ca303127 cold-runtime acceptance assets, tests, or guards.
+
+- [x] Prepare and review the driver.
+- [x] Run Node syntax checks.
+- [ ] After separate exclusive authorization following frozen-candidate acceptance, run Chromium and inspect its evidence.
+- [ ] Fix any demonstrated product error before acceptance or commit.
+
+At this entry, no Find Frame browser or guest request has run.  Syntax validation and runtime acceptance are separate requirements.
+
+Find Frame browser preparation is complete in `tools/swank/web/test-find-frame.mjs`.  The driver requires an explicit server URL, uses a separate uniquely named package, and needs no additional fixture file.  Source review corrected the embedded Lisp string quoting to preserve newlines.  Node 24 `--check` passed.  Host-only generation of the embedded fixture and setup forms confirmed balanced parentheses and string delimiters.  These checks do not establish successful Lisp compilation or browser behavior.  Prepared file SHA-256: `0b2102749fc83ccf04d765d64844b86f7cbc6eb2329d5a5ef1428b419f5c31c1`.
+
+No guest, HTTP, or browser request ran for this preparation.  Runtime acceptance remains disabled pending the parent's separate exclusive authorization after frozen-candidate acceptance.  No Find Frame feature commit was made.
+
+### Saved-state checkpoint capacity
+
+The host has 4.22 GB free.  The current candidate's working image occupies 1.13 GB before the full library load, and three independent saved-state copies remain required.  The stopped focused GC test checkpoint occupies 2.63 GB.  Preserve the original accepted image and all failure artifacts.
+
+Reviewed recommendation: archive only the stopped GC test checkpoint with standard-library gzip at level 1, using a private output file.  Verify its complete decompressed size and SHA-256 against the saved receipt, make the archive read-only, and write a durable archival receipt before removing the uncompressed duplicate.  Recheck that the old VM is absent and the source image remains unchanged.  A failed compression or verification leaves the source intact.  This preserves the saved guest bytes and frees space for the three independently hashed restoration checkpoints.  Restart of the archived GC test copy remains untested.  No candidate, accepted-world, or kernel state changes.
+
+The stopped GC test checkpoint archive passed complete decompression verification: 5,368,709,120 bytes, original SHA-256 41dc3641a1a9336e7419c4c797d3072e11293988d047a8fce48cdde9cb902253.  The private read-only gzip archive is 571,815,032 bytes with SHA-256 8474d097b551b248ab4270e9d125d181c64aab8b2b62351d95a9e91f0cdc2a01.  Its durable receipt is `gc-forwarding-test-20261020/archived-snapshot.json`.  After removing the verified uncompressed duplicate, free capacity is 6.27 GB.  The archived guest has not been restarted.
+
+The OpenAI credential skill was reviewed before the pending authenticated test phase.  The user already explicitly authorized using the supplied key transparently and testing COMPLETE.  Reuse remains authorized.  A metadata-only check confirms that the private guest-home key is a nonsymlink regular file owned by the guest-files owner, mode 0600, with a nonempty first line.  No key value entered tool output or test source.
+
+### Cold native acceptance progress
+
+The first 12 cold phases passed under ca303127 without live core publication.  Source-hashed phase receipts cover cold-functions, cold-trace, gc-frefs, type-control, foothold-kernel, value-counts, kuznyechik, literals, compiler, structure, local-lowering, locations.  Kuznyechik compiled all 24 functions in 58.95 seconds and the subsystem loaded in 152.20 seconds overall.  Its log SHA-256 is 222c52bec49a5f878787b334696c8c003ab755889e29bbcd23519066e7701b93.  This passes the previously failing file compilation, while the complete HTTPS dependency load remains required.  The current coordinator continues with the remaining native phases before post-native, restoration, and browser acceptance.
+
+The main browser renderer also passed Node syntax checking.  The new Find Frame Lisp service, parser, HTTP conversion, and native fixture remain uncompiled and untested in the guest.  Their source preparation has not changed the running cold candidate.
