@@ -368,6 +368,35 @@ To include selected-frame persistence in a snapshot test, load the restoration f
 
 After restoration, call (lispm-service-test::finish-restore-test).  It requires expired old handles, the same selected frame and local values after full GC, restart completion, and one cleanup, then releases the stop.
 
+## Frame location tests
+
+After loading the service fixture, compile and load the shared frame-evaluation and rest-argument fixtures, then the argument and local location fixtures:
+
+    (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-FRAME-EVALUATION.LISP"))
+    (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-REST-ARGUMENT.LISP"))
+    (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-ARGUMENT-LOCATIONS.LISP"))
+    (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-LOCAL-LOCATIONS.LISP"))
+    (lispm-argument-location-test:run)
+    (lispm-local-location-test:run)
+
+These fixtures check indexed display, checked locations, declaration and storage restrictions, history, typed errors, Inspector modification, moving collection, continuation, and expiration.  The local fixture also checks same-name shadowed bindings and local-function replacement.  A failed case retains its state for inspection.
+
+The local fixture tests preparation and completion in one boot before a saved-image run:
+
+    (lispm-local-location-test:run-restore-preparation-test)
+
+To test a stopped activation across image restoration, prepare it before saving:
+
+    (lispm-local-location-test:prepare-restore-test 0)
+    (mezzano.supervisor:snapshot)
+    (mezzano.supervisor:wait-for-snapshot-completion)
+
+After restarting that saved image:
+
+    (lispm-local-location-test:finish-restore-test)
+
+Repeat with 2 instead of 0 for two continuation prompts.  The finish function requires a changed boot and fresh debugger control.  It checks the original internal locations and histories, expired external handles, prior-command rejection, exact binding identities, checked writes, collection, Inspector, values, cleanup, and release.
+
 ## Evaluator environment tests
 
 The compiled fixture checks type declarations in compiler and interpreter environments, binding identity, shadowing, special-variable proclamations, inline declarations, and typed closure writes:
