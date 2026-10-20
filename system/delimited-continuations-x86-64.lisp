@@ -477,6 +477,7 @@
   (lap:push nil)
   (:gc :frame :layout #*11)
   PHONY-RETURN-ADDRESS ; match %CALL-WITH-PROMPT's GC info
-  (lap:mov64 :r8 (:constant "Resuming continuation ~S with too many values (MULTPLE-VALUES-LIMIT exceeded)"))
-  (lap:mov32 :ecx #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:mov64 :r9 :rbx)
+  (lap:mov64 :r8 (:constant "Resuming continuation ~S with too many values (MULTIPLE-VALUES-LIMIT exceeded)"))
+  (lap:mov32 :ecx #.(ash 2 sys.int::+n-fixnum-bits+))
   (lap:call (:named-call error)))

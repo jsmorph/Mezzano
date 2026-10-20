@@ -252,6 +252,24 @@
     (assert (every #'eq output wanted))
     (format t "PASS compiled macro continuation, masked resumer ~S, nested permissions, eight identities, and moving GC.~%" masked)))
 
+(defun continuation-error-report ()
+  (let ((tag (mezzano.delimited-continuations:make-prompt-tag "Owned excess-value report"))
+        (saved nil)
+        (caught nil))
+    (mezzano.delimited-continuations:call-with-prompt
+     tag
+     (lambda () (mezzano.delimited-continuations:abort-to-prompt tag))
+     (lambda (continuation) (setf saved continuation)))
+    (assert (mezzano.delimited-continuations:resumable-p saved))
+    (handler-case (apply saved (make-list (1+ multiple-values-limit)))
+      (simple-error (condition) (setf caught condition)))
+    (assert caught)
+    (i::gc :full t)
+    (assert (equal (simple-condition-format-arguments caught) (list saved)))
+    (assert (search "MULTIPLE-VALUES-LIMIT exceeded" (format nil "~A" caught)))
+    (assert (equal (state) '(0 t)))
+    (format t "PASS excess-value continuation error, exact argument, printed report, and foothold state.~%")))
+
 (defun run ()
   (macro-states)
   (mutex-basics)
@@ -263,5 +281,6 @@
   (compiler-worker-reply)
   (macro-continuation nil)
   (macro-continuation t)
+  (continuation-error-report)
   (assert (equal (state) '(0 t)))
   :foothold-mutex-tested)
