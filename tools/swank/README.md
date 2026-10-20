@@ -859,3 +859,26 @@ The compiler-worker test requires an idle compiler and an owned source pathname 
 ```
 
 The test deletes its source and output after each case.  It covers normal worker shutdown.  The separate mutex cleanup diagnostic reproduces asynchronous interruption during release.
+
+## Compiler-worker mailbox diagnostic
+
+The compiler-worker mailbox diagnostic requires a disposable guest and the wired hook from the mutex cleanup diagnostic.  It calls the unchanged worker entry function with its real mailboxes.  Termination during its final :EXIT send leaves the first worker dead while owning the return mutex.  A second worker then waits on that mutex.  The diagnostic retains that state and restores the shared consistency checker.
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;DIAGNOSE-COMPILER-WORKER-MAILBOX.LISP"))
+(lispm-compiler-shutdown-probe:run)
+```
+
+The result :COMPILER-WORKER-MAILBOX-FAILURE-REPRODUCED denotes the observed defect.  The diagnostic explicitly terminates the worker.  COMPILE-FILE's corrected normal shutdown joins its workers.
+
+## Foothold restoration diagnostic
+
+The foothold restoration diagnostic inserts an event gate before the existing WITH-FOOTHOLDS cleanup restores its counter.  Two termination requests test whether the second exit abandons that restoration.  It changes no shared function definition and holds no mutex.  It retains its private state in LISPM-FOOTHOLD-RESTORATION-PROBE::*STATE*.
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;DIAGNOSE-FOOTHOLD-RESTORATION.LISP"
+                    :parallel nil))
+(lispm-foothold-restoration-probe:run)
+```
+
+The recorded run returned 0 and :DEAD as two values: the enclosing cleanup observed an enabled mask after restoration was skipped.  Its source gate identifies the tested window.  This diagnostic requires the existing WITH-FOOTHOLDS macro shape and runs once per loaded state.
