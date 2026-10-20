@@ -39,7 +39,9 @@
                                           :state state :local-port 1 :remote-port 2
                                           :local-ip (mezzano.network.ip:make-ipv4-address "127.0.0.1")
                                           :remote-ip (mezzano.network.ip:make-ipv4-address "127.0.0.1")
-                                          :snd.una next :snd.nxt next :rcv.nxt 100 :rcv.wnd 8192
+                                          :snd.una next :snd.nxt next
+                                          :snd.wnd 8192 :snd.wl1 100 :snd.wl2 next
+                                          :rcv.nxt 100 :rcv.wnd 8192
                                           :srtt 0.01 :rttvar 0.005))
                          (receive (connection seq ack &key fin data)
                            (let* ((parts (tcp::assemble-tcp4-packet

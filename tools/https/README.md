@@ -118,6 +118,17 @@ CLOSE with :ABORT T closes local TCP state and wakes a blocked reader with a con
 
 TCP supports receiving EOF while its sending direction remains open.  OPEN-STREAM-P remains true in CLOSE-WAIT, and subsequent writes remain subject to normal acknowledgment and retransmission.  Local FIN consumes a sequence number.  A data acknowledgment alone cannot complete local close.
 
+TCP copies application output into an unsent-data queue and returns.  It transmits within the peer's advertised window and retains transmitted bytes until acknowledgment.  Valid window updates resume queued output.  Zero-window probes use the existing retransmission timer and leave queued bytes unchanged.  CLOSE defers FIN until queued data has been transmitted and rejects subsequent writes.  Connection inactivity timeout aborts pending output and retains the timeout condition.
+
+The flow-control packet fixture uses a private interface and route.  Compile and load its shared fixture first:
+
+    (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-TCP-CLOSED.LISP"))
+    (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-TCP-FLOW-CONTROL.LISP"))
+    (lispm-tcp-flow-control-test:run)
+    (lispm-tcp-closed-test:run)
+
+It tests window bounds, partial/duplicate/stale acknowledgments, sequence wrap, copied data, zero-window discovery and reopening, lost window updates, deferred FIN, timer behavior, handshake windows, reset, and timeout teardown with and without a route for the reset.  The flow-control and existing connection/half-close suites passed natively on x86-64 QEMU.  Snapshot/restore of the flow-control correction and ARM64 execution remain untested.
+
 The half-close tests include the connection tests:
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-HALF-CLOSE.LISP")
@@ -140,7 +151,7 @@ After restarting QEMU from that snapshot:
 
     (lispm-network-test::finish-restore-test)
 
-These tests passed on x86-64 QEMU before and after snapshot restoration.  A saved half-closed connection signaled CONNECTION-STALE after restoration.  The fresh CI image also passed its boot test.  The tests do not exercise a route disappearing while an abort reset is being sent.
+These tests passed on x86-64 QEMU before and after snapshot restoration.  A saved half-closed connection signaled CONNECTION-STALE after restoration.  The fresh CI image also passed its boot test.  The flow-control fixture also checks a missing reset route during timeout teardown.
 
 ## Guest library source edits
 
