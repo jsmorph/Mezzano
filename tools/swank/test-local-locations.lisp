@@ -4,11 +4,13 @@
                     (#:r #:lispm-rest-argument-test) (#:test #:lispm-service-test)
                     (#:a #:lispm-argument-location-test)
                     (#:frame #:lispm-frame-evaluation-test))
-  (:export #:run))
+  (:export #:run #:prepare-restore-test #:finish-restore-test
+           #:run-restore-preparation-test))
 (in-package #:lispm-local-location-test)
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
 
 (defvar *case* nil)
+(defvar *restore* nil)
 (defvar *locals* nil)
 (defvar *scope* nil)
 (defvar *indices* nil)
@@ -181,7 +183,10 @@
   :nil-type-checked)
 
 (defun local-label (index)
-  (let ((*package* (find-package :lispm-rest-argument-test)))
+  (let* ((stop (d::service-handle-stop (getf *case* :handle)))
+         (observation (assoc '*package* (d::service-stop-standard-values stop)))
+         (*package* (third observation)))
+    (assert (and (second observation) (packagep *package*)))
     (format nil "Local ~D (~S)" index (first (nth index *locals*)))))
 
 (defun check-all (handle lease)
@@ -358,4 +363,174 @@
   (format t "PASS local order, histories, exact locations, declarations, functions, Inspector, GC, Abort, continuation, and expiry.~%")
   (setf *case* nil *locals* nil *scope* nil *indices* nil *location* nil
         *function-location* nil *outer-reader* nil *shadow-reader* nil)
+  t)
+
+(defun prepare-restore-test (&optional (prompt-depth 0))
+  (check-type prompt-depth (integer 0))
+  (assert (and (null *restore*) (null *case*) (null *metadata*)))
+  (assert (null (test::stop-for-thread "Local location restore test")))
+  (setf *locals* nil *scope* nil *indices* nil *location* nil *function-location* nil
+        *outer-reader* nil *shadow-reader* nil *observed* nil *post-exit* nil *writes* 0
+        *restore* (list :boot (mezzano.supervisor:current-boot-id)
+                       :name "Local location restore test" :depth prompt-depth :cleanup 0))
+  (setf (getf *restore* :thread)
+        (mezzano.supervisor:make-thread
+         (lambda ()
+           (let ((*package* (find-package :lispm-local-location-test)))
+             (call-with-debugger-service
+              (lambda ()
+                (with-simple-restart (abort "Abort the owned local restoration test.")
+                  (unwind-protect
+                       (frame::call-with-frame-test-prompts prompt-depth (lambda () (target 37)))
+                    (incf (getf *restore* :cleanup))))))))
+         :name (getf *restore* :name)))
+  (let ((controller (make-debugger-controller)))
+    (setf *case* (list :controller controller))
+    (unwind-protect
+         (let* ((handle (test::await (lambda () (test::stop-for-thread (getf *restore* :name)))))
+                (lease (attach-debugger-stop handle controller))
+                (stop (d::service-handle-stop handle)))
+           (setf (getf *case* :handle) handle (getf *case* :lease) lease
+                 (getf *restore* :stop) handle
+                 (getf *restore* :frame) (frame::select-function handle lease #'target))
+           (a::evaluate handle lease '(capture-locals) '(":LOCALS-CAPTURED"))
+           (dolist (form '((values (list :one) (list :two))
+                          (values (list :three) (list :four))
+                          (values (list :five) (list :six))))
+             (a::evaluate handle lease form))
+           (test::command handle lease :use-dynamic-environment)
+           (a::evaluate handle lease
+                        '(multiple-value-bind (location reason)
+                             (d::make-service-local-location
+                              (d::service-evaluation-reference) (local-entry :function))
+                           (assert (and location (null reason)))
+                           (setf *function-location* location)
+                           (assert (= (funcall (dbg:loc (local-index :function))) 37))
+                           :local-function-location)
+                        '(":LOCAL-FUNCTION-LOCATION"))
+           (let* ((id (getf (debugger-stop-information handle) :next-command-id))
+                  (location (check-indexed handle lease :value 37))
+                  (result (getf (test::completed-command handle id) :result))
+                  (history (copy-list (d::service-stop-evaluation-history stop))))
+             (setf *location* location
+                   (getf *restore* :location) location
+                   (getf *restore* :function-location) *function-location*
+                   (getf *restore* :history) history
+                   (getf *restore* :selection) (d::service-stop-current-frame stop)
+                   (getf *restore* :generation) (d::service-stop-generation stop)
+                   (getf *restore* :command) id
+                   (getf *restore* :result) result)
+             (assert (= (fourth history) 37))
+             (r::check-state stop history (getf *restore* :selection))))
+      (close-debugger-controller controller)))
+  (format t "Prepared local locations, bindings and nine histories under ~D prompts.~%" prompt-depth)
+  t)
+
+(defun finish-local-restoration (restored-p)
+  (assert *restore*)
+  (assert (eq (eq (getf *restore* :boot) (mezzano.supervisor:current-boot-id))
+              (not restored-p)))
+  (let* ((controller (make-debugger-controller))
+         (handle (test::stop-for-thread (getf *restore* :name)))
+         (lease nil))
+    (setf (getf *case* :controller) controller)
+    (unwind-protect
+         (progn
+           (assert handle)
+           (when restored-p
+             (test::expect-error :expired-stop
+                                 (lambda () (debugger-stop-information (getf *restore* :stop)))))
+           (assert (eq (d::service-handle-stop handle)
+                       (d::service-handle-stop (getf *restore* :stop))))
+           (setf lease (attach-debugger-stop handle controller)
+                 (getf *case* :handle) handle (getf *case* :lease) lease)
+           (let* ((stop (d::service-handle-stop handle))
+                  (next (getf (debugger-stop-information handle) :next-command-id))
+                  (id (getf *restore* :command))
+                  (record (debugger-command-result handle id)))
+             (assert (eq (d::service-stop-thread stop) (getf *restore* :thread)))
+             (assert (= (d::service-stop-generation stop) (getf *restore* :generation)))
+             (assert (eq (d::service-stop-evaluation-environment stop) :dynamic))
+             (assert (eq (getf record :state) :returned))
+             (assert (eq (not (null (getf record :current-boot-p))) (not restored-p)))
+             (assert (equal (getf record :result) (getf *restore* :result)))
+             (if restored-p
+                 (progn
+                   (test::expect-error
+                    :expired-stop
+                    (lambda () (submit-debugger-command lease next :locals (getf *restore* :frame))))
+                   (test::expect-error
+                    :request-conflict
+                    (lambda () (submit-debugger-command lease id :local (local-index :value)))))
+                 (assert (= (submit-debugger-command lease id :local (local-index :value)) id)))
+             (assert (= next (getf (debugger-stop-information handle) :next-command-id)))
+             (assert (eq *location* (getf *restore* :location)))
+             (assert (eq *function-location* (getf *restore* :function-location)))
+             (assert (eq *location* (first (d::service-stop-evaluation-history stop))))
+             (r::check-state stop (getf *restore* :history) (getf *restore* :selection)))
+           (a::evaluate handle lease
+                        '(values (dbg:location-value *location*) (dbg:loc (local-index :value))
+                                 (funcall (dbg:location-value *function-location*)))
+                        '("37" "37" "37"))
+           (dolist (mode '(:use-dynamic-environment :use-lexical-environment))
+             (test::command handle lease mode)
+             (a::evaluate handle lease '(check-accessors) '(":ACCESSORS-CHECKED"))
+             (a::evaluate handle lease '(check-shadow) '(":SHADOW-CHECKED"))
+             (a::evaluate handle lease '(check-function) '(":FUNCTION-CHECKED")))
+           (check-all handle lease)
+           (let ((before (i::lisp-object-address *location*)))
+             (a::evaluate handle lease
+                          '(progn
+                             (mezzano.extensions:gc :full t)
+                             (assert (eq *location* (getf *restore* :location)))
+                             (assert (eq (d::service-variable-binding *location*)
+                                         (fifth (local-entry :value))))
+                             (assert (= (dbg:location-value *location*) 39))
+                             (assert (= (funcall *outer-reader*) 39))
+                             (assert (eq (d::service-variable-binding *function-location*)
+                                         (fifth (local-entry :function))))
+                             (assert (= (funcall (dbg:location-value *function-location*)) 73))
+                             (dbg:location-value *location*))
+                          '("39"))
+             (setf (getf *restore* :gc-addresses)
+                   (list before (i::lisp-object-address *location*)))
+             (assert (/= (first (getf *restore* :gc-addresses))
+                         (second (getf *restore* :gc-addresses)))))
+           (check-inspector handle lease)
+           (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :proceed)
+             (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
+           (test::await
+            (lambda () (nth-value 1 (mezzano.supervisor:thread-join (getf *restore* :thread) nil))))
+           (setf (getf *restore* :values)
+                 (mezzano.supervisor:thread-join (getf *restore* :thread) nil))
+           (assert (equal (getf *restore* :values) '(42 43)))
+           (assert (equal *observed* '(40 nil 40 11 73 :inner)))
+           (assert (= (getf *restore* :cleanup) 1))
+           (assert (= *writes* 1))
+           (assert (eq (first *post-exit*) :expired-frame))
+           (assert (= (second *post-exit*) (getf *restore* :generation)))
+           (assert (< (second *post-exit*) (third *post-exit*)))
+           (release-debugger-stop lease)
+           (dolist (location (list *location* *function-location*))
+             (test::expect-error :released-stop (lambda () (dbg:location-value location)))))
+      (close-debugger-controller controller)))
+  (let ((receipt (list :restored restored-p :depth (getf *restore* :depth)
+                       :generation (getf *restore* :generation)
+                       :exit-generation (third *post-exit*)
+                       :gc-addresses (getf *restore* :gc-addresses)
+                       :values (getf *restore* :values)
+                       :cleanup (getf *restore* :cleanup) :writes *writes*)))
+    (format t "PASS saved local locations, bindings, histories, control, writes, GC, Inspector, values and cleanup: ~S.~%" receipt)
+    (setf *case* nil *restore* nil *locals* nil *scope* nil *indices* nil
+          *location* nil *function-location* nil *outer-reader* nil *shadow-reader* nil)
+    (values t receipt)))
+
+(defun finish-restore-test ()
+  (finish-local-restoration t))
+
+(defun run-restore-preparation-test ()
+  (dolist (depth '(0 2))
+    (prepare-restore-test depth)
+    (assert (finish-local-restoration nil)))
   t)
