@@ -833,3 +833,17 @@ Compile and load the fixtures in Mezzano, then supply the baseline's physical pa
 ```
 
 The two pass versions must use the running image's instruction classes.  The measured change concerns local-variable lowering.  It does not measure complete file compilation.
+
+## Mutex cleanup diagnostic
+
+The mutex-termination diagnostic requires a disposable guest.  It retains two private mutexes locked by threads that have exited.  The resident hook pauses the loaded release consistency check.  The coordinator requests termination during normal cleanup and during termination cleanup, then checks thread death, mutex state and ownership.
+
+```lisp
+(let ((mezzano.compiler::*optimize-policy* '(debug 1 safety 3 speed 1)))
+  (load (compile-file "SYS:SOURCE;TOOLS;SWANK;DIAGNOSE-MUTEX-TERMINATION-KERNEL.LISP")
+        :wired t))
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;DIAGNOSE-MUTEX-TERMINATION.LISP"))
+(lispm-worker-shutdown-probe::run-cases)
+```
+
+The result :RELEASE-CLEANUP-ORPHANS-REPRODUCED records both failure cases.  The coordinator restores the original checker fdefinition and retains each private observation in LISPM-WORKER-SHUTDOWN-PROBE::*CASES*.  The recorded x86-64 run compiled both files without warnings or failure.  The coordinator used DEBUG 3/SAFETY 3/SPEED 1 and default loading.  The kernel helper used DEBUG 1/SAFETY 3/SPEED 1 and wired loading.
