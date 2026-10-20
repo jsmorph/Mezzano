@@ -368,6 +368,18 @@ To include selected-frame persistence in a snapshot test, load the restoration f
 
 After restoration, call (lispm-service-test::finish-restore-test).  It requires expired old handles, the same selected frame and local values after full GC, restart completion, and one cleanup, then releases the stop.
 
+## Callable provenance tests
+
+The callable fixture checks current global redefinition, exact local closures, SETF/CAS names, tracing, compiled aliases, metadata validation, frame transfers, and collection:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-ENTRY-ARGUMENTS.LISP"))
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-REINVOKE-CALLABLE.LISP"))
+(lispm-reinvoke-callable-test:run)
+```
+
+The constructor-policy cases read TRACE-FUNCTION from SYS:SOURCE;SYSTEM;DEBUG.LISP and compile separate constructors at DEBUG 0, 1, and 3.  Each case checks the resulting trace callback's exact-callable provenance, current traced redefinition, and cleanup.  These callback tests execute on x86-64.  The fixture's separate metadata-emission checks select x86-64 and ARM64 without executing ARM64 code.
+
 ## Frame location tests
 
 After loading the service fixture, compile and load the shared frame-evaluation and rest-argument fixtures, then the argument and local location fixtures:

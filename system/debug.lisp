@@ -1154,6 +1154,7 @@ executed, and the offset into it."
                 wrapper
                 (lambda (&rest args)
                   (declare (dynamic-extent args)
+                           (optimize (debug 3))
                            (lambda-name trace-wrapper))
                   (trace-wrapper name wrapper args)))
                (setf (function-reference-function fref) wrapper)))))))
