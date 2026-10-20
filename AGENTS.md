@@ -26,7 +26,11 @@ Development runs through `tailscale ssh minideb2`.  The Mezzano checkout is `/ho
 
 The accepted rebuilt guest uses SWANK 4024 and native HTTP 8776/8777.  Its current launch receipt is `/home/somebody/src/mezzano-boot/cold-debug-add32-20261020/accepted-checkpoint/captured-pause/resumed-vm-launch.json`.  Its cold core is 09cbd1c8, with three recorded ordinary updates: BUILD-CFG, dependency/HOME/cache, and COMPILE-FILE worker shutdown.  The compiler update receipt is /home/somebody/src/mezzano-boot/cold-debug-add32-20261020/compiler-worker-update/ready.json.  Use this guest for further debugger work.  Preserve the original main world at 4021 and 8765/8769.
 
+The cold foothold candidate uses SWANK 4025, GDB 1254, and HTTP 8778/8779.  Its launch receipt is `/home/somebody/src/mezzano-boot/cold-foothold-20261020/vm-launch.json`.  It is undergoing first-boot and acceptance tests.  The accepted 4024 guest is paused at `/home/somebody/src/mezzano-boot/cold-debug-add32-20261020/accepted-checkpoint/cold-foothold-pause/snapshot.json`.  Preserve both worlds.  The candidate's `restore-accepted.py` requires stopping its owned candidate process before restoring the accepted guest.
+
 Read the repository README and relevant documentation before changing an implementation.  Read documentation again after editing it.  Keep debugger implementation, compiler changes, clients, and new tests in Lisp where the existing system permits it.  Minimize dependencies.
+
+Before replacing resident function definitions, retain every existing function object that will be replaced before compiling or loading.  Keep those publication roots through GC and Snapshot until all old activations have ended.  Supervisor and idle stacks are excluded from ordinary GC scanning.
 
 Complete a bounded increment, test its behavior, document it, commit, and push.  Review the changes before committing.  Commit headlines start with a capital letter, contain fewer than 60 characters, and have no final period.
 
