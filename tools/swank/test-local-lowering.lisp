@@ -120,12 +120,15 @@
       (flet ((,(second helper) ,(third helper)
                (unless ,collected
                 (let ((before (mezzano.internals::lisp-object-address
-                               (ir::bind-local-ast ,binding))))
+                               (ir::bind-local-ast ,binding)))
+                      (before-key (mezzano.internals::lisp-object-address ,binding)))
                  (setf ,collected t)
                  (mezzano.extensions:gc :full t)
                  (assert (/= before
                              (mezzano.internals::lisp-object-address
-                              (ir::bind-local-ast ,binding))))))
+                              (ir::bind-local-ast ,binding))))
+                 (assert (/= before-key
+                             (mezzano.internals::lisp-object-address ,binding)))))
                ,@(cdddr helper)))
        ,@(cdddr caller))
       (assert ,collected))))))
