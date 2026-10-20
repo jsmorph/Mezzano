@@ -22,12 +22,14 @@
       (when server (close (usocket:socket-stream server) :abort t))
       (usocket:socket-close listener))))
 
-(defun timed-cancellation (function)
+(defun timed-cancellation (function &optional (condition-type 'error))
   (let ((start (get-internal-real-time)))
     (cl-cancel:with-timeout-context (context 0.1)
       (assert
        (handler-case (progn (funcall function context) nil)
          (error (condition)
+           (assert (typep condition condition-type) ()
+                   "Expected ~S, received ~A." condition-type condition)
            (assert (typep (cl-cancel:err context) 'cl-cancel:deadline-exceeded)
                    () "Unexpected failure before deadline: ~A" condition)
            t))))
@@ -66,9 +68,80 @@
         (assert (<= 6/25 elapsed 3) ()
                 "Timeout ~S fired after ~S seconds." duration elapsed)))))
 
+(defun tls-initialization-tests ()
+  (let ((pure-tls::*default-tls-context* nil))
+    (let ((context (pure-tls::ensure-default-context pure-tls:+verify-none+)))
+      (assert (= pure-tls:+verify-required+
+                 (pure-tls::tls-context-verify-mode context)))
+      (assert (null (pure-tls::tls-context-trust-store context))))
+    (let ((context (pure-tls::ensure-default-context)))
+      (assert (pure-tls::tls-context-trust-store context))
+      (assert (eq context (pure-tls::ensure-default-context)))))
+  (let ((pure-tls::*default-tls-context* nil))
+    (timed-cancellation
+     (lambda (context)
+       (let ((cl-cancel:*current-cancel-context* context))
+         (pure-tls::ensure-default-context)))
+     'pure-tls::tls-deadline-exceeded)
+    (assert (null pure-tls::*default-tls-context*)))
+  (dolist (verify (list pure-tls:+verify-none+ pure-tls:+verify-required+))
+    (call-with-pair
+     (lambda (client server)
+       (declare (ignore server))
+       (let ((pure-tls::*default-tls-context* nil))
+         (cl-cancel:with-cancel-context (context (cl-cancel:background))
+           (cl-cancel:cancel context)
+           (assert
+            (handler-case
+                (progn
+                  (pure-tls:make-tls-client-stream client :hostname "localhost"
+                                                        :verify verify
+                                                        :request-context context)
+                  nil)
+              (pure-tls::tls-context-cancelled () t))))
+         (assert (null pure-tls::*default-tls-context*)))
+       (assert (not (open-stream-p client))))))
+  t)
+
+(defun tls-client-ownership-tests ()
+  (let ((baseline (monitors)))
+    (call-with-pair
+     (lambda (client server)
+       (declare (ignore server))
+       (let ((pure-tls::*default-tls-context* nil))
+         (timed-cancellation
+          (lambda (context)
+            (let ((cl-cancel:*current-cancel-context* context))
+              (pure-tls:make-tls-client-stream client :hostname "localhost"
+                                                    :verify pure-tls:+verify-none+)))))
+       (assert (not (open-stream-p client)))))
+    (assert (= baseline (monitors)))
+    (call-with-pair
+     (lambda (client server)
+       (declare (ignore server))
+       (let ((missing (merge-pathnames "tls-test-absent-client-certificate.pem"
+                                       (user-homedir-pathname))))
+         (assert (not (probe-file missing)))
+         (cl-cancel:with-cancel-context (context (cl-cancel:background))
+           (assert
+            (handler-case
+                (progn
+                  (pure-tls:make-tls-client-stream client :hostname "localhost"
+                                                        :verify pure-tls:+verify-none+
+                                                        :client-certificate missing
+                                                        :request-context context)
+                  nil)
+              (file-error () t)))))
+       (assert (not (open-stream-p client)))))
+    (assert (= baseline (monitors))))
+  t)
+
 (defun run ()
   (deadline-tests)
   (let ((baseline (monitors)))
+    (tls-initialization-tests)
+    (tls-client-ownership-tests)
+    (assert (= baseline (monitors)))
     (cl-cancel:with-cancel-context (parent (cl-cancel:background))
       (let* ((stream (make-string-output-stream))
              (cleanup (cl-cancel:close-stream-on-cancel stream parent)))
@@ -103,13 +176,28 @@
     (call-with-pair
      (lambda (client server)
        (declare (ignore server))
-       (timed-cancellation
-        (lambda (context)
-          (pure-tls:make-tls-client-stream client :hostname "localhost"
-                                                :verify pure-tls:+verify-none+
-                                                :request-context context)))
+       (let ((pure-tls::*default-tls-context* nil))
+         (timed-cancellation
+          (lambda (context)
+            (pure-tls:make-tls-client-stream client :hostname "localhost"
+                                                  :verify pure-tls:+verify-none+
+                                                  :request-context context)))
+         (assert (null (pure-tls::tls-context-trust-store
+                        pure-tls::*default-tls-context*))))
+       (assert (not (open-stream-p client)))))
+    (call-with-pair
+     (lambda (client server)
+       (declare (ignore server))
+       (let ((pure-tls::*default-tls-context* nil))
+         (timed-cancellation
+          (lambda (context)
+            (pure-tls:make-tls-client-stream client :hostname "localhost"
+                                                  :verify pure-tls:+verify-required+
+                                                  :request-context context))
+          'pure-tls::tls-deadline-exceeded)
+         (assert (null pure-tls::*default-tls-context*)))
        (assert (not (open-stream-p client)))))
     (assert (= baseline (monitors))))
-  (format t "PASS cancellation cleanup, close errors, blocked input, and blocked handshake.~%")
+  (format t "PASS cancellation, fresh TLS initialization, CA deadlines, close errors, and blocked I/O.~%")
   t)
 (in-package :cl-user)

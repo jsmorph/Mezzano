@@ -164,7 +164,7 @@ The edits cover Ironclad entropy, USOCKET and Drakma connection timeouts, USOCKE
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-ATOMICS.LISP")
     (lispm-atomics-test:run)
 
-The cancellation test requires the edited cl-cancel and pure-tls sources.  After loading the HTTPS libraries:
+The cancellation test requires the edited cl-cancel and pure-tls sources.  It tests fresh TLS contexts with verification disabled and required, cancellation during CA initialization, already-cancelled constructors, socket closure, and monitor cleanup.  The no-verification path must leave the default trust store unloaded while preserving its verification-required policy.  After loading the HTTPS libraries:
 
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-CANCELLATION.LISP")
     (lispm-cancellation-test:run)
