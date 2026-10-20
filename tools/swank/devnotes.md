@@ -7623,3 +7623,11 @@ The first build-launch guard ran Git as root against the user-owned worktree and
 The cold build completed at revision `cf432ca97c3f2ddec6a8e6714074273255ced2d9`.  It used 456.46 CPU seconds and peaked at 1,786,187,776 bytes.  The 39 CROSS-SUPPORT::PLACE warnings also occur in the preceding successful build.  The build-result check passed source hashes, the image header, entry/initial-thread/NIL/stack-pointer fields, and the eight selected compiled module hashes.  The cold image SHA-256 is `5b3558a6b549ddf94ca4e7256303e440c3c881729c8f528e073af32972248509`; its independent sparse working copy matched that hash.
 
 The new guest launched as PID 1101519, start ticks 95428084, with SWANK 4025 and HTTP 8778/8779 forwards.  Its launch receipt is `/home/somebody/src/mezzano-boot/cold-foothold-20261020/vm-launch.json`.  The original main and all 14 protected process identities passed their checks.  Initial boot completed a snapshot and progressed into runtime/compiler loading.  First-boot, native, Web, and restored-image acceptance remain required.  The accepted guest at 4024 is paused at `/home/somebody/src/mezzano-boot/cold-debug-add32-20261020/accepted-checkpoint/cold-foothold-pause/snapshot.json`.
+
+### Cold acceptance preparation during dependency boot
+
+The first SWANK readiness probe was reset while initial boot was compiling private dependencies.  Serial output subsequently advanced through ASDF and Flexi Streams.  This is a failed readiness probe, not native acceptance evidence.
+
+Reuse the previous HTTP/HTTPS and nine-suite Chromium acceptance matrix with candidate-owned output paths and the new ports.  The previous cancellation fixture is byte-identical to the current checked-in fixture, so compile the checked-in source.  Keep native compilation, Return/Reinvoke, instruction stepping, and network checks ahead of browser execution.  The Web test worker owns only the candidate's browser-acceptance directory.  It will use the existing workstation Node/Chromium installation and save HTTP, console, and Chromium-exit receipts for every suite.  No new dependencies are required.
+
+Required results remain first-boot readiness, all thirteen native phases, HTTP/HTTPS tests, browser suites, and saved-image restoration.  No acceptance result has been inferred from a running QEMU process.
