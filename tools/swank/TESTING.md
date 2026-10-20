@@ -144,6 +144,10 @@ The Show Special fixture uses the same helpers and policy.  Load the updated deb
 
 The spill-interference fixture checks overlapping, adjacent, disjoint, repeated, and unused ranges, edges from every range of a spilled register, and scalar and SIMD slot assignment.  It compares with supplied previous implementations when requested and checks that dense bit-vector rows retain their identity across insertions.
 
+## Retained integer steps
+
+Compile/load `test-retained-ordinary-step.lisp`, `test-retained-logical-step.lisp`, and `test-retained-argument-step.lisp` after the existing service, hardware-breakpoint, and retained-step helpers.  Use ordinary LOAD at SAFETY 3/DEBUG 3/SPEED 1 on a dedicated two-CPU x86-64 guest.  Run `(lispm-retained-argument-step-test:run)`.  Its 100 TEST32/SUB32/ADD32 cases include 48 ADD32 cases across five operand forms at zero/two prompts.  Checks cover exact PCs and defined flags, zero-extension, adjacent memory bytes, moving roots, accepted replay, expired references, unchanged code, original values, and cleanup.  Six compiled argument-count walks also run.  Browser and saved-state acceptance require their separate drivers.
+
 ## Retained CALL steps
 
 Compile/load `test-retained-call-step.lisp` after the raw-step, hardware-breakpoint, managed-step, retained-step, and managed-call-return helpers.  Run `(lispm-retained-call-step-test:run)` in a dedicated two-CPU x86-64 guest at SAFETY 3/DEBUG 3/SPEED 1 with ordinary allocation.  Direct/indirect cases test normal and recursive returns, three values, blocked steps, replay, moving callback arguments, redefinition, other-thread filtering, public coincidence, full capacity, callee conditions, cancellation, and termination under zero/two prompts.  A later condition after Proceed must create a new record, and cleanup must release both that record and the old closed record and join the owned thread.  The LAP callers reserve a raw alignment word while retaining their RBP-8 state root in layout `#*1`.

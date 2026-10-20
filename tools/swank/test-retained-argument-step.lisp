@@ -22,7 +22,17 @@
                (lap:sub32 :immediate ((0 1) (1073741824 1) (1073741823 -1)))
                (lap:sub32 :memory-source ((0 1) (1073741823 -1)))
                (lap:sub32 :memory-register ((-1 1) (1073741824 1) (0 0)))
-               (lap:sub32 :memory-immediate ((-1 1) (0 1)))))
+               (lap:sub32 :memory-immediate ((-1 1) (0 1)))
+               (lap:add32 :register
+                ((0 0) (7 1) (1073741823 1) (-1073741824 -1) (-1 1) (-1 0)))
+               (lap:add32 :immediate
+                ((7 1) (1073741823 1) (-1073741824 -1) (-1 1)))
+               (lap:add32 :memory-source
+                ((7 1) (1073741823 1) (-1073741824 -1) (-1 1)))
+               (lap:add32 :memory-register
+                ((0 0) (7 1) (1073741823 1) (-1073741824 -1) (-1 1) (-1 0)))
+               (lap:add32 :memory-immediate
+                ((7 1) (1073741823 1) (-1073741824 -1) (-1 1)))))
       (destructuring-bind (opcode kind inputs) specification
         (loop for (lhs rhs) in inputs for index from 0
               do (let* ((name (intern (format nil "~A-~A-~D" opcode kind index)))
@@ -54,7 +64,7 @@
                        (lap:mov64 :rcx ,(- (ash 1 63)))
                        (lap:add64 :rcx :rcx)
                        (,opcode ,@operands)
-                       ,@(when (and (eq opcode 'lap:sub32)
+                       ,@(when (and (member opcode '(lap:sub32 lap:add32))
                                     (not (member kind '(:memory-register :memory-immediate))))
                            `((lap:mov64 (:r8 ,(- 8 i::+tag-object+)) :rax)))
                        (lap:pop :rdx)
@@ -79,20 +89,29 @@
   (let* ((initial (logical::tagged-word lhs))
          (a (ldb (byte 32 0) initial))
          (b (ldb (byte 32 0) (logical::tagged-word rhs)))
-         (subtract-p (eq opcode 'lap:sub32))
-         (result (ldb (byte 32 0) (if subtract-p (- a b) (logand a b))))
+         (arithmetic-p (member opcode '(lap:sub32 lap:add32)))
+         (result (ldb (byte 32 0)
+                      (ecase opcode
+                        (lap:sub32 (- a b))
+                        (lap:add32 (+ a b))
+                        (lap:test32 (logand a b)))))
          (memory-p (member kind '(:memory-register :memory-immediate)))
          (flags (logior (if (zerop result) #x40 0)
                         (if (logbitp 31 result) #x80 0)
                         (if (evenp (logcount (ldb (byte 8 0) result))) #x4 0))))
-    (when subtract-p
-      (setf flags
-            (logior flags (if (< a b) #x1 0)
-                    (if (logbitp 31 (logand (logxor a b) (logxor a result))) #x800 0)
-                    (if (logbitp 4 (logxor a b result)) #x10 0))))
-    (values (if (and subtract-p (not memory-p)) result initial)
-            (if subtract-p (if memory-p (dpb result (byte 32 0) initial) result) initial)
-            flags (if subtract-p #x8D5 #x8C5))))
+    (when arithmetic-p
+      (let ((carry (if (eq opcode 'lap:add32) (> (+ a b) #xFFFFFFFF) (< a b)))
+            (overflow (logbitp 31
+                        (logand (if (eq opcode 'lap:add32)
+                                    (lognot (logxor a b))
+                                    (logxor a b))
+                                (logxor a result)))))
+        (setf flags
+              (logior flags (if carry #x1 0) (if overflow #x800 0)
+                      (if (logbitp 4 (logxor a b result)) #x10 0)))))
+    (values (if (and arithmetic-p (not memory-p)) result initial)
+            (if arithmetic-p (if memory-p (dpb result (byte 32 0) initial) result) initial)
+            flags (if arithmetic-p #x8D5 #x8C5))))
 
 (defun case-test (target depth)
   (destructuring-bind (function opcode kind lhs rhs) target
@@ -186,7 +205,7 @@
       (hw::cleanup-case record))))
 
 (defun run ()
-  (assert (= (length *targets*) 26))
+  (assert (= (length *targets*) 50))
   (assert (null (d:debugger-stops :include-closed t)))
   (assert (null s::*instruction-step-requests*))
   (dolist (target *targets*)
@@ -204,5 +223,5 @@
   (assert (notany #'identity s::*instruction-breakpoint-slots*))
   (assert (null (i::symbol-global-value '*marker*)))
   (assert (null (i::symbol-global-value '*state*)))
-  (format t "PASS 52 operand/flag cases and six compiled argument-count checks, with exact PCs, moving roots, replay, values and cleanup.~%")
+  (format t "PASS 100 operand/flag cases and six compiled argument-count checks, with exact PCs, moving roots, replay, values and cleanup.~%")
   t)
