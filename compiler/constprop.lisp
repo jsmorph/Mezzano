@@ -366,7 +366,8 @@
         ((eql nil) nil)))))
 
 (defmethod cp-form ((form ast-call))
-  (if (member (name form) '(mezzano.runtime::%funcall mezzano.runtime::%apply))
+  (if (and (arguments form)
+           (member (name form) '(funcall apply mezzano.runtime::%funcall mezzano.runtime::%apply)))
       (progn
         (setf (first (arguments form)) (cp-function-form (first (arguments form))))
         (cp-implicit-progn (rest (arguments form))))
