@@ -103,10 +103,11 @@
         (push (ir:instruction-source-environment instruction) result)))
     (nreverse result)))
 
-(defun finish-compilation (function environments arguments expected)
+(defun finish-compilation (function environments arguments expected
+                           &optional (pipeline #'ir::compile-backend-function-1))
   (let ((target (c::canonicalize-target :x86-64)))
     (assert (equal (call-environments function) environments))
-    (ir::compile-backend-function-1 function target)
+    (funcall pipeline function target)
     (assert (equal (call-environments function) environments))
     (multiple-value-bind (debug-map spill-locations stack-layout)
         (ra::allocate-registers function target)
@@ -115,7 +116,8 @@
                        function debug-map spill-locations stack-layout target)))
         (assert (equal (apply compiled arguments) expected))))))
 
-(defun check-tree (tree arguments expected)
+(defun check-tree (tree arguments expected
+                   &optional (pipeline #'ir::compile-backend-function-1))
   (let* ((target (c::canonicalize-target :x86-64))
          (lowered (c::compile-lambda-2 tree target))
          (expected-environments
@@ -131,7 +133,7 @@
     (assert (equal environments expected-environments))
     (assert (every (lambda (environment) (typep environment 'c::lexical-environment))
                    environments))
-    (finish-compilation function environments arguments expected)))
+    (finish-compilation function environments arguments expected pipeline)))
 
 (defvar *restore-function* nil)
 (defvar *restore-environments* nil)
@@ -154,7 +156,7 @@
   (format t "PASS restored backend instruction scopes, binding identities, lowering, register allocation, and execution after full GC.~%")
   t)
 
-(defun run ()
+(defun run (&optional (pipeline #'ir::compile-backend-function-1))
   (check-insertion)
   (check-edge-scope)
   (check-branch-scope)
@@ -162,7 +164,7 @@
     (dolist (compilation-speed '(1 3))
       (let ((c::*optimize-policy*
               (list 'debug debug 'safety 3 'speed 1 'compilation-speed compilation-speed)))
-        (check-tree (lispm-ast-environment-test::make-tree) '(42) 42)
+        (check-tree (lispm-ast-environment-test::make-tree) '(42) 42 pipeline)
         (check-tree
          (c::pass1-lambda
           '(lambda (x)
@@ -173,7 +175,7 @@
                (lispm-ast-environment-test::scope-point :after (funcall reader))
                x))
           nil)
-         '(17) 42)))
+         '(17) 42 pipeline)))
     (let ((c::*optimize-policy* (list 'debug debug 'safety 3 'speed 1)))
       (check-tree
        (c::pass1-lambda
@@ -181,6 +183,6 @@
            (lispm-ast-environment-test::scope-point :caller caller)
            (lispm-ast-environment-test::inline-scope caller))
         nil)
-       '(42) 42)))
+       '(42) 42 pipeline)))
   (format t "PASS backend source environments, insertion and movement, branch/edge scopes, lowering, register allocation, closure execution, and debug policies.~%")
   t)

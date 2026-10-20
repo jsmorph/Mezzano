@@ -222,7 +222,7 @@
          do (incf total))
       total)))
 
-(defun lower-one-local-variable (backend-function binding)
+(defun lower-one-local-variable (backend-function binding references)
   (let* ((var (bind-local-ast binding))
          (vreg (make-instance (if (mezzano.compiler::preserve-variable-for-debugger-p var)
                                    'debug-variable-register
@@ -230,7 +230,7 @@
                               :name var))
          (to-remove '()))
     ;; Replace loads & stores with move instructions.
-    (do-instructions (inst backend-function)
+    (dolist (inst references)
       (typecase inst
         (load-local-instruction
          (when (eql (load-local-local inst) binding)
@@ -272,8 +272,19 @@ Must be performed after SSA conversion."
     (do-instructions (inst backend-function)
       (when (typep inst 'bind-local-instruction)
         (push inst to-convert)))
-    (dolist (binding to-convert)
-      (lower-one-local-variable backend-function binding))))
+    (when to-convert
+      (let ((references (make-hash-table :test #'eq)))
+        (do-instructions (inst backend-function)
+          (typecase inst
+            (load-local-instruction
+             (push inst (gethash (load-local-local inst) references)))
+            (store-local-instruction
+             (push inst (gethash (store-local-local inst) references)))
+            (unbind-local-instruction
+             (push inst (gethash (unbind-local-local inst) references)))))
+        (dolist (binding to-convert)
+          (lower-one-local-variable backend-function binding
+                                    (nreverse (gethash binding references))))))))
 
 (defun rest-arg-safe-to-make-dx-p (backend-function uses)
   "Return true if the rest arg or it's spine is never captured by something with effectively non-dynamic extent and if the spine is never modified."

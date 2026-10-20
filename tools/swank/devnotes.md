@@ -6917,3 +6917,30 @@ Source review found that LOWER-LOCAL-VARIABLES calls LOWER-ONE-LOCAL-VARIABLE on
 Final follow-up recommendation: index LOAD-LOCAL, STORE-LOCAL and UNBIND-LOCAL references by binding in one existing instruction walk, then preserve the current binding order and each reference list's source order while invoking the existing lowering helper on those references.  Keep initialization moves, debugger bind/unbind records, instruction environments and deferred removals unchanged.  Review all helper callers before changing its private argument list.  Test the old and proposed passes on separate equivalent backend functions, check the resulting instructions/environments and runtime/debugger behavior, and measure native elapsed time at several binding/instruction counts.  Benchmark an anonymous candidate with its helper locally bound so the running compiler remains unchanged.  This is a proposed performance increment after the current cold acceptance.  The observation changed no compiler definition or optimization limit.
 
 The twenty frozen Web assets all match their Git 660b26f3 blobs, including app.js and every font file.  frozen-assets-git-match.json records each path.  Use the full 660b26f3 Git pin for both runtime and Web source revision fields, while retaining the separate 64-digit app SHA256.  This establishes content identity, not the original asset publication date.  Browser execution remains gated on restored native acceptance.
+
+### Isolated local-lowering candidate preparation
+
+Prepare the indexed-lowering candidate while the unchanged cold660 guest continues dependency compilation.  The source worktree pinned to 660b26f3 and its running compiler remain unchanged.  Draft only in the main development checkout.  LOWER-ONE-LOCAL-VARIABLE has one source caller, LOWER-LOCAL-VARIABLES.
+
+Test both old and candidate source as anonymous functions compiled under the same policy in Mezzano, with the private lowering helper locally bound.  A locally bound lowering function in an anonymous copy of the existing COMPILE-BACKEND-FUNCTION-1 pipeline also permits real machine-code execution and source-environment checks without replacing compiler definitions.  Reuse the existing backend-environment test's conversion, register-allocation and final-compilation procedure.  Check installed compiler function identities and registry before/after.  Run only these owned tests in main; do not publish the candidate to either live compiler during this cold acceptance.  Any publication/cold rebuild remains a later tested increment.
+
+The first anonymous comparison passed exact instruction/environment equivalence and real code execution through both pipelines, preserving installed compiler functions and 543 registry entries.  Its shortest timings reached the ten-millisecond clock quantum, so the next measurement used larger batches and retained all three wall-time samples, including outliers.  Add larger graph comparisons and force one moving collection at the first helper invocation, after the candidate reference index is complete, to test its live EQ keys and reference lists.  These remain isolated functions, with no live compiler publication.
+
+Anonymous native tests passed instruction/source-environment equivalence through 2048 shadowed bindings, real backend pipeline execution, and moving collection while the candidate EQ index was live.  The first extra input failed in READ with END-OF-FILE because its outer LET* binding list lacked one closing parenthesis.  Preserve that source, log and retained condition/frames/restart receipt.  Only that job was aborted/released.  The corrected input passed exact reader/compile checks and all extra cases.  A preceding main preflight also wrongly required the backend fixture package before its planned normal load; that assertion was removed rather than creating a placeholder package.
+
+Final review refinement before committing: keep the original binding-discovery walk and return when it finds no remaining bindings.  Build the reference index in a second walk only when needed.  The merged draft would classify every nonlocal instruction against four classes even in a zero-binding function, instead of the original single binding test.  Two bounded walks preserve that common path and still remove the per-binding full scans.  Preserve the tested merged draft and its receipts, then rerun the same native fixture on the refined caller.
+
+### Indexed local lowering native result
+
+The refined two-walk caller and unchanged rewrite bodies passed the checked-in Lisp fixture under Mezzano on x86-64.  Both source versions compiled as anonymous functions under SAFETY 3/DEBUG 1/SPEED 1.  Exact graph comparisons cover zero/unused bindings, shadowed identities, instruction/reference order, register classes and source environments through 2048 bindings.  A full collection after index construction moved the binding objects and preserved the live EQ index/reference lists.  Both anonymous full backend pipelines passed the existing environment, register-allocation, closure and machine-code execution cases at DEBUG 0/3 and compilation-speed 1/3.  Compiler function identities, the registry lock and every one of 543 registry entries remained unchanged.
+
+Three wall-time batches at each size produced these per-pass medians.  All samples, including outliers, remain in final-result.json and run-final.log.  Graph construction precedes timing.
+
+| Bindings | Original median, ms/pass | Indexed median, ms/pass |
+|---:|---:|---:|
+| 32 | 1.045 | 0.312 |
+| 128 | 13.438 | 1.328 |
+| 512 | 207.500 | 5.312 |
+| 2048 | 3220.000 | 21.250 |
+
+The final log SHA256 is 77e1afb587cfa2f48693cf98cb6755a3c174486f73779db08269498475b705c8.  These measurements concern this pass, not complete file compilation.  The running cold660 guest and main compiler still use their original definitions.  The source optimization and reusable fixture are ready for a bounded commit; live/cold compiler integration remains untested.

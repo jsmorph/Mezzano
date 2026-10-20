@@ -809,3 +809,27 @@ The deferred-store fixture checks both adjacent-range merges, release of a detac
 ```
 
 Run the probe while Snapshot is idle.  The final two assertions compare the recorded count with the sum of the global deferred ranges.  Run the same assertions after a real save and again after restoring its image, without reloading the fixture or changing the count.
+
+### Local-variable lowering tests
+
+The x86-64 local-lowering test compares two compatible versions of the backend pass.  It reads their definitions without evaluating file-level forms, compiles anonymous passes and backend pipelines under the same policy, and preserves installed compiler definitions.  It checks instruction order, shadowed binding identities, debugger register classes, source environments, moving GC, register allocation, and execution through the backend-environment cases.  The benchmark reports three wall-time batches at each size, with repetition counts and per-pass times.  Graph construction precedes timing.  Samples include collection and scheduling delays.
+
+Save the baseline source on the host before testing.  For the indexed-lowering change, this command selects the preceding pass implementation:
+
+```sh
+git show 660b26f3:compiler/backend/passes.lisp > ../baseline-local-lowering.lisp
+```
+
+Compile and load the fixtures in Mezzano, then supply the baseline's physical pathname and the current source paths:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-AST-ENVIRONMENTS.LISP"))
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-BACKEND-ENVIRONMENTS.LISP"))
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-LOCAL-LOWERING.LISP"))
+(lispm-local-lowering-test:run
+ "REMOTE:/srv/mezzano-build/baseline-local-lowering.lisp"
+ "SYS:SOURCE;COMPILER;BACKEND;PASSES.LISP"
+ "SYS:SOURCE;COMPILER;BACKEND;BACKEND.LISP")
+```
+
+The two pass versions must use the running image's instruction classes.  The measured change concerns local-variable lowering.  It does not measure complete file compilation.
