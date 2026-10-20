@@ -7575,3 +7575,15 @@ First test the macro expansions and mutex functions in the isolated restored gue
 The read-only saved image booted under QEMU's temporary-write mode.  Both captured continuations remained resumable, and each owned worker retained exactly one pending callback with counter one and allow NIL.  After release, each callback ran once with state zero/T, collected, and preceded the captured body.  The one-prompt and two-prompt continuations preserved all eight object identities.  Both resumers observed one/NIL, and both final cleanups observed zero/T.  The retained test passed in 41.44 seconds, log SHA-256 `0474f3519a51fff32cb70fe99005c588365527c339b3cc1f2707ec4ec3e2e20d`.
 
 Archive the exact compiled saved-state fixture and its prepare/Snapshot/restore/check procedure.  The original read-only image remains the baseline for the currently running temporary-write guest.  The shared macro and mutex increment will use this disposable guest.  The accepted guest is paused and has no prototype definitions.
+
+The owned recursive-acquisition baseline signalled MUTEX-ERROR and left the original mutex UNLOCKED with no owner.  Its body did not run.  This confirms the pre-existing ownership loss in CALL-WITH-MUTEX's cleanup.  The test restored the global lock-violation setting and left no owned lock.
+
+The first integration compile produced unused-variable style warnings for WITHOUT-FOOTHOLDS' saved allow flag when the body did not use its lexical ALLOW-WITH-FOOTHOLDS macro.  The strict warning check stopped publication before loading any mutex definition.  Mark that macro-generated optional-use variable IGNORABLE.  Do not weaken the warning check.
+
+### Shared macro and mutex prototype tests
+
+The corrected macro expansions and three mutex functions compiled without warnings and passed publication checks.  The ordinary tests passed nested allow permissions, zero/one/five/eight values, RETURN-FROM, THROW, condition identity, ABORT, and preservation of an explicitly masked body.  Recursive acquisition now preserves the original ownership.  Nonblocking contention, cancellation while blocked, and ownership handoff passed.  Two queued termination requests between the successful acquisition CAS and owner store left the mutex unlocked and the body unentered.
+
+The two established release-cleanup probes passed with EXPECT-STRANDED NIL: normal cleanup interrupted by termination, and termination cleanup interrupted by another termination.  Both ended with no owner and UNLOCKED state.  The complete ordinary/probe test took 21.51 seconds, log SHA-256 `8bbe56915d3aa3d580e9c4205bf70f0a8140e33ff045e1a7f1312a4c1cf6ace3`.
+
+The unchanged COMPILE-FILE-WORKER test then passed in 6.20 seconds.  Termination at reply-lock release left the lock unlocked.  A second unchanged worker completed, both workers reached DEAD, and both EXIT messages were read.  Its log SHA-256 is `6ed547bfd0f899a586a42086cfc5f878db1cbd9e803a49223412d565b668c85e`.  Production supervisor source remains unchanged.  The existing continuation groups and compiler suites must pass with these global mutex functions before production adoption.

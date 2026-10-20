@@ -1,6 +1,6 @@
 # Foothold binding prototype
 
-This x86-64 prototype retains previous and active foothold states on the [special stack](../../../doc/internals/abi.md#the-special-stack).  Its helpers restore the counter and allow flag for their dynamic bindings during unwinding and continuation transfers.  The shared foothold macros still restore thread slots in ordinary cleanup functions.
+This x86-64 prototype retains previous and active foothold states on the [special stack](../../../doc/internals/abi.md#the-special-stack).  Its helpers restore the counter and allow flag for their dynamic bindings during unwinding and continuation transfers.  The optional macro and mutex modules replace shared foothold management and mutex transitions in the disposable guest.
 
 Loading these files replaces the unwinder and three resident continuation functions.  The prototype requires a disposable guest.
 
@@ -45,4 +45,10 @@ After restarting that saved image, run `(lispm-foothold-binding-test::check-save
 
 The resident modules use DEBUG 1/SAFETY 3/SPEED 1.  The test modules use DEBUG 3/SAFETY 3/SPEED 1.  The value tests join their workers and record elapsed time for forced collection.  Run the group through a retained evaluation with an overall deadline.
 
-The source includes thread-qualified test gates and collection hooks.  Shared macro adoption and mutex acquisition/release remain required work.  The accepted Web guest has none of these prototype definitions.  The [development journal](../devnotes.md#continuation-aware-foothold-binding-revision) records its evidence and limitations.
+The source includes thread-qualified test gates and collection hooks.  Production macro and mutex integration, a cold rebuild, and debugger acceptance tests remain required work.  The accepted Web guest has none of these prototype definitions.  The [development journal](../devnotes.md#continuation-aware-foothold-binding-revision) records its evidence and limitations.
+
+## Macro and mutex integration tests
+
+After loading the binding prototype, compile and load `MACROS` with default allocation, then `MUTEX` with `:WIRED T`.  Compile and load `MUTEX-TESTS` and `COMPILER-REPLY` with default allocation.  Run `(lispm-mutex-binding-test:run)`.
+
+The release and compiler-worker tests also require the resident definitions in `diagnose-mutex-termination-kernel.lisp` and the ordinary definitions in `diagnose-mutex-termination.lisp`.  Run the latter package's `RUN` with `:EXPECT-STRANDED NIL` for each `:CLEANUP-ENTRY` value, `:RETURN` and `:TERMINATE`, clearing its owned `*STATE*` between calls.  Run `(lispm-mutex-binding-test::compiler-worker-reply)` to test the unchanged worker against the corrected reply-lock release.
