@@ -6956,3 +6956,11 @@ The renamed helper passed the complete anonymous native fixture.  Final test rev
 The complete renamed-helper fixture passed again with bound/unbound-state checks.  Its log SHA256 is 7dea3a3e85e6e9c8e5dd421aa7474b903384139d65cfd1e69e202803cce60ab0.  renamed-guarded-result.json retains input hashes.  Both helper names, installed lowering/pipeline functions and all 543 registry entries remained unchanged in main.
 
 The first module observer expired after 3600 seconds at 05:44:17 UTC.  Its dependent runner stopped before HTTP/HTTPS native tests or Snapshot preparation.  A fresh attachment found the same retained load job running, with zero stops, and continued observing it without another LOAD.  Preserve phase-modules.json as the failed observation and write a separate modules-continued receipt on successful completion.  The operational HTTP/TLS deadlines remain unchanged.
+
+### Indexed lowering live integration
+
+The two-definition ordinary update completed in candidate 1073862/start90510508.  It preserved the old two-argument helper, unrelated compiler definitions, source/HOME paths, registry lock and all 543 entries.  The publication log SHA256 is 5e4bf771d8917b24e122e7f1c9d961aa37e43f8cfefd34cf91dfdff187be4e1d.  Both new definitions report the retained definitions.lisp artifact as their debug source.  The cold core and source worktree remain 660b26f3, with the explicit live compiler update from ebf3213c.  Main remains unchanged.
+
+The installed compiler then compiled and passed the closure-identity, AST-environment and backend-environment fixtures in 34.76 seconds.  The integration log SHA256 is 3d5d55588503a4c46af3982e0b55c0a2590d86a0b4371a31568f796d695af6df.  This tests live compiler integration.  A cold build with the indexed pass remains required.
+
+Resume the remaining HTTP/HTTPS phases only after the same retained module job returns successfully.  The new runner requires the continued observation receipt and both live-compiler receipts.  The native browser gate checks those receipts and both definition source paths.  Retain the first observer failure.  Snapshot preparation follows successful native/asset checks, then the planned zero/two-prompt restarts and browser tests.
