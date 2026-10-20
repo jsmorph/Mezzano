@@ -847,3 +847,15 @@ The mutex-termination diagnostic requires a disposable guest.  It retains two pr
 ```
 
 The result :RELEASE-CLEANUP-ORPHANS-REPRODUCED records both failure cases.  The coordinator restores the original checker fdefinition and retains each private observation in LISPM-WORKER-SHUTDOWN-PROBE::*CASES*.  The recorded x86-64 run compiled both files without warnings or failure.  The coordinator used DEBUG 3/SAFETY 3/SPEED 1 and default loading.  The kernel helper used DEBUG 1/SAFETY 3/SPEED 1 and wired loading.
+
+## Compiler-worker lifetime test
+
+The compiler-worker test requires an idle compiler and an owned source pathname whose source and compiled output do not exist.  It temporarily replaces the worker entry function to record the created threads, then restores it.  The test checks normal joined return and thread death, output loading and execution at DEBUG 0/1/3 with serial and forced-parallel compilation, and moving GC.
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-COMPILER-WORKER-LIFETIME.LISP"))
+(lispm-compiler-worker-lifetime-test:run
+ "REMOTE:/srv/mezzano-build/worker-lifetime-test.lisp")
+```
+
+The test deletes its source and output after each case.  It covers normal worker shutdown.  The separate mutex cleanup diagnostic reproduces asynchronous interruption during release.

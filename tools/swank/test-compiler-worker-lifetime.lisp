@@ -1,0 +1,72 @@
+(defpackage #:lispm-compiler-worker-lifetime-test
+  (:use #:cl)
+  (:local-nicknames (#:s #:mezzano.supervisor))
+  (:export #:run))
+(in-package #:lispm-compiler-worker-lifetime-test)
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+(defvar *original* nil)
+(defvar *lock* nil)
+(defvar *workers* nil)
+
+(defun tracking-worker (work replies)
+  (s:with-mutex (*lock*) (push (s:current-thread) *workers*))
+  (funcall *original* work replies))
+
+(defun await-dead (thread)
+  (let ((deadline (+ (get-internal-real-time)
+                     (* 10 internal-time-units-per-second))))
+    (loop
+      (when (eq (s::sample-thread-state thread) :dead) (return t))
+      (assert (< (get-internal-real-time) deadline) ()
+              "Compiler worker did not finish after JOIN.")
+      (s:thread-yield))))
+
+(defun check-case (source parallel debug)
+  (let* ((source (pathname source))
+         (output (compile-file-pathname source)))
+    (assert (not (probe-file source)))
+    (assert (not (probe-file output)))
+    (setf *workers* nil)
+    (unwind-protect
+         (progn
+           (with-open-file (stream source :direction :output :if-exists :error)
+             (with-standard-io-syntax
+               (dolist (form `((in-package :lispm-compiler-worker-lifetime-test)
+                               (declaim (optimize (debug ,debug) (safety 3) (speed 1)))
+                               (defun compiled-probe (value)
+                                 (values (* value value) :normal))))
+                 (write form :stream stream)
+                 (terpri stream))))
+           (multiple-value-bind (file warnings failure)
+               (compile-file source :parallel parallel :verbose nil :print nil)
+             (assert (and file (not warnings) (not failure)))
+             (let ((workers (s:with-mutex (*lock*) (copy-list *workers*))))
+               (assert (= (length workers) (if parallel s::*n-up-cpus* 0)))
+               (dolist (worker workers)
+                 (multiple-value-bind (values joined) (s:thread-join worker nil)
+                   (assert joined)
+                   (assert (equal values '(nil))))
+                 (await-dead worker)))
+             (load file))
+           (assert (equal (multiple-value-list
+                           (funcall (find-symbol "COMPILED-PROBE" "LISPM-COMPILER-WORKER-LIFETIME-TEST") 42))
+                          '(1764 :normal)))
+           (format t "PASS compiler worker lifetime parallel ~S debug ~D.~%" parallel debug))
+      (when (probe-file source) (delete-file source))
+      (when (probe-file output) (delete-file output)))))
+
+(defun run (source)
+  (assert (null *original*))
+  (setf *original* (fdefinition 'mezzano.internals::compile-file-worker)
+        *lock* (s:make-mutex "Owned compiler worker recorder"))
+  (unwind-protect
+       (progn
+         (setf (fdefinition 'mezzano.internals::compile-file-worker) #'tracking-worker)
+         (dolist (parallel '(nil :force))
+           (dolist (debug '(0 1 3))
+             (check-case source parallel debug)))
+         (mezzano.internals::gc :full t)
+         (format t "PASS joined normal compiler-worker exit, serial/parallel output, DEBUG 0/1/3, and moving GC.~%")
+         t)
+    (setf (fdefinition 'mezzano.internals::compile-file-worker) *original*
+          *original* nil)))

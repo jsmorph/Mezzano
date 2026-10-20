@@ -968,9 +968,6 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
                                (when (and (consp status)
                                           (eql (first status) :error))
                                  (format t "Error while compiling ~S.~%" (second status))
-                                 (loop
-                                    for worker in workers
-                                    do (mezzano.supervisor:terminate-thread worker))
                                  (error (third status))))
                              (when *compile-print*
                                (write-char #\.)
@@ -987,7 +984,10 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
                                             internal-time-units-per-second)))))
                       (loop
                          repeat n-workers
-                         do (mezzano.supervisor:fifo-push :finished work-fifo)))
+                         do (mezzano.supervisor:fifo-push :finished work-fifo))
+                      (dolist (worker workers)
+                        (mezzano.supervisor:thread-join worker))
+                      (setf workers nil))
                  (loop
                     for worker in workers
                     do (mezzano.supervisor:terminate-thread worker)))))
