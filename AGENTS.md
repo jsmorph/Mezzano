@@ -24,6 +24,8 @@ Bare-metal FEP work remains deferred.
 
 Development runs through `tailscale ssh minideb2`.  The Mezzano checkout is `/home/somebody/src/mezzano-boot/Mezzano`, and the Slime checkout is `/home/somebody/src/mezzano-boot/home/slime`.  Both use the `debugging` branch.  The main guest uses SWANK host port 4021 and native HTTP port 8765, with HTTP port 8769 as an alias.  The preserved earlier guest uses SWANK port 4006 and HTTP port 8771.  The original VM uses SWANK port 4005.
 
+The accepted rebuilt guest uses SWANK 4024 and native HTTP 8776/8777.  Its current launch receipt is `/home/somebody/src/mezzano-boot/cold-debug-add32-20261020/accepted-checkpoint/diagnostic-pause/resumed-vm-launch.json`.  Its cold core is 09cbd1c8, with the two recorded ordinary BUILD-CFG and dependency/HOME/cache updates.  Use this guest for further debugger work.  Preserve the original main world at 4021 and 8765/8769.
+
 Read the repository README and relevant documentation before changing an implementation.  Read documentation again after editing it.  Keep debugger implementation, compiler changes, clients, and new tests in Lisp where the existing system permits it.  Minimize dependencies.
 
 Complete a bounded increment, test its behavior, document it, commit, and push.  Review the changes before committing.  Commit headlines start with a capital letter, contain fewer than 60 characters, and have no final period.
