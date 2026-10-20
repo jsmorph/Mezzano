@@ -424,6 +424,13 @@ Each variable or local-function read has its own AST reference and source enviro
 
 For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains the first-pass tree, then checks its environments, macro functions, binding identities, copying, and compiled execution after full GC.
 
+The closure-identity fixture tests stored function values, repeated loop reads, typed lambdas, aliases, shared captured cells, assignment order, and function-cell restoration.  It runs 54 cases under DEBUG 0/1/3 and COMPILATION-SPEED 1/3, with SAFETY 3 and SPEED 1:
+
+    (load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-CLOSURE-IDENTITY.LISP"))
+    (lispm-closure-identity-test:run)
+
+Ordinary reads retain the stored closure.  Constant propagation may copy a known lambda into an immediate call operand, preserving the function-before-arguments evaluation order.  The AST fixture checks that distinction and direct-call lifting.
+
 After loading the AST fixture, the backend fixture tests source environments during instruction insertion and movement, class changes, branch rewriting, control-flow edge splitting, lowering, and register allocation.  It compares selected call scopes with their AST sources and executes the compiled functions under DEBUG 0/3 and COMPILATION-SPEED 1/3:
 
 ```lisp
