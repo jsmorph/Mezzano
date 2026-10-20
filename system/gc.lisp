@@ -924,12 +924,17 @@ This is required to make the GC interrupt safe."
     (when (not function)
       ;; Unbound fref, going to raise-undefined-function.
       (setf function #'raise-undefined-function))
-    ;; Peel away any closures or funcallable instances.
     (loop
-       while (funcallable-instance-p function)
-       do (setf function (funcallable-instance-function function)))
-    (when (closure-p function)
-      (setf function (%closure-function function)))
+       for header = (when (%value-has-tag-p function +tag-object+)
+                      (memref-t (object-base-address function) 0))
+       do (cond ((%value-has-tag-p header +tag-gc-forward+)
+                 (setf function (%%assemble-value (object-base-address header)
+                                                  (%tag-field function))))
+                ((funcallable-instance-p function)
+                 (setf function (funcallable-instance-function function)))
+                ((closure-p function)
+                 (setf function (%closure-function function)))
+                (t (return))))
     ;; Starting at the beginning, skipping the header.
     (setf offset 16))
   (when (not (%object-of-type-p function +object-tag-function+))
