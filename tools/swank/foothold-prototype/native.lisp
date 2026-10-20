@@ -227,11 +227,12 @@
   (lap:mov64 :r9 (:object :rbx #.sys.int::+delimited-continuation-prompt+))
   (lap:lea64 :r10 (:rsp #.sys.int::+tag-object+))
   (lap:mov32 :ecx #.(ash 3 sys.int::+n-fixnum-bits+))
-  (lap:call (:named-call mezzano.supervisor::prepare-foothold-resumption-values))
+  (lap:call (:named-call mezzano.supervisor::prepare-foothold-resumption-vector))
   (:gc :frame :layout #*11 :multiple-values 0)
   (lap:mov64 :rbx (:stack 0))
-  (lap:mov64 :rsp :rbp)
-  (:gc :frame :multiple-values 0)
+  (lap:mov64 :rax (:object :rbx #.sys.int::+delimited-continuation-stack-pointer+))
+  (lap:lea64 :r13 (:r8 #.(- sys.int::+tag-dx-root-object+ sys.int::+tag-object+)))
+  (lap:mov64 (:rax) :r13)
   ;; Fetch the prompt from the continuation.
   (lap:mov64 :rax (:object :rbx #.sys.int::+delimited-continuation-prompt+))
   ;; Update the saved original stack object.
@@ -254,7 +255,7 @@
   ;; +24 ra
   (lap:mov64 :rsp (:object :rbx #.sys.int::+delimited-continuation-stack-pointer+))
   (lap:lea64 :rbp (:rsp 16))
-  (:gc :frame :multiple-values 0)
+  (:gc :frame :layout #*11 :multiple-values 0)
   ;; Link into the special stack.
   (lap:gs)
   (lap:mov64 :r13 (:object nil #.mezzano.supervisor::+thread-special-stack-pointer+))
@@ -281,8 +282,11 @@
   (lap:gs)
   (lap:sub64 (:object nil #.mezzano.supervisor::+thread-inhibit-footholds+)
              #.(ash 1 sys.int::+n-fixnum-bits+))
-  ;; FIXME: Need to run pending footholds here, but that requires saving the
-  ;; multiple values. They'll get run eventually, maybe.
+  (lap:mov64 :r8 (:stack 1))
+  (lap:lea64 :r8 (:r8 #.(- sys.int::+tag-object+ sys.int::+tag-dx-root-object+)))
+  (lap:mov32 :ecx #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:call (:named-call mezzano.supervisor::finish-foothold-resumption-values))
+  (:gc :frame :layout #*11 :multiple-values 0)
   ;; Now return to the function that originally aborted.
   (lap:leave)
   (:gc :no-frame :layout #*0 :multiple-values 0)

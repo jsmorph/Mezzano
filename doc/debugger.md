@@ -713,4 +713,6 @@ The retained service lists applicable restarts, supports zero-argument calls, in
 
 The API provides the four breakpoint management operations and limited native instruction stepping described above.  Call/exit traps, source stepping, location monitoring, and raw-stack modification remain unavailable.  Function-level source information and the separate Lisp disassembler do not provide source display tied to the executing function version through this API.
 
+Asynchronous thread termination during mutex release can leave the mutex owned by the dead thread.  Mutex interruption safety remains unfinished.
+
 Condition entry requires the explicit wrapper or a retained evaluation job.  The service does not install a system-wide condition policy or provide startup-failure handling.  The Web interface displays the remote service's conditions, frames, locals, and restart choices.
