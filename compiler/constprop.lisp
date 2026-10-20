@@ -183,7 +183,7 @@
   form)
 
 (defmethod cp-form ((form ast-multiple-value-call))
-  (setf (function-form form) (cp-form (function-form form))
+  (setf (function-form form) (cp-function-form (function-form form))
         (value-form form) (cp-form (value-form form)))
   form)
 
@@ -365,9 +365,12 @@
                   form)))
         ((eql nil) nil)))))
 
-;;; FIXME: should be careful to avoid propagating lambdas to functions other than funcall.
 (defmethod cp-form ((form ast-call))
-  (cp-implicit-progn (arguments form))
+  (if (member (name form) '(mezzano.runtime::%funcall mezzano.runtime::%apply))
+      (progn
+        (setf (first (arguments form)) (cp-function-form (first (arguments form))))
+        (cp-implicit-progn (rest (arguments form))))
+      (cp-implicit-progn (arguments form)))
   (or (and (not (eql (second (assoc (name form) (ast-inline-declarations form))) 'notinline))
            (constant-fold form (name form) (arguments form)))
       form))
@@ -384,16 +387,29 @@
       (set-environment copy))
     copy))
 
+(defun propagate-variable-reference (form val)
+  (change-made)
+  (when (lambda-information-p (unwrap-the (second val)))
+    (incf (getf (lambda-information-plist (unwrap-the (second val))) 'copy-count 0)))
+  (decf (lexical-variable-use-count (ast-reference-variable form)))
+  (incf (third val))
+  (copy-propagated-value (second val) form))
+
+(defun cp-function-form (form)
+  (let ((val (and (typep form 'ast-variable-reference)
+                  (assoc (ast-reference-variable form) *known-variables*))))
+    (if (and val (lambda-information-p (unwrap-the (second val))))
+        (propagate-variable-reference form val)
+        (cp-form form))))
+
 (defmethod cp-form ((form ast-variable-reference))
   (let ((val (assoc (ast-reference-variable form) *known-variables*)))
-    (cond (val
-           (change-made)
-           (when (lambda-information-p (unwrap-the (second val)))
-             (incf (getf (lambda-information-plist (unwrap-the (second val))) 'copy-count 0)))
-           (decf (lexical-variable-use-count (ast-reference-variable form)))
+    (cond ((null val) form)
+          ((lambda-information-p (unwrap-the (second val)))
+           ;; This read prevents SETQ from moving a later value into the initializer.
            (incf (third val))
-           (copy-propagated-value (second val) form))
-          (t form))))
+           form)
+          (t (propagate-variable-reference form val)))))
 
 (defmethod cp-form ((form lambda-information))
   (flush-mutable-variables)
