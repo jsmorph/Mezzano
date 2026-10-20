@@ -127,7 +127,7 @@ The flow-control packet fixture uses a private interface and route.  Compile and
     (lispm-tcp-flow-control-test:run)
     (lispm-tcp-closed-test:run)
 
-It tests window bounds, partial/duplicate/stale acknowledgments, sequence wrap, copied data, zero-window discovery and reopening, lost window updates, deferred FIN, timer behavior, handshake windows, reset, and timeout teardown with and without a route for the reset.  The flow-control and existing connection/half-close suites passed natively on x86-64 QEMU.  Snapshot/restore of the flow-control correction and ARM64 execution remain untested.
+It tests window bounds, partial/duplicate/stale acknowledgments, sequence wrap, copied data, zero-window discovery and reopening, lost window updates, deferred FIN, timer behavior, handshake windows, reset, and timeout teardown with and without a route for the reset.  The flow-control and existing connection/half-close suites passed natively on x86-64 QEMU.  The same fixtures passed after a clean image restore without implementation reload.  ARM64 execution remains untested.
 
 The half-close tests include the connection tests:
 
