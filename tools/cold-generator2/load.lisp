@@ -342,6 +342,8 @@
        (setf (fourth (first (loader-if-depth loader))) else))
      (stack-push (pop (loader-if-depth loader)) loader :lazy)
      (values nil t))
+    ((#.sys.int::+llf-begin-literal+ #.sys.int::+llf-end-literal+)
+     (values nil t))
     (#.sys.int::+llf-layout+
      (let ((sdef (stack-pop loader)))
        (env:make-layout-proxy sdef)))

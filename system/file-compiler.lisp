@@ -550,10 +550,14 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
            'compile-file-load-time-value))
     (multiple-value-bind (creation-form initialization-form)
         (make-load-form object)
+      (unless *llf-dry-run*
+        (write-byte +llf-begin-literal+ stream))
       (compile-top-level-form-for-value creation-form nil)
       (when initialization-form
         (write-object-backlink object omap stream :keep t)
-        (compile-top-level-form initialization-form nil)))))
+        (compile-top-level-form initialization-form nil))
+      (unless *llf-dry-run*
+        (write-byte +llf-end-literal+ stream)))))
 
 (defun write-object-backlink (object omap stream &key keep)
   (when (not *llf-dry-run*)

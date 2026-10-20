@@ -15,6 +15,7 @@
 (defvar *load-wired* nil "When true, allocate objects in the wired area.")
 
 (defvar *load-if-stack*)
+(defvar *load-literal-stack*)
 
 (defun llf-command-name (command)
   (ecase command
@@ -58,7 +59,9 @@
     (#.+llf-short-float+ 'short-float)
     (#.+llf-complex-short-float+ 'complex-short-float)
     (#.+llf-class-reference+ 'class-reference)
-    (#.+llf-typed-integer-array+ 'typed-integer-array)))
+    (#.+llf-typed-integer-array+ 'typed-integer-array)
+    (#.+llf-begin-literal+ 'begin-literal)
+    (#.+llf-end-literal+ 'end-literal)))
 
 (defun llf-architecture-name (id)
   (case id
@@ -408,12 +411,24 @@
     (#.+llf-class-reference+
      (mezzano.clos::class-reference (vector-pop stack)))
     (#.+llf-typed-integer-array+
-     (load-llf-typed-integer-array stream stack))))
+     (load-llf-typed-integer-array stream stack))
+    (#.+llf-begin-literal+
+     (push *load-if-stack* *load-literal-stack*)
+     (setf *load-if-stack* nil)
+     (values))
+    (#.+llf-end-literal+
+     (unless *load-literal-stack*
+       (error "Unmatched END-LITERAL in LLF."))
+     (when *load-if-stack*
+       (error "Unclosed conditional in LLF literal."))
+     (setf *load-if-stack* (pop *load-literal-stack*))
+     (values))))
 
 (defun load-llf (stream &optional (*load-wired* nil))
   (check-llf-header stream)
   (let ((*package* *package*)
         (*load-if-stack* '())
+        (*load-literal-stack* '())
         (omap (make-hash-table))
         (stack (make-array 64 :adjustable t :fill-pointer 0)))
     (loop (let ((command (%read-byte stream)))
@@ -421,6 +436,8 @@
               (#.+llf-end-of-load+
                (when *noisy-load*
                  (format t "END-OF-LOAD~%"))
+               (when (or *load-if-stack* *load-literal-stack*)
+                 (error "Unclosed conditional or literal in LLF."))
                (when (not (eql (length stack) 0))
                  (error "Bug! Stack not empty after LLF load."))
                (return))

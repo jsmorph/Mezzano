@@ -440,6 +440,17 @@ The parameter fixture compares interpreted and compiled results for special bind
 
 For snapshot coverage, call PREPARE-RESTORE-TEST in that package before saving and FINISH-RESTORE-TEST after restoration.  The test retains interpreted closures containing a local macro and a shared typed binding, then checks reads and writes after full GC.
 
+## Compiled literal loading tests
+
+The literal fixture compiles and loads conditional definitions, class layouts, instance headers, cyclic standard objects, and shared literals first encountered in skipped branches.  It checks one construction per file load, nested branch effects, LOAD-TIME-VALUE evaluation, propagated creation/initialization errors, and rejection of incomplete literal contexts:
+
+```lisp
+(load (compile-file "SYS:SOURCE;TOOLS;SWANK;TEST-LLF-LITERALS.LISP"))
+(lispm-llf-literal-test:run)
+```
+
+RUN writes its source and compiled fixtures under SYS:HOME;LLF-LITERAL-TEST;.  Its optional pathname argument selects another directory.  These tests execute in Mezzano.  Cold-loader integration requires a fresh image build and boot.
+
 ## Compiler lexical-environment tests
 
 The AST fixture checks source environments after first-pass expansion and tree copying.  It checks binding identity, shadowing, variable/function namespaces, local macro and symbol-macro definitions, declarations, block/tag references, and preservation of the original tree's environments.  It then compiles and executes the original and copied trees:

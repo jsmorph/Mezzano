@@ -315,7 +315,7 @@ Internal to sg-vec, should not be used by other code.")
 reserved on the disk, but no specific block has been allocated.")
 (defconstant +block-map-id-not-allocated+ 0)
 
-(defparameter *llf-version* 36)
+(defparameter *llf-version* 37)
 
 (defconstant +llf-arch-x86-64+ 1)
 (defconstant +llf-arch-arm64+ 2)
@@ -364,6 +364,8 @@ reserved on the disk, but no specific block has been allocated.")
 (defconstant +llf-complex-short-float+       #x2C)
 (defconstant +llf-class-reference+           #x2D)
 (defconstant +llf-typed-integer-array+       #x2E)
+(defconstant +llf-begin-literal+             #x2F)
+(defconstant +llf-end-literal+               #x30)
 
 ;;; Fields in the Unicode info tables.
 
