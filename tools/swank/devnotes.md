@@ -7689,3 +7689,21 @@ Review the existing frame selection, executing-function names, command parser, r
 ### Complete stepping repeat passed
 
 The complete eleven-suite stepping phase passed with the resident notifier correction and strengthened caller-frame guard.  It compiled its ordinary fixtures without warnings, retained the old resident fixture helper before reloading that helper, and repeated native/hardware breakpoints, breakpoint management/commands, ordinary and managed stepping, CALL step-over, retained steps, call-return callbacks, retained CALL, and every nonlocal-exit case.  It took 485.13 seconds, log SHA-256 `f4ff78a1a18ca2e63db5cbf95a1e49b3a2797980ab38c0dcdd1466a9db4ee6c3`.  The original failing receipt and log remain preserved.  Integer-instruction tests and networking are still running or pending.
+
+### Entropy and atomic-port acceptance
+
+The shared mutex correction also affects serialized VirtIO entropy requests and Bordeaux-Threads' full-width atomic-integer fallback.  Add their existing native tests after the HTTPS libraries load: completion validation and four concurrent 8,193-byte entropy reads, then single-evaluation/CAS checks and four concurrent 1,000-increment workers.  These exercise affected locks through their library interfaces.  Use ordinary allocation and require warning-free fixture compilation.  No new test implementation or dependency is needed.
+
+### Integer acceptance coverage correction
+
+The borrowed integer driver compiled and loaded ordinary, logical, and argument fixtures, but invoked only the argument fixture's RUN.  Its passing result proves 100 operand/flag cases and six argument-count checks.  It does not prove ordinary stepping, 148 logical cases, or the separate 292-case integer/body fixture in this candidate.
+
+Run those three existing suites explicitly as separate bounded phases, retaining their assertions and ordinary LOAD policy.  The integer/body fixture requires the three modules already loaded by the argument phase.  Then continue with compiler diagnostics and HTTP/HTTPS preparation.  Preserve the original receipts.  Record executed suites rather than equating loaded fixtures with test coverage.
+
+Two long SSH observation connections closed while remote native work continued.  Launch the remaining host test coordinator as an owned systemd service running as the repository user, with a 512 MiB/no-swap host limit and file-based logs and receipts.  This uses the established service mechanism, preserves stop-on-failure behavior, and permits observation through short SSH calls.  It changes no VM service or guest test deadline.
+
+### Ordinary stepping execution and error-path correction
+
+The separate ordinary stepping suite passed in 1,003.37 seconds.  It exercised all sixteen conditional jumps, taken and fallthrough paths, short and near encodings, zero/two prompts, retained partial/full frames, replay and expired references, moving roots, values, and cleanup.  Its log SHA-256 is d915475d8879b26aea543d5601d9ff1a7dc366286d29942513d2aa42e075453d.  The logical and integer/body phases remain required.
+
+The continuation error correction will move the continuation from RBX to R9 before replacing R8 with the format string, supply two arguments to ERROR, and correct the spelling.  Keep the existing guard, stack layout, and GC metadata.  Extend the maintained foothold/mutex module with one excess-value report check, including exact continuation identity and unchanged foothold state.  Run the prepared baseline first, retain the old resident function before narrow publication, then test the report and repeat the existing valid-value cases.  Preparation of source changes does not constitute a guest test.
