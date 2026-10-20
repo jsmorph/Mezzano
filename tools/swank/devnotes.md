@@ -7320,3 +7320,40 @@ Both actual pending-nonlocal-exit restores passed with the two ordinary updates 
 The final test VM is PID 1092245/start 93704951.  A post-restore probe found zero evaluation jobs, stops and public breakpoints, 16 documentation books and 192 topics, and HTTP 200 on port 8776.  The edited TLS function provenance, ordinary BUILD-CFG source/TLF, and cold SERVICE-SINGLE-STEP SYS source/TLF 98 remain correct.  RESTORED-STATE-ACCEPTANCE.JSON and BROWSER-HANDOFF.JSON pin the current receipts and identity.
 
 The retired prior candidate remains stopped.  Its preserved five-GiB working image rehashed to c4dc1b027030a4e51cfac60a665ddb0e139afd68eba6fb28f43fffb68b336d8a.  RETIRED-WORLD-INTEGRITY.JSON records its read-only mode and device/inode/size/mtime_ns/ctime_ns for the browser guards.  The original main and both preserved panic guests retained their process identities.  Proceed with the nine browser suites, with authenticated COMPLETE and HTTPS CURL last.  Root guest/API queries stop during that exclusive run.
+
+### Compiler worker shutdown investigation
+
+COMPILE-FILE queues :FINISHED on success, then requests asynchronous termination without joining its workers.  Its worker-error branch requests termination before signalling the original condition.  The enclosing cleanup requests termination again.  These duplicate requests are established by source inspection.  The cause of the three previously observed stranded workers remains unproven.
+
+CALL-WITH-MUTEX protects acquisition and its body with UNWIND-PROTECT.  ACQUIRE-MUTEX changes state before owner on its fast path.  RELEASE-MUTEX checks owner, clears it, and then changes state or transfers ownership.  Those sequences contain no foothold inhibition.  A second asynchronous exit can abandon cleanup during release.  The dead-owner and NIL-owner observations require separate tests.
+
+The first prepared probe uses an owned raw thread whose cleanup takes and releases a private mutex.  Its kernel hook pauses the loaded release consistency check during that cleanup.  After a second termination request, the coordinator releases the gate and checks thread death, mutex ownership, and mutex state.  A preliminary release verifies that the loaded RELEASE-MUTEX calls the hook.  The hook matches only the owned mutex and target thread.  The original fdefinition restores on exit, and private state remains available for diagnosis.
+
+The hook and its guard cells require resident allocation because the check can run with interrupts disabled.  A separate supervisor module follows the pager-publication kernel fixture's DEFGLOBAL pattern and loads wired.  Nonmatching calls invoke the retained original function through resident cells.  The ordinary fixture uses default allocation.
+
+The two source files and their hash receipt are prepared under WORKER-TERMINATION-20261020.  Native compilation and execution remain pending.  Run them on a separate disposable guest while preserving the browser acceptance candidate.  After the primitive test, use the compiler's return mailbox to test its duplicate-request path.  Normal completion should use THREAD-JOIN.  Error cleanup should request termination once and preserve the original condition.  Any synchronization change requires tests of the exact interruption it corrects.
+
+- [ ] Reproduce release-cleanup abandonment with two termination requests.
+- [ ] Test the compiler's duplicate-request path and normal worker shutdown.
+- [ ] Correct the diagnosed paths and test condition identity, cleanup, and joined exit.
+- [ ] Test acquisition/release interruption before changing kernel synchronization.
+
+### Integrated browser acceptance handoff
+
+The final V7 review preserves all nine previously accepted driver/support pairs.  Its guard/config manifest has SHA-256 d7e1d3568ef22e933dc902b7d5f0c441f54b0124e469ba840fa786768083fda5.  The host audit preserves seventeen process fingerprints, the cold source/config and twenty frozen assets.  Browser execution remains a separate result.
+
+Preparation review corrected three harness errors before execution: the post-native source manifest was mistaken for a phase list, JSON display names were rendered as single-colon Lisp symbols without export evidence, and the process guard printed success before its final assertions.  The final guards consume the sixteen explicit aggregate phases, use double-colon symbol references and emit success after all checks.  Native evidence and existing application/test deadlines remain unchanged.
+
+Authorize the reviewed enabled derivatives and exclusive nine-suite browser run in the recorded order.  HTTPS runs last with one authenticated COMPLETE and one unauthenticated CURL.  A failed guard or application assertion stops dependent suites and preserves the failure.  Root guest/API requests remain suspended through completion.  Source-only investigation and storage inspection can continue independently.
+
+### Test-image allocation recovery
+
+The host filesystem has 3.18 GB available.  The diagnostic image copy stopped at its free-space guard before creating a destination.  Two unopened historical images each allocate their full five-GiB length.  A root /proc file-descriptor audit found no open inode and no permission failures.  The command-text matches were the audit's own SSH/bash invocation.
+
+Final recommendation after reviewing fallocate(1), the ext4 host filesystem, and the previous sparse-copy receipts: use fallocate --dig-holes on DEBUGGER-COLD-PAGING-PRISTINE-20261014.IMAGE only.  The documented operation replaces zero-filled blocks with holes in place and keeps file length.  Recheck every process's open descriptors and all QEMU arguments immediately before the operation.  Preserve device/inode, size, mode, ownership, link count, atime and mtime.  Record full SHA-256 before and after, allocated bytes and the changed ctime in a separate receipt.  Reject any byte or protected-metadata difference.  Keep all historical images, the pinned retired checkpoint and every process-backed image.  This requires no additional disk-sized copy or dependency.
+
+The single-file sparsification returned zero and reclaimed 5,180,788,736 bytes.  Before/after full SHA-256 matched, and all required metadata including inode and mtime matched.  Receipt SHA-256 is 65b31b9993e76682ddf1b8ac4c9da33c472e7e860b8fe831e9862d592c49f9d9.  Available space rose to 8,357,269,504 bytes.  The first attempt to write the audit script into the root-owned receipt directory failed with PermissionError before creating it.  The script was then written in the owned diagnostic directory and executed through the established root SSH account.
+
+The browser Listener and Show Local suites passed their behavior and final guards.  The extra host sequencing wrapper disappeared during Show Local.  Its tool item returned 143, while independently retained Show Local Node and Chromium exit receipts both report zero.  The wrapper's source contains no timeout or termination call.  No signal sender or execution-service lifetime evidence is available.  Preserve that unresolved host exit.  Final recommendation after review: invoke each remaining Node driver directly as its own observed tool session, retaining existing deadlines and independent guard results.  Do not rerun the two accepted suites or attribute 143 to the application.
+
+The independent diagnostic image copy completed.  Both source and copy hash to c4dc1b027030a4e51cfac60a665ddb0e139afd68eba6fb28f43fffb68b336d8a.  The retired source's recorded metadata stayed unchanged, the destination has an independent inode, and 5,871,345,664 bytes remain available.  IMAGE-COPY.JSON has SHA-256 910ebaf5230f8664bd51ccd592da6a3994ffc5b3f62ae2b46db9ac36d8ec6d6a.  No additional VM has started.
