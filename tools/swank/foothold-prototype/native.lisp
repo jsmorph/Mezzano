@@ -1,5 +1,164 @@
 (in-package :mezzano.delimited-continuations)
 
+(sys.int::define-lap-function %call-with-prompt ((prompt-tag thunk handler stack))
+  ;; r8 = tag; r9 = thunk; r10 = handler; r11 = stack.
+  (:gc :no-frame :layout #*0)
+  (lap:push :rbp)
+  (:gc :no-frame :layout #*00)
+  (lap:mov64 :rbp :rsp)
+  (:gc :frame)
+  (lap:push nil)
+  (:gc :frame :layout #*1)
+  (lap:push nil)
+  (:gc :frame :layout #*11)
+  PHONY-RETURN-ADDRESS
+  ;; Work with footholds inhibitied.
+  (lap:gs)
+  (lap:add64 (:object nil #.mezzano.supervisor::+thread-inhibit-footholds+)
+             #.(ash 1 sys.int::+n-fixnum-bits+))
+  ;; Find the top of the new stack.
+  (lap:mov64 :rsp (:object :r11 0)) ; stack.base
+  (lap:add64 :rsp (:object :r11 1)) ; stack.size
+  (lap:sar64 :rsp #.sys.int::+n-fixnum-bits+)
+  ;; Construct the delimited continuation frame on the stack.
+  (lap:lea64 :rax (:rip PHONY-RETURN-ADDRESS))
+  (lap:push :rax) ; Fake return address for the GC.
+  (lap:push :rbp) ; Old stack pointer.
+  (lap:mov64 :rbp :rsp) ; Nested frame, weird.
+  (:gc :frame)
+  (lap:push :r11) ; Continuation's base stack object. Important, keeps the stack live when it isn't attached to a thread or delimited continuation object. Happens during an unwind.
+  (:gc :frame :layout #*1)
+  (lap:gs)
+  (lap:mov64 :r12 (:object nil #.mezzano.supervisor::+thread-stack+))
+  (lap:push :r12) ; Thread's previous stack object.
+  (:gc :frame :layout #*11)
+  (lap:push :r10) ; Handler
+  (:gc :frame :layout #*111)
+  (lap:push :r8) ; Tag
+  (:gc :frame :layout #*1111)
+  (lap:gs)
+  (lap:mov64 :r12 (:object nil #.mezzano.supervisor::+thread-special-stack-pointer+))
+  (lap:push :r12) ; SSP link
+  (lap:push #x300) ; SV header for SSP
+  ;; Switch the thread over to the new stack object.
+  (lap:gs)
+  (lap:mov64 (:object nil #.mezzano.supervisor::+thread-stack+) :r11)
+  ;; Activate continuation.
+  (lap:lea64 :rax (:rsp #.sys.int::+tag-object+))
+  (lap:gs)
+  (lap:mov64 (:object nil #.mezzano.supervisor::+thread-special-stack-pointer+) :rax)
+  ;; Reenable footholds
+  (lap:gs)
+  (lap:sub64 (:object nil #.mezzano.supervisor::+thread-inhibit-footholds+)
+             #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:jnz CALL-THUNK)
+  (lap:gs)
+  (lap:cmp64 (:object nil #.mezzano.supervisor::+thread-pending-footholds+) nil)
+  (lap:jne RUN-FOOTHOLDS-1)
+  CALL-THUNK
+  ;; Invoke the thunk.
+  (lap:xor32 :ecx :ecx)
+  (lap:mov64 :rbx :r9)
+  (lap:call (:object :rbx #.sys.int::+function-entry-point+))
+  (:gc :frame :layout #*1111 :multiple-values 0)
+  ;; Inhibit footholds again.
+  (lap:gs)
+  (lap:add64 (:object nil #.mezzano.supervisor::+thread-inhibit-footholds+)
+             #.(ash 1 sys.int::+n-fixnum-bits+))
+  ;; Note: Control will end up back here if the continuation is aborted & resumed.
+  (lap:mov64 :rbx (:rbp))
+  (lap:mov32 :eax nil)
+  (lap:mov64 (:rbx -8) :rax)
+  (lap:mov64 (:rbx -16) :rax)
+  (lap:lea64 :rdx (:rcx #.(ash 2 sys.int::+n-fixnum-bits+)))
+  (lap:and64 :rdx #.(ash (lognot 1) sys.int::+n-fixnum-bits+))
+  (lap:shl64 :rdx #.(- 3 sys.int::+n-fixnum-bits+))
+  (lap:lea64 :r13 (:rbx -16))
+  (lap:sub64 :r13 :rdx)
+  (lap:mov64 :rax :rcx)
+  (lap:shl64 :rax #.(- sys.int::+object-data-shift+ sys.int::+n-fixnum-bits+))
+  (lap:mov64 (:r13) :rax)
+  (lap:mov64 :rdx :rcx)
+  (lap:test64 :rdx :rdx)
+  (lap:jz RETURN-VALUES-CLEARED)
+  (lap:lea64 :rdi (:r13 8))
+  (lap:xor32 :eax :eax)
+  RETURN-VALUES-CLEAR
+  (lap:stos64)
+  (lap:sub64 :rdx #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:jnz RETURN-VALUES-CLEAR)
+  RETURN-VALUES-CLEARED
+  (lap:lea64 :rax (:r13 #.sys.int::+tag-dx-root-object+))
+  (lap:mov64 (:rbx -8) :rax)
+  (lap:cmp64 :rcx 0)
+  (lap:jle RETURN-VALUES-READY)
+  (lap:mov64 (:r13 8) :r8)
+  (lap:cmp64 :rcx #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:jle RETURN-VALUES-READY)
+  (lap:mov64 (:r13 16) :r9)
+  (lap:cmp64 :rcx #.(ash 2 sys.int::+n-fixnum-bits+))
+  (lap:jle RETURN-VALUES-READY)
+  (lap:mov64 (:r13 24) :r10)
+  (lap:cmp64 :rcx #.(ash 3 sys.int::+n-fixnum-bits+))
+  (lap:jle RETURN-VALUES-READY)
+  (lap:mov64 (:r13 32) :r11)
+  (lap:cmp64 :rcx #.(ash 4 sys.int::+n-fixnum-bits+))
+  (lap:jle RETURN-VALUES-READY)
+  (lap:mov64 (:r13 40) :r12)
+  (lap:mov64 :rax :rcx)
+  (lap:sub64 :rax #.(ash 5 sys.int::+n-fixnum-bits+))
+  (lap:jle RETURN-VALUES-READY)
+  (lap:lea64 :rdi (:r13 48))
+  (lap:xor32 :esi :esi)
+  RETURN-VALUES-COPY
+  (lap:gs)
+  (lap:mov64 :rdx (:object nil #.mezzano.supervisor::+thread-mv-slots+ :rsi))
+  (lap:mov64 (:rdi) :rdx)
+  (lap:add64 :rsi 1)
+  (lap:add64 :rdi 8)
+  (lap:sub64 :rax #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:jnz RETURN-VALUES-COPY)
+  RETURN-VALUES-READY
+  (:gc :frame :layout #*1111)
+  (lap:lea64 :r8 (:r13 #.sys.int::+tag-object+))
+  (lap:mov32 :ecx #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:call (:named-call mezzano.supervisor::prepare-foothold-prompt-return))
+  ;; Pop continuation.
+  (lap:mov64 :rax (:rsp 8))
+  (lap:gs)
+  (lap:mov64 (:object nil #.mezzano.supervisor::+thread-special-stack-pointer+) :rax)
+  ;; Restore thread stack.
+  (lap:mov64 :rbx (:rsp 32))
+  (lap:gs)
+  (lap:mov64 (:object nil #.mezzano.supervisor::+thread-stack+) :rbx)
+  ;; Ordinary return, no need to invalidate anything.
+  (lap:leave)
+  (:gc :frame :layout #*11)
+  (lap:mov64 :r8 (:stack 0))
+  (lap:lea64 :rsp (:r8 #.(- sys.int::+tag-dx-root-object+)))
+  (lap:lea64 :r8 (:r8 #.(- sys.int::+tag-object+ sys.int::+tag-dx-root-object+)))
+  (lap:gs)
+  (lap:sub64 (:object nil #.mezzano.supervisor::+thread-inhibit-footholds+)
+             #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:mov32 :ecx #.(ash 1 sys.int::+n-fixnum-bits+))
+  (lap:call (:named-call mezzano.supervisor::finish-foothold-resumption-values))
+  (:gc :frame :layout #*11 :multiple-values 0)
+  (lap:leave)
+  (:gc :no-frame :layout #*0 :multiple-values 0)
+  (lap:ret)
+  RUN-FOOTHOLDS-1
+  (:gc :frame :layout #*1111)
+  ;; Save the thunk
+  (lap:sub64 :rsp 16)
+  (lap:mov64 (:rsp 8) :r9)
+  (:gc :frame :layout #*1111001)
+  (lap:xor32 :ecx :ecx)
+  (lap:call (:named-call mezzano.supervisor::run-pending-footholds))
+  (lap:mov64 :r9 (:rsp 8))
+  (lap:add64 :rsp 16)
+  (:gc :frame :layout #*1111)
+  (lap:jmp CALL-THUNK))
+
 (sys.int::define-lap-function %abort-to-prompt ((prompt values))
   ;; r8 = prompt; r9 = values.
   (:gc :no-frame :layout #*0)
@@ -293,6 +452,10 @@
   (lap:ret)
   TOO-MANY-VALUES
   (:gc :frame)
+  (lap:push nil)
+  (:gc :frame :layout #*1)
+  (lap:push nil)
+  (:gc :frame :layout #*11)
   PHONY-RETURN-ADDRESS ; match %CALL-WITH-PROMPT's GC info
   (lap:mov64 :r8 (:constant "Resuming continuation ~S with too many values (MULTPLE-VALUES-LIMIT exceeded)"))
   (lap:mov32 :ecx #.(ash 1 sys.int::+n-fixnum-bits+))

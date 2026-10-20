@@ -104,3 +104,9 @@
       (run-pending-footholds))
     (when (eq *foothold-binding-probe-collect* thread) (sys.int::gc :full t))
     (sys.int::values-simple-vector values)))
+
+(defun prepare-foothold-prompt-return (values)
+  (foothold-binding-probe-gate :prepared-prompt-return)
+  (when (eq *foothold-binding-probe-collect* (current-thread))
+    (sys.int::gc :full t))
+  values)
