@@ -71,7 +71,7 @@ Implementation proceeds in bounded increments, with compilation and tests in Mez
 - [x] Implement the documented x86-64 breakpoint commands and retained instruction stepping, including normal and nonlocal CALL exits, with GC, redefinition, concurrent execution, removal, and browser acceptance.
 - [ ] Extend instruction coverage and test the remaining saved-step states.
 - [ ] Preserve lexical environments and binding identities through compiler transformations, mapping them to instruction-specific storage for frame evaluation.
-- [ ] Complete environment and source inspection, original/current argument display, source control transfers, THROW, call/exit traps, and monitoring.
+- [ ] Complete environment and source inspection, source control transfers, THROW, call/exit traps, and monitoring.
 - [ ] Integrate background failures, process interruption, startup recovery, and the remaining system commands.
 - [ ] Complete the command inventory, product guide, compatibility reference, Document Examiner topics, and architecture-specific acceptance results.
 
@@ -252,13 +252,13 @@ A fresh current-boot handle can address a restored running command's streams wit
 
 Each stop owns a zero-based current-frame index, initially zero.  Increasing indices lead toward older callers.  A child debugger has its own index.  Closing a controller leaves selection intact.  Closing the stop clears it to NIL.
 
-:CURRENT-FRAME returns the selected index, printed function, and available local records.  :SELECT-FRAME takes an absolute index.  :NEXT-FRAME and :PREVIOUS-FRAME take a nonnegative count.  :TOP-FRAME and :BOTTOM-FRAME select the newest and oldest retained frames.  Each movement returns the same inspection result.  A zero count inspects the current frame.  An invalid count or target reports :INVALID-FRAME before acceptance, preserving selection and the next command ID.
+:CURRENT-FRAME returns the selected index, printed function, original supplied arguments, current source parameters, and available local records.  :SELECT-FRAME takes an absolute index.  :NEXT-FRAME and :PREVIOUS-FRAME take a nonnegative count.  :TOP-FRAME and :BOTTOM-FRAME select the newest and oldest retained frames.  Each movement returns the same inspection result.  A zero count inspects the current frame.  An invalid count or target reports :INVALID-FRAME before acceptance, preserving selection and the next command ID.
 
 The stopped thread changes selection before printing the frame.  A printer error can enter a child debugger.  Aborting that command preserves the parent's selected index.  Accepted relative movement uses ordinary command replay and executes once.  Selection survives image restoration, while old handles and prior-boot command replay expire under the existing rules.
 
-The separate :LOCALS operation inspects an opaque frame reference without changing selection.  Selected-frame inspection reports the current available lexical values.  Original argument values and frame filtering remain unavailable through these commands.  Separate code-display commands inspect the selected executing function.
+The separate :LOCALS operation inspects an opaque frame reference without changing selection.  Argument values require the frame metadata described above.  Frame filtering remains planned.
 
-`:Show Arglist` prints the lambda list stored with the selected frame's executing compiled function.  It preserves frame selection and evaluation history.  Redefining the function's name leaves the active frame's reported lambda list unchanged.  A function with no parameters reports NIL.  A frame without lambda-list metadata reports that the argument list is unavailable.  The command uses the same bounded printer as other debugger values.  It reports parameter syntax.  Dedicated argument-value commands remain planned.
+`:Show Arglist` prints the lambda list stored with the selected frame's executing compiled function.  It preserves frame selection and evaluation history.  Redefining the function's name leaves the active frame's reported lambda list unchanged.  A function with no parameters reports NIL.  A frame without lambda-list metadata reports that the argument list is unavailable.  The command uses the same bounded printer as other debugger values.  It reports parameter syntax.  [Show Argument](#current-arguments) displays current parameter values, and Show Frame also displays original supplied arguments.
 
 ### Functions and instructions
 
