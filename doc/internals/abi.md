@@ -273,6 +273,15 @@ kind of stack entry this is.
 | `symbol-value-cell` | Dynamic binding                         |
 | `simple-vector`     | NLX information location                |
 | `function`          | `unwind-protect` cleanup pseudo-closure |
+| `(eql mezzano.supervisor::foothold-state-binding)` | Foothold counter and allow state |
+
+### Foothold state bindings
+
+A foothold state entry stores its previous special-stack link in element 0 and the marker symbol in element 1.  Element 2 points to a dynamic-extent cons.  Its CAR contains the previous foothold state, and its CDR contains the active state.  The encoding of counter C is C when the allow flag is true, or LOGNOT(C) when the flag is false.
+
+Restoration inhibits delivery before restoring the allow flag and removing the entry.  It restores the previous counter last and dispatches pending footholds when that counter is zero.  The unwinder uses the same restoration function for nonlocal exits.
+
+On x86-64, continuation suspension restores the state outside the captured prompt.  Resumption restores the captured active state and changes the outermost captured binding's previous state to the resumer's state.  A continuation without captured foothold bindings inherits the resumer's state.  Return and resumption preserve their multiple values in a rooted dynamic-extent vector while dispatching queued footholds.
 
 ### Dynamic bindings.
 

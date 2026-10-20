@@ -821,54 +821,116 @@ not and WAIT-P is false."
 
 ;;; Foothold management.
 
+(defun encode-foothold-binding-state (counter allow)
+  (if allow counter (lognot counter)))
+
+(defun foothold-binding-state (thread)
+  (encode-foothold-binding-state (thread-inhibit-footholds thread)
+                                 (thread-allow-with-footholds thread)))
+
+(defun install-foothold-binding-state (thread state extra)
+  (setf (thread-allow-with-footholds thread) (not (minusp state))
+        (thread-inhibit-footholds thread)
+        (+ (if (minusp state) (lognot state) state) extra)))
+
+(defun restore-foothold-binding (entry)
+  (declare (sys.int::suppress-ssp-checking))
+  (let* ((thread (current-thread))
+         (state (car (sys.int::%object-ref-t entry 2))))
+    (sys.int::%atomic-fixnum-add-object thread +thread-inhibit-footholds+ 1)
+    (setf (thread-allow-with-footholds thread) (not (minusp state)))
+    (setf (sys.int::%%special-stack-pointer) (sys.int::%object-ref-t entry 0))
+    (setf (thread-inhibit-footholds thread)
+          (if (minusp state) (lognot state) state))
+    (when (zerop (thread-inhibit-footholds thread))
+      (run-pending-footholds))))
+
+(defun call-with-foothold-binding (function counter allow)
+  (declare (sys.int::suppress-ssp-checking))
+  (let* ((thread (current-thread))
+         (old (foothold-binding-state thread))
+         (states (cons old old)))
+    (declare (dynamic-extent states))
+    (let ((entry (sys.int::%%push-special-stack 'foothold-state-binding states)))
+      (sys.int::%atomic-fixnum-add-object thread +thread-inhibit-footholds+ 1)
+      (setf (cdr states) (encode-foothold-binding-state counter allow)
+            (thread-allow-with-footholds thread) allow
+            (thread-inhibit-footholds thread) counter)
+      (when (zerop counter) (run-pending-footholds))
+      (multiple-value-prog1 (funcall function)
+        (restore-foothold-binding entry)))))
+
+(defun foothold-binding-boundaries (head boundary state)
+  (let ((parent state) (active state) (bottom nil))
+    (loop until (eq head boundary)
+          do (assert head)
+             (when (eq (sys.int::%object-ref-t head 1) 'foothold-state-binding)
+               (let ((states (sys.int::%object-ref-t head 2)))
+                 (unless bottom (setf active (cdr states)))
+                 (setf parent (car states) bottom states)))
+             (setf head (sys.int::%object-ref-t head 0)))
+    (values parent active bottom)))
+
+(defun continuation-caller-foothold-state (thread)
+  (let ((counter (thread-inhibit-footholds thread)))
+    (assert (plusp counter))
+    (encode-foothold-binding-state (1- counter)
+                                   (thread-allow-with-footholds thread))))
+
+(defun prepare-foothold-suspension (prompt)
+  (let* ((thread (current-thread))
+         (state (continuation-caller-foothold-state thread)))
+    (multiple-value-bind (parent active bottom)
+        (foothold-binding-boundaries (sys.int::%%special-stack-pointer) prompt state)
+      (declare (ignore active bottom))
+      (install-foothold-binding-state thread parent 1))
+    (values)))
+
+(defun prepare-foothold-resumption-vector (head prompt values)
+  (let* ((thread (current-thread))
+         (parent (continuation-caller-foothold-state thread)))
+    (multiple-value-bind (old-parent active bottom)
+        (foothold-binding-boundaries head prompt parent)
+      (declare (ignore old-parent))
+      (when bottom (setf (car bottom) parent))
+      (install-foothold-binding-state thread active 1))
+    values))
+
+(defun finish-foothold-resumption-values (values)
+  (let ((thread (current-thread)))
+    (when (zerop (thread-inhibit-footholds thread))
+      (run-pending-footholds))
+    (sys.int::values-simple-vector values)))
+
 (defmacro without-footholds (&body body)
-  (let ((thread (gensym))
-        (old-allow-with-footholds (gensym)))
-    ;; THREAD-INHIBIT-FOOTHOLDS is incremented before the UNWIND-PROTECT
-    ;; is established. Doing it the other way around would allow a race
-    ;; condition. The threads could be interrupted after the U-P is established
-    ;; but before footholds are inhibited, and the foothold could unwind.
-    ;; This would cause T-I-F to be decremented by the cleanup handler, even
-    ;; though it had never been incremented.
-    `(let ((,thread (current-thread)))
-       (sys.int::%atomic-fixnum-add-object ,thread +thread-inhibit-footholds+ 1)
-       (let ((,old-allow-with-footholds (thread-allow-with-footholds ,thread)))
-         (when ,old-allow-with-footholds
-           ;; The WHEN is a performance kludge, avoid touching thread slots as much as possible
-           ;; TODO: Restructure this to avoid fiddling with T-A-W-F at all
-           ;; if A-W-F isn't used.
-           (setf (thread-allow-with-footholds ,thread) nil))
-         (unwind-protect
-              (macrolet ((allow-with-footholds (&body allow-forms)
-                           `(unwind-protect
-                                 (progn
-                                   (setf (thread-allow-with-footholds ,',thread) ,',old-allow-with-footholds)
-                                   (locally ,@allow-forms))
-                              (setf (thread-allow-with-footholds ,',thread) nil)))
-                         (with-local-footholds (&body with-forms)
-                           `(allow-with-footholds
-                             (with-footholds ,@with-forms))))
-                ,@body)
-           (when ,old-allow-with-footholds
-             (setf (thread-allow-with-footholds ,thread) t))
-           (when (eql (sys.int::%atomic-fixnum-add-object ,thread +thread-inhibit-footholds+ -1) 1)
-             (run-pending-footholds)))))))
+  (let ((thread (gensym)) (counter (gensym)) (allow (gensym)))
+    `(let* ((,thread (current-thread))
+            (,counter (thread-inhibit-footholds ,thread))
+            (,allow (thread-allow-with-footholds ,thread)))
+       (declare (ignorable ,allow))
+       (call-with-foothold-binding
+        (dx-lambda ()
+          (macrolet ((allow-with-footholds (&body forms)
+                       `(call-with-foothold-binding
+                         (dx-lambda () (locally ,@forms))
+                         (thread-inhibit-footholds ,',thread)
+                         ,',allow))
+                     (with-local-footholds (&body forms)
+                       `(allow-with-footholds (with-footholds ,@forms))))
+            ,@body))
+        (1+ ,counter) nil))))
 
 (defmacro with-footholds (&body body)
   "Enable footholds for the duration of BODY, if permitted by ALLOW-WITH-FOOTHOLDS.
-If thereis a matching ALLOW-WITH-FOOTHOLDS for every WITHOUT-FOOTHOLDS, then
+If there is a matching ALLOW-WITH-FOOTHOLDS for every WITHOUT-FOOTHOLDS, then
 footholds will be reenabled, otherwise footholds will stay inhibited."
-  (let ((thread (gensym))
-        (old-inhibit-footholds (gensym)))
+  (let ((thread (gensym)) (allow (gensym)))
     `(let* ((,thread (current-thread))
-            (,old-inhibit-footholds (thread-inhibit-footholds ,thread)))
-       (unwind-protect
-            (progn
-              (when (thread-allow-with-footholds ,thread)
-                (setf (thread-inhibit-footholds ,thread) 0)
-                (run-pending-footholds))
-              (locally ,@body))
-         (setf (thread-inhibit-footholds ,thread) ,old-inhibit-footholds)))))
+            (,allow (thread-allow-with-footholds ,thread)))
+       (call-with-foothold-binding
+        (dx-lambda () (locally ,@body))
+        (if ,allow 0 (thread-inhibit-footholds ,thread))
+        ,allow))))
 
 (defmacro allow-with-footholds (&body body)
   (declare (ignore body))

@@ -108,9 +108,10 @@
   (check-type mutex mutex)
   (let ((self (current-thread)))
     ;; Fast path - try to lock.
-    (when (eql (sys.int::cas (mutex-state mutex) :unlocked :locked) :unlocked)
-      ;; We got it.
-      (setf (mutex-owner mutex) self)
+    (when (without-footholds
+            (when (eql (sys.int::cas (mutex-state mutex) :unlocked :locked) :unlocked)
+              (setf (mutex-owner mutex) self)
+              t))
       (return-from acquire-mutex t))
     ;; Idiot check.
     (unless (not (mutex-held-p mutex))
@@ -180,12 +181,13 @@
 
 (defun release-mutex (mutex)
   (check-type mutex mutex)
-  (check-mutex-release-consistence mutex)
-  (setf (mutex-owner mutex) nil)
-  (when (not (eql (sys.int::cas (mutex-state mutex) :locked :unlocked) :locked))
-    ;; Mutex must be in the contested state.
-    (release-mutex-slow-path mutex))
-  (values))
+  (without-footholds
+    (check-mutex-release-consistence mutex)
+    (setf (mutex-owner mutex) nil)
+    (when (not (eql (sys.int::cas (mutex-state mutex) :locked :unlocked) :locked))
+      ;; Mutex must be in the contested state.
+      (release-mutex-slow-path mutex))
+    (values)))
 
 (defun release-mutex-slow-path (mutex)
   ;; Contested lock. Need to wake a thread and pass the lock to it.
@@ -218,11 +220,22 @@
              (setf (mutex-state mutex) :unlocked))))))
 
 (defun call-with-mutex (thunk mutex wait-p)
-  (unwind-protect
-       (when (acquire-mutex mutex wait-p)
-         (funcall thunk))
-    (when (mutex-held-p mutex)
-      (release-mutex mutex))))
+  (check-type mutex mutex)
+  (let* ((thread (current-thread))
+         (counter (thread-inhibit-footholds thread))
+         (allow (thread-allow-with-footholds thread)))
+    (call-with-foothold-binding
+     (dx-lambda ()
+       (let ((owned-at-entry (mutex-held-p mutex)))
+         (unwind-protect
+              (call-with-foothold-binding
+               (dx-lambda ()
+                 (when (acquire-mutex mutex wait-p)
+                   (funcall thunk)))
+               counter allow)
+           (when (and (not owned-at-entry) (mutex-held-p mutex))
+             (release-mutex mutex)))))
+     (1+ counter) nil)))
 
 (defmacro with-mutex ((mutex &key (wait-p t) resignal-errors) &body body)
   "Run body with MUTEX locked.

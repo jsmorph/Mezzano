@@ -372,3 +372,11 @@ Success requires both QEMU exit status 3 and the serial marker.  This boot inclu
 | `test-processes-guest.lisp` | Duplicate names, exact and nested stop associations, event/mutex waits, stale wait items, hostile printers, circular/bounded labels, recorded runtime, concurrent thread creation/exit, and release behavior.  Runs through the transport script. |
 | `test-listener.lisp` | Listener commands, completion, defaults, file operations, presentations, independent Listeners, interactive input, and replay after unread replies and package changes. |
 | `test-debugger-remote-restore.lisp` | Saved/absent sessions, old tokens/frames, storage retirement, and restored-stop recovery. |
+
+## Foothold and mutex tests
+
+On a dedicated guest built with the current foothold macros, compile and load `diagnose-mutex-termination-kernel.lisp` with the kernel policy and `:WIRED T`.  Compile and load `diagnose-mutex-termination.lisp` and `test-foothold-mutex.lisp` with ordinary allocation, then call `(lispm-foothold-mutex-test:run)`.
+
+The suite checks nested delivery permissions, multiple values and nonlocal exits, recursive ownership, nonblocking contention, blocked cancellation, ownership handoff, repeated termination during release, the unchanged compiler worker's reply-lock release, and compiled macro continuations with explicit moving GC.  The release probe temporarily replaces the consistency-check function and restores it afterward.  The compiler-worker test reads both EXIT messages and requires both workers to reach DEAD.
+
+The instrumented [foothold binding prototype](foothold-prototype/README.md) supplies separate forced-interleaving and saved-continuation tests.  Its transfer-boundary collection hooks are absent from production helpers.  Its results do not establish ARM64 behavior or safety of older compiled macro expansions.

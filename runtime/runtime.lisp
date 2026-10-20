@@ -24,6 +24,9 @@
        (return))
      (assert (sys.int::%%special-stack-pointer))
      (etypecase (sys.int::%object-ref-t (sys.int::%%special-stack-pointer) 1)
+       ((eql mezzano.supervisor::foothold-state-binding)
+        (mezzano.supervisor::restore-foothold-binding
+         (sys.int::%%special-stack-pointer)))
        (symbol-value-cell
         (sys.int::%%unbind))
        (simple-vector
