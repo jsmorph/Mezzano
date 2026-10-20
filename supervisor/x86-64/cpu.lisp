@@ -408,7 +408,7 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
           (when (and breakpoint
                      (logbitp index status)
                      (logtest (ash 3 (* index 2)) control)
-                     (zerop (ldb (byte 4 (+ 16 (* index 4))) control))
+                     (zerop (ldb (byte 4 16) (ash control (- (* index 4)))))
                      (= pc (instruction-breakpoint-address breakpoint)))
             (cond ((not (instruction-step-breakpoint-p breakpoint))
                    (setf public breakpoint))

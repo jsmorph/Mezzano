@@ -142,7 +142,16 @@
       (progn (funcall thunk) (error "Expected breakpoint error."))
     (simple-error (condition) (assert (search text (princ-to-string condition))))))
 
+(defun check-decoder-references (function)
+  (dolist (reference (i::get-all-frefs-in-function function))
+    (assert (not (member (i::function-reference-name reference)
+                         '(byte byte-position byte-size)))))
+  t)
+
 (defun run ()
+  (assert (check-decoder-references #'s::instruction-breakpoint-for-interrupt))
+  (assert (< (i::lisp-object-address #'s::instruction-breakpoint-for-interrupt)
+             i::*function-area-base*))
   (assert (null (s::instruction-breakpoints)))
   (let* ((functions (list #'target-one #'target-two #'target-three #'target-four))
          (offsets '(16 24 16 16))
