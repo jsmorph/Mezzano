@@ -298,12 +298,8 @@
 (defmethod simplify-control-flow-1 ((form ast-the) ti/tb-mapping permitted-hoist-tagbodys renames leaving-tagbody)
   (multiple-value-bind (new-form control-terminates)
       (simplify-control-flow-1 (value form) ti/tb-mapping permitted-hoist-tagbodys renames leaving-tagbody)
-    (when control-terminates
-      (change-made)
-      (return-from simplify-control-flow-1
-        (values new-form t)))
-    (setf (value form) new-form))
-  (values form nil))
+    (setf (value form) new-form)
+    (values form control-terminates)))
 
 (defmethod simplify-control-flow-1 ((form ast-unwind-protect) ti/tb-mapping permitted-hoist-tagbodys renames leaving-tagbody)
   (multiple-value-bind (new-form control-terminates)
