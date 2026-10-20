@@ -35,6 +35,8 @@ The debug-level-3 compilation of PAGER-ALLOCATE-PAGE retains calls to BYTE-POSIT
 
 ## Transport and guest tests
 
+The structure file-loading fixture is `test-structure-file-load.lisp`.  Compile/load it ordinarily, then call `(lispm-structure-file-load-test:run directory)` with an existing writable pathname directory.  It generates separate source/LLF files under that directory and tests serial and parallel compilation.  Cases cover an accessor before or after its DEFSTRUCT, a pre-existing compile-time class, inherited forward references, independent layout/header constants with no defining form in the loaded file, existing class/layout/header identity after reparenting, explicit missing-class rejection, and full GC.  The fixture removes only its owned class names before fresh-load cases.  A failure retains `*CASE*` and its generated files.  Success deletes its owned packages and retains files for inspection.  Run the existing full structure-layout suite as well to test initialization, migration, read-only stores, and redefinition.
+
 The transport scripts run in host SBCL:
 
 ```sh

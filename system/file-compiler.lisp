@@ -379,8 +379,33 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
    (documentation class t)
    (slot-value class 'mezzano.clos::has-standard-constructor)))
 
+(defun structure-class-load-form (class)
+  (let* ((definition (convert-structure-class-to-structure-definition class))
+         (parent (structure-definition-parent definition)))
+    `(or (find-class ',(structure-definition-name definition) nil)
+         (%defstruct
+          (make-struct-definition
+           ',(structure-definition-name definition)
+           ',(structure-definition-slots definition)
+           ,(when parent (structure-class-load-form parent))
+           ',(structure-definition-area definition)
+           ',(structure-definition-size definition)
+           ',(layout-heap-layout (structure-definition-layout definition))
+           ',(structure-definition-sealed definition)
+           ',(structure-definition-docstring definition)
+           ',(structure-definition-has-standard-constructor definition))))))
+
+(defun save-layout-class (class omap stream)
+  (if (typep class 'structure-class)
+      (save-one-object
+       (make-instance 'load-time-value-proxy
+                      :form (structure-class-load-form class)
+                      :read-only-p t)
+       omap stream)
+      (save-object class omap stream)))
+
 (defmethod save-one-object ((object layout) omap stream)
-  (save-one-object (layout-class object) omap stream)
+  (save-layout-class (layout-class object) omap stream)
   (write-byte +llf-layout+ stream))
 
 (defmethod save-one-object ((object structure-definition) omap stream)
@@ -524,8 +549,8 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
                      finally (return entries))))))
 
 (defmethod save-one-object ((object instance-header) omap stream)
-  (save-object (sys.int::layout-class (mezzano.runtime::%unpack-instance-header object))
-               omap stream)
+  (save-layout-class (sys.int::layout-class (mezzano.runtime::%unpack-instance-header object))
+                     omap stream)
   (write-byte +llf-instance-header+ stream))
 
 (defvar *compiling-make-load-form* nil)
