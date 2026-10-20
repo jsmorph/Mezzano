@@ -6944,3 +6944,15 @@ Three wall-time batches at each size produced these per-pass medians.  All sampl
 | 2048 | 3220.000 | 21.250 |
 
 The final log SHA256 is 77e1afb587cfa2f48693cf98cb6755a3c174486f73779db08269498475b705c8.  These measurements concern this pass, not complete file compilation.  The running cold660 guest and main compiler still use their original definitions.  The source optimization and reusable fixture are ready for a bounded commit; live/cold compiler integration remains untested.
+
+### Live compiler update review
+
+The isolated guest continues its long native dependency compilation.  The indexed helper takes a third argument, so replacing its old global name would break active old callers.  Final recommendation: name the indexed helper LOWER-LOCAL-VARIABLE-REFERENCES and retain its three-argument API.  The new caller uses that name.  An ordinary narrow publication can install the new helper, then the new caller.  Existing frames keep calling the untouched old helper.  The next cold image defines only the new source functions; no compatibility wrapper or version flag is added.
+
+Update the anonymous fixture to choose the old and candidate helper names explicitly, then rerun it.  Publish only in the isolated guest, preserving the original helper, unrelated compiler functions and registry.  Record the resulting mixed cold/live state.  Repeat native compiler integration checks, complete dependency loading and browser/restoration tests, and test a subsequent cold image before describing the optimization as cold-integrated.  Main remains unchanged.  If the host observation budget expires first, reconnect to the same retained load job; do not repeat LOAD.
+
+The renamed helper passed the complete anonymous native fixture.  Final test review also found that its installed-function guard assumed the old helper remained defined.  Record both helper names with their bound/unbound states, so the same guard checks an old running image and a new cold image.  This also detects accidental publication of the candidate helper during anonymous tests.  Rerun the complete fixture before committing the rename.
+
+The complete renamed-helper fixture passed again with bound/unbound-state checks.  Its log SHA256 is 7dea3a3e85e6e9c8e5dd421aa7474b903384139d65cfd1e69e202803cce60ab0.  renamed-guarded-result.json retains input hashes.  Both helper names, installed lowering/pipeline functions and all 543 registry entries remained unchanged in main.
+
+The first module observer expired after 3600 seconds at 05:44:17 UTC.  Its dependent runner stopped before HTTP/HTTPS native tests or Snapshot preparation.  A fresh attachment found the same retained load job running, with zero stops, and continued observing it without another LOAD.  Preserve phase-modules.json as the failed observation and write a separate modules-continued receipt on successful completion.  The operational HTTP/TLS deadlines remain unchanged.

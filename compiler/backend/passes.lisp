@@ -222,7 +222,7 @@
          do (incf total))
       total)))
 
-(defun lower-one-local-variable (backend-function binding references)
+(defun lower-local-variable-references (backend-function binding references)
   (let* ((var (bind-local-ast binding))
          (vreg (make-instance (if (mezzano.compiler::preserve-variable-for-debugger-p var)
                                    'debug-variable-register
@@ -283,7 +283,7 @@ Must be performed after SSA conversion."
             (unbind-local-instruction
              (push inst (gethash (unbind-local-local inst) references)))))
         (dolist (binding to-convert)
-          (lower-one-local-variable backend-function binding
+          (lower-local-variable-references backend-function binding
                                     (nreverse (gethash binding references))))))))
 
 (defun rest-arg-safe-to-make-dx-p (backend-function uses)
