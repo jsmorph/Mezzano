@@ -626,15 +626,57 @@ try {
   await browser.waitFor(`returnedFrameInspection()?.result.index === ${frameIndex} && !busy`);
   await waitText('.locals', '111');
   await waitText('.locals', '222');
-  await enter('#debugger-command', ':Show Frame');
-  await browser.waitFor("returnedFrameInspection()?.command.display === ':frame' && !busy");
+  async function displayedCommand(source, operation, argument) {
+    await browser.waitFor('!busy && !stopCommandPending(selectedStop) && !nextStopInspection(selectedStop)');
+    const before = await browser.evaluate(`api('information', {stop: ${text(debugStop)}})`);
+    const id = before['next-command-id'];
+    await enter('#debugger-command', source);
+    const commandExpression = `state.commands.find(command => same(command.stop, ${text(debugStop)}) && command.id === ${id})`;
+    const resultExpression = `commandResults.get(commandKey({stop: ${text(debugStop)}, id: ${id}}))`;
+    await browser.waitFor(`${commandExpression} && ${resultExpression}?.state === ':returned' && !busy`);
+    const command = await browser.evaluate(commandExpression);
+    const result = await browser.evaluate(resultExpression);
+    assert.equal(command.command, operation);
+    assert.deepEqual(command.argument, argument);
+    assert.equal(result.operation, ':' + operation);
+    assert.equal(result.generation, before.generation);
+    return {command, result, before};
+  }
+  const listenerHistory = await browser.evaluate('state.inputHistory');
+  const showFrame = await displayedCommand(':Show Frame', 'current-frame', null);
+  await browser.waitFor(`returnedFrameInspection()?.command.id === ${showFrame.command.id} && !busy`);
+  assert.equal(showFrame.command.display, ':frame');
+  assert.equal(showFrame.result.result.index, frameIndex);
+  const frame = showFrame.result.result;
+  assert.equal(frame.locals.length, 2);
+  const localA = frame.locals.find(local => /(?:^|:)A$/.test(local.name));
+  const localB = frame.locals.find(local => /(?:^|:)B$/.test(local.name));
+  assert(localA && localB && localA['available-p'] && localB['available-p']);
+  assert.equal(localA.value, '111');
+  assert.equal(localB.value, '222');
+  assert.equal(frame.arguments, `Original supplied arguments (2):\n  Arg 0: 111\n  Arg 1: 222\nCurrent source parameters:\n  Arg 0 (Required ${localA.name}): 111\n  Arg 1 (Required ${localB.name}): 222\n`);
+  assert.equal(await browser.evaluate("document.querySelector('#stop-detail .frame-arguments').textContent"), frame.arguments);
   assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), frameIndex);
   assert((await browser.evaluate("document.querySelector('.current-function').textContent")).includes(functionName));
-  assert(await browser.evaluate("document.querySelector('#stop-detail').textContent.includes('Original caller arguments are unavailable')"));
-  await enter('#debugger-command', ':Show Local 0');
-  await browser.waitFor("document.querySelectorAll('.locals tr').length === 1 && document.querySelector('.locals').textContent.includes('111')");
-  await enter('#debugger-command', ':Show Local All');
-  await browser.waitFor("document.querySelectorAll('.locals tr').length === 2");
+  const frameRows = await browser.evaluate("[...document.querySelectorAll('#stop-detail .locals tr')].map(row => row.textContent)");
+  assert.equal(frameRows.length, 2);
+  const localCommands = [];
+  for (const [source, argument, expected] of [
+    [':Show Local ' + localA.index, localA.index, `Local ${localA.index} (${localA.name}) = 111.`],
+    [':Show Local All', null, `Locals for frame ${frameIndex} ${frame.function}:\n` + frame.locals.map(local => `  Local ${local.index} (${local.name}): ${local.value}\n`).join('')]
+  ]) {
+    const entry = await displayedCommand(source, 'local', argument);
+    assert.equal(entry.result.result, expected);
+    assert.equal(entry.result.generation, showFrame.result.generation);
+    assert.equal(await browser.evaluate(`document.querySelector('.debugger-local[data-command-id="${entry.command.id}"] .local-result').textContent`), expected);
+    assert.deepEqual(await browser.evaluate('returnedFrameInspection().result'), frame);
+    assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('#stop-detail .locals tr')].map(row => row.textContent)"), frameRows);
+    assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["current-frame"]'), frameIndex);
+    assert.deepEqual(await browser.evaluate('state.inputHistory'), listenerHistory);
+    localCommands.push(entry);
+  }
+  const [indexed, all] = localCommands;
+  await writeFile(join(output, 'frame-local-commands.json'), JSON.stringify({showFrame, indexed, all, frameRows}, null, 2));
   await clickText('#stop-detail', functionName);
   await browser.waitFor(`returnedFrameInspection()?.result.index === ${frameIndex} && !busy`);
   const unavailable = await browser.evaluate(`(() => {

@@ -150,7 +150,9 @@ async function releaseOwned() {
     const info=await request('information',{stop:prior.token});
     assert.deepEqual([info.state,info.generation,info['next-command-id']],prior.state);
   }
-  await request('release-session');
+  await browser.click('#package-label');
+  await browser.click('#release-session');
+  await browser.waitFor('!busy && !connected && state.session === null');
   evidence.cleaned=true;
   evidence.jobs=[...jobs];
   evidence.stops=[...owned.keys()];
