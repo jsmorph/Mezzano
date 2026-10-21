@@ -8601,3 +8601,48 @@ After the browser handback, preserve a new headless Snapshot and verified checkp
 The same four browser groups passed after Snapshot/restart, with the unchanged 48e77fee driver, ten reviewed captures and eighteen Peek processes.  Its three owned jobs, two closed stops and session were released.  All complete native-state assertions, source/HOME/cold/saved-D/Snapshot/FINISH links, current thirteen-live-plus-one-saved process guard and forty assets passed before and after.  The run observed 103 HTTP 200 responses and two HTTP 204 responses, no failed loads or application console errors, and Chromium exit 0.  Chromium's GCM DEPRECATED_ENDPOINT stderr remains preserved.  No product changes or failed attempts occurred.
 
 Receipt: retry-2/restoration/browser-acceptance/acceptance.json, SHA-256 2376571e8c127ed146cf982b4313118816bca20df193d483d380bf6cf65c28e3.  The archive has SHA-256 e9f6cf168a7585476c4199cad28ac911c7f86306325c303dbc655b4d195c5bb5, with 37 independently verified evidence payloads.  Runtime ownership returned.  The new headless checkpoint helpers require this passed receipt and the complete clean guard before saving.  They will pause only the exact owned QEMU while independently compressing/verifying its stable saved disk, then resume it before the optional desktop test.
+
+
+The new headless Snapshot completed in 31.35 seconds.  The exact owned QEMU was paused while its disk was compressed and independently verified, then resumed.  Archive saved.image.gz is 293,326,882 bytes, SHA-256 dc5870f2f6bfe1c3f82905b3105f4652bfd3915b9067af3a6b7a87a0411c25b3.  All 5,368,709,120 decoded bytes match 0b5d5dd2c03c5f3e8d13aae58e17f630325ef4a506a58e80ab30d03a7e38e3b3.  checkpoint.json links the passed changed-boot native/browser scope.  This new archive's restart remains untested.  Free disk is 7.34GB.
+
+The optional desktop coordinator and host memory observer are ready to execute.  They require the verified headless checkpoint, complete frozen source hashes, explicit current host guard and full potential image growth plus reserve.  The module uses the source's existing CAL behavior and ordinary allocation.  The current native HTTP service remains available while dependency compilation runs.
+
+
+### Startup recovery: native finding and proposed behavior
+
+The init-file error probe reproduced the existing failure on H: LOAD-INIT-FILE printed INIT-FILE-ERROR-PROBE and returned.  An outer ERROR handler received no condition.  The per-thread *INIT-FILE-PATH* binding returned to NIL.  No startup hook list or production source changed.  Probe source SHA-256 d7204b591f128ba7898122f2deac1c6208a73150aa7a8ee967a426629b6a0c12; evidence is startup-recovery-20261021/init-error-probe.json.
+
+[HANDLER-CASE](https://www.lispworks.com/documentation/HyperSpec/Body/m_hand_1.htm) unwinds the failing dynamic context before entering its clause.  [INVOKE-DEBUGGER](https://www.lispworks.com/documentation/HyperSpec/Body/f_invoke.htm) retains that context until a restart transfers control.  [ABORT and related restart functions](https://www.lispworks.com/documentation/HyperSpec/Body/f_abortc.htm) invoke applicable restarts.  Their behavior supports using the retained debugger on the failing startup thread.
+
+Recommendation, pending approval under the current design-decision rule: after SWANK is available, initialization errors retain their condition, stack and existing Common Lisp restarts in the remote debugger.  Abort ends the current startup sequence and records incomplete startup.  A failed init file or restore hook receives the same treatment.  Completed initialization work remains completed.  No automatic retry repeats earlier effects.  Earlier failures retain the serial/GDB recovery path.  Replace the catch/print/continue paths that currently discard errors.  The initial increment uses the restarts supplied by the failing operation.  Broader per-form Retry behavior requires its own loader review.
+
+Required tests: post-SWANK initialization error, init-file error, early/ordinary/late restore-hook error, native and browser condition/frame/restart access, continued values through a supplied restart, explicit Abort/incomplete status, once-only earlier effects, and correct Snapshot inhibition until startup succeeds.  Bootstrap failures before remote service availability need separate acceptance.  No startup-recovery behavior or representation has changed yet.
+
+
+### Optional desktop postcondition fixture correction
+
+The module CAL returned after loading the desktop components.  The coordinator then failed its package assertion: it expected MEZZANO.USB.  The actual package is MEZZANO.DRIVER.USB, defined by DRIVERS/USB/PACKAGES.LISP.  The condition and full frames are preserved in optional-desktop/failure-inspection.json.  The module's initialization is not being repeated.  The original 453.59-second failed outcome/log remains separate, SHA-256 6f33d33cb8492e1e9bef2253d22bd52d5a7b6d950599caf0642bac501c1410be.
+
+The failed coordinator was aborted through its retained debugger, then its stop, job and session were released.  Empty jobs/stops including closed stops passed.  Correct the package name in a new fixture copy and run every postcondition against the initialized state.  The original fixture remains unchanged.  A host inspection formatter also assumed frame rows were dictionaries rather than property lists after writing the complete evidence; that printing error changed no guest state.
+
+The earlier headless helper used the same incorrect package name for one absence check.  Its separate ASDF assertions did establish that the USB systems were unloaded, and IPL's disabled conditional omitted their REQUIRE forms.  Preserve the historical receipt and state this test limitation.  Future headless guards must check the actual MEZZANO.DRIVER.USB package as well.
+
+The desktop load emitted three optimizer-limit warnings during CL-JPEG compilation and other library style warnings, including implicit generic-function definitions.  Source review confirms that RUN-OPTIMIZERS emits its warning when it reaches *MAX-OPTIMIZER-ITERATIONS*.  Compilation then completes.  Capture the exact affected functions/pass changes before proposing a compiler correction.  Do not describe this desktop compilation as warning-free.
+
+The desktop observer recorded 461 samples: peak RSS 2,926,908KiB, zero QEMU swap, minimum host available 2,754,276KiB and disk 7.298GB.  The failed acceptance is a fixture package-name error; it is not evidence of a memory shortage or an initialized USB failure.
+
+
+Corrected desktop postconditions and the existing background-debugger/Find Frame tests passed in 7.83 seconds.  No module reload occurred.  The complete current desktop-state/provenance guard and forty assets passed.  Native log SHA-256 fe6035b9110dac7e5b2636f883775291593efbe12da3753b53c102257d37498c.  Runtime metadata SHA-256 daca0edc932b21d7f65e6ad48605b04fe5c30023965f136c80e5e76e09fc656e.  The metadata links the original failed coordinator, cleanup and corrected checks.  The source and its compiled desktop LLF hashes are recorded.
+
+The planned desktop-component Snapshot/restart helpers are prepared under optional-desktop/restoration.  They use the full desktop-state guard, existing image-growth reserve, explicit current host baseline and unchanged VM limits.  FINISH requires a changed boot and repeats every corrected postcondition plus the existing native debugger/Find Frame suites without module reload, then checks the complete clean-state guard and forty assets.  The startup configuration flag remains NIL because this is an explicit optional-module load in the headless test image.  Fresh default-desktop first boot remains untested.
+
+
+### Desktop-component changed-boot acceptance
+
+The desktop-component Snapshot passed in 39.74 seconds.  It restarted as PID 1131681/start102418856 under mezzano-desktop-module-restored-20261021.service.  The first twelve-second SWANK readiness request timed out.  That failed probe remains in ipl-probes.jsonl.  Serial inspection showed boot progress and restored stale SWANK connection shutdown.  A subsequent unchanged readiness request passed.  No product change or timeout increase occurred.
+
+FINISH passed in 14.53 seconds without fixture/module reload: changed boot, corrected desktop package/thread/file checks, background retained-debugger behavior, Find Frame, collection, values and cleanup.  The full desktop/provenance/empty-state guard and forty assets passed.  Native log SHA-256 dcef3c7606600523b959675763f1556f77b115f01232ad34fc11e94f68066b4e.  Runtime metadata SHA-256 b8f379c25c50bfaa3ac32824c21ff9e4f36725e412cfca2b4a7157b53d9219ba.
+
+This accepts optional-module initialization and its native saved-state scope in the originally headless image.  Fresh default-desktop first boot and visual/application desktop behavior remain separate.  Headless acceptance retains its independent checkpoint and before/after-restoration browser receipts.  The final H shutdown requires the passed native guard and preserves its disk and metadata before restoring exact saved D.  The user-facing original world remains unchanged.
+
+The startup-recovery behavior question is pending.  Compiler follow-up also remains: isolate the CL-JPEG functions that reached the optimizer iteration limit, collect compact pass changes, diagnose the cause, and test any correction.  Raising the iteration limit would not establish the cause.
