@@ -3,7 +3,8 @@
 ;;;; This implements a simple host that allows simple HTTP requests to
 ;;;; be performed via the standard file functions.
 
-(require :babel)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require :babel))
 
 (defpackage :mezzano.file-system.http
   (:use #:cl #:mezzano.file-system)

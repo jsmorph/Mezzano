@@ -2,6 +2,9 @@
 ;;;; This code is licensed under the MIT license.
 ;;;; This implementation can read from ext2, ext3 and ext4.
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require :iterate))
+
 (defpackage :mezzano.ext4-file-system
   (:use :cl :mezzano.file-system :mezzano.file-system-cache :mezzano.disk :iterate)
   (:local-nicknames (:sys.int :mezzano.internals)

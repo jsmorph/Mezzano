@@ -8482,3 +8482,47 @@ The fresh build passed with 475.48 CPU seconds and 1.839 GB peak memory.  Header
 The new guest launched as PID 1128089/start 99838278, mezzano-headless-startup-20261021.service, ports4026/1255/8780/8781.  It retains the existing VGA/framebuffer boot ABI with display hidden.  First boot is compiling source-only dependencies.  ASDF emitted style warnings and a second compilation banner under its physical pathname.  Those observations establish no runtime defect by themselves.  Two premature readiness probes reset before SWANK was available and remain in ipl-probes.jsonl.  Jzon compilation completed and SWANK compilation is underway.  Native, browser, optional-desktop and restoration acceptance remain pending.
 
 Three unpublished product-document drafts describe the configuration, component boundary, retained framebuffer dependency and saved-world behavior.  They remain under documentation-preparation until the tests pass.  The prepared D restoration helper requires the exact saved image hash, candidate stopped receipt, protected processes and port/memory checks before starting a new verified service.  It has not run.
+
+### Desktop-disabled boot: explicit filesystem dependencies
+
+The first boot reached SWANK, then panicked while compiling FILE/EXT4.LISP's DEFPACKAGE: No package named ITERATE.  The exact condition and Lisp stack are preserved in the serial log.  EXT4's package uses ITERATE but its source declares no REQUIRE.  The previous GUI dependency sequence had loaded it indirectly.  The failed guest is unaccepted; native/browser tests have not run.  Do not query its stopped scheduler through SWANK.
+
+Audit of the remaining common warm loads found FILE/HTTP.LISP's top-level REQUIRE of Babel followed by reader-qualified Babel symbols.  That dependency must also exist while compiling the file.  The disassemblers, debugger utilities and HTTP demo use core packages.  Source review establishes no additional GUI dependency in those files.
+
+Final recommendation: declare EXT4's existing Iterate dependency with top-level EVAL-WHEN (:COMPILE-TOPLEVEL :LOAD-TOPLEVEL :EXECUTE), before DEFPACKAGE.  Put HTTP's existing Babel REQUIRE under the same situations.  This loads each component's declared dependency before reading/compiling its dependent forms and supports direct source loading.  It adds no library to the installed set.  The [Common Lisp EVAL-WHEN specification](https://www.lispworks.com/documentation/HyperSpec/Body/s_eval_w.htm) defines these compile/load effects.
+
+Stop only the verified panicked candidate, preserving its raw working disk, serial log, identity, hashes and original source manifest.  Record these as failure evidence, not as a memory snapshot.  Boot a new working copy of the exact pristine fd3e1cf4 cold image.  EXT4 and HTTP are external CAL-loaded modules, outside the embedded warm-source list, so their corrected sources require no new core image.  Record both new source hashes and preimages as an explicit external-source delta.  Reuse the same-core native dependency caches produced by the failed boot, validating their unchanged source manifest.  This retry is a fresh cold-core boot with reused library caches.  Test the corrected components and all original headless requirements.
+
+
+## Headless native loader correction: 2026-10-21
+
+The retry completed startup in 335.11 seconds, with 48.32 seconds of GC.  Desktop-disabled package/system, process, and arithmetic assertions passed.  The native coordinator then failed before compiling its first test module: MAKE-PATHNAME inherited the physical REMOTE host from *DEFAULT-PATHNAME-DEFAULTS*.  MERGE-PATHNAMES retained that host and combined it with the logical SOURCE/TOOLS/SWANK directory.  The resulting REMOTE:/SOURCE/TOOLS/SWANK/test-debugger-service.lisp does not exist.  This was a host-generated test-input error.
+
+The [MAKE-PATHNAME specification](https://www.lispworks.com/documentation/HyperSpec/Body/f_mk_pn.htm) specifies the host default.  The [MERGE-PATHNAMES specification](https://www.lispworks.com/documentation/HyperSpec/Body/f_merge_.htm) specifies the host and logical-pathname rules.  Review of the complete coordinator found that its output pathname already supplies a physical REMOTE directory.  The final recommendation is to replace only its input construction with the explicit SYS logical namestring used by existing loaders.  Runtime pathname behavior remains unchanged.
+
+The failed native-result.json, native.log, job metadata, and condition/frame inspection remain under headless-startup-20261021/retry-2.  The owned stop was aborted through its retained lease, then stop, job, and session were released.  A complete native empty-jobs/empty-stops assertion passed.  Cleanup is recorded in native-failure-cleanup.json.  An earlier cleanup observer incorrectly expected the job state :STOPPED.  The API reports :RUNNING for an evaluation with a stopped debugger; the stop's information reports :STOPPED.  That observer made no mutation.
+
+- [x] Inspect the exact failing pathname and preserve its condition/frames.
+- [x] Abort and release the failed coordinator and prove empty retained state.
+- [ ] Rerun the unchanged native assertions with the corrected logical input.
+- [ ] Verify forty HTTP assets and the full fresh-core native guard.
+- [ ] Run the prepared headless browser test, then Snapshot/restart acceptance.
+
+
+The corrected pathname retry compiled both test modules without warnings and passed the background debugger test during LOAD.  The coordinator then called the nonexistent LISPM-SERVICE-TEST::RUN-BACKGROUND-TESTS.  The existing module defines RUN-TESTS and invokes it at top level.  Source review confirms that a second call is unnecessary.  Remove the invalid coordinator call and retain the module's automatic test.  Preserve native-2's failed log/result/inspection, abort and release its owned stop/job/session, then repeat the full coordinator.  Native empty-state cleanup passed.  This second failure was another coordinator construction error, not a product failure.
+
+
+### Headless native pass and Snapshot capacity
+
+The third coordinator passed in 24.37 seconds.  Both test modules compiled without warning/failure flags.  Background stops, frames, locals, moving GC, ownership, replay, nested printer stops, restart values, cleanup, and Find Frame passed.  The native HTTP server started, all forty asset responses matched, and the full fresh-core clean guard passed.  Native log SHA-256: e9f13550432abfa5646a691be73024f59af342b2ccfee5be18bcc36646c013f4.  Native-state receipt SHA-256: aca0741798766ff85523b280cc9b116b5c5885242ad5dcc8487bedd21fb6917e.  Asset receipt SHA-256: 7b84f9c0bb0a9df7b7c13957578ab8869c97357b3b029f131128cb15776a86d2.  Runtime metadata SHA-256: c02e2186e5ca7c6d17ba3299fda2383308476e95b04ce3310bd7a677b4d14092.  The existing browser agent now owns this guest exclusively for the prepared minimum test.
+
+The host has 3.105 GB free.  A's image has 947.7 MB allocated within a five-GiB logical image.  The existing conservative Snapshot preflight requires every potentially unallocated byte plus one GiB and 64 MiB.  The available space does not satisfy that bound.
+
+Final recommendation after reviewing checkpoint provenance and all thirteen current QEMU command lines: archive the inactive debugger-paging-clean-parked-20261014.image in gzip form and reclaim its raw representation only after full independent decompression verification, an unchanged-source hash/identity check, and a repeated no-active-drive check.  The journal's clean-image parked restoration result identifies this checkpoint and its passed restore.  Its raw size is five GiB, fully allocated.  This preserves every byte and creates a restore receipt.  Current working drives, K, D, and original worlds remain untouched.  Keep the one-GiB reserve and full-image preflight.  Archive preparation/identity evidence is headless-startup-20261021/checkpoint-archive/inactive-source.json.
+
+
+The inactive parked checkpoint archive passed independent decompression of all 5,368,709,120 bytes, matching raw SHA-256 cbef8a5613e226e881d5aed08deb5838aa9e6c40a2ceb3b7840ba9fe66a108df.  The 251,729,167-byte gzip has SHA-256 d69555cb2528013b9a0bc5bc34de521f9eb9ef0ea1040de28b3134f466194228.  Source identity/full hash and absence from all thirteen current QEMU command lines were checked again before raw reclamation.  archived-checkpoint.json records the result and restore command.  Free disk recovered to 8.22 GB.
+
+Headless Snapshot helpers are prepared, Python syntax checked, and unexecuted under retry-2/restoration.  After browser handback, require its passed final receipt, the complete native guard, and full potential sparse-image growth plus one GiB and 64 MiB.  Save the boot identity, take the normal Snapshot, stop only the exact candidate service, hash its image, and restart it under a distinct unit.  FINISH requires a different boot, absent desktop packages/systems, the previously loaded background-debugger and Find Frame tests without module reload, a complete empty-state guard, and forty assets.  Run this before loading the optional desktop module.
+
+The two filesystem dependency declarations are ready for a separate commit.  The original EXT4 package failure remains preserved.  The corrected retry completed common startup and then passed retained debugger/HTTP tests.  The larger desktop selection increment remains uncommitted pending browser, headless saved-state, and optional-module testing.
