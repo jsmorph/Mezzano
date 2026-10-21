@@ -8162,3 +8162,67 @@ Extend the existing host helper test and intercepted Single Step browser fixture
 - [ ] Prepare the helper correction and focused tests.
 - [ ] Run the host helper and intercepted browser tests.
 - [ ] Test coordinated real-guest publication before claiming the viewport defect resolved.
+
+### Functional baseline restored before Find Frame
+
+Normal Snapshot, a complete independent gzip checkpoint, and restart passed.  The checkpoint preserves all 5368709120 bytes with SHA-256 b2e74bd3094247ee6ca9f15902d17512f44924a5ef0b9edde7476ee3606ec548.  Its archive occupies 564836353 bytes, SHA-256 2bff645f4d71018c05a3b6fc10c4ae506e464ed18c77425eb48e02179a215b54.  The original working image and all earlier checkpoints remain present.
+
+The new launch is PID 1120394/start 98830035.  The first twelve-second readiness query expired during startup and remains in ipl-probes.jsonl.  A later query passed source/HOME, cleared startup debugger, desktop, and registry checks.  The complete unchanged native-state assertion set then passed, and both HTTP ports returned all twenty pinned assets: forty successful body/hash checks.  The known reload viewport defect remains recorded and unresolved.
+
+Reviewed continuation: execute the prepared Find Frame native driver with ordinary allocation at DEBUG 3/SAFETY 3/SPEED 1.  Validate its eleven frozen source hashes against the main checkout and private copies, the restored launch and clean-state receipts, complete checkpoint verification, and protected processes before evaluation.  Preserve one retained evaluation and its output on failure.  The driver tests the new command, generic association, existing navigation, and HTTP validation/integration.  No resident/compiler definitions or browser assets change in this increment.
+
+### Viewport correction: asynchronous history growth
+
+The first helper correction passed its direct host test and the intercepted stopped reload check.  The intercepted stepping reload then failed: the page scrolled to 888 on initial context reconstruction, but later retained results enlarged the transcript and placed the editor at y=1058–1070 below the y=944 page edge.  Evidence remains under /tmp/listener-viewport-source-preparation/intercepted-v3/.  The direct helper test also rejects the previous renderer at the intended unfocused restored-context assertion.  No guest request or main-source publication occurred.
+
+The first two local fixture preparations failed before this renderer test.  Their ordinary-startup wait lacked a typeof check for CONNECTED, and the existing failure snapshot assumed stops[0] existed.  The original first error was masked by that diagnostic snapshot.  The second attempt preserves the startup ReferenceError in first-failure.json.  The fixture now guards startup and writes the first failure before additional diagnostics.  Both failed outputs remain preserved.  A tentative local note claiming display:contents caused a herald-height failure was incorrect and explicitly corrected.  The height assertion measures the rendered herald section.  No height failure was established.
+
+Reviewed revised recommendation: make editorPosition's visible field geometric, independent of focus.  In restoreEditorPosition, preserve the current focused-editor branch and reveal an active inline Listener debugger editor if its prior position was visible or its draft context changed.  This follows later retained-output growth after reload, including while stepping disables focus.  An unchanged context whose editor is outside the viewport preserves history reading.  Fresh ordinary Listener initialization retains the herald.  These two adjacent helpers use current layout and draft identity, with no new persistent state.
+
+### Viewport correction: font layout timing
+
+Local timing measurements refined the preceding diagnosis.  The geometric helper still failed in the browser.  A local-only instrumented refresh showed its first restoration placed the editor exactly at y=932–944 at 18.4 milliseconds, with page height 1825, scroll position 888, and document.fonts.status equal to loading.  Before another refresh, font layout increased page height to 1951 and moved the editor to y=1058–1070.  The preserved layout trace is /tmp/listener-viewport-source-preparation/layout-diagnostic/layout-trace.json.  The earlier attribution of this second movement to historical-result polling was incorrect.  The trace identifies font layout outside that refresh.
+
+Revised recommendation: retain the geometric position helpers and wait for the existing document.fonts.ready promise after rendering, before final track updates and position restoration in refresh.  placeHeraldOnPixels already uses that promise.  This ensures the scroll calculation uses loaded font metrics.  Keep the fresh herald, stopped/stepping reload visibility, unchanged-context reading, and draft assertions.  Local intercepted testing now uses the product Python HTTP handler with a loopback port and unusable SWANK port 1, matching its favicon response while requiring zero API requests over HTTP.  The generic static server's favicon error remains in the failed local run evidence.
+
+### Viewport correction: measured historical render path
+
+Waiting for fonts in refresh alone also failed.  The earlier font-loading trace showed correlation and did not establish the cause.  Instrumenting loadHistoricalCommand identified the omitted scroll boundary.  After refresh completed with fonts loaded, source bounds were y=931–944 at scroll 889 and page height 1826.  Rendering recovered Inspector command 6 increased height to 1976 and moved the source top to 1081 while scroll stayed 889.  It also requested additional fonts.  Rendering command 4 later reduced height by 24 pixels, producing the observed source bounds y=1057–1070.  The full per-command evidence is /tmp/listener-viewport-source-preparation/history-layout-diagnostic/history-layout-trace.json.  These measurements supersede the preceding claim that late fonts alone caused the movement.
+
+Reviewed recommendation: capture the editor position before loadHistoricalCommand changes its retained results, then restore it after rendering and the existing font-ready promise, following the existing loadCommandOutput pattern.  Keep the geometric visibility helpers and the refresh font-ready boundary.  The insertion must preserve the bottom interaction when visible and the reader's chosen position when the same-context editor is offscreen.  No retry, saved offset, or new global state is needed.  Preserve every failed local run and rerun the same stopped/stepping reload, fresh-herald, history-reading, generation, draft, and replay assertions.
+
+### Viewport correction: local pass and reading-position check
+
+The combined local correction passed the intercepted Single Step fixture with every prior assertion: fresh tall herald, stopped and disabled stepping reload, draft/cursor/association retention, observed/missed generation changes, stale Inspector actions, transcript, and exact-ID replay.  It sent zero API requests over HTTP and reported zero browser errors.  Evidence is /tmp/listener-viewport-source-preparation/intercepted-v6/.  The direct helper test also passed.  These are local model tests, with no D request or main-source upload.
+
+Complete the reading-position test by holding one historical Inspector reply during another reload of the same pending step.  After initial restoration, move the page to the herald, release that reply, and require history recovery to retain scroll position zero.  Reuse the current fixture and step.  This adds one reload and no native execution cycle.  The ordinary unchanged-context refresh checks remain in place.
+
+### Find Frame native acceptance
+
+The eleven-module native driver passed in 391.31 seconds.  Every compilation was warning-free under DEBUG 3/SAFETY 3/SPEED 1 with ordinary allocation.  The search test passed parsing, completion, direction, duplicates, case, misses, options, copied arguments, replay/conflict, nine history identities, moving GC, old definitions, detailed output, printer child Abort, values, and cleanup.  All eight generic-discriminator cases, existing frame navigation, HTTP validation, and HTTP integration also passed.  Log SHA-256: 99f9c995c504ee86717c5ca169807da5a784169b36b536062e94c4e00427f58a.
+
+A fresh native query confirmed empty jobs/stops/public/private step state and the three compiled ordinary modules' exact private source paths.  native-runtime.json records that publication separately from the cold ca303127 core.  Its SHA-256 is a2348ff5b8280a581ea2db6f3f1fc8b723d7fb10718e9e239d2511dd3c5155ae.  Browser assets remain unchanged.
+
+Reviewed recommendation: add a bounded request-level SWANK test before browser publication.  Reuse the existing recursive fixture and host SWANK transport, create one owned evaluation/session, search in both directions with brief/detail output, replay the original accepted ID, test a miss, then Proceed and release the stop/job/session.  Preserve the handles and propagate any failure for debugger inspection.  This tests the new operation through the real SWANK request dispatcher without loading another guest definition or using SBCL.
+
+### Matching browser publication
+
+The request-level SWANK test passed brief/detail/reverse searches, a miss, exact-ID replay, Proceed, expected values, and explicit stop/job/session release.  The native command is ready for its browser test.
+
+Reviewed final recommendation: copy the twenty verified frozen assets into a new versioned root, replacing only app.js with the reviewed Find Frame, retained-code, and reload-position changes.  App SHA-256: 8c1b93438d1b6875ae1447e0b607a9debea575f720f240198750a8f002861aed.  Keep the old root and saved baseline.  Stop/start only the owned native HTTP server through SWANK after checking empty stops and the sole publication job.  Preserve its interface, port, timeout, and Host/Origin authorities.  Verify all twenty assets through both forwarded ports, then delegate real reload/viewport and Find Frame interaction under exclusive runtime ownership.  No resident/compiler update is involved.
+
+### Viewport correction: reviewed local source and tests
+
+The final local helper and intercepted browser tests passed.  The final browser output is /tmp/listener-viewport-source-preparation/intercepted-v9/.  Its eight screenshots were reviewed.  Fresh ordinary herald height was 1523 pixels in a 921-pixel viewport, with scroll position zero.  Stopped and disabled stepping reload placed the editor at y=915–928 within the page.  Holding a historical Inspector reply during another reload, scrolling to zero, and releasing the reply preserved that reading position.  Existing generation, draft/cursor, stale-reference, transcript, and exact-ID assertions passed.  The browser reported zero errors and zero API requests over HTTP.  The direct helper test passed.  The old helper fails the new restored-inline visibility assertion.
+
+The screenshot review led the fixture to return from deliberate history reading through an actual mouse click on its editor before its next step.  One preserved attempt failed because that click moved the fixture's selected range.  The final fixture reestablishes its intended 2–7 selection before stepping.  This preserves the existing cursor assertion.  All failed attempts and causal traces remain in the evidence archive.
+
+Only the reviewed app sections and two existing test files were uploaded to the main checkout, after verifying all three complete source preimages.  Existing Find Frame and result-retention changes remain present.  App SHA-256: 8c1b93438d1b6875ae1447e0b607a9debea575f720f240198750a8f002861aed.  Helper test SHA-256: c807ed6c46d7226417e7a0fa848a6ef4ce233ce7b22b2769a2431c6ebf39cda4.  Intercepted fixture SHA-256: 012001d6e84a82e603e58a455755e10e446b2b6e56a260e07cc66820950ea281.
+
+Remote evidence is cold-runtime-corrections-20261020/browser-acceptance/viewport-source-preparation/.  Its upload receipt verifies 141 payloads.  The archive SHA-256 is a832ebc53f1d8901ab2590101b20b01ccecd4a7c77ca1ce968fd802fe43344f1.  Local acceptance SHA-256 is 58cdcac36cbec679b87a82f9430a199bfb93b9220fa8d1a4e1db6a9f0c906cff.  Both local test servers were stopped.  No D request, guest publication, or asset activation occurred in this increment.  Real-guest viewport and Find Frame browser acceptance remain pending coordinated publication.
+
+- [x] Prepare the reviewed viewport correction and focused tests.
+- [x] Run the helper and intercepted browser tests.
+- [ ] Test the coordinated real-guest assets before closing the viewport issue.
+
+The matching HTTP activation passed in 6.50 seconds, and all forty asset responses passed body/hash checks.  The first readiness-query generator inserted two erroneous backslashes in FUNCTION reader tokens; SWANK reported the character-reader error and aborted that raw evaluation.  Its failed source and diagnosis are preserved separately.  Correcting those generator escapes made the unchanged readiness assertions pass, including empty registered stops and the expected compiled Find Frame operation.  No product definition changed during that correction.
