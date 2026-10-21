@@ -270,7 +270,7 @@ A miss reports that no older or newer frame name matches and preserves selection
 
 The native operation is `:find-frame` with `(string detailed-p invisible-p reverse-p)`.  Acceptance copies the string and option list.  Replay compares them with EQUAL.  Invalid shapes or an empty string reject `:invalid-frame-search`, and true Invisible rejects `:unsupported-invisible-frames`, without consuming a command ID.  A match returns `:index`, `:function`, `:arguments`, `:brief-p`, `:locals`, and `:code`.  A miss returns the unchanged `:index` and a `:message`.
 
-Native and browser acceptance covers x86-64 condition stops with targets compiled at DEBUG 3/SAFETY 3/SPEED 1.  Reduced-debug targets, other stopping states, saved-image execution of this command, and ARM64 remain untested.
+Native and browser acceptance covers x86-64 condition stops with targets compiled at DEBUG 3/SAFETY 3/SPEED 1.  A normal Snapshot/restart test preserved the selected recursive frame, completed brief/detailed command results, and all nine history objects.  Old controls and frame references expired.  Prior-boot replay rejected without consuming an ID.  Fresh backward/forward searches, detailed inspection, moving GC, original values, and one cleanup passed without reloading the fixture.  Reduced-debug targets, other stopping states, restoration during a running search, browser command recovery across restoration, and ARM64 remain untested.
 
 ### Functions and instructions
 

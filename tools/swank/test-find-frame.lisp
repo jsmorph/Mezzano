@@ -3,7 +3,7 @@
   (:local-nicknames (#:s #:mezzano.supervisor)
                     (#:d #:mezzano.debug)
                     (#:st #:lispm-service-test))
-  (:export #:run))
+  (:export #:run #:prepare-restore-test #:finish-restore-test))
 (in-package #:lispm-find-frame-test)
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
 (declaim (notinline descend))
@@ -165,3 +165,134 @@
       (setf (symbol-function 'descend) original)
       (close-debugger-controller controller)))
   t)
+
+(defvar *restore-state* nil)
+
+(defun prepare-restore-test ()
+  (assert (null *restore-state*))
+  (assert (null (debugger-stops :include-closed t)))
+  (setf *cleanup* 0)
+  (let* ((name "Owned frame search restore")
+         (object (make-instance 'print-probe))
+         (controller (make-debugger-controller))
+         (thread (s:make-thread
+                  (lambda ()
+                    (call-with-debugger-service
+                     (lambda ()
+                       (unwind-protect (descend 3 object) (incf *cleanup*)))))
+                  :name name))
+         (handle (st::await (lambda () (st::stop-for-thread name))))
+         (lease (attach-debugger-stop handle controller))
+         (stop (d::service-handle-stop handle)))
+    (setf *restore-state*
+          (list :boot (s:current-boot-id) :thread thread :object object
+                :handle handle :lease lease :controller controller :stop stop))
+    (st::command handle lease :use-dynamic-environment)
+    (dolist (value '(101 201 301))
+      (st::command handle lease :evaluate
+                   (format nil "(values (list ~D) (list ~D))" value (1+ value))))
+    (st::command handle lease :top-frame)
+    (let* ((brief-id (getf (debugger-stop-information handle) :next-command-id))
+           (brief (st::command handle lease :find-frame '("DESCEND" nil nil nil)))
+           (detailed-id (getf (debugger-stop-information handle) :next-command-id))
+           (detailed (st::command handle lease :find-frame '("DESCEND" t nil nil)))
+           (history (copy-list (d::service-stop-evaluation-history stop)))
+           (frame (getf (nth (getf detailed :index)
+                            (st::command handle lease :frames))
+                        :frame)))
+      (assert (d::service-frame-p frame))
+      (assert (equal (st::command handle lease :locals frame) (getf detailed :locals)))
+      (assert (getf brief :brief-p))
+      (assert (not (getf detailed :brief-p)))
+      (assert (< (getf brief :index) (getf detailed :index)))
+      (assert (search "=> " (getf detailed :code)))
+      (assert (= (length history) 9))
+      (assert (every #'consp history))
+      (setf *restore-state*
+            (append *restore-state*
+                    (list :history history :brief-id brief-id :brief brief
+                          :detailed-id detailed-id :detailed detailed
+                          :frame frame
+                          :index (getf detailed :index)))))
+    (assert (zerop *cleanup*))
+    (format t "Prepared retained frame-search selection, history and command results.~%"))
+  (values))
+
+(defun finish-restore-test (&key (require-restored t))
+  (assert *restore-state*)
+  (let* ((saved *restore-state*)
+         (restored (not (eq (getf saved :boot) (s:current-boot-id))))
+         (old-handle (getf saved :handle))
+         (old-lease (getf saved :lease))
+         (handle (st::stop-for-thread "Owned frame search restore"))
+         (controller (if restored (make-debugger-controller)
+                         (getf saved :controller)))
+         (lease nil))
+    (when require-restored (assert restored))
+    (assert handle)
+    (assert (eq (d::service-handle-stop handle) (getf saved :stop)))
+    (when restored
+      (st::expect-error :expired-stop
+        (lambda () (debugger-stop-information old-handle)))
+      (st::expect-error :expired-controller
+        (lambda () (attach-debugger-stop handle (getf saved :controller))))
+      (close-debugger-controller (getf saved :controller)))
+    (setf lease (if restored (attach-debugger-stop handle controller) old-lease))
+    (unwind-protect
+         (progn
+           (assert (= (getf saved :index)
+                      (getf (debugger-stop-information handle) :current-frame)))
+           (dolist (kind '(:brief :detailed))
+             (let* ((brief-p (eq kind :brief))
+                    (id (getf saved (if brief-p :brief-id :detailed-id)))
+                    (argument (list "DESCEND" (not brief-p) nil nil))
+                    (result (debugger-command-result handle id))
+                    (next (getf (debugger-stop-information handle) :next-command-id)))
+               (assert (eq (getf result :state) :returned))
+               (assert (eql (getf result :current-boot-p) (not restored)))
+               (assert (equal (getf result :result) (getf saved kind)))
+               (if restored
+                   (st::expect-error :request-conflict
+                     (lambda () (submit-debugger-command lease id :find-frame argument)))
+                   (submit-debugger-command lease id :find-frame argument))
+               (assert (= next (getf (debugger-stop-information handle) :next-command-id)))
+               (assert (= (getf saved :index)
+                          (getf (debugger-stop-information handle) :current-frame)))))
+           (when restored
+             (st::expect-error :expired-stop
+               (lambda () (submit-debugger-command
+                           old-lease
+                           (getf (debugger-stop-information handle) :next-command-id)
+                           :current-frame)))
+             (st::expect-error :expired-stop
+               (lambda () (submit-debugger-command
+                           lease
+                           (getf (debugger-stop-information handle) :next-command-id)
+                           :locals (getf saved :frame)))))
+           (mezzano.internals::gc :full t)
+           (let* ((history (d::service-stop-evaluation-history (getf saved :stop)))
+                  (reverse-result
+                    (st::command handle lease :find-frame '("DESCEND" nil nil t)))
+                  (detailed
+                    (st::command handle lease :find-frame '("DESCEND" t nil nil))))
+             (assert (= (length history) (length (getf saved :history))))
+             (assert (every #'eq history (getf saved :history)))
+             (assert (< (getf reverse-result :index) (getf detailed :index)))
+             (assert (= (getf detailed :index) (getf saved :index)))
+             (assert (getf detailed :locals))
+             (assert (search "Original supplied arguments" (getf detailed :arguments)))
+             (assert (search "=> " (getf detailed :code))))
+           (let ((id (getf (debugger-stop-information handle) :next-command-id)))
+             (submit-debugger-command lease id :proceed)
+             (assert (eq (getf (st::completed-command handle id) :state) :unwound)))
+           (st::await (lambda () (nth-value 1 (s:thread-join (getf saved :thread) nil))))
+           (assert (equal (s:thread-join (getf saved :thread))
+                          (list (list 3 (list 2 (list 1 (getf saved :object)))))))
+           (st::await (lambda () (eq (s::sample-thread-state (getf saved :thread)) :dead)))
+           (assert (= *cleanup* 1))
+           (release-debugger-stop lease)
+           (setf *restore-state* nil)
+           (format t "PASS frame-search ~:[same-boot preparation~;Snapshot restoration~], selection, retained results, history identities, replay, GC, values and cleanup.~%"
+                   restored))
+      (close-debugger-controller controller)))
+  (values))
