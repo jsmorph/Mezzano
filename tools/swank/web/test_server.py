@@ -129,6 +129,32 @@ class ProtocolTests(unittest.TestCase):
                     "stop": stop, "id": 0, "command": "special",
                     "argument": argument}, session)
 
+    def test_find_frame_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        for source in ("DESCEND", "λ", '#.(unread)'):
+            for detailed in (None, False, True):
+                for invisible in (None, False, True):
+                    for reverse in (None, False, True):
+                        options = [source, detailed, invisible, reverse]
+                        result = server.operation_arguments("submit", {
+                            "stop": stop, "id": 0, "command": "find-frame",
+                            "argument": options}, session)
+                        self.assertEqual(result[2:], [
+                            server.Symbol(":find-frame"),
+                            [source, bool(detailed), bool(invisible), bool(reverse)]])
+                        self.assertNotIsInstance(result[3][0], server.Symbol)
+                        self.assertEqual(server.parse(server.lisp(result)), result[:3] + [
+                            [source, detailed or None, invisible or None, reverse or None]])
+        for argument in (None, [], ["X"], ["X", False, False],
+                         ["X", False, False, False, False], [1, False, False, False],
+                         ["X", 1, False, False], ["X", False, "Yes", False],
+                         ["X", False, False, []]):
+            with self.subTest(argument=argument), self.assertRaises(ValueError):
+                server.operation_arguments("submit", {
+                    "stop": stop, "id": 0, "command": "find-frame",
+                    "argument": argument}, session)
+
     def test_typed_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]

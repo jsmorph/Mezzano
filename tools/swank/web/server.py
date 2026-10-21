@@ -413,7 +413,7 @@ def operation_arguments(operation, args, session):
         fields(args, ("stop", "id", "command"), ("argument",))
         command = string(args["command"])
         if command not in ("condition", "restarts", "frames", "locals", "current-frame", "select-frame",
-                           "next-frame", "previous-frame", "top-frame", "bottom-frame", "proceed", "invoke-restart",
+                           "next-frame", "previous-frame", "top-frame", "bottom-frame", "find-frame", "proceed", "invoke-restart",
                            "invoke-restart-interactively", "invoke-restart-with-arguments", "evaluate", "abort", "return", "reinvoke", "help",
                            "inspect", "modify", "describe-object", "clear-inspection", "arglist", "bindings", "handlers", "catches",
                            "function", "compiled-code", "instruction", "single-step", "lexical-environment", "standard-value-warnings", "special",
@@ -430,6 +430,11 @@ def operation_arguments(operation, args, session):
         elif command == "clear-all-breakpoints":
             if argument is not None:
                 argument = string(argument)
+        elif command == "find-frame":
+            if not isinstance(argument, list) or len(argument) != 4:
+                raise ValueError("Expected search string, Detailed, Invisible, and Reverse Booleans.")
+            argument = [string(argument[0])] + [
+                boolean(False if option is None else option) for option in argument[1:]]
         elif command == "reinvoke":
             if not isinstance(argument, list) or len(argument) != 2:
                 raise ValueError("Expected Original Args and New Args Booleans.")
