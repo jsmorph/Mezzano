@@ -125,6 +125,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Show Catch Blocks | Prints active catch tags and available destination functions and hexadecimal byte offsets.  :All includes all retained frames. |
 | :Show Condition Handlers | Prints condition types, handler functions, and their active/inactive state at debugger entry.  :All includes all retained frames. |
 | :Show Backtrace | Lists retained call frames. |
+| :Find Frame string | Searches function names toward older callers.  :Reverse searches newer frames, and :Detailed adds locals and marked code. |
 | :Set Current Frame index | Selects a frame by its zero-based decimal index and displays its available locals. |
 | :Top Of Stack | Selects frame zero, the newest retained frame, and displays its available locals. |
 | :Bottom Of Stack | Selects the oldest retained frame and displays its available locals. |
@@ -144,6 +145,8 @@ Proceed without an available CONTINUE reports an error while leaving the computa
 
 Selection starts at frame zero and persists across reconnects and image restoration.  Each nested debugger has its own selection.  A mentioned :Nframes requires a value.  Zero displays the current frame.  Movement beyond the retained stack reports an error and preserves selection.  Mouse selection and :Set Current Frame use the same guest operation.
 
+Find Frame requires a nonempty, case-sensitive function-name substring.  It excludes the selected frame and does not wrap.  :Detailed, :Invisible, and :Reverse default to No when omitted and Yes when mentioned without a value.  A miss preserves selection.  :Invisible Yes reports unsupported before command acceptance.  Search preserves evaluation history.  A match selects before printing, so printer Abort preserves that selection.  The [frame-search reference](debugger.md#frame-search) defines associated names, output, and replay.
+
 Show Function, Show Compiled Code, and Show Instruction take no arguments.  Show Function preserves the other eight expression/value history slots, including +.  Code display preserves all history and selection and retains an older active function version after redefinition.  Ordinary call locations use the saved return address minus one.  Interrupted locations use the exact saved PC.  Headers distinguish these locations and unavailable metadata.  The commands initially support the selected function and complete disassembly.  Genera's function/range arguments, octal PCs, More processing, output destinations, and + locative assignment remain unsupported.  The [function and instruction reference](debugger.md#functions-and-instructions) defines offsets, printer recovery, invalid-argument frames, and tested stopping states.
 
 Use Dynamic Environment and Use Lexical Environment take no arguments and preserve frame selection and all nine history values.  Each outer stop starts in lexical mode.  A child inherits its parent's choice and can change it independently.  Control-X followed by I toggles the mode while either debugger editor has focus, preserving the draft and cursor.  A form displays the nesting arrows followed by `Eval (program): ` or `Eval (debugger): `.  Empty input and colon commands display the arrows.  Clearing or submitting the form restores the arrow prompt.  Both modes use the stop's reader/printer controls and the stopped thread's other debugger-time special bindings.  Dynamic mode permits evaluation when selected-frame scope metadata is unavailable.  The [evaluation-environment reference](debugger.md#evaluation-environments) gives the native operations and lifetime rules.
@@ -162,7 +165,7 @@ Show Catch Blocks uses the same :All defaults as Show Bindings.  It lists active
 
 Show Condition Handlers uses the same :All defaults as Show Bindings.  It lists handlers established by the selected frame, or all retained frames with :All.  When SIGNAL invokes a handler, its cluster becomes inactive.  A break inside that handler reports this state and the still-active older clusters.  Mezzano's runtime %HANDLER-BIND frame may own the cluster.  The command preserves selection and evaluation history.  Unsupported frame layouts report unavailable handler locations.
 
-Show Backtrace lists call frames.  Find Frame, internal/invisible-frame filtering, detailed argument/disassembly options, and raw stack-slot inspection remain unavailable through these commands.
+Show Backtrace lists call frames.  Internal-frame and invisible-frame filtering and raw stack-slot inspection remain unavailable.  Show Frame, Show Backtrace, and the other navigation commands lack Detailed options.
 
 ## Guest and transport APIs
 
@@ -178,7 +181,7 @@ Listener state survives connection closure.  Session release or a new boot retir
 | start-listener | name, source, and optional interactive.  Returns an ordinary retained job token. |
 | listener-assistance | source, cursor, action, optional context and presentation.  Returns input classification, replacement text and cursor, prompt, default, expected-type, help, candidates, complete-p, and error. |
 
-Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display.  Frame selection plans carry a decimal index or movement count.  Current-frame inspection carries NIL.  Show Local uses operation local with NIL for All or a nonnegative index.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
+Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display.  Frame selection plans carry a decimal index or movement count.  Current-frame inspection carries NIL.  Find Frame carries (string detailed-p invisible-p reverse-p).  Show Local uses operation local with NIL for All or a nonnegative index.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
 
 Job information adds :listener-result.  It is NIL for ordinary evaluation jobs.  A Listener result records :kind (:command or :form), optional :command, :effects, :presentations, and any command input :error.  An input error is printed and recorded.  Runtime conditions, including file and compiler errors, enter the retained debugger.
 

@@ -75,7 +75,7 @@
 (defparameter *commands*
   '(("condition" . :condition) ("restarts" . :restarts) ("frames" . :frames)
     ("locals" . :locals) ("current-frame" . :current-frame)
-    ("select-frame" . :select-frame) ("next-frame" . :next-frame)
+    ("find-frame" . :find-frame) ("select-frame" . :select-frame) ("next-frame" . :next-frame)
     ("previous-frame" . :previous-frame) ("top-frame" . :top-frame)
     ("bottom-frame" . :bottom-frame) ("proceed" . :proceed)
     ("invoke-restart" . :invoke-restart)
@@ -105,6 +105,12 @@
      (list (require-string (aref argument 0)) (require-integer (aref argument 1))))
     (:clear-all-breakpoints
      (unless (eq argument 'null) (require-string argument)))
+    (:find-frame
+     (require-array argument 4 "Expected search string, Detailed, Invisible, and Reverse Booleans.")
+     (list (require-string (aref argument 0))
+           (nullable-boolean (aref argument 1))
+           (nullable-boolean (aref argument 2))
+           (nullable-boolean (aref argument 3))))
     (:reinvoke
      (require-array argument 2 "Expected Original Args and New Args Booleans.")
      (let ((original (nullable-boolean (aref argument 0)))

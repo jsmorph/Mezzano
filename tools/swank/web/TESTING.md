@@ -168,6 +168,19 @@ A named, no-argument debug-3 target calls a NOTINLINE helper inside and after se
 
 The driver tests both typed Proceed and the CONTINUE button for continuation.  `PROTECTED_STOP` optionally names a numeric stop ID whose state and next command ID must remain unchanged.  The result records browser errors and failed HTTP requests and response bodies, including across page reloads.  The driver records its session and releases its owned evaluations, stops, and session.
 
+## Frame search
+
+The driver requires the matching guest Find Frame operation and browser assets:
+
+```sh
+node tools/swank/web/test-find-frame.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-find-frame-test
+```
+
+It creates one private package and four recursive DEBUG 3 activations.  Typed Listener and standalone Debugger commands, SPACE completion, contextual help, and the mouse menu exercise direction, duplicate names, misses, brief/detail output, option rejection, printer child Abort, replay, selection, and nine history identities.  A reload removes only its Detailed command's saved browser descriptor and requires recovery of the same guest result and arguments without resubmission.
+
+At width 360, Detailed and ordinary compiled-code output must retain the same text elements, line geometry, and horizontal scroll across refresh.  After Proceed, the retained closed stop must show recorded output with live controls disabled.  The next Listener evaluation must succeed.  Cleanup releases the owned stop, job, helper jobs, package, and session.  This driver does not establish saved-image or ARM64 behavior.
+
 ## Expired sessions
 
 The session-recovery driver releases its own guest session to test expiration during startup, evaluation submission, command completion, documentation lookup, and process sampling.  It checks request and debugger-command archives, input and viewer history, renewed tokens, and a Lisp counter that detects repeated evaluation.  It also checks that recovery from a transport failure resumes the same session and that other rejected requests preserve the session.

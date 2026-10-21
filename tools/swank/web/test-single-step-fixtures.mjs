@@ -9,7 +9,7 @@ await mkdir(output,{recursive:false});
 const q=JSON.stringify;
 function fixtureBootstrap() {
   const saved=sessionStorage.getItem('single-step-fixture');
-  window.fixture=saved?JSON.parse(saved):{generation:0,state:':stopped',results:[],calls:[],steps:0,mode:'paused',holdCondition:true};
+  window.fixture=saved?JSON.parse(saved):{generation:0,state:':stopped',results:[],calls:[],steps:0,mode:'paused',holdCondition:true,ordinary:true};
   const store=()=>sessionStorage.setItem('single-step-fixture',JSON.stringify(fixture));
   const token=session=>[':stop',session,1];
   const information=()=>({id:1,state:fixture.state,generation:fixture.generation,thread:'Single Step fixture',
@@ -23,10 +23,19 @@ function fixtureBootstrap() {
     const {operation,arguments:args,session}=JSON.parse(options.body);
     fixture.calls.push({operation,...args,time:performance.now()});if(fixture.holdCondition&&fixture.calls.length>50)throw Error('Unbounded pending-inspection requests');store();let value;
     if(['open-session','resume-session'].includes(operation))value={};
-    else if(operation==='monitor-state')value={listener:{package:'CL-USER',prompt:'Command: ',debugger:{stop:token(session),...information()}},jobs:[],
-      stops:[{token:token(session),information:information()}]};
+    else if(operation==='monitor-state')value={listener:{package:'CL-USER',prompt:'Command: ',
+      herald:{title:'Listener viewport fixture',facts:[],help:[],'detailed-p':true,
+        systems:Array.from({length:220},(_,index)=>({name:'viewport-system-'+index,version:null}))},
+      debugger:fixture.ordinary?null:{stop:token(session),...information()}},jobs:[],
+      stops:fixture.ordinary?[]:[{token:token(session),information:information()}]};
     else if(operation==='information')value=information();
-    else if(operation==='result')value=fixture.results[args.id];
+    else if(operation==='result') {
+      if(fixture.holdHistory&&fixture.results[args.id]?.operation===':inspect') {
+        await new Promise(resolve=>{window.releaseHeldHistory=resolve;});
+        fixture.holdHistory=false;store();
+      }
+      value=fixture.results[args.id];
+    }
     else if(operation==='document-query'&&args.action==='catalog')value={title:'All Documents',topics:[],
       'search-options':{adjacent:null,mode:':substring',modes:[{label:'Exact',value:':exact'},{label:'Initial',value:':initial'},{label:'Substring',value:':substring'}]}};
     else if(operation==='listener-assistance') {
@@ -64,7 +73,7 @@ function fixtureBootstrap() {
 }
 const browser=await openBrowser('about:blank');
 const ready=()=>browser.waitFor("typeof connected!=='undefined' && connected && !busy && !nextHistoricalCommand() && (stops[0]?.info.state!==':stopped' || !nextStopInspection(stops[0].token))");
-const snapshot=()=>browser.evaluate(`({info:stops[0].info,frame:returnedFrameInspection(),condition:returnedResult('condition'),
+const snapshot=()=>browser.evaluate(`({info:stops[0]?.info,frame:returnedFrameInspection(),condition:returnedResult('condition'),
   editorDisabled:[$('source').disabled,$('debugger-command').disabled],
   transcript:[...document.querySelectorAll('.debugger-transcript')].map(node=>node.textContent),
   inspector:returnedInspections().map(record=>({id:record.command.id,current:record.currentGeneration})),
@@ -81,10 +90,23 @@ async function seedHistory() {
   await browser.evaluate("void run(()=>debuggerCommand('(values :history)'))");await ready();
   await browser.evaluate("void run(()=>debuggerCommand(':Inspect'))");await ready();
 }
+async function editorViewport(label) {
+  const viewport=await browser.evaluate(`(()=>{const p=$('page'),page=p.getBoundingClientRect(),editor=$('source').getBoundingClientRect();return {scrollTop:p.scrollTop,scrollHeight:p.scrollHeight,pageTop:page.top,pageBottom:page.bottom,editorTop:editor.top,editorBottom:editor.bottom,activeElement:document.activeElement.id||document.activeElement.tagName,disabled:$('source').disabled}})()`);
+  assert(viewport.editorTop>=viewport.pageTop&&viewport.editorBottom<=viewport.pageBottom,label+': '+JSON.stringify(viewport));
+  await browser.screenshot(output+'/'+label+'.png');
+  return viewport;
+}
 const evidence={fixtureOnly:true,guestRequests:0,cases:[]};
 try {
   await browser.send('Page.addScriptToEvaluateOnNewDocument',{source:'('+fixtureBootstrap.toString()+')()'});
   await browser.send('Page.navigate',{url});
+  await browser.waitFor("typeof fixture!=='undefined' && typeof connected!=='undefined' && connected && !busy");
+  const initialViewport=await browser.evaluate("({scrollTop:$('page').scrollTop,height:$('page').clientHeight,heraldHeight:document.querySelector('#herald .herald').getBoundingClientRect().height,ordinary:fixture.ordinary})");
+  assert.equal(initialViewport.ordinary,true);assert.equal(initialViewport.scrollTop,0);
+  assert(initialViewport.heraldHeight>initialViewport.height,'Fixture herald must exceed the viewport');
+  evidence.initialViewport=initialViewport;
+  await browser.screenshot(output+'/initial-herald.png');
+  await browser.evaluate("fixture.ordinary=false;void run(refresh)");
   await browser.waitFor("typeof fixture!=='undefined' && fixture.results.some(row=>row.operation===':condition' && row.state===':running') && !busy");
   const pendingStart=await browser.evaluate("({time:performance.now(),calls:fixture.calls.length})");
   await browser.evaluate("void run(()=>{fixture.queuedAction='completed'})");
@@ -135,6 +157,15 @@ try {
   assert.equal(before.frame.result.function,'FUNCTION-0');
   const draft='(values :preserved-draft)';
   await browser.evaluate(`setEditor($('source'),${q(draft)},${draft.length});$('source').setSelectionRange(2,7);storeEditorDraft($('source'))`);
+  const stoppedOrigin=await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin!==${stoppedOrigin} && typeof connected!=='undefined'`);await ready();
+  assert.deepEqual(await browser.evaluate("[$('source').value,$('source').selectionStart,$('source').selectionEnd]"),[draft,2,7]);
+  evidence.stoppedReloadViewport=await editorViewport('stopped-reloaded');
+  await browser.evaluate("$('page').focus();$('page').scrollTop=0;void run(refresh)");await ready();
+  assert.equal(await browser.evaluate("$('page').scrollTop"),0,'Unchanged stopped context must preserve history reading');
+  await browser.click('#source');
+  await browser.evaluate("$('source').setSelectionRange(2,7);storeEditorDraft($('source'))");
   await menuStep();
   const paused=await snapshot();evidence.cases.push({name:'observed-listener',paused});
   assert.equal(paused.info.state,':stepping');assert.equal(paused.info.generation,1);
@@ -163,8 +194,20 @@ try {
   await browser.evaluate(`void run(()=>api('submit',{stop:stops[0].token,id:${receipt},command:'single-step',argument:null}))`);await ready();
   assert.deepEqual(await browser.evaluate(`fixture.results[${receipt}]`),original);
   assert.equal(await browser.evaluate('fixture.steps'),1);
-  await browser.screenshot(output+'/stepping-reloaded.png');
+  evidence.steppingReloadViewport=await editorViewport('stepping-reloaded');
+  await browser.evaluate("$('page').focus();$('page').scrollTop=0;void run(refresh)");await ready();
+  assert.equal(await browser.evaluate("$('page').scrollTop"),0,'Unchanged stepping context must preserve history reading');
+  await browser.evaluate("fixture.holdHistory=true;sessionStorage.setItem('single-step-fixture',JSON.stringify(fixture))");
+  const historyOrigin=await browser.evaluate('performance.timeOrigin');
+  await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin!==${historyOrigin} && typeof connected!=='undefined' && connected && typeof releaseHeldHistory==='function'`);
+  await editorViewport('stepping-before-held-history');
+  await browser.evaluate("$('page').focus();$('page').scrollTop=0;releaseHeldHistory()");await ready();
+  assert.equal(await browser.evaluate("$('page').scrollTop"),0,'Historical insertion must preserve deliberate offscreen reading');
+  evidence.historyReadingPreserved=true;
+  await browser.screenshot(output+'/history-reading-recovered.png');
   await browser.evaluate("fixture.state=':stopped';void run(refresh)");await ready();
+  await browser.click('#source');
   const resumed=await snapshot();evidence.resumed=resumed;
   assert.equal(resumed.frame.result.function,'FUNCTION-1');assert.equal(resumed.frame.result.locals[0].value,'VALUE-1');
   assert.equal(resumed.condition,'Condition-1');assert.deepEqual(resumed.editorDisabled,[false,false]);
@@ -194,6 +237,7 @@ try {
   await writeFile(output+'/result.json',JSON.stringify({...evidence,errors:browser.errors},null,2)+'\n');
   console.log('PASS immediate/pending inspection queue, observed/missed Single Step transitions, stepping reload/association, both editor drafts/cursors, generation-filtered live views, disabled historical Inspector references, transcript and exact-ID replay; fixture-only, zero guest requests');
 } catch(error) {
+  await writeFile(output+'/first-failure.json',JSON.stringify({error:error.stack,errors:browser.errors},null,2)+'\n');
   await browser.screenshot(output+'/failure.png');
   await writeFile(output+'/failure.json',JSON.stringify({error:error.stack,snapshot:await snapshot(),errors:browser.errors},null,2)+'\n');
   throw error;

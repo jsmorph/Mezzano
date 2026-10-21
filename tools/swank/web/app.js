@@ -23,7 +23,7 @@ let actions = Promise.resolve();
 let reportedError = null;
 let activity = "listener";
 let selectedStop = null;
-const frameCommands = ["current-frame", "select-frame", "next-frame", "previous-frame", "top-frame", "bottom-frame"];
+const frameCommands = ["current-frame", "select-frame", "next-frame", "previous-frame", "top-frame", "bottom-frame", "find-frame"];
 let stops = [];
 let activeListenerJob = null;
 let listenerDebugger = null;
@@ -817,12 +817,15 @@ function editorPosition(editor = document.activeElement?.matches(".command-io te
     ? document.activeElement : activity === "debugger" ? $("debugger-command") : $("source")) {
   const editorBounds = editor.getBoundingClientRect();
   const pageBounds = $("page").getBoundingClientRect();
-  return {editor, draft: editorDraftKeys.get(editor), visible: document.activeElement === editor
-    && editorBounds.top >= pageBounds.top && editorBounds.bottom <= pageBounds.bottom};
+  return {editor, draft: editorDraftKeys.get(editor),
+    visible: editorBounds.top >= pageBounds.top && editorBounds.bottom <= pageBounds.bottom};
 }
 function restoreEditorPosition({editor, draft, visible}) {
-  if (["listener", "debugger"].includes(activity) && document.activeElement === editor
-      && (visible || draft !== editorDraftKeys.get(editor))) {
+  const changedDraft = draft !== editorDraftKeys.get(editor);
+  const visibleListenerDebugger = activity === "listener" && listenerDebugger
+    && editor === $("source") && (visible || changedDraft);
+  if (["listener", "debugger"].includes(activity)
+      && ((document.activeElement === editor && (visible || changedDraft)) || visibleListenerDebugger)) {
     editor.scrollIntoView({block: "nearest"});
   }
 }
@@ -894,6 +897,7 @@ async function refresh() {
   renderListenerState();
   renderPending();
   updateStatus();
+  await document.fonts.ready;
   updateTracks();
   restoreEditorPosition(position);
 }
@@ -992,11 +996,14 @@ async function loadHistoricalCommand() {
     if (position < 0) state.commands.push(command);
     else state.commands.splice(position, 0, command);
   }
+  const position = editorPosition();
   commandResults.set(commandKey(command), result);
   save();
   renderStops();
   renderPending();
+  await document.fonts.ready;
   updateTracks();
+  restoreEditorPosition(position);
 }
 function renderJobs() {
   $("jobs").replaceChildren();
@@ -1313,6 +1320,14 @@ function renderStops() {
     controls.set(key, element);
     return element;
   }
+  function resultText(key, text, className) {
+    key = prefix + key;
+    const element = stopControls.get(key) || node("pre", undefined, className);
+    const value = text == null ? "" : String(text);
+    if (element.textContent !== value) element.textContent = value;
+    controls.set(key, element);
+    return element;
+  }
   const menu = $("debugger-menu");
   const menuChildren = [node("h3", "This Debugger")];
   const list = $("stops");
@@ -1389,7 +1404,7 @@ function renderStops() {
       command.disabled = !available;
       menuChildren.push(command);
     }
-    for (const name of [":Show Special", ":Set Breakpoint", ":Clear Breakpoint"]) {
+    for (const name of [":Find Frame", ":Show Special", ":Set Breakpoint", ":Clear Breakpoint"]) {
       const command = control(prefix + name, name, debuggerAction(() => {
         const editor = activity === "listener" ? $("source") : $("debugger-command");
         const text = name + " ";
@@ -1410,24 +1425,28 @@ function renderStops() {
   if (frameInspection) {
     const {command: request, result: frame} = frameInspection;
     if (info.state === ":closed") detailChildren.push(node("pre", "Recorded frame " + frame.index + " from this closed stop.", "recorded-frame"));
-    detailChildren.push(node("pre", frame.function, "current-function"));
+    if (frame.message) detailChildren.push(node("pre", frame.message, "frame-message"));
+    if (frame.function) detailChildren.push(node("pre", frame.function, "current-function"));
     const locals = frame.locals || [];
-    if (request.display === ":frame" && typeof frame.arguments === "string") {
+    if (typeof frame.arguments === "string") {
       detailChildren.push(node("pre", frame.arguments, "frame-arguments"));
     }
-    const visibleLocals = request.localIndex == null ? locals : locals.filter(local => local.index === request.localIndex);
-    if (!visibleLocals.length) detailChildren.push(node("pre", request.localIndex == null
-      ? "No local values are recorded for this frame." : "No local value with the requested index."));
-    const table = node("table", undefined, "locals");
-    table.setAttribute("aria-label", "Frame locals");
-    table.title = "Frame " + frame.index + ": " + frame.function;
-    for (const local of visibleLocals) {
-      const row = node("tr");
-      row.append(node("td", "Local " + local.index + " (" + local.name + "):"),
-                 node("td", local["available-p"] ? local.value : "<unavailable>"));
-      table.append(row);
+    if (!frame["brief-p"] && !frame.message) {
+      const visibleLocals = request.localIndex == null ? locals : locals.filter(local => local.index === request.localIndex);
+      if (!visibleLocals.length) detailChildren.push(node("pre", request.localIndex == null
+        ? "No local values are recorded for this frame." : "No local value with the requested index."));
+      const table = node("table", undefined, "locals");
+      table.setAttribute("aria-label", "Frame locals");
+      table.title = "Frame " + frame.index + ": " + frame.function;
+      for (const local of visibleLocals) {
+        const row = node("tr");
+        row.append(node("td", "Local " + local.index + " (" + local.name + "):"),
+                   node("td", local["available-p"] ? local.value : "<unavailable>"));
+        table.append(row);
+      }
+      detailChildren.push(table);
     }
-    detailChildren.push(table);
+    if (frame.code) detailChildren.push(resultText("frame-code:" + request.id, frame.code, "compiled-code-result frame-code"));
   } else if (info.state === ":stopped" && info["current-frame"] != null) {
     detailChildren.push(node("pre", "Frame " + info["current-frame"] + " selected. Use :Show Frame to inspect its locals."));
   }
@@ -1491,7 +1510,9 @@ function renderStops() {
     } else if (["single-step", "return", "reinvoke", "arglist", "argument", "local", "rest-argument", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                 "set-breakpoint", "clear-breakpoint", "clear-all-breakpoints", "breakpoints",
                 "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
-      output = node("div", undefined, "debugger-" + command.command);
+      const outputKey = prefix + "output:" + command.id;
+      output = stopControls.get(outputKey) || node("div", undefined, "debugger-" + command.command);
+      controls.set(outputKey, output);
       const name = {"single-step": ":Single Step", return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", argument: ":Show Argument", local: ":Show Local", "rest-argument": ":Show Rest Argument", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
         catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
         instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
@@ -1500,8 +1521,8 @@ function renderStops() {
         "clear-all-breakpoints": ":Clear All Breakpoints", breakpoints: ":Show Breakpoints",
         "use-dynamic-environment": ":Use Dynamic Environment", "use-lexical-environment": ":Use Lexical Environment",
         "toggle-evaluation-environment": "Control-X I"}[command.command];
-      output.append(node("pre", "→ " + (command.source ?? name), "debugger-transcript"),
-        node("pre", result?.state === ":returned" ? result.result : status, command.command + "-result"));
+      reconcileChildren(output, [node("pre", "→ " + (command.source ?? name), "debugger-transcript"),
+        resultText("result:" + command.id, result?.state === ":returned" ? result.result : status, command.command + "-result")]);
     } else if (!result || result.state === ":pending" || result.state === ":running") {
       detailChildren.push(node("p", command.command + ": " + status));
     }

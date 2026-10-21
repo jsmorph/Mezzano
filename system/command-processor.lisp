@@ -96,6 +96,11 @@
       (:name "Show Proceed Options" :id :show-proceed-options :help "Display available restarts.")
       (:name "Show Frame" :id :show-frame :help "Display the selected function, original supplied arguments, current source parameters, and available locals.")
       (:name "Show Local" :id :show-local :type :local :help "Display All locals, or a local by its zero-based decimal index.")
+      (:name "Find Frame" :id :find-frame :type :string
+       :help "Find a case-sensitive substring in a frame's function name, after this frame toward older callers. :Reverse searches newer frames without wrapping. :Detailed adds locals and code. Invisible Yes is unsupported."
+       :keywords (("Detailed" :boolean "No" "Yes")
+                  ("Invisible" :boolean "No" "Yes")
+                  ("Reverse" :boolean "No" "Yes")))
       (:name "Set Current Frame" :id :set-current-frame :type :frame :help "Select a zero-based frame index from Show Backtrace.")
       (:name "Top Of Stack" :id :top-frame :help "Select and display the newest retained frame.")
       (:name "Bottom Of Stack" :id :bottom-frame :help "Select and display the oldest retained frame.")
@@ -569,6 +574,12 @@
     (:show-frame (list :operation "current-frame" :display :frame))
     (:show-local (list :operation "local"
                       :argument (unless (eq argument :all) argument)))
+    (:find-frame
+     (list :operation "find-frame" :display :frame
+           :argument (list argument
+                           (cdr (assoc "Detailed" keywords :test #'equal))
+                           (cdr (assoc "Invisible" keywords :test #'equal))
+                           (cdr (assoc "Reverse" keywords :test #'equal)))))
     (:set-current-frame (list :operation "select-frame" :argument argument :display :frame))
     (:top-frame (list :operation "top-frame" :display :frame))
     (:bottom-frame (list :operation "bottom-frame" :display :frame))

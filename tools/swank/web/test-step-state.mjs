@@ -83,3 +83,38 @@ assert.equal(evaluate("returnedResult('condition')"),null);
 evaluate("stops[0].info.state=':closed'");
 assert.equal(evaluate('returnedFrameInspection().result.function'),'NEW','Closed-stop frame history remains descriptive');
 console.log('PASS observed/missed generation transitions, same-index caller locals, stale Inspector references, old transcripts, stepping input preservation, printer suppression, and closed history; no browser or guest requests');
+
+for(const editor of editors.values()) {
+  editor.scrollCalls=0;
+  editor.scrollIntoView=options=>{assert.deepEqual(JSON.parse(JSON.stringify(options)),{block:'nearest'});editor.scrollCalls++;};
+}
+context.document.activeElement={id:'body'};
+evaluate("activity='listener';listenerDebugger=null;editorDraftKeys.set($('source'),'listener')");
+evaluate("restoreEditorPosition({editor:$('source'),draft:undefined,visible:false})");
+assert.equal(editors.get('source').scrollCalls,0,'Fresh ordinary Listener must preserve the herald');
+evaluate("listenerDebugger={stop:token};editorDraftKeys.set($('source'),'debugger:restored')");
+evaluate("restoreEditorPosition({editor:$('source'),draft:undefined,visible:false})");
+assert.equal(editors.get('source').scrollCalls,1,'Restored inline debugger must be visible without editor focus');
+evaluate("restoreEditorPosition({editor:$('source'),draft:'debugger:restored',visible:false})");
+assert.equal(editors.get('source').scrollCalls,1,'Unchanged debugger context must preserve history reading position');
+evaluate("restoreEditorPosition({editor:$('source'),draft:'debugger:restored',visible:true})");
+assert.equal(editors.get('source').scrollCalls,2,'Visible unfocused inline editor follows retained-history growth');
+context.document.activeElement=editors.get('source');
+evaluate("restoreEditorPosition({editor:$('source'),draft:'debugger:restored',visible:true})");
+assert.equal(editors.get('source').scrollCalls,3,'Focused visible editor retains its position');
+evaluate("restoreEditorPosition({editor:$('source'),draft:'debugger:older',visible:false})");
+assert.equal(editors.get('source').scrollCalls,4,'Focused context changes retain existing visibility behavior');
+context.document.activeElement={id:'body'};
+evaluate("activity='debugger';editorDraftKeys.set($('debugger-command'),'debugger:restored')");
+evaluate("restoreEditorPosition({editor:$('debugger-command'),draft:undefined,visible:false})");
+assert.equal(editors.get('debugger-command').scrollCalls,0,'Unfocused standalone editor keeps existing behavior');
+evaluate("activity='listener';restoreEditorPosition({editor:$('debugger-command'),draft:undefined,visible:false})");
+assert.equal(editors.get('debugger-command').scrollCalls,0,'Inline context reveal belongs to the Listener editor');
+console.log('PASS fresh herald, restored inline context, unchanged-context reading, and focused editor scrolling; no browser or guest requests');
+
+editors.set('page',{getBoundingClientRect:()=>({top:0,bottom:100})});
+editors.get('source').getBoundingClientRect=()=>({top:50,bottom:70});
+assert.equal(evaluate("editorPosition($('source')).visible"),true,'Geometric visibility does not require focus');
+editors.get('source').getBoundingClientRect=()=>({top:120,bottom:140});
+assert.equal(evaluate("editorPosition($('source')).visible"),false,'Offscreen editor must preserve history reading');
+console.log('PASS unfocused geometric visibility and retained-history growth');

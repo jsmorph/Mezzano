@@ -92,7 +92,7 @@
       (unless (member (cdr entry)
                       '(:evaluate :set-breakpoint :clear-breakpoint :reinvoke :special
                         :locals :modify :invoke-restart :invoke-restart-interactively
-                        :select-frame :next-frame :previous-frame))
+                        :select-frame :next-frame :previous-frame :find-frame))
         (mezzano.web::command-argument (cdr entry) 'null session)))
     (dolist (command '(:single-step :return :instruction :function :clear-inspection))
       (dolist (bad (list nil t 0 "" #() (object)))
@@ -109,6 +109,11 @@
             (rejected (lambda () (mezzano.web::command-argument :reinvoke (vector original new) session)))
             (assert (equal (mezzano.web::command-argument :reinvoke (vector original new) session)
                            (list (eq original t) (eq new t)))))))
+    (assert (equal (mezzano.web::command-argument :find-frame #("DESCEND" t null nil) session)
+                   '("DESCEND" t nil nil)))
+    (dolist (bad (list 'null #() #("X" nil nil) #("X" nil nil nil nil)
+                      #(7 nil nil nil) #("X" 1 nil nil)))
+      (rejected (lambda () (mezzano.web::command-argument :find-frame bad session))))
     (dolist (command '(:handlers :catches))
       (assert (null (mezzano.web::command-argument command 'null session)))
       (assert (null (mezzano.web::command-argument command nil session)))

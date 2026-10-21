@@ -35,6 +35,8 @@ The debug-level-3 compilation of PAGER-ALLOCATE-PAGE retains calls to BYTE-POSIT
 
 ## Transport and guest tests
 
+The variable-definition fixture is `test-variable-definitions.lisp`.  Compile/load it with ordinary allocation and call `(lispm-variable-definition-test:run source)` with a fresh writable source pathname.  It tests DEFVAR, DEFPARAMETER, and DEFGLOBAL with fresh symbols: lexical initializer scope, dynamic bindings, conditional initialization, NIL, omitted values, documentation, warning-free DEBUG 0/1/3 compilation, and serial COMPILE-FILE/load semantics.  The optional source pathname enables the file tests.  Calling RUN without it repeats the non-file cases, including after full GC.  The native tests cover x86-64 at SAFETY 3/SPEED 1.  Fresh cold-image startup and ARM64 require separate tests.
+
 The structure file-loading fixture is `test-structure-file-load.lisp`.  Compile/load it ordinarily, then call `(lispm-structure-file-load-test:run directory)` with an existing writable pathname directory.  It generates separate source/LLF files under that directory and tests serial and parallel compilation.  Cases cover an accessor before or after its DEFSTRUCT, a pre-existing compile-time class, inherited forward references, independent layout/header constants with no defining form in the loaded file, existing class/layout/header identity after reparenting, explicit missing-class rejection, and full GC.  The fixture removes only its owned class names before fresh-load cases.  A failure retains `*CASE*` and its generated files.  Success deletes its owned packages and retains files for inspection.  Run the existing full structure-layout suite as well to test initialization, migration, read-only stores, and redefinition.
 
 The transport scripts run in host SBCL:
@@ -149,6 +151,12 @@ The special-binding-context and special-evaluation fixtures require the updated 
 The Show Special fixture uses the same helpers and policy.  Load the updated debugger service and Command Processor, compile and load `TEST-SHOW-SPECIAL.LISP` without warnings or failure, then call `(lispm-show-special-test:run)`.  It tests Program/Debugger differences, NIL/unbound/missing cells, history and temporary -, prompt stacks, command defaults/completion and quoted arguments followed by keywords across space/tab/newline separators, invalid and unsupported options without command-ID consumption, copied arguments and replay, reader/printer child Abort and repair, package resolution, full GC, Proceed, and owned cleanup.  Streams inspection, ARM64 execution, and saved-image restoration remain untested.
 
 The spill-interference fixture checks overlapping, adjacent, disjoint, repeated, and unused ranges, edges from every range of a spilled register, and scalar and SIMD slot assignment.  It compares with supplied previous implementations when requested and checks that dense bit-vector rows retain their identity across insertions.
+
+## Frame search tests
+
+Compile and load `test-find-frame.lisp` with ordinary allocation after the service, frame-evaluation, and frame-navigation helpers.  Call `(lispm-find-frame-test:run)` under DEBUG 3/SAFETY 3/SPEED 1.  Four recursive activations test parser defaults and completion, direction, duplicate names, case, misses, brief/detail output, unsupported options before acceptance, copied arguments, accepted replay/conflict, all nine history identities, full GC, active old definitions, printer child Abort, values, and cleanup.
+
+The generic-frame fixture also searches each recognized associated generic function before and after global redefinition and GC.  Run `(lispm-generic-frame-test:run)` after its existing helpers.  The HTTP API fixture tests four-element array validation and retained-command integration.  Run existing frame-navigation tests after the service update.  Browser interaction, saved-image execution, and ARM64 execution require separate acceptance.
 
 ## Retained integer steps
 

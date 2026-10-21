@@ -519,7 +519,7 @@
       (when previous
         (unless (and (eq operation (service-command-operation previous))
                      (if (member operation '(:evaluate :inspect :modify :bindings :special :reinvoke
-                                             :set-breakpoint :clear-breakpoint :clear-all-breakpoints))
+                                             :set-breakpoint :clear-breakpoint :clear-all-breakpoints :find-frame))
                          (equal argument (service-command-argument previous))
                          (eql argument (service-command-argument previous)))
                      (eq (service-command-boot previous)
@@ -574,6 +574,12 @@
          (unless (or (null argument)
                      (typep argument '(cons (member nil t) (cons string null))))
            (service-error :invalid-binding-options)))
+        (:find-frame
+         (unless (and (typep argument '(cons string (cons (member nil t)
+                                       (cons (member nil t) (cons (member nil t) null)))))
+                      (plusp (length (first argument))))
+           (service-error :invalid-frame-search))
+         (when (third argument) (service-error :unsupported-invisible-frames)))
         (:evaluate
          (unless (stringp argument) (service-error :invalid-source)))
         ((:current-frame :select-frame :next-frame :previous-frame :top-frame :bottom-frame)
@@ -592,6 +598,8 @@
                       :operation operation :argument (case operation
                                                        (:evaluate (copy-seq argument))
                                                        ((:inspect :modify :reinvoke) (copy-list argument))
+                                                       (:find-frame (cons (copy-seq (first argument))
+                                                                          (copy-list (rest argument))))
                                                        (:special (list (copy-seq (first argument))
                                                                        (second argument)))
                                                        ((:set-breakpoint :clear-breakpoint)
@@ -1417,7 +1425,7 @@ NIL with true availability denotes an absent global cell."
                   (mezzano.disassemble:context-function context) offset))))
   (terpri))
 
-(defun service-show-code (stop instruction-p)
+(defun service-show-code (stop instruction-p &optional mark-current-p)
   (multiple-value-bind (function offset interrupted-p)
       (service-frame-code-location
        (aref (service-stop-frames stop) (service-stop-current-frame stop)))
@@ -1442,8 +1450,11 @@ NIL with true availability denotes an absent global cell."
                 (format t "Compiled code for ~A:~%" (service-print function))
                 (loop with start = (mezzano.disassemble:code-initial-offset function)
                       for instruction across (mezzano.disassemble:context-instructions context)
-                      do (service-write-instruction context instruction start)
-                         (incf start (if instruction (mezzano.disassemble:inst-size instruction) 1))))))))))
+                      for size = (if instruction (mezzano.disassemble:inst-size instruction) 1)
+                      do (when mark-current-p
+                           (write-string (if (<= start offset (1- (+ start size))) "=> " "   ")))
+                         (service-write-instruction context instruction start)
+                         (incf start size)))))))))
 
 (defun service-show-function (stop)
   (let ((function (frame-function
@@ -1871,6 +1882,44 @@ NIL with true availability denotes an absent global cell."
                  (service-frame-for-access reference) function arguments)
                 "Reinvoke cancelled.")))))))
 
+(defun service-find-frame (stop argument)
+  (destructuring-bind (text detailed invisible reverse) argument
+    (declare (ignore invisible))
+    (let* ((frames (service-stop-frames stop))
+           (selected (service-stop-current-frame stop))
+           (direction (if reverse -1 1))
+           (index
+             (loop for index = (+ selected direction) then (+ index direction)
+                   while (< -1 index (length frames))
+                   do (let* ((function (frame-function (aref frames index)))
+                             (name (cond ((mezzano.internals::function-reference-p function)
+                                          (mezzano.internals::function-reference-name function))
+                                         ((typep function 'generic-function)
+                                          (mezzano.clos::safe-generic-function-name function))
+                                         (t (mezzano.internals::function-name function)))))
+                        (when (and name
+                                   (search text
+                                           (if (symbolp name)
+                                               (symbol-name name)
+                                               (let ((*print-readably* nil)
+                                                     (*print-circle* t)
+                                                     (*print-level* nil)
+                                                     (*print-length* nil)
+                                                     (*print-pretty* nil))
+                                                 (prin1-to-string name)))))
+                          (return index))))))
+      (unless index
+        (return-from service-find-frame
+          (list :index selected :message (format nil "No ~A frame name contains ~S."
+                                                (if reverse "newer" "older") text))))
+      (with-service-lock (setf (service-stop-current-frame stop) index))
+      (let ((frame (aref frames index)))
+        (list :index index :function (service-print (frame-function frame))
+              :arguments (service-frame-arguments frame)
+              :brief-p (not detailed)
+              :locals (when detailed (service-frame-locals frame))
+              :code (when detailed (service-show-code stop nil t)))))))
+
 (defun execute-service-command (stop command)
   (ecase (service-command-operation command)
     (:condition (service-print (service-stop-condition stop) t))
@@ -1930,6 +1979,7 @@ NIL with true availability denotes an absent global cell."
                                  (service-handle stop)
                                  (service-stop-generation stop) index)
                          :function (service-print (frame-function frame)))))
+    (:find-frame (service-find-frame stop (service-command-argument command)))
     (:function (service-show-function stop))
     (:argument (service-show-argument stop (service-command-argument command)))
     (:local (service-show-local stop (service-command-argument command)))
