@@ -2,12 +2,12 @@
   (:use #:cl)
   (:local-nicknames (#:i #:mezzano.internals) (#:s #:mezzano.supervisor)
                     (#:d #:mezzano.debug) (#:test #:lispm-service-test))
-  (:export #:run))
+  (:export #:run #:prepare-restore-test #:finish-restore-test))
 (in-package #:lispm-gc-stack-guard-test)
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
 
 (defstruct scenario
-  thread controller handle lease (depth 0) (cleanup 0) (completed 0)
+  thread controller handle lease (boot (s:current-boot-id)) (depth 0) (cleanup 0) cleanup-start (completed 0)
   (returned (s:make-event :name "Stack overflow unwound"))
   (release (s:make-event :name "Next stack overflow")))
 
@@ -21,6 +21,10 @@
            (incf (scenario-depth *scenario*))
            (recurse (1+ n)))
       (assert (and (= (car cell) n) (= (cdr cell) n)))
+      (when (zerop (scenario-cleanup *scenario*))
+        (setf (scenario-cleanup-start *scenario*) n))
+      (assert (= n (- (scenario-cleanup-start *scenario*)
+                      (scenario-cleanup *scenario*))))
       (incf (scenario-cleanup *scenario*)))))
 
 (defun worker (case)
@@ -28,10 +32,13 @@
     (d:call-with-debugger-service
      (lambda ()
        (dotimes (round 2)
-         (setf (scenario-depth case) 0 (scenario-cleanup case) 0)
+         (setf (scenario-depth case) 0 (scenario-cleanup case) 0
+               (scenario-cleanup-start case) nil)
          (with-simple-restart (abort "Abort the owned stack-overflow test.")
            (recurse 0))
-         (assert (= (scenario-depth case) (scenario-cleanup case)))
+         (assert (= (scenario-cleanup case) (1+ (scenario-cleanup-start case))))
+         (assert (<= (1- (scenario-depth case))
+                     (scenario-cleanup-start case) (scenario-depth case)))
          (incf (scenario-completed case))
          (setf (s:event-state (scenario-returned case)) t)
          (s:event-wait (scenario-release case))
@@ -44,11 +51,11 @@
 
 (defun assert-guard (case)
   (assert (s::thread-stack-guard-page-state (scenario-thread case)))
-  (s::with-rw-lock-read (s::*vm-lock*)
-    (let ((info (s::block-info-for-virtual-address (return-page case))))
-      (assert info)
-      (assert (logtest info i::+block-map-present+))
-      (assert (not (logtest info i::+block-map-writable+))))))
+  (let ((info (s::pager-rpc (fdefinition 'read-return-page-flags-in-pager)
+                            (return-page case))))
+    (assert info)
+    (assert (logtest info i::+block-map-present+))
+    (assert (not (logtest info i::+block-map-writable+)))))
 
 (defun page-words (case)
   (let ((words (make-array (/ s::+thread-stack-guard-return-size+ 8)
@@ -57,11 +64,24 @@
       (setf (aref words index)
             (i::memref-unsigned-byte-64 (return-page case) index)))))
 
+(defun young-page-root-count (words)
+  (loop for word across words
+        count (and (member (ldb i::+tag-field+ word)
+                           (list i::+tag-cons+ i::+tag-object+))
+                   (member (ldb i::+address-tag+ word)
+                           (list i::+address-tag-general+ i::+address-tag-cons+))
+                   (not (logtest i::+address-old-generation+ word)))))
+
 (defun collect-stopped (case full)
   (assert-guard case)
   (let ((before (page-words case))
         (minor i::*gc-minor-cycles*) (major i::*gc-major-cycles*))
+    (unless full
+      (assert (plusp (young-page-root-count before)) ()
+              "Minor collection requires young return-page roots."))
     (mezzano.extensions:gc :full full)
+    (unless full
+      (assert (= i::*gc-major-cycles* major)))
     (assert-guard case)
     (let* ((after (page-words case))
            (changed (loop for old across before for new across after
@@ -72,49 +92,94 @@
       (format t "PASS ~A collection moved ~D return-page words; guard remains armed/read-only.~%"
               (if full :major :minor) changed))))
 
-(defun run ()
+(defun start-case ()
   (assert (null *case*))
   (assert (null (test::stop-for-thread "GC stack guard test")))
+  (mezzano.extensions:gc :full t)
+  (let ((case (make-scenario :controller (d:make-debugger-controller))))
+    (setf *case* case
+          (scenario-thread case)
+          (s:make-thread (lambda () (worker case))
+                         :name "GC stack guard test" :stack-size #x20000))
+    case))
+
+(defun inspect-stop (case &key (minor t))
+  (let* ((handle (test::await
+                  (lambda () (test::stop-for-thread "GC stack guard test"))))
+         (lease (d:attach-debugger-stop handle (scenario-controller case))))
+    (setf (scenario-handle case) handle (scenario-lease case) lease)
+    (let ((condition (test::command handle lease :condition))
+          (frames (test::command handle lease :frames))
+          (restarts (test::command handle lease :restarts)))
+      (assert (search "Stack overflow" condition))
+      (assert frames)
+      (assert (equal
+               (getf (find "ABORT" restarts :test #'equal
+                           :key (lambda (restart) (getf restart :name)))
+                     :description)
+               "Abort the owned stack-overflow test."))
+      (format t "Actual overflow ~D, ~D frames, condition ~S.~%"
+              (1+ (scenario-completed case)) (length frames) condition))
+    (when minor (collect-stopped case nil))
+    (collect-stopped case t)))
+
+(defun abort-stop (case completed)
+  (let* ((handle (scenario-handle case))
+         (id (getf (d:debugger-stop-information handle) :next-command-id)))
+    (d:submit-debugger-command (scenario-lease case) id :abort)
+    (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
+  (test::await (lambda () (s:event-state (scenario-returned case))))
+  (assert (= (scenario-completed case) completed))
+  (assert (plusp (scenario-depth case)))
+  (assert (= (scenario-cleanup case) (1+ (scenario-cleanup-start case))))
+  (assert (<= (1- (scenario-depth case))
+              (scenario-cleanup-start case) (scenario-depth case)))
+  (format t "PASS Abort checked ~D movable cells and ~D cleanups.~%"
+          (scenario-cleanup case) (scenario-cleanup case))
+  (d:release-debugger-stop (scenario-lease case))
+  (setf (scenario-handle case) nil (scenario-lease case) nil))
+
+(defun advance-case (case)
+  (when (= (scenario-completed case) 1)
+    (mezzano.extensions:gc :full t))
+  (setf (s:event-state (scenario-returned case)) nil
+        (s:event-state (scenario-release case)) t))
+
+(defun close-case (case)
+  (test::await (lambda () (nth-value 1 (s:thread-join (scenario-thread case) nil))))
+  (assert (equal (s:thread-join (scenario-thread case)) '(:gc-stack-worker-finished)))
+  (d:close-debugger-controller (scenario-controller case))
+  (setf *case* nil))
+
+(defun run ()
   (s:with-snapshot-inhibited ()
-    (let* ((case (make-scenario :controller (d:make-debugger-controller))))
-      (setf *case* case
-            (scenario-thread case)
-            (s:make-thread (lambda () (worker case))
-                           :name "GC stack guard test" :stack-size #x20000))
+    (let ((case (start-case)))
       (dotimes (round 2)
-        (let* ((handle (test::await
-                        (lambda () (test::stop-for-thread "GC stack guard test"))))
-               (lease (d:attach-debugger-stop handle (scenario-controller case))))
-          (setf (scenario-handle case) handle (scenario-lease case) lease)
-          (let ((condition (test::command handle lease :condition))
-                (frames (test::command handle lease :frames))
-                (restarts (test::command handle lease :restarts)))
-            (assert (search "Stack overflow" condition))
-            (assert frames)
-            (assert (equal
-                     (getf (find "ABORT" restarts :test #'equal
-                                 :key (lambda (restart) (getf restart :name)))
-                           :description)
-                     "Abort the owned stack-overflow test."))
-            (format t "Actual overflow ~D, ~D frames, condition ~S.~%"
-                    (1+ round) (length frames) condition))
-          (collect-stopped case nil)
-          (collect-stopped case t)
-          (let ((id (getf (d:debugger-stop-information handle) :next-command-id)))
-            (d:submit-debugger-command lease id :abort)
-            (assert (eq (getf (test::completed-command handle id) :state) :unwound)))
-          (test::await (lambda () (s:event-state (scenario-returned case))))
-          (assert (= (scenario-completed case) (1+ round)))
-          (assert (plusp (scenario-depth case)))
-          (assert (= (scenario-depth case) (scenario-cleanup case)))
-          (format t "PASS Abort checked ~D movable cells and ~D cleanups.~%"
-                  (scenario-depth case) (scenario-cleanup case))
-          (d:release-debugger-stop lease)
-          (setf (scenario-handle case) nil (scenario-lease case) nil
-                (s:event-state (scenario-returned case)) nil
-                (s:event-state (scenario-release case)) t)))
-      (test::await (lambda () (nth-value 1 (s:thread-join (scenario-thread case) nil))))
-      (assert (equal (s:thread-join (scenario-thread case)) '(:gc-stack-worker-finished)))
-      (d:close-debugger-controller (scenario-controller case))
-      (setf *case* nil)))
+        (inspect-stop case)
+        (abort-stop case (1+ round))
+        (advance-case case))
+      (close-case case)))
   :gc-stack-guard-tested)
+
+(defun prepare-restore-test ()
+  (let ((case (start-case)))
+    (inspect-stop case)
+    (d:close-debugger-controller (scenario-controller case))
+    (setf (scenario-controller case) nil (scenario-lease case) nil))
+  :gc-stack-restore-prepared)
+
+(defun finish-restore-test ()
+  (assert *case*)
+  (assert (not (eq (scenario-boot *case*) (s:current-boot-id))))
+  (assert (null (scenario-controller *case*)))
+  (let ((case *case*))
+    (setf (scenario-controller case) (d:make-debugger-controller)
+          (scenario-handle case) nil)
+    (inspect-stop case :minor nil)
+    (abort-stop case 1)
+    (advance-case case)
+    (inspect-stop case)
+    (abort-stop case 2)
+    (advance-case case)
+    (close-case case))
+  :gc-stack-restore-tested)
