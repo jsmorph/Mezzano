@@ -305,6 +305,8 @@ Function debug-info field 13, at zero-based list index 12, records source parame
 
 Lexical parameters use existing #(:BINDING name) descriptors.  A special parameter uses #(:SPECIAL symbol cell-binding), whose cell-binding identifies its hidden exact-cell variable.  A missing declared supplied-p variable is NIL.  The emitted record contains descriptors and symbols, with no source AST objects or initializers.  Lower debug policies, older functions, and generated cleanup functions have no record.
 
+Argument setup emits a rest binding when the variable has executable uses or the existing debugger-preservation flag requests storage.  An unused DEBUG 3 rest parameter therefore retains its value and writable binding through the ordinary debug-register path.  The existing dynamic-extent declaration controls whether argument setup copies the rest spine.  Unused parameters without debugger preservation keep the omitted-binding path.
+
 The internal service reader returns the layout, (descriptor value available) observations, and a record-level unavailability reason.  It validates the live owning x86-64 frame first and reads through existing locations.  Before binding, missing storage reports an unavailable value.  An unbound special cell also reports an unavailable value.  A bound NIL remains available.  Malformed metadata and accessible-storage errors propagate.  Reading these bindings does not reconstruct a new invocation's argument list.
 
 ## Parameter type scopes

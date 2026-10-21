@@ -12,6 +12,11 @@
 (defvar *cleanup-count* 0)
 (defvar *rest* :outside)
 
+(defun unused-debug-rest-target (&rest rest)
+  (declare (ignorable rest))
+  (break "Owned unused REST parameter test.")
+  (values 42 43))
+
 (defun lexical-target (&rest rest)
   (when rest (setf rest (list :changed (car rest))))
   (let ((rest :shadow))
@@ -470,8 +475,28 @@
       (close-debugger-controller controller)
       (setf *case* nil))))
 
+(defun run-unused-debug-rest-tests ()
+  (dolist (arguments '(nil (:original :tail)))
+    (run-case
+     #'unused-debug-rest-target
+     (format nil "(unused-debug-rest-target~{ ~S~})" arguments)
+     (lambda (handle lease controller)
+       (declare (ignore controller))
+       (frame::evaluate-source handle lease "rest"
+                               (list (format nil "~S" arguments)))
+       (check-argument handle lease 0
+                       (format nil "Argument 0 (REST) = ~S." arguments) 'rest)
+       (frame::evaluate-source
+        handle lease
+        "(progn (setf rest (list :edited)) (mezzano.extensions:gc :full t) (capture-context) rest)"
+        '("(:EDITED)"))
+       (check-argument handle lease 0 "Argument 0 (REST) = (:EDITED)." 'rest))))
+  (format t "PASS unused DEBUG 3 REST bindings, empty/nonempty values, checked identity, writes, GC, and cleanup.~%")
+  t)
+
 (defun run ()
   (check-parser)
+  (run-unused-debug-rest-tests)
   (dolist (case
             (list
              (list #'lexical-target "(lexical-target :original)" :value

@@ -175,8 +175,8 @@
       ;; &REST argument.
       (let ((rest-arg (lambda-information-rest-arg lambda)))
         (when (and rest-arg
-                   ;; Avoid generating code &REST code when the variable isn't used.
-                   (not (zerop (lexical-variable-use-count rest-arg))))
+                   (or (not (zerop (lexical-variable-use-count rest-arg)))
+                       (mezzano.compiler::preserve-variable-for-debugger-p rest-arg)))
           (when (not (lexical-variable-dynamic-extent rest-arg))
             (let ((real-rest (make-instance 'virtual-register)))
               (emit (make-instance 'call-instruction
