@@ -8009,3 +8009,31 @@ This was source inspection during the cold instruction matrix.  No compiler chan
 All nineteen native phases passed on the fresh ca303127 x86-64 image, with no live core publication.  The driver/source hashes, success markers, complete log hashes, source revision, empty update lists, and exact launch identity were checked against the native plan.  Receipt: cold-runtime-corrections-20261020/native-acceptance.json.
 
 The final integer/body phase passed 292 operand/flag cases and six complete normal-function walks at zero/two continuation prompts in 1394.31 seconds.  Log SHA-256: b3cd2e658e93589ceec5a8347a7dfc4c32b7bea0bb3bb8438aae4fc687a9f6fa.  The production saved-foothold fixture then compiled successfully.  Its actual saved-state tests remain pending.  The complete Web/HTTPS module load is running, followed by native/transport HTTP/HTTPS tests, three restorations, and nine browser suites.  This candidate has not been promoted.
+
+### Restoration checkpoint capacity review
+
+Available host storage is 6.26 GB.  The unsaved candidate currently occupies 1.13 GB, but a completed Snapshot can grow its allocated backing store.  Three independent checkpoint copies plus the existing free-space guard may exceed that capacity.  Preserve the original accepted world and all failure evidence.
+
+Reviewed recommendation: after each restoration FINISH passes, archive only that test's immutable saved.image copy with standard-library gzip, using the previously verified archival procedure.  Verify the complete source SHA-256 against its launch receipt, complete decompression hash and length, unchanged source identity, private/read-only modes, and successful finish receipt.  Make the archive and archival receipt durable, including their directory entries, before removing the uncompressed duplicate.  Keep the current working image and all launch/finish evidence.  A failed archive leaves its source intact.  This preserves every checkpoint's bytes while bounding disk use.  Prepare and syntax-check the guarded host helper now.  Execute it only after the corresponding actual restoration test passes.
+
+The private Find Frame documentation draft was reviewed against the implementation and prepared tests, then revised to specify untruncated compound-name printing with circle detection.  It covers defaults, direction, case, unnamed functions, misses, unsupported invisible filtering, detailed output, old definitions, history, printer Abort, replay, wire shapes, and documentation destinations.  It remains outside the product catalog pending runtime acceptance.
+
+The nineteen-phase scope includes the local-lowering fixture's temporary compiler baseline comparison.  That fixture restored the installed function identities and all 543 compiler registry entries.  The statement that the candidate had no live core publication refers to the four runtime/compiler corrections: all four came from the cold build, and no corrective replacement was loaded after boot.  New test helpers and those temporary comparisons remain part of the recorded test procedure.
+
+### Headless startup: source review
+
+The current source has no headless startup selection.  The cold-generator file list already includes debugger/evaluation services, the Command Processor, Document Examiner, shared remote service, TCP/IP, and REMOTE files before CONFIG and IPL.  IPL loads image/video libraries before starting SWANK, then loads the GUI, fonts, icons, native applications, and desktop without a headless branch.  The cold generator also embeds low-level debug fonts.  Skipping desktop spawn alone would leave most of that work.
+
+IPL installs IPL-DEBUGGER, which prints the warm-initialization condition and panics.  LOAD-INIT-FILE catches ERROR and prints it instead of entering retained debugging.  IPL clears *GLOBAL-DEBUGGER* at its end.  The late LOAD-INIT-FILE boot hook remains registered.  These are distinct startup recovery paths.  The installation guide accurately says that hiding QEMU's display still initializes the desktop.
+
+This is source inspection only.  Before implementing the headless increment, separate required runtime/SWANK dependencies from desktop/media dependencies, inspect the retained-debugger entry boundary and low-level console requirements, and define startup failure/retry behavior.  Keep the current candidate unchanged until acceptance.  No headless mode or startup recovery change was implemented in this review.
+
+Archival helper review added explicit checks for the FINISH phase, FINISHED marker, exact finish-driver pathname, and manifest source hash before archive creation.  The earlier preparation and hash are preserved.  Syntax checking passed.  The helper remains unexecuted until a restoration succeeds.
+
+### Full-library observation deadline
+
+The module observer reached its 2400-second host deadline at 01:47:07 UTC while compiling the full dependency set.  The coordinator stopped with exit 1.  Original modules.log SHA-256: 3e0045c562c213e4f97099bd30dd723cc3e63990220b1ad64f7cf170935ced1e.  Its failed phase-modules.json remains unchanged.  Guest evaluation has no execution deadline in this driver.  GUEST-EVAL.PY closes its connection on observer failure without cancelling or releasing that job.
+
+Reattachment to that exact retained job confirmed RUNNING, current boot, and no debugger stop.  Its original output now includes successful compilation of all 103 Groestl functions in 344.20 seconds.  Observation: modules-deadline-observation.json.  These facts establish failure of the host observation interval, not a compiler error.
+
+Reviewed recommendation: retain the failed receipt/log and observe the same accepted job for one additional bounded hour.  Use its existing session/name/handle and exact VM identity, require the original expected return marker, and never resubmit the load.  Record completion separately, including original failure/driver/output hashes and total duration.  Only then resume the six remaining post-native phases.  Browser acceptance must validate that complete evidence chain rather than count the original failed receipt as a pass.  No compiler policy, guest definition, dependency, or test scope changes.
