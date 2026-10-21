@@ -8546,3 +8546,14 @@ The headless Snapshot passed in 31.61 seconds with the full-image space prefligh
 The recommendation is to add one GiB of host RAM, retaining the current four-GiB guest and preserved worlds.  This resource question is pending.  No threshold was lowered and no other world was stopped.
 
 Desktop-disabled first boot, native tests, HTTP assets, and bounded Chromium acceptance have passed.  Changed-boot and optional desktop-module tests remain incomplete.  Commit the reviewed component selection and its product documentation with those limits explicit.  Existing source in the saved candidate stays frozen.  Continue independent source/documentation review while waiting for host memory.
+
+
+The launch-only continuation is prepared as retry-2/restoration/resume-stopped.py.  The original restart.py and its failed outcome remain.  The continuation requires the existing stopped receipt, exact saved-image hash, passed Snapshot receipt, absence of prior owned PIDs, protected-process checks, unused ports, and the same 4.5-GiB available-memory threshold.  Python syntax passed.  It has not executed.
+
+### Startup error-handling source findings
+
+IPL installs a global debugger that calls PANIC and clears it only at successful completion.  SWANK can therefore be listening while a later filesystem or desktop initialization error panics the guest, as the preserved EXT4 failure demonstrates.  The retained service is already loaded in the warm core before IPL; SWANK becomes the available remote control channel partway through IPL.
+
+LOAD-INIT-FILE catches ERROR, prints the condition, and returns.  RUN-BOOT-HOOKS wraps every early, ordinary, and late hook in LOG-AND-IGNORE-ERRORS.  Those paths discard the failing activation before remote inspection.  POST-BOOT-WORKER runs deferred actions, then hooks, and enables Snapshot only after that sequence completes.
+
+LOAD-LLF executes top-level forms directly and supplies no whole-IPL restart.  Adding a retained stop alone would therefore leave startup failures without a reliable retry/abort boundary.  An entire IPL retry would repeat filesystem registration and SWANK startup.  A correction needs a defined retry boundary for the failing initialization operation, retained condition/frame inspection, and an explicit skip/abort choice.  Early boot before the remote service exists needs a separate documented failure path.  Test the post-SWANK failure, init-file failure, early/ordinary/late hook failures, restart result, repeated effects, and Snapshot inhibition through recovery.  These findings are source inspection; no startup-recovery implementation has been selected or changed.
