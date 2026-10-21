@@ -902,18 +902,32 @@ This is required to make the GC interrupt safe."
      (scavenge-thread-data-registers object cycle-kind))
     (t
      (when (scavengable-thread-p object)
-       (cond ((mezzano.supervisor:thread-full-save-p object)
-              (scavenge-full-save-thread object cycle-kind))
-             (t (let* ((stack-pointer (mezzano.supervisor:thread-stack-pointer object))
-                       (frame-pointer (mezzano.supervisor:thread-frame-pointer object))
-                       (return-address (memref-unsigned-byte-64 stack-pointer
-                                                                #-arm64 0
-                                                                #+arm64 3)))
-                  #+arm64
-                  (scavengef (memref-t stack-pointer 0) cycle-kind) ; x13
-                  #+arm64
-                  (scavengef (memref-t stack-pointer 1) cycle-kind) ; x14
-                  (scavenge-stack stack-pointer frame-pointer return-address cycle-kind))))))))
+       (let ((guard-page
+               (when (mezzano.supervisor::thread-stack-guard-page-state object)
+                 (+ (mezzano.supervisor::stack-base
+                     (mezzano.supervisor:thread-stack object))
+                    mezzano.supervisor::+thread-stack-soft-guard-size+))))
+         (when guard-page
+           (mezzano.supervisor:protect-memory-range
+            guard-page mezzano.supervisor::+thread-stack-guard-return-size+
+            (logior +block-map-present+ +block-map-writable+)))
+         (unwind-protect
+              (cond ((mezzano.supervisor:thread-full-save-p object)
+                     (scavenge-full-save-thread object cycle-kind))
+                    (t (let* ((stack-pointer (mezzano.supervisor:thread-stack-pointer object))
+                              (frame-pointer (mezzano.supervisor:thread-frame-pointer object))
+                              (return-address (memref-unsigned-byte-64 stack-pointer
+                                                                       #-arm64 0
+                                                                       #+arm64 3)))
+                         #+arm64
+                         (scavengef (memref-t stack-pointer 0) cycle-kind) ; x13
+                         #+arm64
+                         (scavengef (memref-t stack-pointer 1) cycle-kind) ; x14
+                         (scavenge-stack stack-pointer frame-pointer return-address cycle-kind))))
+           (when guard-page
+             (mezzano.supervisor:protect-memory-range
+              guard-page mezzano.supervisor::+thread-stack-guard-return-size+
+              +block-map-present+))))))))
 
 (defun gc-info-for-function-offset (function offset)
   (when (function-reference-p function)

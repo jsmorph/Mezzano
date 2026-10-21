@@ -43,6 +43,12 @@ The fixture holds the worker at an event after the startup function returns and 
 
 Before kernel integration, the fixture's `:hooks` and `:init-file-loader` arguments can receive compiled functions made from the exact candidate definition bodies.  The installed functions and active boot-worker loop then retain their identities.  Native x86-64 component acceptance used that mode.  A fresh image must test the installed definitions, successful first boot, initial failure, actual restore-hook Continue/Abort, incomplete-state Snapshot inhibition, and subsequent recovery from the saved image.  Those integration and browser tests remain pending.
 
+## Stack-guard collection
+
+Compile/load `test-gc-stack-guard.lisp` with ordinary allocation after the debugger-service fixture, then call `(lispm-gc-stack-guard-test:run)`.  It triggers two stack overflows on one thread with a 128-KiB stack and the supervisor's additional 64-KiB overflow reserve.  Each retained condition must expose the owned ABORT restart.  Minor and major collection must change words on the return-guard page and restore its read-only protection while the guard remains armed.  Abort checks the retained cells during unwinding, once-only cleanup, thread completion and stop/controller release.  A failure retains `*CASE*`.
+
+Native x86-64 QEMU acceptance passed after ordinary publication of SCAN-THREAD at SAFETY 3/DEBUG 1/SPEED 1, with the test at SAFETY 3/DEBUG 3/SPEED 1.  Both overflows retained 370 frames and checked 351 cells and cleanups.  Fresh-image, saved-state and ARM64 tests remain pending.
+
 ## Kernel compilation
 
 The image builder compiles supervisor code with `(safety 3 debug 1 speed 1)`.  The running Lisp compiler defaults to debug level 3 for application inspection.  Live supervisor replacements require the kernel policy and `LOAD` with `:wired T`, which keeps their code and constants resident.
