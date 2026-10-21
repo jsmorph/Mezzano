@@ -1,0 +1,116 @@
+(defpackage #:lispm-foothold-restore-test
+  (:use #:cl)
+  (:local-nicknames (#:s #:mezzano.supervisor)
+                    (#:i #:mezzano.internals)
+                    (#:dc #:mezzano.delimited-continuations))
+  (:export #:prepare #:finish))
+(in-package #:lispm-foothold-restore-test)
+(declaim (optimize (debug 3) (safety 3) (speed 1)))
+
+(defvar *state* nil)
+
+(defun state ()
+  (list (s::thread-inhibit-footholds (s:current-thread))
+        (s::thread-allow-with-footholds (s:current-thread))))
+
+(defun await (predicate)
+  (let ((deadline (+ (get-internal-real-time)
+                     (* 10 internal-time-units-per-second))))
+    (loop until (funcall predicate)
+          do (assert (< (get-internal-real-time) deadline))
+             (s:thread-yield))))
+
+(defun worker (depth row ready go)
+  (unwind-protect
+       (s:without-footholds
+         (let ((outer (dc:make-prompt-tag "Saved foothold outer prompt")))
+           (flet ((capture ()
+                    (s:with-local-footholds
+                      (let ((input (multiple-value-list (dc:abort-to-prompt outer))))
+                        (setf (getf row :body-values) input
+                              (getf row :body-state) (state)
+                              (getf row :body-callbacks) (getf row :callbacks))
+                        (values-list input)))))
+             (dc:call-with-prompt
+              outer
+              (lambda ()
+                (ecase depth
+                  (1 (capture))
+                  (2 (dc:call-with-prompt
+                      (dc:make-prompt-tag "Saved foothold inner prompt")
+                      #'capture
+                      (lambda (&rest args)
+                        (error "Unexpected saved handler ~S" args))))))
+              (lambda (continuation) (setf (getf row :saved) continuation))))
+           (setf (getf row :waiting-state) (state)
+                 (s:event-state ready) t)
+           (s:event-wait go)
+           (setf (getf row :output)
+                 (multiple-value-list (apply (getf row :saved) (getf row :wanted)))
+                 (getf row :resumer-state) (state))
+           row))
+    (setf (getf row :cleanup) (state))))
+
+(defun prepare ()
+  (assert (null *state*))
+  (assert (equal (state) '(0 t)))
+  (setf *state* (list :boot (s:current-boot-id) :cases nil))
+  (dolist (depth '(1 2))
+    (let* ((ready (s:make-event))
+           (go (s:make-event))
+           (row (list :depth depth :saved nil
+                      :wanted (loop for index below 8
+                                    collect (list :saved-moving depth index))
+                      :callbacks 0 :callback-state nil :waiting-state nil
+                      :body-values nil :body-state nil :body-callbacks nil
+                      :output nil :resumer-state nil :cleanup nil))
+           (case (list :row row :thread nil :go go)))
+      (push case (getf *state* :cases))
+      (setf (getf case :thread)
+            (s:make-thread (lambda () (worker depth row ready go))
+                           :name (format nil "Owned saved foothold depth ~D" depth)))
+      (await (lambda () (s:event-state ready)))
+      (assert (equal (getf row :waiting-state) '(1 nil)))
+      (assert (dc:resumable-p (getf row :saved)))
+      (s:establish-thread-foothold
+       (getf case :thread)
+       (lambda ()
+         (incf (getf row :callbacks))
+         (setf (getf row :callback-state) (state))
+         (i::gc :full t)
+         (values :ignored 2 3 4 5 6 7 8)))
+      (assert (zerop (getf row :callbacks)))))
+  :saved-footholds-ready)
+
+(defun finish ()
+  (assert *state*)
+  (assert (not (eq (getf *state* :boot) (s:current-boot-id))))
+  (assert (= (length (getf *state* :cases)) 2))
+  (dolist (case (reverse (getf *state* :cases)))
+    (let* ((row (getf case :row))
+           (thread (getf case :thread))
+           (wanted (getf row :wanted)))
+      (assert (dc:resumable-p (getf row :saved)))
+      (assert (zerop (getf row :callbacks)))
+      (assert (= (length (s::thread-pending-footholds thread)) 1))
+      (assert (= (s::thread-inhibit-footholds thread) 1))
+      (assert (null (s::thread-allow-with-footholds thread)))
+      (setf (s:event-state (getf case :go)) t)
+      (multiple-value-bind (values joined) (s:thread-join thread)
+        (assert joined)
+        (assert (eq (first values) row)))
+      (await (lambda () (eq (s::sample-thread-state thread) :dead)))
+      (assert (= (getf row :callbacks) 1))
+      (assert (= (getf row :body-callbacks) 1))
+      (assert (equal (getf row :callback-state) '(0 t)))
+      (assert (equal (getf row :body-state) '(0 t)))
+      (assert (equal (getf row :resumer-state) '(1 nil)))
+      (assert (equal (getf row :cleanup) '(0 t)))
+      (dolist (values (list (getf row :body-values) (getf row :output)))
+        (assert (= (length values) 8))
+        (assert (every #'eq wanted values)))
+      (format t "PASS restored production footholds, ~D prompts, one callback, eight identities, and moving GC.~%"
+              (getf row :depth))))
+  (assert (equal (state) '(0 t)))
+  (setf *state* nil)
+  :saved-footholds-restored)
