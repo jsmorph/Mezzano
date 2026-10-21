@@ -4,7 +4,7 @@ The Web interface provides a Lisp Listener, debugger, retained evaluations, Peek
 
 ## Installation and access
 
-The guest requires the matching Mezzano core, Jzon, Babel, and Web server sources.  The browser requires JavaScript and sessionStorage.  The shared remote service supplies the same retained sessions and debugger operations to HTTP and SWANK.  The [installation guide](../../../doc/installation.md) covers the guest and JSON dependencies.
+The guest requires the matching Mezzano core, Jzon, Babel, and Web server sources.  The desktop can be disabled through the [image configuration](../../../doc/installation.md#desktop-selection).  The browser requires JavaScript and sessionStorage.  The shared remote service supplies the same retained sessions and debugger operations to HTTP and SWANK.  The [installation guide](../../../doc/installation.md) covers the guest and JSON dependencies.
 
 Load the server from a guest Listener:
 

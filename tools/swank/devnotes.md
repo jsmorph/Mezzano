@@ -8526,3 +8526,23 @@ The inactive parked checkpoint archive passed independent decompression of all 5
 Headless Snapshot helpers are prepared, Python syntax checked, and unexecuted under retry-2/restoration.  After browser handback, require its passed final receipt, the complete native guard, and full potential sparse-image growth plus one GiB and 64 MiB.  Save the boot identity, take the normal Snapshot, stop only the exact candidate service, hash its image, and restart it under a distinct unit.  FINISH requires a different boot, absent desktop packages/systems, the previously loaded background-debugger and Find Frame tests without module reload, a complete empty-state guard, and forty assets.  Run this before loading the optional desktop module.
 
 The two filesystem dependency declarations are ready for a separate commit.  The original EXT4 package failure remains preserved.  The corrected retry completed common startup and then passed retained debugger/HTTP tests.  The larger desktop selection increment remains uncommitted pending browser, headless saved-state, and optional-module testing.
+
+
+### Headless browser acceptance
+
+The bounded Chromium test passed on H1128624/start99960922: arithmetic 42, SPACE completion without submission, inline CERROR/ERROR condition/frames/restarts with typed Proceed 42 and Abort, Document Examiner search/topic/reload, and Peek with twenty process rows.  Ten final captures were reviewed.  The run observed 105 HTTP responses, 103 status 200 and two status 204, with no HTTP/loading/console failures.  Both its owned session and the earlier failed session were released.  The complete native, process/source/protected14 and forty-asset guards passed before and after.
+
+Receipt: retry-2/browser-acceptance/acceptance.json, SHA-256 70a52092edd5508905e06db539ccce507b496e22d2b2ab1355bc5a6fac2dfde8.  The evidence archive has SHA-256 ad811f34c398b1023d4b91f554606a4f2da70fac7e68874d5c65abcf142feaa5, with 69 independently verified payloads.  Executed driver SHA-256 48e77feed089a2d7f45021db6c6573916d8f0d663fbaf2d28a1f41646de1fbb2.  Browser testing made no product changes or guest definitions.
+
+Two fixture failures remain separate.  Its original activity helper clicked #window-label, which Examiner CSS sets to display:none with a zero rectangle.  A recovery draft then assumed that reload selected Examiner, while reload begins in Listener.  Measured recovery through the existing F9 D/P keys proved that Peek navigation and twenty process rows worked.  The corrected fixture uses those documented keys and preserves all assertions.  Before any browser run, its IP URL was also changed to the server's configured minideb2 authority after DNS/source checks.  No product navigation or HTTP authority change was made.
+
+The agent returned guest ownership.  The headless Snapshot coordinator passed the complete native guard and conservative full-image space preflight and is executing.  This browser run covers the bounded component-selection scope.  Full debugger/HTTPS acceptance and changed-boot acceptance have their own evidence.
+
+
+### Headless Snapshot saved; host memory preflight stopped restart
+
+The headless Snapshot passed in 31.61 seconds with the full-image space preflight and one-GiB reserve.  The stopped saved image is 9c2d16a11036fde8848699459c0e2f0f017ea91ed8971b3c50c92766a05fdfc0.  The exact candidate service stopped and its process disappeared.  The restart then rejected 4,558,598,144 available bytes, below the 4.5-GiB requirement.  No new VM started.  The original main world and other preserved processes remain.
+
+The recommendation is to add one GiB of host RAM, retaining the current four-GiB guest and preserved worlds.  This resource question is pending.  No threshold was lowered and no other world was stopped.
+
+Desktop-disabled first boot, native tests, HTTP assets, and bounded Chromium acceptance have passed.  Changed-boot and optional desktop-module tests remain incomplete.  Commit the reviewed component selection and its product documentation with those limits explicit.  Existing source in the saved candidate stays frozen.  Continue independent source/documentation review while waiting for host memory.

@@ -1,6 +1,6 @@
 # Installation and operation
 
-This guide builds the remote-development image and runs it under x86-64 QEMU with KVM on Linux.  The example allocates two virtual CPUs and 4 GiB of memory.  Two GiB boots the core, but loading the Web and HTTPS libraries can force paging during copying collection.  QEMU hides its display, while the guest still initializes its desktop.  Remote access uses SWANK and the optional Web interface.
+This guide builds the remote-development image and runs it under x86-64 QEMU with KVM on Linux.  The example allocates two virtual CPUs and 4 GiB of memory.  Two GiB boots the core, but loading the Web and HTTPS libraries can force paging during copying collection.  The desktop starts by default and can be disabled for remote use.  QEMU hides its display.  The current boot path requires a firmware framebuffer in both configurations.  Remote access uses SWANK and the optional Web interface.
 
 ## Requirements
 
@@ -54,10 +54,19 @@ The guest reads source and dependency files through the host file server.  Edit 
 (defparameter *file-server-host-ip* "10.0.2.2")
 (defparameter *home-directory-path* "REMOTE:/srv/mezzano-build/home/")
 (defparameter *mezzano-source-path* "REMOTE:/srv/mezzano-build/Mezzano/")
+(defparameter *desktop-enabled* t)
 (setf *compile-parallel* t)
 ```
 
 `10.0.2.2` is the host address visible through QEMU's default user network.  The REMOTE directories refer to host files.  They must match the paths the file server can read.
+
+### Desktop selection
+
+`MEZZANO.INTERNALS::*DESKTOP-ENABLED*` defaults to T.  Setting it to NIL in the image configuration omits the optional desktop startup module.  Common startup loads filesystems, ASDF, Jzon, SWANK, and disassembly support.  The omitted module contains sound, graphics/media libraries, GUI packages, desktop fonts/icons, GUI applications, USB drivers, and the desktop.  An initialization file can start the native HTTP service in either configuration.
+
+The core retains its framebuffer support and debug-font data.  The current firmware boot path requires a framebuffer, so QEMU still uses `-vga std -display none` when desktop startup is disabled.  USB startup currently belongs to the optional desktop module because its combined class-driver initialization includes GUI-dependent HID probes.  Disk and network devices initialized by the core remain available.
+
+Configuration changes affect newly built images.  A saved world retains its loaded components and startup configuration.  The common initialization file still runs after the selected startup completes.  GUI-dependent initialization code requires the desktop.
 
 ## Build an image
 

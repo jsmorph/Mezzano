@@ -25,6 +25,14 @@ Live publication must load the matching SWANK contrib after a core service chang
 
 The instruction-position and saved-register tests target x86-64.  Compiler tests select the policies they exercise.  The default running compiler policy is `(safety 3 debug 3 speed 1)` and the image bootstrap policy is `(safety 3 debug 1 speed 1)`.  These tests do not establish ARM64, bare-metal, supervisor-trap, or arbitrary-suspension support.
 
+## Desktop-disabled startup
+
+A desktop-disabled startup test uses a newly built image with `MEZZANO.INTERNALS::*DESKTOP-ENABLED*` NIL and a private source/dependency tree.  QEMU retains `-vga std -display none` because the core boot path requires a framebuffer.  After startup, check the global startup debugger value, the configuration flag, absence of the desktop variable and GUI/compositor packages, absence of loaded sound/media/USB systems, process enumeration, and arithmetic.
+
+Compile and load `test-debugger-service.lisp` with ordinary allocation.  Loading it runs its background debugger tests.  Compile and load `test-find-frame.lisp`, then call `LISPM-FIND-FRAME-TEST:RUN`.  Load the native HTTP service and test the Listener, command completion, typed Proceed/Abort, documentation topic/reload, and nonempty Peek rows in Chromium.  Repeat the native checks after normal Snapshot/restart without reloading the test modules.
+
+The recorded x86-64 test passed desktop-disabled first boot, the native tests, forty HTTP asset responses, and that bounded browser scope.  Its Snapshot completed, but restart stopped at the host memory preflight.  Changed-boot acceptance, optional desktop-module initialization, a fresh default-desktop first boot, framebuffer-free boot, and ARM64 execution remain untested for this change.  The [development journal](devnotes.md#headless-browser-acceptance) preserves the evidence and fixture failures.
+
 ## Kernel compilation
 
 The image builder compiles supervisor code with `(safety 3 debug 1 speed 1)`.  The running Lisp compiler defaults to debug level 3 for application inspection.  Live supervisor replacements require the kernel policy and `LOAD` with `:wired T`, which keeps their code and constants resident.
