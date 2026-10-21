@@ -179,7 +179,7 @@ TIMEOUT is a positive real duration in seconds, defaulting to 60.  Its cancellat
 
 TLS client construction installs socket cancellation and failure cleanup before context, trust-store, or client-credential initialization.  It inherits the caller's cancellation context when no explicit context is supplied.  CA loading checks cancellation between certificates.  A request that disables verification does not initialize the default CA store.  The default context retains its verification-required policy and loads roots when a later request requires them.
 
-Cancellation checks occur at library boundaries.  CPU-bound certificate verification can continue after the socket closes, so TIMEOUT does not guarantee that the Lisp call returns within that duration.  Cancellation also does not establish whether the remote service processed a request.
+Cancellation checks occur at library boundaries.  CPU-bound certificate verification can continue after the socket closes, so TIMEOUT does not guarantee that the Lisp call returns within that duration.  Stop-the-world garbage collection also delays the caller and deadline threads.  A cold x86-64 QEMU test measured 5.45–5.51-second GC pauses during 0.1-second cancellation requests.  Constructors without collection returned in 0.11–0.12 seconds in that repeated test.  These observations do not establish a wall-time bound.  Cancellation also does not establish whether the remote service processed a request.
 
 An HTTP status other than 200 signals LISPM-OPENAI:HTTP-ERROR.  Its readers are:
 

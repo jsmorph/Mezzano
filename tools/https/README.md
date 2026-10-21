@@ -169,7 +169,7 @@ The cancellation test requires the edited cl-cancel and pure-tls sources.  It te
     (load "SYS:SOURCE;TOOLS;HTTPS;TEST-CANCELLATION.LISP")
     (lispm-cancellation-test:run)
 
-For SBCL, load tools/https/test-cancellation.lisp and call the same function.  The tests passed under SBCL on Linux for early cleanup, close failures, blocked input, blocked handshake, monitor cleanup, clock continuity, and fractional deadlines.  Timing assertions check both elapsed-time bounds.  Durations cover rational, single-float, and double-float values.  The same tests passed in the x86-64 guest.  They also exercise USOCKET's assigned listener port.
+For SBCL, load tools/https/test-cancellation.lisp and call the same function.  Earlier tests passed under SBCL on Linux for early cleanup, close failures, blocked input, blocked handshake, monitor cleanup, clock continuity, and fractional deadlines.  The collection-aware timing revision passed in Mezzano and remains untested under SBCL.  Timing assertions reject early wall-clock expiration.  Their three-second upper bound subtracts measured Mezzano stop-the-world GC time and retains the full wall-time bound on other implementations.  Each timing check reports wall and GC seconds.  A forced full-GC case checks deadline expiration across collection.  Durations cover rational, single-float, and double-float values.  The revised suite passed in the x86-64 guest.  It also exercises USOCKET's assigned listener port.
 
 ## Guest source preparation
 

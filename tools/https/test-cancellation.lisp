@@ -22,8 +22,18 @@
       (when server (close (usocket:socket-stream server) :abort t))
       (usocket:socket-close listener))))
 
+(defun gc-time ()
+  #+mezzano mezzano.internals::*gc-time*
+  #-mezzano 0)
+
+(defun check-elapsed-time (elapsed gc minimum)
+  (format t "Cancellation elapsed ~S seconds, including ~S seconds of GC.~%" elapsed gc)
+  (assert (and (<= minimum elapsed) (<= (- elapsed gc) 3)) ()
+          "Cancellation elapsed ~S seconds, including ~S seconds of GC." elapsed gc))
+
 (defun timed-cancellation (function &optional (condition-type 'error))
-  (let ((start (get-internal-real-time)))
+  (let ((start (get-internal-real-time))
+        (gc (gc-time)))
     (cl-cancel:with-timeout-context (context 0.1)
       (assert
        (handler-case (progn (funcall function context) nil)
@@ -34,7 +44,7 @@
                    () "Unexpected failure before deadline: ~A" condition)
            t))))
     (let ((elapsed (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
-      (assert (<= 9/100 elapsed 3) () "Deadline fired after ~S seconds." elapsed))))
+      (check-elapsed-time elapsed (- (gc-time) gc) 9/100))))
 
 (defclass failing-close-stream (trivial-gray-streams:fundamental-binary-input-stream)
   ((attempted :initform nil :accessor attempted)))
@@ -54,6 +64,7 @@
              (sleep 0.005)))
   (dolist (duration '(1/4 0.25 0.25d0))
     (let ((start (get-internal-real-time))
+          (gc (gc-time))
           (before (cl-cancel:get-current-time)))
       (cl-cancel:with-timeout-context (context duration)
         (let ((deadline (cl-cancel:deadline context))
@@ -65,8 +76,22 @@
         (cl-cancel:wait-until-done context 3)
         (assert (typep (cl-cancel:err context) 'cl-cancel:deadline-exceeded)))
       (let ((elapsed (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
-        (assert (<= 6/25 elapsed 3) ()
-                "Timeout ~S fired after ~S seconds." duration elapsed)))))
+        (check-elapsed-time elapsed (- (gc-time) gc) 6/25)))))
+
+(defun collection-cancellation-test ()
+  (dolist (elapsed '(0 4))
+    (assert (handler-case
+                (progn (check-elapsed-time elapsed 0 9/100) nil)
+              (error () t))))
+  #+mezzano
+  (let ((cycles mezzano.internals::*gc-major-cycles*))
+    (timed-cancellation
+     (lambda (context)
+       (mezzano.internals::gc :full t)
+       (cl-cancel:wait-until-done context 3)
+       (pure-tls::check-tls-context context))
+     'pure-tls::tls-deadline-exceeded)
+    (assert (< cycles mezzano.internals::*gc-major-cycles*))))
 
 (defun tls-initialization-tests ()
   (let ((pure-tls::*default-tls-context* nil))
@@ -138,6 +163,7 @@
 
 (defun run ()
   (deadline-tests)
+  (collection-cancellation-test)
   (let ((baseline (monitors)))
     (tls-initialization-tests)
     (tls-client-ownership-tests)
