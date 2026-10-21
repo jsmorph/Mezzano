@@ -31,7 +31,7 @@ A desktop-disabled startup test uses a newly built image with `MEZZANO.INTERNALS
 
 Compile and load `test-debugger-service.lisp` with ordinary allocation.  Loading it runs its background debugger tests.  Compile and load `test-find-frame.lisp`, then call `LISPM-FIND-FRAME-TEST:RUN`.  Load the native HTTP service and test the Listener, command completion, typed Proceed/Abort, documentation topic/reload, and nonempty Peek rows in Chromium.  Repeat the native checks after normal Snapshot/restart without reloading the test modules.
 
-The recorded x86-64 test passed desktop-disabled first boot, the native tests, forty HTTP asset responses, and that bounded browser scope.  Its Snapshot completed, but restart stopped at the host memory preflight.  Changed-boot acceptance, optional desktop-module initialization, a fresh default-desktop first boot, framebuffer-free boot, and ARM64 execution remain untested for this change.  The [development journal](devnotes.md#headless-browser-acceptance) preserves the evidence and fixture failures.
+The recorded x86-64 test passed desktop-disabled first boot, native tests, forty HTTP asset responses, and that bounded browser scope.  Normal Snapshot/restart and the native tests passed without fixture reload.  Browser tests after restart, optional desktop-module initialization, a fresh default-desktop first boot, framebuffer-free boot, and ARM64 execution require separate acceptance.  The [development journal](devnotes.md#headless-browser-acceptance) preserves the evidence and fixture failures.
 
 ## Kernel compilation
 
