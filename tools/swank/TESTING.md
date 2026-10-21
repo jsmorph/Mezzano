@@ -33,6 +33,16 @@ Compile and load `test-debugger-service.lisp` with ordinary allocation.  Loading
 
 The recorded x86-64 test passed desktop-disabled first boot, native tests, forty HTTP asset responses, and that bounded browser scope.  Normal Snapshot/restart and the native tests passed without fixture reload.  The same bounded Chromium scope passed after restart.  The optional desktop module initialized in that image and passed Snapshot/restart, package/thread/asset checks, and the existing native debugger tests.  Its first coordinator used an incorrect USB package name.  The preserved failed result and corrected postcondition tests have separate receipts.  Desktop dependency compilation emitted library style warnings and three optimizer-limit warnings.  Fresh default-desktop first boot, desktop rendering/application behavior, framebuffer-free boot, and ARM64 execution require separate acceptance.  The [development journal](devnotes.md#headless-browser-acceptance) preserves the evidence and fixture failures.
 
+## Startup recovery
+
+Compile/load `system/startup.lisp` and `test-startup-recovery.lisp` with ordinary allocation after the debugger-service fixture, rejecting warnings/failure.  The test's init-file argument is a writable source pathname containing `(lispm-startup-recovery-test::checkpoint)`.  Call `(lispm-startup-recovery-test:run :init-file pathname)` on a dedicated guest.
+
+The ten retained-stop cases cover initialization, the init file, and early/ordinary/late hooks, each with Continue and Abort.  They check condition text, the checkpoint frame, the startup ABORT report, two restart values, exact effects, complete/incomplete status, one cleanup and release.  One parked stop undergoes full GC.  Two additional cases check return/Abort with the caller's Snapshot inhibition.  The target and coordinator use DEBUG 3/SAFETY 3/SPEED 1.
+
+The fixture holds the worker at an event after the startup function returns and before test cleanup.  At each boundary it waits for the aggregate Snapshot count to equal the count owned by the test.  A lower count fails at once.  A persistent excess reaches the bounded test deadline.  Other device/file operations can contribute temporary counts.  The fixture restores the original hook-list identities under the existing mutex, preserves the production startup status through per-thread binding, and releases its own inhibition after checking Abort retention.  A failure retains `*CASE*` and its stops for inspection.
+
+Before kernel integration, the fixture's `:hooks` and `:init-file-loader` arguments can receive compiled functions made from the exact candidate definition bodies.  The installed functions and active boot-worker loop then retain their identities.  Native x86-64 component acceptance used that mode.  A fresh image must test the installed definitions, successful first boot, initial failure, actual restore-hook Continue/Abort, incomplete-state Snapshot inhibition, and subsequent recovery from the saved image.  Those integration and browser tests remain pending.
+
 ## Kernel compilation
 
 The image builder compiles supervisor code with `(safety 3 debug 1 speed 1)`.  The running Lisp compiler defaults to debug level 3 for application inspection.  Live supervisor replacements require the kernel policy and `LOAD` with `:wired T`, which keeps their code and constants resident.

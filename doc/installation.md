@@ -68,6 +68,10 @@ The core retains its framebuffer support and debug-font data.  The current firmw
 
 Configuration changes affect newly built images.  A saved world retains its loaded components and startup configuration.  The common initialization file still runs after the selected startup completes.  GUI-dependent initialization code requires the desktop.
 
+### Startup recovery
+
+After SWANK starts, warm initialization uses the retained debugger.  An initialization-file error or restored boot-hook error stops its thread with the applicable Common Lisp restarts.  Abort ends that startup sequence and records incomplete startup.  Snapshot remains inhibited after incomplete startup.  Earlier failures use serial/GDB recovery.  The [startup recovery reference](debugger.md#startup-failures) describes status and recovery.  Installing this policy requires rebuilding the image.
+
 ## Build an image
 
 Run these commands from the build directory.  Use an output name belonging to a stopped VM.  Builds share the generated target cache and must run sequentially.
@@ -139,6 +143,8 @@ A SWANK query from the Mezzano checkout checks that remote evaluation is ready:
 sbcl --script tools/swank/lispm-eval --host 127.0.0.1 --port 4005 \
   --timeout 30 '(lisp-implementation-version)'
 ```
+
+The returned version confirms SWANK access.  `(mezzano.internals::startup-status)` reports initialization progress.
 
 The included Lisp clients connect directly to SWANK without a shared-secret handshake.  Their endpoint must accept that protocol.  SWANK access grants Lisp evaluation in the guest.  The QEMU example exposes it only on host loopback.
 

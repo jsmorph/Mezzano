@@ -132,6 +132,28 @@ Make sure there is a virtio-net NIC attached.~%")
 (require :split-sequence)
 (require :com.inuoe.jzon)
 
+(defvar sys.int::*init-file-path* "SYS:HOME;INIT.LISP")
+
+(defun sys.int::load-init-file ()
+  (when (and (boundp 'sys.int::*init-file-path*)
+             sys.int::*init-file-path*)
+    (load sys.int::*init-file-path*)))
+
+(defun finish-initialization ()
+  (sys.int::cal "sys:source;file;ext4.lisp")
+  (sys.int::cal "sys:source;file;http.lisp")
+  (sys.int::cal "sys:source;net;http-demo.lisp")
+  (sys.int::cal "sys:source;system;disassemble.lisp")
+  (sys.int::cal "sys:source;system;disassemble-x86-64.lisp")
+  (sys.int::cal "sys:source;system;disassemble-arm64.lisp")
+  (sys.int::cal "sys:source;system;lldb.lisp")
+
+  (when *desktop-enabled*
+    (sys.int::cal "sys:source;ipl-desktop.lisp"))
+
+  (mezzano.supervisor:add-boot-hook 'sys.int::load-init-file :late)
+  (sys.int::load-init-file))
+
 ;; Swank doesn't really support logical pathname shenanigans.
 
 (load (merge-pathnames (make-pathname :directory '(:relative "slime") :name "swank-loader" :type "lisp")
@@ -139,36 +161,10 @@ Make sure there is a virtio-net NIC attached.~%")
 (eval (read-from-string "(swank-loader::init)"))
 (eval (read-from-string "(swank:create-server :style :spawn :dont-close t :interface \"0.0.0.0\")"))
 
-;; Other stuff.
-(sys.int::cal "sys:source;file;ext4.lisp")
-(sys.int::cal "sys:source;file;http.lisp")
-(sys.int::cal "sys:source;net;http-demo.lisp")
-(sys.int::cal "sys:source;system;disassemble.lisp")
-(sys.int::cal "sys:source;system;disassemble-x86-64.lisp")
-(sys.int::cal "sys:source;system;disassemble-arm64.lisp")
-(sys.int::cal "sys:source;system;lldb.lisp")
-
-(when *desktop-enabled*
-  (sys.int::cal "sys:source;ipl-desktop.lisp"))
-
-(defvar sys.int::*init-file-path* "SYS:HOME;INIT.LISP")
-
-(defun sys.int::load-init-file ()
-  (when (and (boundp 'sys.int::*init-file-path*)
-             sys.int::*init-file-path*)
-    (handler-case (load sys.int::*init-file-path*)
-      (error (c)
-        (format t "Unable to load init file ~S: ~A.~%"
-                sys.int::*init-file-path*
-                c)))))
-
-(mezzano.supervisor:add-boot-hook 'sys.int::load-init-file :late)
-(sys.int::load-init-file)
-
-;; Ditch the debugger hook that was established earlier.
 (setf mezzano.debug:*global-debugger* nil)
 
-(when (mezzano.supervisor:running-in-ci-p)
+(when (and (call-with-startup-sequence :initialization #'finish-initialization)
+           (mezzano.supervisor:running-in-ci-p))
   (mezzano.supervisor:debug-print-line "****")
   (mezzano.supervisor:debug-print-line "CI build completed successfully!")
   (mezzano.supervisor:ci-exit))

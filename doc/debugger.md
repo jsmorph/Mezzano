@@ -727,4 +727,23 @@ The API provides the four breakpoint management operations and limited native in
 
 WITH-MUTEX masks foothold delivery during ownership transitions and cleanup, restores the caller's delivery state for the body, and releases a newly acquired mutex on unwinding.  A recursive-lock error preserves ownership established before WITH-MUTEX.  Direct ACQUIRE-MUTEX calls require caller-managed cleanup.
 
-Condition entry requires the explicit wrapper or a retained evaluation job.  The service does not install a system-wide condition policy or provide startup-failure handling.  The Web interface displays the remote service's conditions, frames, locals, and restart choices.
+Condition entry uses an explicit wrapper, a retained evaluation job, or the startup sequence described below.  The Web interface displays the remote service's conditions, frames, locals, and restart choices.
+
+### Startup failures
+
+Once SWANK starts, the remaining warm initialization runs through the retained debugger service.  The initialization file and early, ordinary, and late restore hooks propagate errors.  A condition retains its thread, stack, and applicable Common Lisp restarts.  Continue or another supplied restart resumes the operation according to that restart's behavior.  The startup boundary adds an ABORT restart that ends the sequence and leaves completed effects in memory.  It records incomplete startup and keeps Snapshot inhibited.  Startup performs each earlier operation once, unless an invoked restart repeats that operation.
+
+The internal function `(mezzano.internals::startup-status)` returns a copy of the current status property list:
+
+| Field | Value |
+|---|---|
+| `:kind` | `:initialization` or `:restore` |
+| `:boot-id` | The boot identity that started the sequence |
+| `:thread` | The startup thread |
+| `:state` | `:running`, `:complete`, or `:incomplete` |
+
+Status is NIL before the first remote startup sequence.  Completion requires the startup function and debugger cleanup to return.  A nonlocal exit records incomplete startup.  Successful warm initialization releases its Snapshot inhibition.  Successful restore hooks release the boot worker's existing inhibition.  Abort preserves that inhibition, so a partially initialized world cannot replace its saved image.
+
+SWANK can discover the retained stop.  A running Web server can display it through Peek.  HTTP availability depends on how far startup progressed.  After Abort, restarting the previous saved image runs startup from that image's saved state.  Host source edits and external effects have their own persistence.  Failures before SWANK is available retain serial/GDB recovery.
+
+Native x86-64 component tests passed initialization, init-file and all three hook phases with Continue and Abort, multiple restart values, once-only effects, full GC, cleanup, and Snapshot accounting.  The restore helper's use of the caller's inhibition also passed.  Fresh-image, actual boot-worker restoration, and startup-stop browser integration remain pending.

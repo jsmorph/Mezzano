@@ -168,6 +168,7 @@
     "system/command-processor.lisp"
     "system/document-examiner.lisp"
     "system/remote-service.lisp"
+    "system/startup.lisp"
     "system/ansi-loop.lisp"
     "system/environment.lisp"
     "compiler/compiler.lisp"

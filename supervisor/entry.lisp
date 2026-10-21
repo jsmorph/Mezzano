@@ -88,17 +88,14 @@
 
 (defun run-boot-hooks ()
   (dolist (hook *early-boot-hooks*)
-    (sys.int::log-and-ignore-errors
-      (format t "Run early boot hook ~A~%" hook)
-      (funcall hook)))
+    (format t "Run early boot hook ~A~%" hook)
+    (funcall hook))
   (dolist (hook *boot-hooks*)
-    (sys.int::log-and-ignore-errors
-      (format t "Run boot hook ~A~%" hook)
-      (funcall hook)))
+    (format t "Run boot hook ~A~%" hook)
+    (funcall hook))
   (dolist (hook *late-boot-hooks*)
-    (sys.int::log-and-ignore-errors
-      (format t "Run late boot hook ~A~%" hook)
-      (funcall hook))))
+    (format t "Run late boot hook ~A~%" hook)
+    (funcall hook)))
 
 (sys.int::defglobal *boot-id*)
 
@@ -114,24 +111,30 @@
 
 (sys.int::defglobal *post-boot-worker-thread*)
 
+(defun run-post-boot-actions ()
+  (dolist (action *deferred-boot-actions*)
+    (funcall action))
+  (makunbound '*deferred-boot-actions*)
+  (run-boot-hooks))
+
 (defun post-boot-worker ()
   (loop
-     ;; Run deferred boot actions first.
-     (dolist (action *deferred-boot-actions*)
-       (funcall action))
-     (makunbound '*deferred-boot-actions*)
-     ;; Now normal boot hooks.
-     (run-boot-hooks)
-     ;; Sleep til next boot.
-     (%run-on-wired-stack-without-interrupts (sp fp)
-      (let ((self (current-thread)))
-        ;; *SNAPSHOT-INHIBIT* is set to 1 during boot, decrement it
-        ;; and enable snapshotting now that all boot work has been done.
-        (sys.int::%atomic-fixnum-add-symbol '*snapshot-inhibit* -1)
-        (acquire-global-thread-lock)
-        (setf (thread-wait-item self) "Next boot"
-              (thread-state self) :sleeping)
-        (%reschedule-via-wired-stack sp fp)))))
+     (let* ((status (when (fboundp 'sys.int::startup-status)
+                      (sys.int::startup-status)))
+            (completed
+              (if (and status
+                       (not (eq (getf status :boot-id) (current-boot-id))))
+                  (sys.int::call-with-startup-sequence
+                   :restore #'run-post-boot-actions :inhibit-snapshot nil)
+                  (progn (run-post-boot-actions) t))))
+       (%run-on-wired-stack-without-interrupts (sp fp)
+        (let ((self (current-thread)))
+          (when completed
+            (sys.int::%atomic-fixnum-add-symbol '*snapshot-inhibit* -1))
+          (acquire-global-thread-lock)
+          (setf (thread-wait-item self) "Next boot"
+                (thread-state self) :sleeping)
+          (%reschedule-via-wired-stack sp fp))))))
 
 (defun sys.int::bootloader-entry-point (boot-information-page)
   (let ((first-run-p nil))
