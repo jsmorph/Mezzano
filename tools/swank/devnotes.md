@@ -7909,3 +7909,38 @@ Seventeen of nineteen native phases have passed on the fresh ca303127 x86-64 wor
 | ordinary-stepping | 1037.09 | d915475d8879b26aea543d5601d9ff1a7dc366286d29942513d2aa42e075453d |
 
 Logical-instruction and integer-body matrices remain in progress or pending.  The complete Web/HTTPS load and tests, three restorations, and nine Chromium suites remain required.  Find Frame source preparation remains uncompiled in the guest.
+
+
+### Find Frame: narrow test source validation
+
+The prepared driver now checks the Detailed pane at width 360: compiled-code-result class, WHITE-SPACE PRE, horizontal overflow AUTO, unchanged disassembly text, one layout rectangle for the longest line, positive overflow, and text movement matching the horizontal scroll offset without changing line width.  It records these measurements and saves detailed-frame-narrow-scrolled.png, then restores the original viewport before continuing.  Node 24 syntax checking passed for the complete driver and its generated browser expression.  Prepared SHA-256: 2328e750ffba43e56fbe9955214ee05b9c0e8278e3120ecf2dffe0fd0b5b8520.  The prior 8749a2e6 preparation remains historical.
+
+No guest, HTTP, or browser request ran.  Narrow-screen behavior and the screenshot remain untested until exclusive runtime authorization.  No dependency, frozen D artifact, or feature commit changed.
+
+
+### Find Frame mouse entry
+
+The standalone/Listener Debugger menu already prefills commands requiring an argument and requests guest assistance.  Find Frame was absent from that list in the untested source preparation.  Reviewed recommendation: include it in the existing prefill loop, so mouse selection inserts :Find Frame followed by a space in the active debugger editor.  Keep parsing and execution in guest Lisp.  Extend the prepared browser test to use this entry and verify its editor, focus, and successful search after runtime authorization.  This adds no new input flow or dependency.
+
+
+### Find Frame: menu test preparation
+
+Reviewed the guest string-argument metadata, Boolean defaults, command plan, and existing prefill action.  Recommendation: replace the current standalone reverse-search step with a default forward search entered through the actual Find Frame menu button.  Check that the standalone editor receives the exact prefix, retains focus, and displays guest string assistance while the Listener draft and next command ID remain unchanged.  Insert the existing fixture name into that prefix, submit it, and reuse the common result assertions.  The expected selection moves from the second recursive activation to the third.  Earlier cases retain reverse coverage.  This avoids another fixture or search cycle.
+
+
+### Find Frame: menu test source validation
+
+Prepared SHA-256: 2bd33f2f0623a0fd3535c8a8f84252ed2179beb1a78e845935883551f351db92.  The previous 2328e750 preparation and hash remain historical.  The standalone case now clicks the actual Find Frame menu control.  It checks the exact editor prefix, focus, guest string-argument assistance, unchanged Listener draft and command ID, appended fixture name, ordinary Boolean defaults, third-activation selection, and cleared editor after submission.  It reuses the existing search-result assertions and fixture.
+
+Node 24 syntax checking passed for the complete driver, generated menu expressions, generated narrow-code expression, and twenty-three literal browser expressions.  These were host parsing checks.  No guest, HTTP, or browser request ran.  The menu result, screenshot, and other UI behavior remain untested.  No frozen D artifact, dependency, or feature commit changed.
+
+
+### Queued-step test guide correction
+
+The test guide still said that PREPARE-QUEUED supported only zero prompts and that two-prompt restoration was untested.  The implementation accepts zero or two.  Existing native acceptance receipt queued-pager-two-prompts-20261019/result.json, SHA-256 4465d8bc4471f22541f1383f650332c991f84a68fbc433c2000332c4471f734d, records successful completion after restart.  Recovered job information and output independently retain the original RETURNED/T result and PASS line.  The first HTTP polling request returned 408.  No completion was reexecuted.
+
+The evidence audit verified 38 of the receipt's 39 payload hashes.  The original restored.pid file is absent.  No replacement was created.  queued-step-guide-audit-20261020.json records this limitation.  The first audit stopped at that missing file before changing any documentation.
+
+Reviewed recommendation: correct the stale invocation and tested-scope paragraphs to match the implementation, debugger reference, and existing completion evidence.  Preserve the polling failure beside native success.  This corrects historical scope and adds no result for the current cold candidate.  Re-read and compare both paragraphs before committing this documentation-only increment.
+
+Cold logical stepping passed 148 cases at zero/two prompts in 593.84 seconds on ca303127 without live core publication.  Log SHA-256: 2a86da93cc599a8c5fa54f6a75f445ac4f04dda8204d7259602b5358c28d3188.  Eighteen of nineteen native phases are complete.  The full-body integer matrix is running; Web/HTTPS, restoration, and browser acceptance remain required.
