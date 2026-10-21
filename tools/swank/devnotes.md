@@ -7868,3 +7868,44 @@ All eleven cold breakpoint/stepping suites passed in 510.64 seconds, including t
 All 39 isolated host transport tests passed in 2.30 seconds, including the new Find Frame conversion test.  Receipt: `find-frame-20261020/host-transport-result.json`; log SHA-256 f07bb3e4a5ed25134f309bd61fcded99be74c9257d771541a37305a33b07defe.  These tests use fake peers and HTTP servers and sent no guest or OpenAI request.  Commit only this tested optional host conversion and its tests.  The Lisp Find Frame implementation and Chromium preparation remain uncommitted and unsupported pending runtime acceptance.
 
 The disabled cold browser preparation was refreshed after the exact continuation-provenance assertion correction.  Its earlier 42 files and original hashes remain preserved.  All 19 current driver hashes validate against native-plan SHA-256 d89a8926022ac7142946560616bfff3a29875729541eedb8ebf6b116d10b8e55.  The archived first assertion failure and owned-stop cleanup were reviewed.  New preparation SHA-256: 8f9dfad4eff8ceb9ec2d785a2b47a3cf6c1a9a16cf167899695d120f915dcbef.  All nine suites remain disabled.
+
+Restoration launch review added the initial cold launch receipt to every later restart's owned-process check, alongside all previous restoration receipts.  It also repeats the established 4.5 GiB available-memory check after stopping the owned current VM and before starting its replacement.  Earlier prepared scripts/plan are preserved, Python syntax and all 14 updated file hashes passed, and no restoration has run.  These host guards do not change guest test scope or behavior.
+
+Find Frame name review: FRAME-FUNCTION returns the associated callable first and the executing code object second.  Backtrace and frame display use the associated callable, which can be a generic function recovered from its discriminator frame.  Revise the search to use that same associated callable's name, preserving named generic functions in the search that users see.  This reads the live frame rather than a global function definition or an address-bearing printed function.  Symbol names use SYMBOL-NAME.  Compound names use their printed representation with circle detection and without level/length truncation.  Search and printing remain outside the service lock.  The ordinary old-definition test remains required, and generic-discriminator behavior requires a native case before acceptance.
+
+Reuse the maintained `test-generic-frames.lisp` suite for generic-name search acceptance.  Its real single-dispatch, wide-argument, reader, and writer cases already require a retained frame associated with the exact generic object and test cached dispatch, active global redefinition, and moving GC.  Add a bounded sequence of Find Frame commands that must reach that existing associated-frame index, both before and during redefinition, preserving history.  This tests the generic/discriminator distinction with normal CLOS execution.
+
+### Ordinary-body stepping progress observation
+
+The ordinary-body phase driver only invokes its maintained RUN function.  Its initial branch/frame/epilogue cases print no progress, so the log remained empty during that part of execution.  A separate 12-second read-only raw SWANK metadata probe received no reply before its deadline and closed its own connection.  This observation does not establish a test failure.
+
+A read-only GDB sample showed one CPU in REALLY-TRANSPORT-OBJECT under GC-MAJOR-CYCLE/GC-WORKER, the other idle, and the owned evaluation waiting in its explicit full GC inside BRANCH-CASE.  The collector had started collection 831.  The diagnostic's later raw frame walk raised OverflowError while interpreting a frame return address.  Its finally clause detached, as the log confirms.  A narrowed counter probe initially requested a service variable absent from the cold cross-build symbol table and raised KeyError, again detaching.  These were diagnostic-script failures.  Preserve both logs.
+
+After removing that non-cold variable and validating all requested symbol names against the table before attachment, the narrowed probe completed and detached.  It observed collection 853 with completed epoch 852, cumulative copy counters, and both scan fingers below their respective allocation bumps.  This establishes completed collections between the samples.  No guest memory/register, test, or deadline change was made.  Evidence and hashes: `cold-runtime-corrections-20261020/ordinary-observation/`.
+
+### Find Frame fixture and display review
+
+Native Find Frame fixture review bounded the four expected forward matches and the following miss, and corrected Proceed's expected terminal state to UNWOUND using submission/completion helpers.  The ordinary command helper requires RETURNED and therefore cannot test a transferring Proceed.  Both corrections precede guest compilation or execution.
+
+The native search fixture now seeds all nine history values with distinct cons objects through three dynamic evaluations, then compares each saved value by EQ after searches, misses, detailed output, replay, and child Abort.  This tests identity preservation rather than equal printed contents or initially empty histories.  Successful completion also requires the owned thread to reach DEAD after its expected values and cleanup.  The generic-search helper uses the same identity comparison.
+
+The generic-name source review also found that FUNCTION-NAME delegates funcallable instances to FUNCALLABLE-INSTANCE-LAMBDA-EXPRESSION, whose default method returns no name.  Resolve generic functions through the existing SAFE-GENERIC-FUNCTION-NAME accessor, as the maintained generic-frame test does.  Keep the existing function-reference name path and ordinary FUNCTION-NAME path for other callables.  This implements the associated-callable recommendation using the available metadata.
+
+Detailed frame code must retain disassembly columns on a narrow screen.  Reuse the existing compiled-code-result class for the new frame-code element; the generic PRE style wraps lines.  The existing code class supplies white-space PRE and horizontal overflow.  Add a narrow-viewport check to the prepared browser driver rather than adding another CSS rule.
+
+
+### Find Frame: narrow browser code test preparation
+
+Reviewed the Detailed code element and the existing compiled-code-result CSS.  Recommendation: extend the prepared Detailed case at a 360-pixel viewport.  Check the PRE and horizontal-overflow styles, a single layout rectangle for the longest nonempty source line, overflow beyond the pane width, and successful horizontal movement with unchanged text.  Save the narrow scrolled display, then restore the previous viewport and continue the retained-result test.  This uses the existing CDP/browser support and adds no dependency or CSS rule.  The reviewed driver SHA-256 8749a2e6cd0f0b6fcbcd9b5116009c90db4f88feef26b3cae0d58631b19a2abb remains historical.  Only host syntax checking is authorized for this increment.
+
+### Cold instruction matrices
+
+Seventeen of nineteen native phases have passed on the fresh ca303127 x86-64 world without live core publication.  The integer phase passed 100 operand/flag cases and six compiled argument-count checks at zero/two prompts.  The network phase passed its TCP flow, deadline, half-close, and cleanup tests.  Ordinary stepping passed partial/full frames, arithmetic flags, compiled entries, epilogues, and all sixteen conditional jumps with taken/fallthrough, short/near encodings, moving GC, replay, values, and cleanup at zero/two prompts.
+
+| Phase | Seconds | Log SHA-256 |
+|---|---:|---|
+| integer-stepping | 475.54 | b8bab365e6038b5df7139844c899ff37c812917173a8a9c3fc462031788a95cc |
+| network | 21.34 | d9516530974bd22c3d0156831cae66aed3d2e63abba54be5ba8de4e5e66afe76 |
+| ordinary-stepping | 1037.09 | d915475d8879b26aea543d5601d9ff1a7dc366286d29942513d2aa42e075453d |
+
+Logical-instruction and integer-body matrices remain in progress or pending.  The complete Web/HTTPS load and tests, three restorations, and nine Chromium suites remain required.  Find Frame source preparation remains uncompiled in the guest.
