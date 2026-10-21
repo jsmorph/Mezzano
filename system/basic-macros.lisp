@@ -459,7 +459,7 @@
      (declaim (special ,name))
      ,@(when initial-valuep
          `((unless (boundp ',name)
-             (setq ,name ,initial-value))))
+             (setf (symbol-value ',name) ,initial-value))))
      ,@(when docstringp
          `((set-variable-docstring ',name ',docstring)))
      (set-variable-source-location ',name (current-source-location (defvar ,name)) 'defvar)
@@ -471,7 +471,7 @@
     (check-type docstring string))
   `(progn
      (declaim (special ,name))
-     (setq ,name ,initial-value)
+     (setf (symbol-value ',name) ,initial-value)
      ,@(when docstringp
          `((set-variable-docstring ',name ',docstring)))
      (set-variable-source-location ',name (current-source-location (defparameter ,name)) 'defparameter)
@@ -496,7 +496,7 @@
      (declaim (global ,name))
      ,@(when initial-valuep
          `((unless (boundp ',name)
-             (setq ,name ,initial-value))))
+             (setf (symbol-value ',name) ,initial-value))))
      ,@(when docstringp
          `((set-variable-docstring ',name ',docstring)))
      (set-variable-source-location ',name (current-source-location (defglobal ,name)) 'defglobal)
