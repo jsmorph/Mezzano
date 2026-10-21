@@ -7944,3 +7944,68 @@ The evidence audit verified 38 of the receipt's 39 payload hashes.  The original
 Reviewed recommendation: correct the stale invocation and tested-scope paragraphs to match the implementation, debugger reference, and existing completion evidence.  Preserve the polling failure beside native success.  This corrects historical scope and adds no result for the current cold candidate.  Re-read and compare both paragraphs before committing this documentation-only increment.
 
 Cold logical stepping passed 148 cases at zero/two prompts in 593.84 seconds on ca303127 without live core publication.  Log SHA-256: 2a86da93cc599a8c5fa54f6a75f445ac4f04dda8204d7259602b5358c28d3188.  Eighteen of nineteen native phases are complete.  The full-body integer matrix is running; Web/HTTPS, restoration, and browser acceptance remain required.
+
+
+### Find Frame native test preparation
+
+Review confirmed that the shared remote service accepts debugger operation symbols and returns string/plist frame results without another command allowlist or handle conversion.  The existing SWANK contrib delegates to that service.  No SWANK implementation change is required.
+
+After frozen-candidate acceptance, compile/load only the three changed ordinary modules and the required existing helper/test files from a hash-verified source copy, with SAFETY 3/DEBUG 3/SPEED 1 and default LOAD allocation.  Preserve the accepted checkpoint first.  Require no retained stops before publication, warning-free compilation, the new native search fixture, generic association tests, existing frame navigation, HTTP input tests, HTTP integration, and empty owned stop state.  The private driver and source manifest are under find-frame-20261020.  It has not run and must not overlap frozen-candidate testing.  Browser assets and runtime provenance require separate publication before Chromium acceptance.
+
+### Recovered frame arguments
+
+The Web source review found that `loadHistoricalCommand` reconstructs an accepted command from its guest operation and result without the original browser DISPLAY field.  `renderStops` required DISPLAY :FRAME before showing a frame result's ARGUMENTS string.  An accepted command recovered without its original client record therefore omitted the arguments.  An ordinary reload retaining `state.commands` would not expose the error.
+
+Reviewed recommendation: render ARGUMENTS when that guest result field is a string.  `returnedFrameInspection` already restricts this pane to frame inspection operations.  The guest result supplies the needed display data, so reconstructing a lost browser hint adds no value.  Remove that condition, preserve all other frame selection/history rules, and extend the new Find Frame browser test to recover an accepted result after its owned client command metadata is absent.  Require arguments, detailed output, unchanged accepted ID/next ID, and no command resubmission.  This corrects the rendering path for existing frame commands as well as Find Frame.  Runtime acceptance remains pending.
+
+### Stable debugger code output during refresh
+
+Source review found that `renderStops` recreated Detailed frame-code and ordinary compiled-code PRE elements on every refresh.  `reconcileChildren` removes nodes absent from the new child list.  Horizontal scrolling therefore cannot persist across polling while the same retained result remains displayed.  This is a source-derived diagnosis, not a browser observation.
+
+Reviewed recommendation: reuse the existing `stopControls`/`controls` element-retention mechanism used by Inspector.  A small local text-result helper identifies an element by stop token and accepted command ID and updates text only when its value changes.  Use it for Detailed frame code and ordinary command text results, including Show Compiled Code.  Existing reconciliation retains that element while it remains visible and drops it when absent.  No scroll-position store, additional global map, or timer change is needed.  Extend the pending narrow-screen test to wait for an actual refresh and require the same element, unchanged text/layout, and preserved horizontal position.
+
+The local Chromium DOM test confirmed that retaining a PRE alone is insufficient when moving it into a newly created detached parent: scrollLeft changed from 200 to 0.  The first prepared helper therefore needs a stable ordinary-result DIV as well.  Revised recommendation: retain that wrapper by the same stop/command key and reconcile its caption and PRE children in place.  Detailed frame code already sits directly under the retained detail container.  This follows Inspector's existing parent/child retention and requires no saved scroll offsets.  Recheck the exact in-place reconciliation in Chromium before guest/browser acceptance.
+
+### Find Frame: retained-result browser test review
+
+Source review found that historical command recovery retains the guest result but lacks the original browser DISPLAY field.  Requiring that field suppresses recovered frame argument text.  The reviewed product correction renders the argument string supplied by the guest.  The browser test will remove only its owned Detailed command descriptor from saved client state before the existing reload.  It will require recovery of the same ID, arguments, locals, and code with unchanged session, job, selected stop/frame, next command ID, ordered command IDs, and nine history values.  No guest command is resubmitted by this test action.
+
+Source review also found that refresh recreates code PREs, resetting horizontal scroll.  Retaining an ordinary PRE inside a replaced wrapper still detaches it.  The product correction retains the existing result wrapper and text element through the current controls map and child reconciliation.  Stop plus command ID identifies the immutable result.  Brief and missed searches contain no code.
+
+Recommendation: factor the existing narrow-code assertion into one helper and apply it to Detailed code and one ordinary Show Compiled Code result in the same stopped fixture.  After horizontal scrolling, run the browser's existing queued refresh and require the same element, unchanged text, preserved scroll offset, and unchanged line geometry.  Save the narrow display after that refresh and restore the viewport.  The ordinary case adds one read-only command and no new fixture cycle.  Prepare source and parsing checks only.  No runtime request is authorized for this increment.
+
+The local Chromium test passed five redraws using the candidate's extracted `node`, `reconcileChildren`, and `resultText` functions and retained ordinary-result wrapper.  Both direct frame code and wrapped compiled-code text retained their exact elements and scrollLeft 200.  Candidate app SHA-256: 6455e61774a760f8a758b2ede23b28faf37686a211911a1fc7adba528a83d925.  This establishes the DOM behavior in the small host test, not guest/UI acceptance.  Evidence is under find-frame-20261020/scroll-dom-evidence.
+
+The first sandboxed Chromium launch failed at startup with SIGTRAP and a setsockopt permission error.  It produced no DOM result.  The subsequent authorized launch passed.  Its output paths reused the first attempt's paths, so the first stderr is preserved as a labelled transcription from tool output rather than its original file.  No guest endpoint was accessed.  Full app Node syntax checking also passed.
+
+### Find Frame: retained-result test source validation
+
+Prepared driver SHA-256: d381bfc7792f259e34225e1f46b0070fc018b0b2f59481b0f24a3c2fa14e31ed.  Historical 2bd33f2f source/hash evidence is preserved.  The driver now checks both Detailed frame code and ordinary Show Compiled Code at width 360 across a queued refresh, requiring the same text element, text, scroll offset, width, and unwrapped line geometry.  It saves each post-refresh view and restores the viewport.
+
+Before its existing reload, the driver removes only the owned Detailed command descriptor from persisted browser state.  It requires the reconstructed descriptor to retain the original command ID without a DISPLAY field, and checks the arguments, locals, code, session, job handle, selected stop/frame, ordered IDs, next ID, and nine history values.  Guest state and the existing result are preserved.  This adds one read-only compiled-code command and no fixture cycle.
+
+Node 24 syntax checking passed.  Generated before/after scroll expressions for both selectors, the recovery expression, menu expressions, and sixty-eight literal browser expressions parsed.  The first host expression-check script had an unmatched parenthesis in its own regular expression.  Correcting that checker produced the stated passing parse results.  No guest, HTTP, or browser request ran for this increment.  No runtime or screenshot acceptance is claimed, and no frozen D artifact, dependency, product source, or feature commit changed.
+
+### Find Frame: closed-stop test preparation
+
+The existing successful Proceed leaves its owned stop retained until the driver's normal cleanup.  MONITOR-STATE includes closed stops.  The browser preserves selectedStop when its record remains present, renders the latest frame result as recorded, disables frame-row buttons and the command editor, and omits live navigation from the closed-stop menu.
+
+Recommendation: use that existing interval.  Save the latest frame result before Proceed.  After the job returns, inspect the same closed stop in the Debugger activity, require its recorded-frame label and retained argument/function text plus the existing compiled-code output, and check that frame buttons and editor are disabled and live navigation menu entries absent.  Return to the Listener for the existing next-evaluation test, then release the same owned state through normal cleanup.  This adds no fixture, guest command, or retained lifetime beyond that sequence.  Prepare source/parsing checks only.
+
+### Find Frame: closed-stop source validation
+
+Prepared driver SHA-256: c3f465ea6f352e61aa77bdbeac1ad0406008a1d317632ba606ea39fdaf3a0e96.  Historical d381bfc7 source/hash evidence is preserved.  The post-Proceed sequence now views its same retained closed stop before normal cleanup.  It requires the unchanged last frame result, exact recorded-frame label, retained function/argument text and ordinary compiled-code output, disabled frame rows and command editor, and no live navigation menu entries.  It saves recorded-closed-frame.png, returns to the Listener, and continues the existing cleanup/reuse test.  No fixture or guest command was added.
+
+Node 24 syntax checking passed for the driver, closed-stop expression, generated scroll/recovery/menu expressions, and sixty-nine literal browser expressions.  No guest, HTTP, or browser request ran.  Closed-stop behavior remains untested until runtime authorization.  No frozen D artifact, dependency, product implementation, or feature commit changed.
+
+### Unused ancestor storage: source review
+
+The pending lexical-ancestry work requires a compiler change.  LOWER-ENVIRONMENT calls DETECT-USES, then computes closure layouts and free-variable sets from executable AST references.  LOCALP uses LEXICAL-VARIABLE-USED-IN.  COMPUTE-FREE-VARIABLE-SETS-1 records only those executable references, and LOWER-ENV-FORM drops an enclosing environment when that set is empty.  Source-environment metadata can therefore describe an unused outer binding while the generated closure retains no storage for it.  Changing only debugger display or only the emitted layout cannot preserve that value.
+
+This was source inspection during the cold instruction matrix.  No compiler change or new supported behavior follows.  A later bounded change must coordinate capture/use analysis and free-variable analysis under the supported debugging policy, retaining binding identity and shared writes.  Review dynamic-extent lifetimes before choosing that change.  Native tests must distinguish live and escaped closures, shadowed variable/function bindings, shared mutation, AST copying/inlining, moving GC, and reduced debugging policies.  Current documented unavailable storage remains accurate.
+
+### Cold native acceptance completed
+
+All nineteen native phases passed on the fresh ca303127 x86-64 image, with no live core publication.  The driver/source hashes, success markers, complete log hashes, source revision, empty update lists, and exact launch identity were checked against the native plan.  Receipt: cold-runtime-corrections-20261020/native-acceptance.json.
+
+The final integer/body phase passed 292 operand/flag cases and six complete normal-function walks at zero/two continuation prompts in 1394.31 seconds.  Log SHA-256: b3cd2e658e93589ceec5a8347a7dfc4c32b7bea0bb3bb8438aae4fc687a9f6fa.  The production saved-foothold fixture then compiled successfully.  Its actual saved-state tests remain pending.  The complete Web/HTTPS module load is running, followed by native/transport HTTP/HTTPS tests, three restorations, and nine browser suites.  This candidate has not been promoted.
