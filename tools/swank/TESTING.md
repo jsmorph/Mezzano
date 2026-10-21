@@ -27,7 +27,7 @@ The instruction-position and saved-register tests target x86-64.  Compiler tests
 
 ## Desktop-disabled startup
 
-A desktop-disabled startup test uses a newly built image with `MEZZANO.INTERNALS::*DESKTOP-ENABLED*` NIL and a private source/dependency tree.  QEMU retains `-vga std -display none` because the core boot path requires a framebuffer.  After startup, check the global startup debugger value, the configuration flag, absence of the desktop variable and GUI/compositor packages, absence of loaded sound/media/USB systems, process enumeration, and arithmetic.  USB checks cover the MEZZANO.DRIVER.USB package and the loaded mezzano-usb ASDF systems.
+A desktop-disabled startup test uses a newly built image with `MEZZANO.INTERNALS::*DESKTOP-ENABLED*` NIL and a private source/dependency tree.  QEMU retains `-vga std -display none` because the core boot path requires a framebuffer.  After startup, check the global startup debugger value, the configuration flag, absence of the desktop variable and GUI/compositor packages, absence of loaded sound/media/USB systems, process enumeration, and arithmetic.  USB checks cover the `MEZZANO.DRIVER.USB` package and the loaded `mezzano-usb` ASDF systems.
 
 Compile and load `test-debugger-service.lisp` with ordinary allocation.  Loading it runs its background debugger tests.  Compile and load `test-find-frame.lisp`, then call `LISPM-FIND-FRAME-TEST:RUN`.  Load the native HTTP service and test the Listener, command completion, typed Proceed/Abort, documentation topic/reload, and nonempty Peek rows in Chromium.  Repeat the native checks after normal Snapshot/restart without reloading the test modules.
 

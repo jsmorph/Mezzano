@@ -8602,11 +8602,9 @@ The same four browser groups passed after Snapshot/restart, with the unchanged 4
 
 Receipt: retry-2/restoration/browser-acceptance/acceptance.json, SHA-256 2376571e8c127ed146cf982b4313118816bca20df193d483d380bf6cf65c28e3.  The archive has SHA-256 e9f6cf168a7585476c4199cad28ac911c7f86306325c303dbc655b4d195c5bb5, with 37 independently verified evidence payloads.  Runtime ownership returned.  The new headless checkpoint helpers require this passed receipt and the complete clean guard before saving.  They will pause only the exact owned QEMU while independently compressing/verifying its stable saved disk, then resume it before the optional desktop test.
 
-
 The new headless Snapshot completed in 31.35 seconds.  The exact owned QEMU was paused while its disk was compressed and independently verified, then resumed.  Archive saved.image.gz is 293,326,882 bytes, SHA-256 dc5870f2f6bfe1c3f82905b3105f4652bfd3915b9067af3a6b7a87a0411c25b3.  All 5,368,709,120 decoded bytes match 0b5d5dd2c03c5f3e8d13aae58e17f630325ef4a506a58e80ab30d03a7e38e3b3.  checkpoint.json links the passed changed-boot native/browser scope.  This new archive's restart remains untested.  Free disk is 7.34GB.
 
 The optional desktop coordinator and host memory observer are ready to execute.  They require the verified headless checkpoint, complete frozen source hashes, explicit current host guard and full potential image growth plus reserve.  The module uses the source's existing CAL behavior and ordinary allocation.  The current native HTTP service remains available while dependency compilation runs.
-
 
 ### Startup recovery: native finding and proposed behavior
 
@@ -8617,7 +8615,6 @@ The init-file error probe reproduced the existing failure on H: LOAD-INIT-FILE p
 Recommendation, pending approval under the current design-decision rule: after SWANK is available, initialization errors retain their condition, stack and existing Common Lisp restarts in the remote debugger.  Abort ends the current startup sequence and records incomplete startup.  A failed init file or restore hook receives the same treatment.  Completed initialization work remains completed.  No automatic retry repeats earlier effects.  Earlier failures retain the serial/GDB recovery path.  Replace the catch/print/continue paths that currently discard errors.  The initial increment uses the restarts supplied by the failing operation.  Broader per-form Retry behavior requires its own loader review.
 
 Required tests: post-SWANK initialization error, init-file error, early/ordinary/late restore-hook error, native and browser condition/frame/restart access, continued values through a supplied restart, explicit Abort/incomplete status, once-only earlier effects, and correct Snapshot inhibition until startup succeeds.  Bootstrap failures before remote service availability need separate acceptance.  No startup-recovery behavior or representation has changed yet.
-
 
 ### Optional desktop postcondition fixture correction
 
@@ -8631,11 +8628,9 @@ The desktop load emitted three optimizer-limit warnings during CL-JPEG compilati
 
 The desktop observer recorded 461 samples: peak RSS 2,926,908KiB, zero QEMU swap, minimum host available 2,754,276KiB and disk 7.298GB.  The failed acceptance is a fixture package-name error; it is not evidence of a memory shortage or an initialized USB failure.
 
-
 Corrected desktop postconditions and the existing background-debugger/Find Frame tests passed in 7.83 seconds.  No module reload occurred.  The complete current desktop-state/provenance guard and forty assets passed.  Native log SHA-256 fe6035b9110dac7e5b2636f883775291593efbe12da3753b53c102257d37498c.  Runtime metadata SHA-256 daca0edc932b21d7f65e6ad48605b04fe5c30023965f136c80e5e76e09fc656e.  The metadata links the original failed coordinator, cleanup and corrected checks.  The source and its compiled desktop LLF hashes are recorded.
 
 The planned desktop-component Snapshot/restart helpers are prepared under optional-desktop/restoration.  They use the full desktop-state guard, existing image-growth reserve, explicit current host baseline and unchanged VM limits.  FINISH requires a changed boot and repeats every corrected postcondition plus the existing native debugger/Find Frame suites without module reload, then checks the complete clean-state guard and forty assets.  The startup configuration flag remains NIL because this is an explicit optional-module load in the headless test image.  Fresh default-desktop first boot remains untested.
-
 
 ### Desktop-component changed-boot acceptance
 
@@ -8646,3 +8641,13 @@ FINISH passed in 14.53 seconds without fixture/module reload: changed boot, corr
 This accepts optional-module initialization and its native saved-state scope in the originally headless image.  Fresh default-desktop first boot and visual/application desktop behavior remain separate.  Headless acceptance retains its independent checkpoint and before/after-restoration browser receipts.  The final H shutdown requires the passed native guard and preserves its disk and metadata before restoring exact saved D.  The user-facing original world remains unchanged.
 
 The startup-recovery behavior question is pending.  Compiler follow-up also remains: isolate the CL-JPEG functions that reached the optimizer iteration limit, collect compact pass changes, diagnose the cause, and test any correction.  Raising the iteration limit would not establish the cause.
+
+### Preserved development world restoration
+
+H's desktop-component test guest stopped after its final clean guard.  The read-only working disk has SHA-256 debbf9d638681a04a997ee764a079655cad826bb4a9931c509b54440d438b4e3.  Its final-stopped.json preserves identity, runtime and Snapshot links.  D restarted from the exact 3ed9cf6d saved image as PID 1131868/start102442144, unit mezzano-after-headless-20261021.service.  Readiness confirmed its original private source/HOME, NIL global debugger, desktop and 543 registry entries.  Its complete prior native guard plus empty Find Frame restore state passed.
+
+The first new D asset observer then failed before requesting assets: it assumed HTTP-API.LISP was stored in the static asset root.  That directory contains the twenty browser assets.  The API source belongs to the Mezzano source tree.  Preserve the first native guard result, original observer, and failed host outcome.  The corrected observer pins the previous accepted asset receipt 457eac61 through prior metadata, then requires its API source hash 684ab4d7 against the current source file before deriving routes.  The current API source matches that recorded hash.  It will compare all forty served responses with the existing static asset hashes.  This corrects a host checker input path.
+
+D's corrected native/asset observer passed.  Current metadata is headless-startup-20261021/restored-d/web-runtime.json, SHA-256 dab21a3b518ae0fba1567fa7f97108595b19fe2ab4779f27f9918ab179d53baf.  Native receipt SHA-256: 6db2a4e0319e65c4c43a35e195d251f4350f61f7cf766771ddd8158704182a34.  Forty-asset receipt SHA-256: 18c91da0766545b4dadc8a989f17aa60da635f05b37586c74eb40e395f3c06c7.  The current metadata preserves the prior code/publication/Snapshot history, records the saved original test guest, and updates the asset status from its historical prepared state to the passed current responses.  The first host observer failure and native pass remain separate.
+
+D 1131868 is running on SWANK 4025, GDB 1254 and HTTP 8778/8779.  H and obsolete 4007 remain saved/stopped.  Other thirteen original process identities/endpoints passed.  The original user Web guest remains running.  Browser after this final D restart remains untested.  The startup-recovery question is pending; its source remains unchanged.  The headless component-selection implementation and its stated native/browser/restoration tests are committed.  Fresh default-desktop first boot, visual desktop behavior, smaller guest configurations, framebuffer-free boot, ARM64 execution, optimizer-limit diagnosis and the remaining debugger inventory retain their separate unfinished scope.
