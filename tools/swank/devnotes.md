@@ -8090,3 +8090,25 @@ FINISH passed both one- and two-prompt captured continuations in 20.06 seconds. 
 The main test source matches the executed copy exactly: d8869cd013bd42707391d80bebf9a57479b323c02051d52e8810a6fe655d9eb5.  It compiled under DEBUG 3/SAFETY 3/SPEED 1 with ordinary allocation.  Cold runtime source remained ca303127, with the documented test-only cancellation timing replacement.  No corrective runtime/compiler definition was loaded.  This establishes x86-64 QEMU behavior for these two saved states.  ARM64 remains untested.
 
 The immutable 5-GiB checkpoint was archived after FINISH.  Full decompression reproduced SHA-256 2ca2dd8425c52cc8b7cd4c07b7f68c1687f97454892a4f31a789d540fd0b1155 and size 5368709120.  Compressed archive size is 462414750 bytes, SHA-256 d0f3a4ce82a4d75efa71747397c1a6b4da798de1eaf15d8060a864e4673f9d16.  Its durable verified receipt preceded removal of the uncompressed duplicate.  The running working image and original main world remain unchanged.  Continue with actual nonlocal-landing restoration at zero and two prompts, then browser acceptance.
+
+
+### Zero-prompt nonlocal restoration passed
+
+The actual zero-prompt nonlocal checkpoint restored successfully as PID 1116930/start 98514662.  FINISH passed in 17.20 seconds, checking exact retargeted landing addresses, saved controls, replay, moving GC, multiple values, and cleanup across the new boot.  Finish log SHA-256: dcc320465bcd8ba91b660a464ac8911d50badd0d001a23cd7a3f6b42eab0a3a7.  The complete immutable checkpoint SHA-256 is 653cce842d13d122d5170f3aa7489db24421cdad8657301b4b4b669fc3d5cf41.
+
+The archive preflight currently requires free storage greater than the uncompressed checkpoint's allocated bytes plus 64 MiB.  Available storage is 1.66 GB and the saved copy occupies 2.50 GB, so that estimate would reject before compression.  The preceding verified checkpoint archive occupies 462 MB.  Keep all checkpoints and the original worlds.
+
+Reviewed recommendation: replace that whole-file estimate with a bounded streaming free-space check before archive creation and each 4-MiB input chunk.  Require a 64-MiB reserve plus 8 MiB for compressed output and buffering.  Preserve every source/FINISH/identity guard, exclusive creation, full source/decompression hashes, source identity check, durable receipt, and source retention on failure.  This bounds each write without assuming a compression ratio or requiring storage for an uncompressed-sized archive.  Preserve the executed earlier helper/preparation, syntax-check the small revision, and archive only this already-passed checkpoint before the final two-prompt test.
+
+
+### Checkpoint storage approval review
+
+Zero-prompt restoration passed.  Its complete checkpoint archive passed verification: 561326674 bytes, SHA-256 9bff1633dac7b07022741d0d884b521d83410288b5c997d33f4ffda9f0d820e2.  The next independent copy needs more free storage for the existing margin.  Automatic approval review rejected archival followed by removal of the stopped failed candidate working image, stating that removal was costly to reverse and lacked specific authorization.  That rejected call executed no code.
+
+Reviewed continuation: prepare and verify the stopped failed candidate archive while retaining its original file.  This is the safer alternative allowed by the review.  Record exact source identity, full source/decompression hash and length, read-only archive hash, and stopped state.  Present the concrete verified result before requesting approval for the remaining removal.  Do not change the restart storage guard or substitute another deletion.  Continue independent test preparation while preserving both original and archive.
+
+
+The safer retained-original archive passed.  cold-foothold-20261020/verified-working-image-archive.json records all 5368709120 decompressed bytes with SHA-256 d30988ff4c7fcff57e3fae1934811f71a42cd7bf5662e89a19fa846b99938cdd.  The archive occupies 223491708 bytes, SHA-256 ec354e4804dcf7d9dfe490718455c791209fc519134e77c1a2c82ffa0092a226.  Its original working.image remains present.  An explicit approval question for removing only that original is pending, with the automatic-review reason stated.  No removal has been retried or substituted.  The final two-prompt PREPARE passed, and its independent Snapshot is running while approval is pending.
+
+
+The two-prompt Snapshot completed successfully at 02:44:24 UTC.  Its serial delta contains both Snapshot boundaries and the coordinator returned :COLD-RESTORE-CHECKPOINT-COMPLETE.  The VM remains running with the prepared test parked at its three saved nonlocal destinations.  Its actual restart/FINISH remains pending the explicit storage approval.  No further live publication or browser execution has occurred.
