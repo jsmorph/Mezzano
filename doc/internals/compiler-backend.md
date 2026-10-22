@@ -332,3 +332,20 @@ Function debug-info field 14, at zero-based list index 13, records callable prov
 A display name alone does not establish a global definition.  TRACE's entry closure, for example, uses the display name TRACE-WRAPPER while differing from that global function.  Its record is :EXACT-CALLABLE.
 
 The internal REINVOKE-CALLABLE reader returns the function object, provenance record, and unavailability reason.  A global record resolves the current function reference without creating a missing reference.  It preserves a current trace wrapper and rejects absent or macro definitions with UNDEFINED-FUNCTION before transfer.  An exact record preserves the supplied closure's identity.  Missing metadata returns NIL/NIL/:UNAVAILABLE-CALLABLE-PROVENANCE.  Malformed records signal errors.  The reader does not unwind or invoke the result.
+
+## Retained source metadata
+
+Function debug-info field 16, at zero-based list index 15, contains a shared simple vector when the AST carries file input and the function's DEBUG level is at least 1.  DEBUG 0 emits NIL.  Native and cross file compilers use the same record for explicit LAP functions.
+
+| Vector index | Value |
+| --- | --- |
+| 0 | :SOURCE-TEXT |
+| 1 | Input namestring, or NIL |
+| 2 | Zero-based top-level form number, or NIL |
+| 3 | Starting line, counted from 1 |
+| 4 | Starting character, counted from 0 |
+| 5 | Consumed character string |
+
+The record and string remain unchanged by convention.  Existing compiled-file serialization preserves their shared identity.  The assembler writes instruction starts at index 14.  DEBUG-INFO-SOURCE-FORM validates and returns a present record, returns NIL for an absent record, and signals an error for malformed metadata.
+
+The record identifies compilation input, including leading whitespace/comments, rather than a function or instruction span.  Functions compiled without capture have no retained text.  The [frontend reference](compiler-frontend.md#retained-file-source) describes capture and propagation.  Native x86-64 DEBUG 0/1/3 tests passed serial/parallel loading, nested sharing, LAP, redefinition, concurrent compilations, and full GC.  Fresh cold, saved-image, cross-file compiler, and ARM64 execution of source retention remain untested.

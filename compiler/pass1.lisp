@@ -118,6 +118,7 @@
                                   :allow-other-keys allow-other-keys
                                   :environment optimize-env
                                   :plist (list :declares declares
+                                               'source-form *source-form*
                                                'global-function
                                                (loop for declaration in declares
                                                      when (and (eq (first declaration) 'sys.int::lambda-name)

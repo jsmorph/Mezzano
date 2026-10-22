@@ -119,7 +119,10 @@
                                      sys.int::*top-level-form-number*
                                      lambda-list
                                      docstring
-                                     nil)
+                                     nil nil nil nil nil nil
+                                     (when (plusp (mezzano.compiler::optimize-quality-1
+                                                   *optimize-policy* 'debug))
+                                       *source-form*))
                                nil
                                *target-architecture*))
           env))))
@@ -225,22 +228,23 @@
            (mezzano.compiler::*optimize-policy* (copy-list mezzano.compiler::*optimize-policy*))
            (*gensym-counter* 0)
            (sys.int::*fixup-table* (make-hash-table))
-           (location-stream (make-instance 'sys.int::location-tracking-stream
+           (location-stream (make-instance 'sys.int::source-recording-stream
                                            :stream input-stream
                                            :namestring (ignore-errors (namestring *compile-file-pathname*))))
            (*output-fasl* t)
            (sys.int::*llf-architecture* *target-architecture*))
       (sys.int::with-reader-location-tracking
         (loop
-          for form = (read location-stream nil eof-marker)
-          until (eql form eof-marker)
-          do
-             (when *compile-print*
-               (let ((*print-length* 3)
-                     (*print-level* 2))
-                 (format t ";; X-compiling: ~S~%" form)))
-             (x-compile-top-level form nil)
-             (incf sys.int::*top-level-form-number*)))
+          (multiple-value-bind (form *source-form*)
+              (sys.int::read-source-form location-stream eof-marker)
+            (when (eq form eof-marker)
+              (return))
+            (when *compile-print*
+              (let ((*print-length* 3)
+                    (*print-level* 2))
+                (format t ";; X-compiling: ~S~%" form)))
+            (x-compile-top-level form nil)
+            (incf sys.int::*top-level-form-number*))))
       ;; Now write everything to the fasl.
       ;; Do two passes to detect circularity.
       (let ((commands (reverse sys.int::*llf-forms*)))

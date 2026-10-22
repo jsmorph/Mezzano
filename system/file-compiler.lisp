@@ -18,6 +18,19 @@
 (defvar *compile-parallel* nil)
 (defvar *top-level-form-number* nil)
 
+(defun read-source-form (stream eof)
+  (let ((characters (source-recording-stream-characters stream))
+        (line (location-tracking-stream-line stream))
+        (character (location-tracking-stream-character stream)))
+    (setf (fill-pointer characters) 0)
+    (let ((form (read stream nil eof)))
+      (values form
+              (unless (eq form eof)
+                (vector :source-text
+                        (location-tracking-stream-namestring stream)
+                        *top-level-form-number* line character
+                        (copy-seq characters)))))))
+
 (defvar *fixup-table* nil)
 
 (defun expand-macrolet-function (function)
@@ -710,7 +723,10 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
                                      sys.int::*top-level-form-number*
                                      lambda-list
                                      docstring
-                                     nil)
+                                     nil nil nil nil nil nil
+                                     (when (plusp (mezzano.compiler::optimize-quality-1
+                                                   mezzano.compiler::*optimize-policy* 'debug))
+                                       mezzano.compiler::*source-form*))
                                nil
                                *llf-architecture*))
           env))))
@@ -899,27 +915,28 @@ NOTE: Non-compound forms (after macro-expansion) are ignored."
                 (*gensym-counter* 0)
                 ;; During parallel compilation this is written to by the workers.
                 (*fixup-table* (make-hash-table :synchronized (if *compile-parallel* t nil)))
-                (location-stream (make-instance 'sys.int::location-tracking-stream
+                (location-stream (make-instance 'sys.int::source-recording-stream
                                                 :stream input-stream
                                                 :namestring (ignore-errors (namestring *compile-file-pathname*)))))
            (sys.int::with-reader-location-tracking
              (loop
-                for form = (read location-stream nil eof-marker)
-                until (eql form eof-marker)
-                do
-                  (when *compile-print*
-                    (let ((*print-length* 3)
-                          (*print-level* 3))
-                      (format t ";; ~A form ~S.~%"
-                              (if *compile-parallel* "Processing" "Compiling")
-                              form)))
-                ;; TODO: Deal with lexical environments.
-                  (handle-top-level-form form
-                                         (lambda (f env)
-                                           (compile-top-level-form f env))
-                                         (lambda (f env)
-                                           (eval-in-lexenv f env)))
-                  (incf *top-level-form-number*)))
+               (multiple-value-bind (form mezzano.compiler::*source-form*)
+                   (read-source-form location-stream eof-marker)
+                 (when (eq form eof-marker)
+                   (return))
+                 (when *compile-print*
+                   (let ((*print-length* 3)
+                         (*print-level* 3))
+                     (format t ";; ~A form ~S.~%"
+                             (if *compile-parallel* "Processing" "Compiling")
+                             form)))
+                 ;; TODO: Deal with lexical environments.
+                 (handle-top-level-form form
+                                        (lambda (f env)
+                                          (compile-top-level-form f env))
+                                        (lambda (f env)
+                                          (eval-in-lexenv f env)))
+                 (incf *top-level-form-number*))))
            (when *deferred-functions*
              (let* ((n-functions (length *deferred-functions*))
                     (n-workers mezzano.supervisor::*n-up-cpus*)

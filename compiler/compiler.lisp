@@ -14,6 +14,8 @@
 
 (defvar *load-time-value-hook*)
 
+(defvar *source-form* nil)
+
 (defvar *optimize-restrictions* '())
 (defvar *optimize-policy* '(safety 3 debug 3 speed 1))
 

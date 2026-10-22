@@ -35,6 +35,14 @@ The shutdown test holds an owned acceptor in its listener-close cleanup, then ca
 
 Compile/load `test-display-debugger.lisp` with ordinary allocation after the debugger-service fixture, then call `(lispm-display-debugger-test:run)`.  It checks the display-only command plan, SPACE completion, help, argument and Listener-context rejection.  Repeated assistance while an owned condition stop is active must preserve its selected frame, evaluation mode, all nine history identities, and next command ID.  Proceed must return the original value, run one cleanup, and release the stop.  The fixture uses x86-64 SAFETY 3/DEBUG 3/SPEED 1.  Browser tests cover view navigation and retained input separately.
 
+## Retained file source
+
+Compile/load `test-retained-source.lisp` ordinarily, then call `(lispm-retained-source-test:run directory)` with an existing writable directory.  The compiler/runtime must include the recording stream, read helper, AST propagation, and metadata emission/reader.  The test deletes its named input and compiled files.  Run it on a dedicated guest.
+
+Capture tests check exact consumed characters, Unicode/comments, read-time evaluation once, coordinates, and AST-copy identity.  Serial and forced-parallel COMPILE-FILE tests use DEBUG 0/1/3 with SAFETY 3/SPEED 1.  They check shared PROGN/nested-function records, compile-time functions, LAP, compiled-file reload, and old function/text identity after file replacement and redefinition.  Concurrent compilations and full GC check isolation and retention.  Printed character counts describe the fixture's metadata strings, not total compiler memory.
+
+Native x86-64 tests passed.  Recompile and run the existing AST-environment, parameter-context, and instruction-boundary fixtures after the update.  The parameter-context fixture requires the entry-argument helper first.  Source commands/browser behavior, fresh cold boot, saved-image execution, cross-file compiler execution, and ARM64 execution require separate tests.
+
 ## Desktop-disabled startup
 
 A desktop-disabled startup test uses a newly built image with `MEZZANO.INTERNALS::*DESKTOP-ENABLED*` NIL and a private source/dependency tree.  QEMU retains `-vga std -display none` because the core boot path requires a framebuffer.  After startup, check the global startup debugger value, the configuration flag, absence of the desktop variable and GUI/compositor packages, absence of loaded sound/media/USB systems, process enumeration, and arithmetic.  USB checks cover the `MEZZANO.DRIVER.USB` package and the loaded `mezzano-usb` ASDF systems.

@@ -106,6 +106,19 @@ Returns NIL if the function captures no variables."
 (defun debug-info-source-top-level-form-number (info)
   (seventh info))
 
+(defun debug-info-source-form (info)
+  (let ((source (nth 15 info)))
+    (when source
+      (unless (and (typep source '(simple-vector 6))
+                   (eq (aref source 0) :source-text)
+                   (typep (aref source 1) '(or null string))
+                   (typep (aref source 2) '(or null (integer 0)))
+                   (typep (aref source 3) '(integer 1))
+                   (typep (aref source 4) '(integer 0))
+                   (stringp (aref source 5)))
+        (error "Malformed retained source record."))
+      source)))
+
 (defun debug-info-lambda-list (info)
   (eighth info))
 

@@ -627,3 +627,18 @@ This should only fill in the START- slots and ignore the END- slots.")
   (setf (location-tracking-stream-character stream)
         (location-tracking-stream-unread-character stream))
   (unread-char character (location-tracking-stream-stream stream)))
+
+(defclass source-recording-stream (location-tracking-stream)
+  ((%source-characters :reader source-recording-stream-characters
+                       :initform (make-array 0 :element-type 'character
+                                               :adjustable t :fill-pointer 0))))
+
+(defmethod mezzano.gray:stream-read-char :around ((stream source-recording-stream))
+  (let ((character (call-next-method)))
+    (unless (eq character :eof)
+      (vector-push-extend character (source-recording-stream-characters stream)))
+    character))
+
+(defmethod mezzano.gray:stream-unread-char :around ((stream source-recording-stream) character)
+  (multiple-value-prog1 (call-next-method)
+    (vector-pop (source-recording-stream-characters stream))))

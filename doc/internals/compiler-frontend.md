@@ -62,3 +62,11 @@ PASS1 reuses each explicit special parameter object when extending the body envi
 The internal declaration (LAMBDA-NAME name :GLOBAL T) identifies a global definition separately from its display name.  Native and cross DEFUN expansions emit it.  Named COMPILE adds it when compiling nonmacro lambda source.  Installing an already compiled function under another name preserves that function's source provenance.
 
 PASS1 retains the immutable #(:GLOBAL-FUNCTION name) record in the lambda plist.  Existing AST copying preserves it.  The [backend metadata reference](compiler-backend.md#callable-provenance-metadata) defines emission and current-definition resolution.  Local and anonymous functions receive the explicit exact-callable marker when compiled at DEBUG 3.
+
+## Retained file source
+
+COMPILE-FILE records the characters consumed while reading each top-level form, including comments and Unicode.  Native and cross readers use a source-recording subclass of the location stream and a shared read helper.  The record identifies the input pathname, form number, starting line and character, and text.  Leading whitespace or comments can precede the definition.
+
+PASS1 stores the record in the lambda plist.  AST copying preserves its identity, and deferred compilation carries it through the AST.  Functions derived from one input form share its record.  The input can contain several definitions or generate functions through macros.  It does not identify an individual lambda span or map fragments to instructions.  File edits and redefinition leave an old function's retained text unchanged.  COMPILE outside file processing has no file-text record.
+
+The [backend reference](compiler-backend.md#retained-source-metadata) defines emission and availability.  Native x86-64 tests cover serial/parallel compilation, AST copies, nested sharing, compile-time/LAP forms, redefinition, concurrent files, and full GC.  Fresh cold, saved-image, cross-file compiler, and ARM64 execution of source retention remain untested.

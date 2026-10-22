@@ -288,7 +288,11 @@
              (when (= (mezzano.compiler::optimize-quality ast-lambda 'debug) 3)
                (or (getf (lambda-information-plist ast-lambda)
                          'mezzano.compiler::global-function)
-                   :exact-callable))))
+                   :exact-callable))
+             nil
+             (when (plusp (mezzano.compiler::optimize-quality ast-lambda 'debug))
+               (getf (lambda-information-plist ast-lambda)
+                     'mezzano.compiler::source-form))))
      nil
      target)))
 
