@@ -292,7 +292,12 @@
              nil
              (when (plusp (mezzano.compiler::optimize-quality ast-lambda 'debug))
                (getf (lambda-information-plist ast-lambda)
-                     'mezzano.compiler::source-form))))
+                     'mezzano.compiler::source-form))
+             (loop for (pointer layout)
+                     in (getf (lambda-information-plist ast-lambda)
+                              'mezzano.compiler::local-environment-layouts)
+                   collect (list (mezzano.compiler::debug-variable-identity pointer)
+                                 layout))))
      nil
      target)))
 

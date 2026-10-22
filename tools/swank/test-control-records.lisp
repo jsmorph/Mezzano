@@ -91,6 +91,11 @@
                   collect (list index (i::function-name (nth-value 1 (frame-function frame)))
                                 symbol value)))))
 
+(defun handler-bind-function-p (function)
+  (let ((source (i::debug-info-source-form (i::function-debug-info #'i::%handler-bind))))
+    (assert source)
+    (eq source (i::debug-info-source-form (i::function-debug-info function)))))
+
 (defun check-records (handler-p &optional duplicate-p)
   (let* ((rows (observe))
          (catches (remove 'r::*active-catch-handlers* rows :key #'third :test-not #'eq))
@@ -105,7 +110,12 @@
            (inner (fourth (first introductions)))
            (outer (fourth (second introductions))))
       (assert (= (length introductions) 2))
-      (assert (every (lambda (row) (eq (second row) 'i::%handler-bind)) introductions))
+      (assert (every (lambda (row)
+                       (handler-bind-function-p
+                        (nth-value 1 (frame-function
+                                      (aref (d::service-stop-frames d::*service-current-stop*)
+                                            (first row))))))
+                     introductions))
       (assert (eq (cdr inner) outer))
       (when handler-p
         (assert (eq (second (first handlers)) 'signal))
@@ -163,8 +173,8 @@
           (assert (equal result (getf (test::completed-command handle id) :result))))))
     (assert (equal history (d::service-stop-evaluation-history stop)))
     (assert (= index (getf (debugger-stop-information handle) :current-frame)))
-    (let ((owner (position #'i::%handler-bind (d::service-stop-frames stop)
-                           :key (lambda (frame) (nth-value 1 (frame-function frame))))))
+    (let ((owner (position-if #'handler-bind-function-p (d::service-stop-frames stop)
+                              :key (lambda (frame) (nth-value 1 (frame-function frame))))))
       (assert owner)
       (test::command handle lease :select-frame owner)
       (let ((selected (test::command handle lease :handlers)))

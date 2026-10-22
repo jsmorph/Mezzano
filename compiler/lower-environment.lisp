@@ -438,6 +438,16 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
                                                    :definition-point *current-lambda*
                                                    :plist (list 'hide-from-debug-info t))
                                     (gethash i *environment-layout*)))))
+    (dolist (entry new-envs)
+      (destructuring-bind (head pointer layout) entry
+        (declare (ignore head))
+        (when (some #'preserve-variable-for-debugger-p layout)
+          (setf (getf (lexical-variable-plist pointer) 'preserve-for-debugger) t))
+        (let ((debug-layout (environment-layout-debug-bindings layout)))
+          (when (some #'identity debug-layout)
+            (push (list pointer debug-layout)
+                  (getf (lambda-information-plist *current-lambda*)
+                        'local-environment-layouts))))))
     (labels ((frob-outer ()
                (let* ((new-statements (frob-inner (info form)))
                       (old-entry (first (first new-statements))))
@@ -655,27 +665,27 @@ Keyword arguments, non-constant init-forms and special variables are disallowed.
 (defvar *environment-chain* nil
   "The directly accessible environment vectors in this function.")
 
+(defun environment-layout-debug-bindings (layout)
+  (let ((debug-zero-p (zerop (optimize-quality *current-lambda* 'debug))))
+    (mapcar (lambda (variable)
+              (unless (and debug-zero-p
+                           (not (preserve-variable-for-debugger-p variable)))
+                (cond ((block-information-p variable)
+                       (vector :block (debug-variable-identity variable)))
+                      ((tagbody-information-p variable)
+                       (vector :tagbody (debug-variable-identity variable)))
+                      (t (debug-variable-identity variable)))))
+            layout)))
+
 (defun compute-environment-layout-debug-info ()
   (when *environment*
     (let ((pointer (second (first *environment-chain*)))
           (layouts (mapcar (lambda (env) (gethash env *environment-layout*))
-                           *environment*))
-          (debug-zero-p (zerop (optimize-quality *current-lambda* 'debug))))
+                           *environment*)))
       (when (some (lambda (layout) (some #'preserve-variable-for-debugger-p layout))
                   layouts)
         (setf (getf (lexical-variable-plist pointer) 'preserve-for-debugger) t))
-      (list pointer
-            (mapcar (lambda (layout)
-                      (mapcar (lambda (variable)
-                                (unless (and debug-zero-p
-                                             (not (preserve-variable-for-debugger-p variable)))
-                                  (cond ((block-information-p variable)
-                                         (vector :block (debug-variable-identity variable)))
-                                        ((tagbody-information-p variable)
-                                         (vector :tagbody (debug-variable-identity variable)))
-                                        (t (debug-variable-identity variable)))))
-                              layout))
-                    layouts)))))
+      (list pointer (mapcar #'environment-layout-debug-bindings layouts)))))
 
 (defun generate-make-environment (lambda size)
   (ast (cond ((gethash lambda *environment-layout-dx*)

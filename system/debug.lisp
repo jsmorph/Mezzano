@@ -652,6 +652,20 @@ Returns NIL if the function captures no variables."
                                     (when (debug-binding-p name) name))
                               result))
                   (push 0 base-path)))))))
+      (dolist (environment (nth 16 info))
+        (destructuring-bind (pointer layout) environment
+          (let ((entry (find pointer locals :key (lambda (entry)
+                                                  (getf (cdddr entry) :binding)))))
+            (when entry
+              (multiple-value-bind (value available-p)
+                  (read-frame-slot frame (second entry) (third entry))
+                (when (and available-p value)
+                  (check-type value simple-vector)
+                  (loop for binding in layout for index from 1
+                        when (and binding (not (debug-control-binding-p binding)))
+                          do (push (list (debug-binding-name binding) (incf var-id)
+                                         (list (second entry) index) :value binding)
+                                   result))))))))
       (reverse result))))
 
 (defun debugger-show-variables (frame)
