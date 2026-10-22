@@ -217,8 +217,8 @@
                       (if stepped flags (logand #x845 mask))))))
        (logical::word-value result)))))
 
-(defun shift-case (target depth)
-  (destructuring-bind (function opcode kind initial count) target
+(defun shift-check (target)
+  (destructuring-bind (opcode kind initial count) (rest target)
     (let* ((memory-p (member kind '(:memory-immediate :memory-cl)))
            (width (ecase opcode (lap:shr32 32) (lap:sar64 64)))
            (amount (logand count (1- width)))
@@ -232,8 +232,7 @@
                               (if (logbitp (1- amount) a) 1 0)
                               (if (and (eq opcode 'lap:shr32) (= amount 1)
                                        (logbitp 31 a)) #x800 0)))))
-      (with-operand-case
-       function opcode depth :hardware-breakpoint
+      (values
        (lambda (record stepped)
          (assert (= (logical::registers record)
                     (if (and stepped (not memory-p)) raw-result raw-initial)))
@@ -243,6 +242,10 @@
          (assert (= (logand (nth-value 1 (logical::registers record)) mask)
                     (if stepped flags (logand #x845 mask)))))
        result))))
+
+(defun shift-case (target depth)
+  (multiple-value-bind (check result) (shift-check target)
+    (with-operand-case (first target) (second target) depth :hardware-breakpoint check result)))
 
 (defun conditional-case (target value taken depth)
   (destructuring-bind (function opcode kind yes no) target

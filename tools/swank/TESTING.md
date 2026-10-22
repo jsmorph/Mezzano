@@ -300,6 +300,16 @@ The integer fixture's RUN includes 372 operand/flag cases and six compiled-body 
 
 The shared helper tests exact instruction locations and defined flags, raw register/memory state, replay, reference expiration, moving marker roots, code identity, final values, and cleanup.  SAR64 adds signed results and six-bit count masking with register/memory destinations, immediate/CL counts, negative/positive operands, and fixnum limits.  Counts include 0, 1, 4, 63, 64, and 65.  This focused native run passed on two-CPU x86-64 QEMU at SAFETY 3/DEBUG 3/SPEED 1.  The separate [SAR64 browser test](web/TESTING.md#sar64-instruction-steps) passed two typed Listener cases.  Neither run establishes execution of the full combined RUN, saved-image restoration, fresh-cold execution, or ARM64 support for SAR64.
 
+### Parked SAR64 restoration
+
+After the integer fixtures, compile/load test-retained-integer-step-restore.lisp ordinarily at SAFETY 3/DEBUG 3/SPEED 1.  Its PREPARE and FINISH functions use two existing targets: register/immediate at zero prompts and memory/CL count 65 at two prompts.  Both shift -3 to -2 and park after SAR64, before converting the raw result to a Lisp fixnum.
+
+Call (lispm-retained-integer-step-restore-test:prepare), then (lispm-retained-integer-step-restore-test:finish :require-restored nil) for the same-boot rehearsal.  A separate PREPARE/CLEANUP pair tests Abort, one cleanup, and release.  Those tests passed.  Thirty-two shared SHR32/SAR64 zero-count and masked-count cases also passed after extracting the common shift checker.
+
+For an actual restoration, PREPARE closes its controllers after recording both stops, raw state, history, old controls/references, command identity, and code bytes.  Check that only those two stops remain, take a normal Snapshot, restart the saved image, and call (lispm-retained-integer-step-restore-test:finish) without reloading either fixture.  FINISH requires a changed boot, rejects old controls/references and command replay, verifies restored raw state and moving marker roots, performs a fresh supported step, and checks original values and one cleanup.
+
+Actual changed-boot execution remains untested.  This fixture does not cover a browser held across restart, SAR64 pending delivery stages, fresh-cold execution, or ARM64.
+
 ## Package condition stops
 
 Compile/load the current package-lock function and TEST-PACKAGE-LOCK-DEBUGGER.LISP ordinarily at SAFETY 3/DEBUG 3/SPEED 1, then call (lispm-package-lock-debugger-test::run).  It requires the service, frame-evaluation and managed-step helpers.  Four cases signal ERROR or STORAGE-CONDITION under the package mutex and use Continue or Abort.  A separate thread must acquire that mutex while the target remains stopped.  Continue verifies reacquisition, and both exits check one cleanup and release their owned stops.  Then run python3 tools/swank/test-package-lock-debugger.py --port PORT against the dedicated guest.  Its compiled Lisp function exhausts the stack under the package mutex.  The host client requires SLDB entry, sends its normal protocol Abort, and checks a positive unwind-cleanup count and fresh evaluation through a new connection.  It also requires empty retained stop/job tables and resets its counter.  These tests passed on x86-64 at SAFETY 3/DEBUG 3/SPEED 1.
