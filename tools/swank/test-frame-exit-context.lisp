@@ -25,6 +25,20 @@
   (:gc :no-frame :layout #*0 :multiple-values 0)
   (mezzano.lap.x86:ret))
 
+(defun native-target (marker state)
+  (incf (aref state 0))
+  (values marker marker marker))
+
+(i::define-lap-function native-frameless-target ((marker state))
+  (:gc :no-frame :layout #*0)
+  (mezzano.lap.x86:push 0)
+  (:gc :no-frame :layout #*00)
+  (mezzano.lap.x86:call (:named-call native-target))
+  (:gc :no-frame :layout #*00 :multiple-values 0)
+  (mezzano.lap.x86:add64 :rsp 8)
+  (:gc :no-frame :layout #*0 :multiple-values 0)
+  (mezzano.lap.x86:ret))
+
 (defun target (marker state count)
   (cerror "Return from the owned target." "Owned frame-exit target.")
   (incf (aref state 0))
@@ -105,10 +119,11 @@
     (setf *case* nil))
   t)
 
-(defun case-test (count depth &optional frameless)
+(defun case-test (count depth &optional frameless native-function initial-point)
   (let* ((record (hw::make-case
-                  (if frameless #'frameless-target
-                      (lambda (marker state) (target marker state count))) 0 depth))
+                  (or native-function
+                      (if frameless #'frameless-target
+                          (lambda (marker state) (target marker state count)))) 0 depth))
          (state (first record)) (controller (second record)) (thread (third record)))
     (setf *case* (list :record record :point nil :return-function nil :return-offset nil
                       :return-sp nil :caller-bytes nil :calls 0 :at-exit nil))
@@ -116,12 +131,25 @@
          (let* ((stop (test::await (lambda () (hw::thread-stop thread))))
                 (lease (d:attach-debugger-stop stop controller)))
            (setf (fourth record) stop (fifth record) lease)
-           (frames::select-function stop lease (if frameless #'frameless-target #'target))
-           (when frameless (test::command stop lease :use-dynamic-environment))
+           (frames::select-function stop lease
+                                    (or native-function (if frameless #'frameless-target #'target)))
+           (when native-function
+             (let ((frame (aref (d::service-stop-frames (d::service-handle-stop stop))
+                                (d::service-stop-current-frame (d::service-handle-stop stop)))))
+               (assert (i::frame-interrupted-p frame))
+               (assert (= (nth-value 2 (i::frame-function frame))
+                          (s::instruction-breakpoint-offset initial-point))))
+             (assert (zerop (aref state 0)))
+             (assert (s::clear-instruction-breakpoint initial-point)))
+           (when (or frameless native-function)
+             (test::command stop lease :use-dynamic-environment))
            (assert (equal (test::command stop lease :evaluate
-                                         (if frameless
-                                             "(lispm-frame-exit-context-test::arm-selected-exit #'lispm-frame-exit-context-test::frameless-target t)"
-                                             "(lispm-frame-exit-context-test::arm-selected-exit)"))
+                                         (cond (native-function
+                                                (format nil "(lispm-frame-exit-context-test::arm-selected-exit #'~S ~S)"
+                                                        (i::function-name native-function) frameless))
+                                               (frameless
+                                                "(lispm-frame-exit-context-test::arm-selected-exit #'lispm-frame-exit-context-test::frameless-target t)")
+                                               (t "(lispm-frame-exit-context-test::arm-selected-exit)")))
                           '("T")))
            (assert (getf *case* :point))
            (proceed stop lease)
@@ -147,8 +175,28 @@
              (assert (every (lambda (value) (eq value (aref state 3))) (aref state 2)))
              (assert (= (getf *case* :calls) 1))))
       (cleanup)))
-  (format t "PASS selected-frame exit context: ~D values, ~D prompts, frameless ~S.~%"
-          count depth frameless)
+  (format t "PASS selected-frame exit context: ~D values, ~D prompts, frameless ~S, native ~S.~%"
+          count depth frameless (and native-function (i::function-name native-function)))
+  t)
+
+(defun native-body-offset (function)
+  (let ((starts (i::debug-info-instruction-starts (i::function-debug-info function))))
+    (loop for offset from 16 below (length starts)
+          when (and (= (sbit starts offset) 1)
+                    (nth-value 0 (i::gc-info-for-function-offset function offset))
+                    (not (member (i::source-scope-at-offset function offset) '(nil :unknown))))
+            return offset
+          finally (error "Missing framed body instruction."))))
+
+(defun native-case-test (mode depth)
+  (let* ((frameless (not (eq mode :body)))
+         (function (if (eq mode :frameless) #'native-frameless-target #'native-target))
+         (offset (if (eq mode :body) (native-body-offset function) 16))
+         (point (s::install-instruction-breakpoint function offset)))
+    (unwind-protect
+         (case-test 3 depth frameless function point)
+      (s::clear-instruction-breakpoint point)))
+  (format t "PASS native caller location at ~S with ~D prompts.~%" mode depth)
   t)
 
 (defun recursive-target (marker state depth)
@@ -405,6 +453,8 @@
   (dolist (count '(0 1 3 8))
     (dolist (depth '(0 2)) (case-test count depth)))
   (dolist (depth '(0 2)) (case-test 3 depth t))
+  (dolist (mode '(:entry :body :frameless))
+    (dolist (depth '(0 2)) (native-case-test mode depth)))
   (dolist (depth '(0 2)) (ordered-case-test depth))
   (dolist (catch-level '(3 -1))
     (dolist (depth '(0 2)) (nlx-case-test catch-level depth)))
