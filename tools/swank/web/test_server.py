@@ -155,6 +155,20 @@ class ProtocolTests(unittest.TestCase):
                     "stop": stop, "id": 0, "command": "find-frame",
                     "argument": argument}, session)
 
+    def test_source_code_arguments(self):
+        session = "a" * 64
+        stop = [":stop", session, 1]
+        for argument in (None, "CL:CAR", "(setf target)", ""):
+            self.assertEqual(server.operation_arguments("submit", {
+                "stop": stop, "id": 0, "command": "source-code",
+                "argument": argument}, session)[2:],
+                [server.Symbol(":source-code"), argument])
+        for argument in (False, 0, [], {}):
+            with self.subTest(argument=argument), self.assertRaises(ValueError):
+                server.operation_arguments("submit", {
+                    "stop": stop, "id": 0, "command": "source-code",
+                    "argument": argument}, session)
+
     def test_typed_arguments(self):
         session = "a" * 64
         stop = [":stop", session, 1]

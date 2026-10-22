@@ -87,7 +87,7 @@
     ("clear-inspection" . :clear-inspection) ("arglist" . :arglist)
     ("argument" . :argument) ("rest-argument" . :rest-argument) ("local" . :local)
     ("bindings" . :bindings) ("handlers" . :handlers) ("catches" . :catches)
-    ("function" . :function) ("compiled-code" . :compiled-code)
+    ("function" . :function) ("source-code" . :source-code) ("compiled-code" . :compiled-code)
     ("instruction" . :instruction) ("single-step" . :single-step)
     ("lexical-environment" . :lexical-environment)
     ("standard-value-warnings" . :standard-value-warnings) ("special" . :special)
@@ -103,7 +103,7 @@
     ((:set-breakpoint :clear-breakpoint)
      (require-array argument 2 "Expected function source and a nonnegative PC.")
      (list (require-string (aref argument 0)) (require-integer (aref argument 1))))
-    (:clear-all-breakpoints
+    ((:clear-all-breakpoints :source-code)
      (unless (eq argument 'null) (require-string argument)))
     (:find-frame
      (require-array argument 4 "Expected search string, Detailed, Invisible, and Reverse Booleans.")

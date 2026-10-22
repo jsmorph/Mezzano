@@ -519,7 +519,7 @@
       (when previous
         (unless (and (eq operation (service-command-operation previous))
                      (if (member operation '(:evaluate :inspect :modify :bindings :special :reinvoke
-                                             :set-breakpoint :clear-breakpoint :clear-all-breakpoints :find-frame))
+                                             :set-breakpoint :clear-breakpoint :clear-all-breakpoints :source-code :find-frame))
                          (equal argument (service-command-argument previous))
                          (eql argument (service-command-argument previous)))
                      (eq (service-command-boot previous)
@@ -545,6 +545,9 @@
         ((:set-breakpoint :clear-breakpoint)
          (unless (typep argument '(cons string (cons (integer 0 *) null)))
            (service-error :invalid-breakpoint-location)))
+        (:source-code
+         (unless (typep argument '(or null string))
+           (service-error :invalid-source-function)))
         (:clear-all-breakpoints
          (unless (typep argument '(or null string))
            (service-error :invalid-breakpoint-function)))
@@ -604,7 +607,7 @@
                                                                        (second argument)))
                                                        ((:set-breakpoint :clear-breakpoint)
                                                         (list (copy-seq (first argument)) (second argument)))
-                                                       (:clear-all-breakpoints
+                                                       ((:clear-all-breakpoints :source-code)
                                                         (when argument (copy-seq argument)))
                                                        (:bindings (when argument
                                                                     (list (first argument)
@@ -1456,6 +1459,21 @@ NIL with true availability denotes an absent global cell."
                          (service-write-instruction context instruction start)
                          (incf start size)))))))))
 
+(defun service-show-source-code (stop source)
+  (let* ((function (service-breakpoint-function source stop))
+         (record (mezzano.internals::debug-info-source-form
+                  (mezzano.internals::function-debug-info function))))
+    (unless record
+      (return-from service-show-source-code
+        (format nil "Retained source text unavailable for ~A." (service-print function))))
+    (with-output-to-string (*standard-output*)
+      (format t "Compilation input for ~A:~%" (service-print function))
+      (format t "Input: ~A~%Top-level form ~A, starting line ~D, character ~D.~%Source locators unavailable.~%~%"
+              (or (aref record 1) "unavailable")
+              (or (aref record 2) "unavailable")
+              (aref record 3) (aref record 4))
+      (write-string (aref record 5)))))
+
 (defun service-show-function (stop)
   (let ((function (frame-function
                    (aref (service-stop-frames stop) (service-stop-current-frame stop)))))
@@ -1984,6 +2002,7 @@ NIL with true availability denotes an absent global cell."
     (:argument (service-show-argument stop (service-command-argument command)))
     (:local (service-show-local stop (service-command-argument command)))
     (:rest-argument (service-show-rest-argument stop))
+    (:source-code (service-show-source-code stop (service-command-argument command)))
     (:compiled-code (service-show-code stop nil))
     (:instruction (service-show-code stop t))
     (:lexical-environment (service-show-lexical-environment stop))

@@ -72,6 +72,9 @@
       (:name "Show Rest Argument" :id :show-rest-argument
        :help "Display the selected frame's current &REST parameter and assign it to *.")
       (:name "Show Function" :id :show-function :help "Display the selected frame's function and assign it to *.")
+      (:name "Show Source Code" :id :show-source-code
+       :arguments ((:function-name nil t))
+       :help "Display retained compilation input for the selected executing function or an optional current function name. Source locators are unavailable.")
       (:name "Show Compiled Code" :id :show-compiled-code :help "Disassemble the selected frame's executing function with hexadecimal byte offsets.")
       (:name "Show Instruction" :id :show-instruction :help "Display the instruction at the selected frame's saved caller location or interrupted program counter.")
       (:name "Use Dynamic Environment" :id :use-dynamic-environment
@@ -553,6 +556,7 @@
                           :argument (unless (eq argument :all) argument)))
     (:show-rest-argument (list :operation "rest-argument"))
     (:show-function (list :operation "function"))
+    (:show-source-code (list :operation "source-code" :argument (first argument)))
     (:show-compiled-code (list :operation "compiled-code"))
     (:show-instruction (list :operation "instruction"))
     (:set-breakpoint (list :operation "set-breakpoint" :argument argument))
