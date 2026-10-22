@@ -156,9 +156,9 @@
                  (assert (not (getf result :current-boot-p)))
                  (test::expect-error :request-conflict
                                      (lambda () (d:submit-debugger-command lease (getf entry :command) :single-step)))
-                 (test::expect-error :expired-frame
+                 (test::expect-error :expired-stop
                                      (lambda () (d:submit-debugger-command lease next :locals (getf entry :frame))))
-                 (test::expect-error :expired-inspection-reference
+                 (test::expect-error :expired-stop
                                      (lambda () (d:submit-debugger-command lease next :describe-object (getf entry :inspection))))
                  (assert (= (getf (d:debugger-stop-information stop) :next-command-id) next))))))
          (check-prepared)
