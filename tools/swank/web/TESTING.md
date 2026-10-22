@@ -444,7 +444,7 @@ The configuration must authorize execution, record native SAR64 acceptance, pin 
 
 The driver checks exact instruction PCs and displayed operands, current-generation inspection, defined flags, raw register/memory state through moving GC, unchanged code, exact accepted-ID replay, original values, and one cleanup.  It removes only owned points, symbols, jobs, stops, and its session.
 
-Both cases passed on two-CPU x86-64 QEMU with ordinary SAFETY 3/DEBUG 3/SPEED 1 fixtures.  Two captures were reviewed.  Node and Chromium exited zero.  All 198 responses succeeded, and browser, network, HTTP, and finalization error lists were empty.  Ten jobs, two stops, and the session were released.  These cases use the inline Listener debugger.  Standalone-Debugger interaction, SAR64 saved-image restoration, fresh-cold execution, and ARM64 remain untested.
+Both cases passed on two-CPU x86-64 QEMU with ordinary SAFETY 3/DEBUG 3/SPEED 1 fixtures.  Two captures were reviewed.  Node and Chromium exited zero.  All 198 responses succeeded, and browser, network, HTTP, and finalization error lists were empty.  Ten jobs, two stops, and the session were released.  These cases use the inline Listener debugger.  Standalone-Debugger interaction, fresh-cold execution, and ARM64 remain untested.  A separate native [parked-stop restoration test](../TESTING.md#parked-sar64-restoration) passed without fixture reload.  Browser interaction held across that restart remains untested.
 
 ## Single Step Web tests
 
