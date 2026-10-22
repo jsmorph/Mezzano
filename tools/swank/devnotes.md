@@ -7841,7 +7841,6 @@ The first 12 cold phases passed under ca303127 without live core publication.  S
 
 The main browser renderer also passed Node syntax checking.  The new Find Frame Lisp service, parser, HTTP conversion, and native fixture remain uncompiled and untested in the guest.  Their source preparation has not changed the running cold candidate.
 
-
 ### Find Frame: browser test shape review
 
 Source review found an error in the unexecuted browser driver.  The :frames result in `system/debugger-service.lisp` contains :frame and :function for each row.  The row's array position is its frame index.  `app.js` enumerates that array with ENTRIES.  The prepared driver instead read a nonexistent index field after filtering, which would have produced undefined indices.  The earlier SHA-256 `0b2102749fc83ccf04d765d64844b86f7cbc6eb2329d5a5ef1428b419f5c31c1` identifies that defective preparation.  It has never run.
@@ -7849,7 +7848,6 @@ Source review found an error in the unexecuted browser driver.  The :frames resu
 Reviewed recommendation: map the original array positions before filtering by function name.  Check the remaining result fields against the frame service, JSON adapter, and browser rendering.  Keep the fixture's method removal, class removal, function unbinding, and package deletion in that order.  Preserve the first test failure if final evidence collection or browser shutdown also fails, reporting secondary failures alongside its cause.  This requires changes only to the new driver and journal.  Repeat host syntax and embedded-form delimiter checks.  Guest and browser execution remain disabled.
 
 The fixture review also identified an avoidable ordering assumption: arming a probe slot while its recursive frame is selected would arm the printer before Top Of Stack prints its own frame.  Use a private-package Boolean printer flag instead, arm it after selecting frame zero, and unbind it during owned cleanup.  The next value-printing command is then the Find Frame operation being tested.  This changes only the test fixture.
-
 
 ### Find Frame: corrected browser preparation evidence
 
@@ -7893,7 +7891,6 @@ The generic-name source review also found that FUNCTION-NAME delegates funcallab
 
 Detailed frame code must retain disassembly columns on a narrow screen.  Reuse the existing compiled-code-result class for the new frame-code element; the generic PRE style wraps lines.  The existing code class supplies white-space PRE and horizontal overflow.  Add a narrow-viewport check to the prepared browser driver rather than adding another CSS rule.
 
-
 ### Find Frame: narrow browser code test preparation
 
 Reviewed the Detailed code element and the existing compiled-code-result CSS.  Recommendation: extend the prepared Detailed case at a 360-pixel viewport.  Check the PRE and horizontal-overflow styles, a single layout rectangle for the longest nonempty source line, overflow beyond the pane width, and successful horizontal movement with unchanged text.  Save the narrow scrolled display, then restore the previous viewport and continue the retained-result test.  This uses the existing CDP/browser support and adds no dependency or CSS rule.  The reviewed driver SHA-256 8749a2e6cd0f0b6fcbcd9b5116009c90db4f88feef26b3cae0d58631b19a2abb remains historical.  Only host syntax checking is authorized for this increment.
@@ -7910,30 +7907,25 @@ Seventeen of nineteen native phases have passed on the fresh ca303127 x86-64 wor
 
 Logical-instruction and integer-body matrices remain in progress or pending.  The complete Web/HTTPS load and tests, three restorations, and nine Chromium suites remain required.  Find Frame source preparation remains uncompiled in the guest.
 
-
 ### Find Frame: narrow test source validation
 
 The prepared driver now checks the Detailed pane at width 360: compiled-code-result class, WHITE-SPACE PRE, horizontal overflow AUTO, unchanged disassembly text, one layout rectangle for the longest line, positive overflow, and text movement matching the horizontal scroll offset without changing line width.  It records these measurements and saves detailed-frame-narrow-scrolled.png, then restores the original viewport before continuing.  Node 24 syntax checking passed for the complete driver and its generated browser expression.  Prepared SHA-256: 2328e750ffba43e56fbe9955214ee05b9c0e8278e3120ecf2dffe0fd0b5b8520.  The prior 8749a2e6 preparation remains historical.
 
 No guest, HTTP, or browser request ran.  Narrow-screen behavior and the screenshot remain untested until exclusive runtime authorization.  No dependency, frozen D artifact, or feature commit changed.
 
-
 ### Find Frame mouse entry
 
 The standalone/Listener Debugger menu already prefills commands requiring an argument and requests guest assistance.  Find Frame was absent from that list in the untested source preparation.  Reviewed recommendation: include it in the existing prefill loop, so mouse selection inserts :Find Frame followed by a space in the active debugger editor.  Keep parsing and execution in guest Lisp.  Extend the prepared browser test to use this entry and verify its editor, focus, and successful search after runtime authorization.  This adds no new input flow or dependency.
 
-
 ### Find Frame: menu test preparation
 
 Reviewed the guest string-argument metadata, Boolean defaults, command plan, and existing prefill action.  Recommendation: replace the current standalone reverse-search step with a default forward search entered through the actual Find Frame menu button.  Check that the standalone editor receives the exact prefix, retains focus, and displays guest string assistance while the Listener draft and next command ID remain unchanged.  Insert the existing fixture name into that prefix, submit it, and reuse the common result assertions.  The expected selection moves from the second recursive activation to the third.  Earlier cases retain reverse coverage.  This avoids another fixture or search cycle.
-
 
 ### Find Frame: menu test source validation
 
 Prepared SHA-256: 2bd33f2f0623a0fd3535c8a8f84252ed2179beb1a78e845935883551f351db92.  The previous 2328e750 preparation and hash remain historical.  The standalone case now clicks the actual Find Frame menu control.  It checks the exact editor prefix, focus, guest string-argument assistance, unchanged Listener draft and command ID, appended fixture name, ordinary Boolean defaults, third-activation selection, and cleared editor after submission.  It reuses the existing search-result assertions and fixture.
 
 Node 24 syntax checking passed for the complete driver, generated menu expressions, generated narrow-code expression, and twenty-three literal browser expressions.  These were host parsing checks.  No guest, HTTP, or browser request ran.  The menu result, screenshot, and other UI behavior remain untested.  No frozen D artifact, dependency, or feature commit changed.
-
 
 ### Queued-step test guide correction
 
@@ -7944,7 +7936,6 @@ The evidence audit verified 38 of the receipt's 39 payload hashes.  The original
 Reviewed recommendation: correct the stale invocation and tested-scope paragraphs to match the implementation, debugger reference, and existing completion evidence.  Preserve the polling failure beside native success.  This corrects historical scope and adds no result for the current cold candidate.  Re-read and compare both paragraphs before committing this documentation-only increment.
 
 Cold logical stepping passed 148 cases at zero/two prompts in 593.84 seconds on ca303127 without live core publication.  Log SHA-256: 2a86da93cc599a8c5fa54f6a75f445ac4f04dda8204d7259602b5358c28d3188.  Eighteen of nineteen native phases are complete.  The full-body integer matrix is running; Web/HTTPS, restoration, and browser acceptance remain required.
-
 
 ### Find Frame native test preparation
 
@@ -8042,7 +8033,6 @@ The existing phase coordinator whitelists its original two plan filenames.  Keep
 
 The original retained full-library job returned :FRESH-HTTP-AND-HTTPS-MODULES-LOADED after 3764.83 seconds total.  The additional observer completed successfully in 1240.49 seconds, released its job/session, and exited zero.  No load was resubmitted.  modules-completion-evidence.json pins both the original failed observer and the successful completion/output, exact initial launch identity, driver, observer source, and successful exited unit.  The six unchanged remaining native/transport phases can now run.  Restoration and browser acceptance remain required.
 
-
 ### Cold HTTPS cancellation failure
 
 The unchanged library-port and native HTTP phases passed in 8.18 and 35.55 seconds.  The HTTPS native phase stopped in TIMED-CANCELLATION: its 0.1-second context returned after 551/100 seconds, exceeding the existing three-second upper bound.  The coordinator stopped with exit 1.  The original receipt, output, and retained stop remain intact.  This phase had already passed method ordering, chunked HTTP, and synthetic COMPLETE tests.  Certificate-cache tests and later transport/browser phases have not run.
@@ -8053,7 +8043,6 @@ Source review found that the handshake constructs ClientHello and its preferred 
 
 Reviewed recommendation: preserve the failure and run a separate bounded native diagnostic, measuring fresh verify-none construction, context expiration, preferred-group key generation, allocation, and GC time.  Use the existing compiled libraries without replacement definitions, policy changes, or a relaxed timing bound.  Determine the time-consuming operation before choosing a correction.
 
-
 ### Cancellation timing and collection pauses
 
 The independent diagnostic reproduced the excessive wall interval with measured collection: fresh verify-none iteration 3 took 5.64 seconds, including 5.509765 seconds of GC across two cycles.  Iteration 13 took 5.54 seconds, including 5.450195 seconds in one cycle.  The other eighteen constructors took 0.11–0.12 seconds with no GC.  Preferred X25519/ML-KEM-768 key generation took 0.07 seconds and X25519 took 0.01 seconds in that run.  Sources and output: diagnose-cancellation-repeated.lisp and cancellation-repeated-diagnostic.log.  The first two-call diagnostic separately returned in 0.11–0.15 seconds with no GC.  These observations diagnose the reproduced timing failure.  The original 5.51-second interval lacks a GC baseline, so its GC attribution remains unmeasured.
@@ -8062,13 +8051,11 @@ Reviewed recommendation: correct the test's upper-bound metric.  Preserve its wa
 
 The change distinguishes testable cancellation delivery from periods when all application and deadline threads are stopped.  It does not provide a three-second wall-time guarantee.  Record the observed five-second collection pauses as a performance limitation in the HTTPS documentation.  Run the corrected cancellation suite natively, including forced collection, then the pending certificate-cache and transport phases.  Preserve the original failed phase and add a separate superseding acceptance receipt with the test-source change explicit.  Browser gates must continue rejecting the original failed receipt until the new evidence chain is reviewed.
 
-
 The corrected suite compiled warning-free under SAFETY 3/DEBUG 3/SPEED 1 with ordinary allocation and passed natively.  Its forced full collection took 5.32 seconds, including 5.319824 GC seconds.  A fractional deadline also crossed collection: 5.58 elapsed seconds, including 5.410156 GC seconds.  The other cancellation calls returned in 0.11 seconds.  Explicit zero-second and four-second non-GC timing inputs were rejected as required.  All certificate-signature cache tests then passed, including changed inputs, failed verification, fixed TTL, capacity/eviction, boot invalidation, concurrent insertion, and warm-cache policy checks.
 
 Completion took 28.71 seconds.  phase-https-native-completion.json records test source SHA-256 404386b5823691b0be4655acfb97a573e153e74e3152fb64f6fe1c077e8c2644 and log SHA-256 d2b529d9ccd8a43571571f249077b1af35c5ad5f42f3234f6029676ab5982a18.  Only the test module changed in this guest.  The original failed evaluation was aborted through its retained debugger and released after its inspected evidence was hashed.  https-native-failure-closed.json records ABORT/UNWOUND, the aborted job, and no stops.  The original failed receipt/log remain unchanged.  The timing revision was not run under SBCL.
 
 Reviewed continuation: run only the three unchanged remaining original drivers: HTTPS transport, browser fixture loading, and HTTP startup.  Require both the original failure chain and successful corrected completion, exact current identity, all passed earlier receipts, unchanged drivers, and the test-only source hash.  Preserve the original coordinators/plans and write separate final-phase coordinator evidence.  Do not rerun passed phases or enable browser execution yet.
-
 
 ### Failure-driver stop release
 
@@ -8077,7 +8064,6 @@ HTTPS transport passed in 24.29 seconds: verified full/resumed TLS handshakes, e
 Browser fixture preparation then stopped on its initial empty-stop assertion.  Inspection identified the previous cancellation failure's closed stop, ID 900, attached to its dead evaluation thread.  My failure cleanup had aborted and released the job/session but omitted the documented RELEASE-DEBUGGER-STOP operation.  Job information has no active stops after unwind, while DEBUGGER-STOPS :INCLUDE-CLOSED T intentionally retains that closed record.  The earlier statement of no stops described job information and did not establish an empty global registry.
 
 Reviewed correction: keep product retention semantics and the fixture assertion.  Abort the new owned fixture failure, release its closed stop through its still-valid remote lease, then release its job/session.  Release only the original closed ID 900 after checking its exact failed evaluation thread name and closed state, using the public controller/attach/release API.  Preserve both failed receipts and stop inspections.  Verify empty registered stops before rerunning the unchanged browser fixture driver under a new receipt name.  Include explicit stop release in subsequent failure cleanup.
-
 
 The unchanged browser fixture retry passed in 41.93 seconds after explicit stop release.  Its log SHA-256 is 79b7945ebde760fcd98c2be29da6e43ed44da501ef5abd48e3275ad4e9d5d012.  Native HTTP startup passed in 0.99 seconds, including the sixteen-topic catalog assertion.  post-cancellation-runtime.json pins the original identity and the sole test-module update.  The retry reused the driver pathname, so its mutable .job.json now describes the successful retry.  The original failure identity remains recorded in its immutable log, inspection, and failure-closed record.  Those identify the failed job without inventing an earlier metadata file.
 
@@ -8091,7 +8077,6 @@ The main test source matches the executed copy exactly: d8869cd013bd42707391d80b
 
 The immutable 5-GiB checkpoint was archived after FINISH.  Full decompression reproduced SHA-256 2ca2dd8425c52cc8b7cd4c07b7f68c1687f97454892a4f31a789d540fd0b1155 and size 5368709120.  Compressed archive size is 462414750 bytes, SHA-256 d0f3a4ce82a4d75efa71747397c1a6b4da798de1eaf15d8060a864e4673f9d16.  Its durable verified receipt preceded removal of the uncompressed duplicate.  The running working image and original main world remain unchanged.  Continue with actual nonlocal-landing restoration at zero and two prompts, then browser acceptance.
 
-
 ### Zero-prompt nonlocal restoration passed
 
 The actual zero-prompt nonlocal checkpoint restored successfully as PID 1116930/start 98514662.  FINISH passed in 17.20 seconds, checking exact retargeted landing addresses, saved controls, replay, moving GC, multiple values, and cleanup across the new boot.  Finish log SHA-256: dcc320465bcd8ba91b660a464ac8911d50badd0d001a23cd7a3f6b42eab0a3a7.  The complete immutable checkpoint SHA-256 is 653cce842d13d122d5170f3aa7489db24421cdad8657301b4b4b669fc3d5cf41.
@@ -8100,19 +8085,15 @@ The archive preflight currently requires free storage greater than the uncompres
 
 Reviewed recommendation: replace that whole-file estimate with a bounded streaming free-space check before archive creation and each 4-MiB input chunk.  Require a 64-MiB reserve plus 8 MiB for compressed output and buffering.  Preserve every source/FINISH/identity guard, exclusive creation, full source/decompression hashes, source identity check, durable receipt, and source retention on failure.  This bounds each write without assuming a compression ratio or requiring storage for an uncompressed-sized archive.  Preserve the executed earlier helper/preparation, syntax-check the small revision, and archive only this already-passed checkpoint before the final two-prompt test.
 
-
 ### Checkpoint storage approval review
 
 Zero-prompt restoration passed.  Its complete checkpoint archive passed verification: 561326674 bytes, SHA-256 9bff1633dac7b07022741d0d884b521d83410288b5c997d33f4ffda9f0d820e2.  The next independent copy needs more free storage for the existing margin.  Automatic approval review rejected archival followed by removal of the stopped failed candidate working image, stating that removal was costly to reverse and lacked specific authorization.  That rejected call executed no code.
 
 Reviewed continuation: prepare and verify the stopped failed candidate archive while retaining its original file.  This is the safer alternative allowed by the review.  Record exact source identity, full source/decompression hash and length, read-only archive hash, and stopped state.  Present the concrete verified result before requesting approval for the remaining removal.  Do not change the restart storage guard or substitute another deletion.  Continue independent test preparation while preserving both original and archive.
 
-
 The safer retained-original archive passed.  cold-foothold-20261020/verified-working-image-archive.json records all 5368709120 decompressed bytes with SHA-256 d30988ff4c7fcff57e3fae1934811f71a42cd7bf5662e89a19fa846b99938cdd.  The archive occupies 223491708 bytes, SHA-256 ec354e4804dcf7d9dfe490718455c791209fc519134e77c1a2c82ffa0092a226.  Its original working.image remains present.  An explicit approval question for removing only that original is pending, with the automatic-review reason stated.  No removal has been retried or substituted.  The final two-prompt PREPARE passed, and its independent Snapshot is running while approval is pending.
 
-
 The two-prompt Snapshot completed successfully at 02:44:24 UTC.  Its serial delta contains both Snapshot boundaries and the coordinator returned :COLD-RESTORE-CHECKPOINT-COMPLETE.  The VM remains running with the prepared test parked at its three saved nonlocal destinations.  Its actual restart/FINISH remains pending the explicit storage approval.  No further live publication or browser execution has occurred.
-
 
 ### Direct compressed checkpoint
 
@@ -8121,7 +8102,6 @@ Review found a simpler nondeleting alternative: create the final independent che
 Final recommendation: withdraw the removal question and retain both K copies.  For the depth-two test only, preserve the original fourteen-script plan and prepare a separate restart helper.  Keep all process, ownership, Snapshot, unit, memory, and port checks.  Maintain the existing one-GiB free-space reserve plus eight MiB of write headroom before creation and every four-MiB input chunk.  Record the complete raw source hash, compressed hash, decompressed hash/size, unchanged source identity, helper hash, format, and durable checkpoint receipt before restarting.  Boot the same unchanged working image and run the same FINISH.  No file removal or reduced reserve is required.  The rejected deletion will not be retried, and its user question is withdrawn.
 
 The optional archive-preparation metadata now consistently identifies ccee7966 as its current helper and eaced0d2 as the prior source.  The older executed helper/preparation are preserved.  The intermediate metadata file observed as 6002ad61 was edited in place and has no confirmed preserved copy.  This does not change the separately recorded helper sources or executed archive receipts.
-
 
 ### Final cold restoration and compiler review
 
@@ -8493,7 +8473,6 @@ Final recommendation: declare EXT4's existing Iterate dependency with top-level 
 
 Stop only the verified panicked candidate, preserving its raw working disk, serial log, identity, hashes and original source manifest.  Record these as failure evidence, not as a memory snapshot.  Boot a new working copy of the exact pristine fd3e1cf4 cold image.  EXT4 and HTTP are external CAL-loaded modules, outside the embedded warm-source list, so their corrected sources require no new core image.  Record both new source hashes and preimages as an explicit external-source delta.  Reuse the same-core native dependency caches produced by the failed boot, validating their unchanged source manifest.  This retry is a fresh cold-core boot with reused library caches.  Test the corrected components and all original headless requirements.
 
-
 ## Headless native loader correction: 2026-10-21
 
 The retry completed startup in 335.11 seconds, with 48.32 seconds of GC.  Desktop-disabled package/system, process, and arithmetic assertions passed.  The native coordinator then failed before compiling its first test module: MAKE-PATHNAME inherited the physical REMOTE host from *DEFAULT-PATHNAME-DEFAULTS*.  MERGE-PATHNAMES retained that host and combined it with the logical SOURCE/TOOLS/SWANK directory.  The resulting REMOTE:/SOURCE/TOOLS/SWANK/test-debugger-service.lisp does not exist.  This was a host-generated test-input error.
@@ -8508,9 +8487,7 @@ The failed native-result.json, native.log, job metadata, and condition/frame ins
 - [ ] Verify forty HTTP assets and the full fresh-core native guard.
 - [ ] Run the prepared headless browser test, then Snapshot/restart acceptance.
 
-
 The corrected pathname retry compiled both test modules without warnings and passed the background debugger test during LOAD.  The coordinator then called the nonexistent LISPM-SERVICE-TEST::RUN-BACKGROUND-TESTS.  The existing module defines RUN-TESTS and invokes it at top level.  Source review confirms that a second call is unnecessary.  Remove the invalid coordinator call and retain the module's automatic test.  Preserve native-2's failed log/result/inspection, abort and release its owned stop/job/session, then repeat the full coordinator.  Native empty-state cleanup passed.  This second failure was another coordinator construction error, not a product failure.
-
 
 ### Headless native pass and Snapshot capacity
 
@@ -8520,13 +8497,11 @@ The host has 3.105 GB free.  A's image has 947.7 MB allocated within a five-GiB 
 
 Final recommendation after reviewing checkpoint provenance and all thirteen current QEMU command lines: archive the inactive debugger-paging-clean-parked-20261014.image in gzip form and reclaim its raw representation only after full independent decompression verification, an unchanged-source hash/identity check, and a repeated no-active-drive check.  The journal's clean-image parked restoration result identifies this checkpoint and its passed restore.  Its raw size is five GiB, fully allocated.  This preserves every byte and creates a restore receipt.  Current working drives, K, D, and original worlds remain untouched.  Keep the one-GiB reserve and full-image preflight.  Archive preparation/identity evidence is headless-startup-20261021/checkpoint-archive/inactive-source.json.
 
-
 The inactive parked checkpoint archive passed independent decompression of all 5,368,709,120 bytes, matching raw SHA-256 cbef8a5613e226e881d5aed08deb5838aa9e6c40a2ceb3b7840ba9fe66a108df.  The 251,729,167-byte gzip has SHA-256 d69555cb2528013b9a0bc5bc34de521f9eb9ef0ea1040de28b3134f466194228.  Source identity/full hash and absence from all thirteen current QEMU command lines were checked again before raw reclamation.  archived-checkpoint.json records the result and restore command.  Free disk recovered to 8.22 GB.
 
 Headless Snapshot helpers are prepared, Python syntax checked, and unexecuted under retry-2/restoration.  After browser handback, require its passed final receipt, the complete native guard, and full potential sparse-image growth plus one GiB and 64 MiB.  Save the boot identity, take the normal Snapshot, stop only the exact candidate service, hash its image, and restart it under a distinct unit.  FINISH requires a different boot, absent desktop packages/systems, the previously loaded background-debugger and Find Frame tests without module reload, a complete empty-state guard, and forty assets.  Run this before loading the optional desktop module.
 
 The two filesystem dependency declarations are ready for a separate commit.  The original EXT4 package failure remains preserved.  The corrected retry completed common startup and then passed retained debugger/HTTP tests.  The larger desktop selection increment remains uncommitted pending browser, headless saved-state, and optional-module testing.
-
 
 ### Headless browser acceptance
 
@@ -8538,7 +8513,6 @@ Two fixture failures remain separate.  Its original activity helper clicked #win
 
 The agent returned guest ownership.  The headless Snapshot coordinator passed the complete native guard and conservative full-image space preflight and is executing.  This browser run covers the bounded component-selection scope.  Full debugger/HTTPS acceptance and changed-boot acceptance have their own evidence.
 
-
 ### Headless Snapshot saved; host memory preflight stopped restart
 
 The headless Snapshot passed in 31.61 seconds with the full-image space preflight and one-GiB reserve.  The stopped saved image is 9c2d16a11036fde8848699459c0e2f0f017ea91ed8971b3c50c92766a05fdfc0.  The exact candidate service stopped and its process disappeared.  The restart then rejected 4,558,598,144 available bytes, below the 4.5-GiB requirement.  No new VM started.  The original main world and other preserved processes remain.
@@ -8546,7 +8520,6 @@ The headless Snapshot passed in 31.61 seconds with the full-image space prefligh
 The recommendation is to add one GiB of host RAM, retaining the current four-GiB guest and preserved worlds.  This resource question is pending.  No threshold was lowered and no other world was stopped.
 
 Desktop-disabled first boot, native tests, HTTP assets, and bounded Chromium acceptance have passed.  Changed-boot and optional desktop-module tests remain incomplete.  Commit the reviewed component selection and its product documentation with those limits explicit.  Existing source in the saved candidate stays frozen.  Continue independent source/documentation review while waiting for host memory.
-
 
 The launch-only continuation is prepared as retry-2/restoration/resume-stopped.py.  The original restart.py and its failed outcome remain.  The continuation requires the existing stopped receipt, exact saved-image hash, passed Snapshot receipt, absence of prior owned PIDs, protected-process checks, unused ports, and the same 4.5-GiB available-memory threshold.  Python syntax passed.  It has not executed.
 
@@ -8557,7 +8530,6 @@ IPL installs a global debugger that calls PANIC and clears it only at successful
 LOAD-INIT-FILE catches ERROR, prints the condition, and returns.  RUN-BOOT-HOOKS wraps every early, ordinary, and late hook in LOG-AND-IGNORE-ERRORS.  Those paths discard the failing activation before remote inspection.  POST-BOOT-WORKER runs deferred actions, then hooks, and enables Snapshot only after that sequence completes.
 
 LOAD-LLF executes top-level forms directly and supplies no whole-IPL restart.  Adding a retained stop alone would therefore leave startup failures without a reliable retry/abort boundary.  An entire IPL retry would repeat filesystem registration and SWANK startup.  A correction needs a defined retry boundary for the failing initialization operation, retained condition/frame inspection, and an explicit skip/abort choice.  Early boot before the remote service exists needs a separate documented failure path.  Test the post-SWANK failure, init-file failure, early/ordinary/late hook failures, restart result, repeated effects, and Snapshot inhibition through recovery.  These findings are source inspection; no startup-recovery implementation has been selected or changed.
-
 
 ## Host memory and the headless restart: 2026-10-21
 
@@ -8588,7 +8560,6 @@ ROOM before a full collection reported 163,984 physical pages in use, 640.6MiB, 
 The one-second host observer recorded 119 samples over 118.11 seconds.  Peak QEMU RSS was 1,421,132KiB, 1.36GiB, with zero QEMU swap.  Minimum host available memory was 4,031,756KiB, 3.84GiB.  The service's recorded peak was 1,769,893,888 bytes, 1.65GiB, including its charged file cache.  Its configured MemoryMax remains five GiB, MemorySwapMax zero, with two virtual CPUs and the existing CPU quota/nice value.  Original raw samples and guest ROOM replies are under retry-2/restoration.  This measured workload fits below the configured four-GiB guest size, but a smaller configured-guest test remains separate work.
 
 The existing browser agent now owns the restored headless guest for the same four-group Chromium test.  Its provenance guard must validate the explicit thirteen-live-plus-one-saved original baseline.  Root makes no guest requests or changes during that ownership.  Optional desktop-module initialization remains pending.
-
 
 ### Optional desktop module test preparation
 
@@ -9075,7 +9046,6 @@ Before production acceptance, test exact capture and coordinates, native serial 
 - [ ] Document, commit, and push the accepted increment.
 - [ ] Add the source-display command and browser behavior after metadata acceptance.
 
-
 ### Display Debugger documentation accepted; checkpoint review
 
 Web/product/test documentation is committed and pushed as a7fd9d1f.  The sixteen-book publication changed exactly the three reviewed product guides, then passed LOAD-CATALOG, catalog/search and all three topic checks.  Publication SHA-256 fe6f1f511ee620e5e172a663551df1018714d730fa2bddcb3cfd793974c6bd94; catalog SHA-256 0ec1a525e95418c30af486c354c4b21e9981eb4241fa68cc873a37ad53b91270.  Frozen Lisp/HOME, process identities and forty assets passed.  The documentation runtime SHA-256 is 9aa213bfee9141bbbaed9a4d87ebbd427a32e0446bae2b3e6111c74182ff2fe6.
@@ -9087,3 +9057,16 @@ Before publishing source-retention compiler changes, save and restore this clean
 Prepared helpers are under display-debugger-20261021/accepted-checkpoint.  They check the current 1165155 identity, source/book/asset bytes, protected processes and complete native state.  The restart removes the prior helper's obsolete init-file-change metadata because this runtime already has NIL.  After restoration require current-boot complete startup, sleeping worker, native empty state and exact ordinary function paths, forty assets and all three newly published topic payloads.  Rerun the native Display Debugger and TCP/HTTP lifecycle tests without reloading their fixtures.  Fresh cold compilation remains separate.
 
 The source-retention edits are prepared in eight product files and have passed host whitespace review.  They have not compiled, loaded or executed.  The shared read helper resides in the existing native/cross file-compiler module, avoiding duplicate helper implementations.  Native tests and publication remain pending.
+
+
+### Clean Display Debugger/TCP/HTTP restoration passed
+
+The clean Snapshot completed in 33.22 seconds.  The checkpoint is 300338165 compressed bytes, SHA-256 f5bb20181ada0672d009ea68853adeb7f73838be1e2712a9b1a162eec17fb4b5.  All 5368709120 decoded bytes match b9eee4a797807910486c81cde5e13e6009a93a770dd71f00638e449baaafc333.  Offline zero-range reclamation retained device/inode, length and hash, reducing working-disk allocation from 1396023296 to 1311608832 bytes.  No additional working disk was created.
+
+Current dedicated guest is PID 1166772/start 107233975, unit mezzano-display-debugger-accepted-20261021.service, on the unchanged ports and resource limits.  First readiness returned current-boot complete startup, sleeping worker and init-file NIL.  Without fixture reload, the native Display Debugger, forced listener lifecycle and existing HTTP suites passed in 0.91 seconds.  Complete native state, all sixteen source books and frozen Lisp/HOME files, protected processes, forty assets, and exact catalog/three-topic payload equality passed.  Acceptance SHA-256 174f2b608d95ce14a01e4ed84b88a240b335577d1a78099cd157da2825f8af2a.  Current runtime accepted-checkpoint/web-runtime.json SHA-256 3daa3415ea1aa9749be092f3d58ebbae6c79e9e67a738459e32554fd77f246ca.  Browser acceptance ran before this restart.  Fresh cold compilation of the two listener corrections remains untested.
+
+### Retained-source native publication plan
+
+Review of the prepared changes keeps ordinary location streams unchanged and shares the read helper through the existing native/cross file-compiler module.  The native test covers read-time evaluation once, exact consumed characters and coordinates, AST copying, serial and forced-parallel file compilation at DEBUG 0/1/3, shared records for nested functions, compile-time and LAP forms, retained old functions after file replacement/redefinition, concurrent independent files, and moving full GC.  Fixture names and files are owned and cleaned.  The test is prepared, uncompiled and unexecuted.
+
+Publish only the changed definitions, using the native Lisp reader to select them from verified private copies.  Retain the existing four replaced function objects before compilation: PASS1-LAMBDA-INNER, COMPILE-BACKEND-FUNCTION-2, COMPILE-TOP-LEVEL-FORM and COMPILE-FILE.  Add the context variable, recording subclass/methods, read helper and metadata accessor.  Compile each selected module and the fixture with ordinary allocation and require no warnings/failure.  Run on the one dedicated restored guest.  Preserve frozen source/HOME and existing Web/catalog state, record every compiled source/hash and exact function source path, and run the complete native guard afterward.  Other compiler/runtime functions keep their definitions.  Cross execution, the source command/UI, and saved-image acceptance of source retention remain pending.
