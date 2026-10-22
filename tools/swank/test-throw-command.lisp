@@ -344,8 +344,17 @@
 
 (defun check-assistance ()
   (let ((listener (mezzano.command-processor:make-listener)))
-    (let ((reply (mezzano.command-processor:assistance listener ":Th" 3 :space :context :debugger)))
-      (assert (equal (getf reply :text) ":Throw ")))
+    (dolist (source '(":Th" ":Th " ":Th  " ":tH " ":Throw"))
+      (dolist (action '(:space :complete))
+        (let ((reply (mezzano.command-processor:assistance
+                      listener source (length source) action :context :debugger)))
+          (assert (equal (getf reply :text) ":Throw ")))))
+    (let* ((source ":Th (unfinished")
+           (reply (mezzano.command-processor:assistance
+                   listener source (length source) :space :context :debugger)))
+      (assert (not (getf reply :error)))
+      (assert (equal (getf reply :text) source))
+      (assert (eq (getf reply :expected-type) :lisp-source)))
     (let ((reply (mezzano.command-processor:assistance listener ":Throw" 6 :parse :context :debugger)))
       (assert (not (getf reply :error)))
       (assert (string= (getf reply :operation) "throw"))

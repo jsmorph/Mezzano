@@ -723,8 +723,13 @@
                 (unless matches (input-error "Unknown command. Use HELP to list the supported commands."))
                 (let* ((count (when command (length (words (getf command :name)))))
                        (namep (or (null command) (< (length tokens) count)
-                                  (and (= (length tokens) count) (zerop trailing)
-                                       (null (second source-command))))))
+                                  (and (= (length tokens) count)
+                                       (null (second source-command))
+                                       (or (zerop trailing)
+                                           (and (first source-command)
+                                                (not (string-equal
+                                                      (lexeme-value (first tokens))
+                                                      (getf command :name)))))))))
                   (when namep
                     (when (eq action :insert) (input-error "Complete a command that accepts a pathname first."))
                     (let ((response (reply))
