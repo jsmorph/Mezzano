@@ -426,7 +426,7 @@ node tools/swank/web/test-throw.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-throw-test
 ```
 
-Use a fresh output directory.  The driver preserves its first failure and any separate evidence/cleanup failures, releases only its recorded jobs/stops/session, and checks protected stop records.  Native acceptance is described in the [guest test guide](../TESTING.md#throw-command).  All six groups passed on the dedicated x86-64 guest, with seven reviewed captures, no page/HTTP/finalization errors, and release of three owned jobs, five stops, and the session.  Three prior attempts preserve driver navigation/reload/closed-state errors separately.  Throw across a guest image restart remains untested.
+Use a fresh output directory.  The driver preserves its first failure and any separate evidence/cleanup failures, releases only its recorded jobs/stops/session, and checks protected stop records.  Native acceptance is described in the [guest test guide](../TESTING.md#throw-command).  All six groups passed on the dedicated x86-64 guest, with seven reviewed captures, no page/HTTP/finalization errors, and release of three owned jobs, five stops, and the session.  Three prior attempts preserve driver navigation/reload/closed-state errors separately.  Browser Throw interaction held across a guest image restart remains untested.  The [native saved-command test](../TESTING.md#throw-command) passed an actual restart with incomplete tag/value readers and confirmation.
 
 ## Single Step Web tests
 
