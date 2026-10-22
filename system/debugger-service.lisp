@@ -1846,10 +1846,11 @@ NIL with true availability denotes an absent global cell."
               stop
               (lambda ()
                 (when source
-                  (let ((*read-eval* nil))
+                  (let ((*read-eval* nil)
+                        (end (list :end)))
                     (with-input-from-string (stream source)
-                      (loop for form = (read stream nil stream)
-                            until (eq form stream)
+                      (loop for form = (read stream nil end)
+                            until (eq form end)
                             do (push form forms)
                             when (= (length forms) 3)
                               do (service-error :unexpected-throw-forms))))
