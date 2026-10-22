@@ -419,14 +419,16 @@ The focused product check passed 26 excerpts across the debugger, Command Proces
 
 ## Throw
 
-The native-backed Throw driver creates two owned DEBUG 3/SAFETY 3/SPEED 1 targets with catch tags and cleanup counters.  It exercises Listener and standalone debugger completion/help/menu, zero/one/two-value cancellation previews, reader/value/missing-catch child Abort, lexical/dynamic input, tag-reader and confirmation reload, discarded accepted input with exact request replay, three-value transfer, closed-history recovery, original Proceed, cleanup and the next Listener evaluation.  Reload restores the Listener view.  The driver explicitly selects the separate Debugger when testing that view.
+The native-backed Throw driver creates three owned DEBUG 3/SAFETY 3/SPEED 1 targets with catch tags and cleanup counters.  It exercises both debugger views, SPACE completion and help, menu entry, prompted and inline operands, cancellation previews, reader/value/missing-catch child Abort, lexical/dynamic input, tag-reader and confirmation reload, and original Proceed.  A third inline form must enter a child before operand effects.  Inline values include strings containing spaces, Unicode, markup-looking text, and a heap vector through full GC.
 
 ```sh
 node tools/swank/web/test-throw.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-throw-test
 ```
 
-Use a fresh output directory.  The driver preserves its first failure and any separate evidence/cleanup failures, releases only its recorded jobs/stops/session, and checks protected stop records.  Native acceptance is described in the [guest test guide](../TESTING.md#throw-command).  All six groups passed on the dedicated x86-64 guest, with seven reviewed captures, no page/HTTP/finalization errors, and release of three owned jobs, five stops, and the session.  Three prior attempts preserve driver navigation/reload/closed-state errors separately.  Browser Throw interaction held across a guest image restart remains untested.  The [native saved-command test](../TESTING.md#throw-command) passed an actual restart with incomplete tag/value readers and confirmation.
+The Listener case preserves multiline source with a semicolon comment.  The standalone editor receives one line with a block comment.  Before submission, the driver compares the editor text with the intended source.  Lost-reply cases discard an accepted input reply and an accepted inline submit reply, then replay their exact requests.  Confirmation reload preserves command identity and draft input.  Transfer, closed-history recovery, once-only counters, cleanup, and the next Listener evaluation must pass.
+
+Use a fresh output directory.  The driver preserves its first failure and separate evidence/cleanup failures, releases only its recorded jobs/stops/session, and checks protected stop records.  All eight groups passed on x86-64 with twelve reviewed captures and no page/loading/HTTP/finalization errors.  Node and Chromium exited with status zero.  The driver released four jobs, nine stops, and its session.  Browser interaction held across an image restart remains untested.  The [guest test guide](../TESTING.md#throw-command) specifies the native and saved-command tests.
 
 ## Single Step Web tests
 
