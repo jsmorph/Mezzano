@@ -20,6 +20,8 @@ const jobs = [];
 const ownedStops = new Map();
 const evidence = {marker, checks: []};
 let originalStops = [];
+let failure;
+const finalizationFailures = [];
 
 async function key(key, code, windowsVirtualKeyCode, modifiers = 0) {
   const generatedText = key === 'Enter' ? '\r' : key === ' ' ? ' ' : undefined;
@@ -91,6 +93,35 @@ async function save(name) {
   await browser.screenshot(join(output, name + '.png'));
 }
 
+async function displayState(stop) {
+  return browser.evaluate(`(() => {
+    const info=stops.find(item=>same(item.token,${text(stop)})).info;
+    return {session:state.session,selected:selectedStop,id:info.id,state:info.state,generation:info.generation,
+      frame:info['current-frame'],mode:info['evaluation-environment'],next:info['next-command-id'],
+      parent:info.parent,child:info.child,prompt:info.prompt,pending:state.pending,
+      inputHistory:state.inputHistory,
+      records:state.commands.filter(item=>same(item.stop,${text(stop)})).map(item=>({command:item,result:commandResults.get(commandKey(item))})),
+      inspector:document.querySelector('#stop-detail .inspector')?.textContent};
+  })()`);
+}
+async function editorState(selector) {
+  return browser.evaluate(`(() => {const e=document.querySelector(${text(selector)});return {text:e.value,start:e.selectionStart,end:e.selectionEnd};})()`);
+}
+
+async function visibleDebuggerEditor(name) {
+  const geometry = await browser.evaluate(`(() => {
+    const editor=document.querySelector('#debugger-command'), page=document.querySelector('#page');
+    const bounds=editor.getBoundingClientRect(), container=page.getBoundingClientRect();
+    return {activity, focused:document.activeElement.id, editor:bounds.toJSON(), page:container.toJSON(),
+      scrollTop:page.scrollTop, visible:bounds.width>0 && bounds.height>0
+        && bounds.top>=container.top && bounds.bottom<=container.bottom};
+  })()`);
+  (evidence.editorGeometry ??= []).push({name, ...geometry});
+  assert.equal(geometry.activity, 'debugger', name);
+  assert.equal(geometry.focused, 'debugger-command', name);
+  assert(geometry.visible, name + ': debugger editor must be inside the page viewport');
+}
+
 try {
   await browser.waitFor('connected && !busy');
   const captureFailures = `(() => {
@@ -153,6 +184,85 @@ try {
   await browser.evaluate('releaseActionQueue(); delete window.releaseActionQueue');
   await browser.waitFor('!busy');
   evidence.checks.push('Debugger menu closes when selected while its guest action waits in the queue');
+  await command(':Next Frame', '#debugger-command');
+  await frame(1);
+  await command(':Use Dynamic Environment', '#debugger-command');
+  await command('(list 17 23)', '#debugger-command');
+  await command(':Inspect', '#debugger-command');
+  await browser.waitFor("returnedResult('inspect') && !stopCommandPending(selectedStop) && !busy",60);
+  assert(await browser.evaluate("document.querySelector('#stop-detail .inspector')?.textContent.includes('17')"));
+  await switchActivity('listener');
+  const beforeDisplay = await displayState(first.stop);
+  assert.equal(beforeDisplay.frame,1);
+  assert.equal(beforeDisplay.mode,':dynamic');
+  await fill('#source', ':Display Deb');
+  await key(' ', 'Space', 32);
+  await browser.waitFor('document.querySelector("#source").value === ":Display Debugger " && !busy');
+  await key('F12', 'F12', 123);
+  await browser.waitFor('document.querySelector("#listener-assistance").textContent.length > 0 && !busy');
+  await key('Enter', 'Enter', 13);
+  await browser.waitFor(`activity === 'debugger' && same(selectedStop,${text(first.stop)}) && !busy`);
+  assert.deepEqual(await editorState('#debugger-command'),{text:'',start:0,end:0});
+  assert.deepEqual(await displayState(first.stop),beforeDisplay);
+  await visibleDebuggerEditor('typed inline transfer');
+  await browser.evaluate('run(refresh)');
+  await browser.waitFor('!busy');
+  await visibleDebuggerEditor('typed inline transfer after refresh');
+  assert.deepEqual(await displayState(first.stop),beforeDisplay);
+  await save('display-debugger-inline');
+  evidence.checks.push('SPACE/help and typed Display Debugger open the exact stop without a target command or ID, preserving frame, dynamic mode, records and Inspector');
+
+  await switchActivity('listener');
+  const displayDraft='(+ 11 31)';
+  await fill('#source',displayDraft);
+  await browser.evaluate('document.querySelector("#source").setSelectionRange(2,6); storeEditorDraft(document.querySelector("#source"))');
+  await browser.click('#window-label');
+  await clickText('#debugger-menu',':Display Debugger');
+  await browser.waitFor("activity === 'debugger' && !busy");
+  assert.deepEqual(await editorState('#debugger-command'),{text:displayDraft,start:2,end:6});
+  assert.deepEqual(await displayState(first.stop),beforeDisplay);
+  await browser.click('#window-label');
+  await clickText('#debugger-menu',':Display Debugger');
+  await browser.waitFor("activity === 'debugger' && !busy");
+  assert.deepEqual(await editorState('#debugger-command'),{text:displayDraft,start:2,end:6});
+  assert.deepEqual(await displayState(first.stop),beforeDisplay);
+  await command(':Display Debugger','#debugger-command');
+  assert.deepEqual(await editorState('#debugger-command'),{text:'',start:0,end:0});
+  assert.deepEqual(await displayState(first.stop),beforeDisplay);
+  evidence.checks.push('Inline menu transfer and repeated standalone menu/typed Display Debugger preserve the same stop and menu draft/cursor');
+
+  await switchActivity('listener');
+  await fill('#source',':Display Debugger');
+  await browser.evaluate(`(() => {
+    const original=window.fetch;
+    window.fetch=async(...args)=>{
+      const response=await original(...args),request=args[1]?.body&&JSON.parse(args[1].body);
+      if(request?.operation==='listener-assistance' && request.arguments.action==='parse' && request.arguments.source===':Display Debugger'){
+        await new Promise(resolve=>{window.displayParserRelease=()=>{window.fetch=original;resolve();};});
+      }
+      return response;
+    };
+  })()`);
+  await key('Enter','Enter',13);
+  await browser.waitFor("typeof displayParserRelease === 'function' && busy");
+  await browser.click('#source');await key('a','KeyA',65,2);
+  const editedDisplayDraft='(list :edited-during-parsing)';
+  await browser.send('Input.insertText',{text:editedDisplayDraft});
+  await browser.evaluate('document.querySelector("#source").setSelectionRange(3,8); storeEditorDraft(document.querySelector("#source")); displayParserRelease(); delete window.displayParserRelease');
+  await browser.waitFor("activity === 'debugger' && !busy");
+  assert.deepEqual(await editorState('#debugger-command'),{text:editedDisplayDraft,start:3,end:8});
+  assert.deepEqual(await displayState(first.stop),beforeDisplay);
+  await save('display-debugger-edited-draft');
+  await switchActivity('listener');
+  await browser.evaluate('run(refresh)');
+  await browser.waitFor('!busy');
+  assert.equal(await browser.evaluate('activity'),'listener');
+  assert.deepEqual(await editorState('#source'),{text:editedDisplayDraft,start:3,end:8});
+  assert.deepEqual(await displayState(first.stop),beforeDisplay);
+  evidence.checks.push('Editing text/cursor while the parse reply is held survives transfer; later refresh preserves the chosen Listener activity and all retained state');
+  await command(':Use Lexical Environment');
+  await command(':Top Of Stack');await frame(0);
+  await switchActivity('debugger');
   await command(':Help', '#debugger-command');
   await browser.waitFor('document.querySelector("#debugger .debugger-help")?.textContent.includes("Abort")');
   await switchActivity('listener');
@@ -226,20 +336,32 @@ try {
   await browser.click('#resume-session');
   await browser.waitFor('connected && !busy');
   assert.equal(await browser.evaluate('state.session'), evidence.session);
+  assert.equal(await browser.evaluate('activity'),'listener');
+  await command(':Display Debugger');
+  await browser.waitFor(`activity === 'debugger' && same(selectedStop,${text(first.stop)}) && !busy`);
+  const displayedMotionReceipt=await browser.evaluate(`state.pending.find(record=>record.id===${text(motionReceipt.id)})`);
+  assert.equal(displayedMotionReceipt.id,motionReceipt.id);
+  assert.equal(displayedMotionReceipt.session,motionReceipt.session);
+  assert.equal(displayedMotionReceipt.operation,motionReceipt.operation);
+  assert.deepEqual(displayedMotionReceipt.arguments,motionReceipt.arguments);
+  assert.equal(await browser.evaluate(`api('information',{stop:${text(first.stop)}}).then(info=>info['next-command-id'])`),motionReceipt.arguments.id+1);
   await switchActivity('requests');
   await browser.evaluate(`[...document.querySelectorAll('#pending .command-row')].find(row => row.textContent.includes(${text(JSON.stringify(motionReceipt.arguments))})).querySelector('button').dataset.focusedTest = 'motion-replay'`);
   await browser.click('[data-focused-test="motion-replay"]');
   await browser.waitFor(`!state.pending.some(record => record.id === ${text(motionReceipt.id)}) && !busy`);
+  assert.equal(await browser.evaluate('activity'),'requests');
   await switchActivity('listener');
   await frame(1);
   assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), motionReceipt.arguments.id + 1);
   evidence.motionReplay = motionReceipt;
+  evidence.checks.push('Display Debugger preserves an uncertain accepted frame command; original-ID replay remains once-only and does not navigate from Request History');
   const motionOrigin = await browser.evaluate('performance.timeOrigin');
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${motionOrigin} && document.readyState === 'complete'`);
   await browser.waitFor('connected && !busy');
   await frame(1);
   assert.equal(await browser.evaluate('state.session'), evidence.session);
+  assert.equal(await browser.evaluate('activity'),'listener');
   assert(await browser.evaluate('Object.values(state.drafts).every(draft => !("frame" in draft))'));
   const externalSelectionId = await browser.evaluate(`(async () => {
     const info = await api('information', {stop: ${text(first.stop)}});
@@ -252,6 +374,7 @@ try {
   assert.equal(await browser.evaluate('document.querySelector("#stop-detail .frame.selected")?.textContent.split("  ")[0]'), '2');
   await frame(2);
   assert.equal(await browser.evaluate('returnedFrameInspection().command.id'), externalSelectionId);
+  assert.equal(await browser.evaluate('activity'),'listener');
   assert.equal(await browser.evaluate('stops.find(stop => same(stop.token, selectedStop)).info["next-command-id"]'), externalSelectionId + 1);
   await command(':Show Frame');
   await frame(2);
@@ -491,10 +614,37 @@ try {
   assert.equal(await browser.evaluate('document.querySelector("#listener-prompt").textContent'), child.prompt);
   assert(await browser.evaluate('(() => { const input = document.querySelector("#source").getBoundingClientRect(); const page = document.querySelector("#page").getBoundingClientRect(); return document.activeElement.id === "source" && input.top >= page.top && input.bottom <= page.bottom; })()'));
   await save('nested-operation-error');
+  const beforeChildDisplay=await displayState(child.stop);
+  await command(':Display Debugger');
+  await browser.waitFor(`activity === 'debugger' && same(selectedStop,${text(child.stop)}) && !busy`);
+  assert.deepEqual(await displayState(child.stop),beforeChildDisplay);
+  await visibleDebuggerEditor('typed child transfer');
+  await clickText('#stop-detail','Parent Stop');
+  await browser.waitFor(`same(selectedStop,${text(outer.stop)}) && !busy`);
+  await visibleDebuggerEditor('Parent Stop link');
+  assert.deepEqual(await editorState('#debugger-command'),{text:parentDraft,start:2,end:7});
+  const parentDisplay=await displayState(outer.stop);
+  assert.deepEqual(parentDisplay.child,child.stop);
+  await browser.click('#window-label');await clickText('#debugger-menu',':Display Debugger');
+  await browser.waitFor('!busy');
+  assert.deepEqual(await displayState(outer.stop),parentDisplay);
+  assert.deepEqual(await editorState('#debugger-command'),{text:parentDraft,start:2,end:7});
+  await clickText('#stop-detail','Child Stop');
+  await browser.waitFor(`same(selectedStop,${text(child.stop)}) && !busy`);
+  assert.deepEqual(await displayState(child.stop),beforeChildDisplay);
+  await visibleDebuggerEditor('Child Stop link');
+  await browser.evaluate('run(refresh)');
+  await browser.waitFor('!busy');
+  await visibleDebuggerEditor('Child Stop link after refresh');
+  assert.deepEqual(await displayState(child.stop),beforeChildDisplay);
+  await save('display-debugger-child');
+  await switchActivity('listener');
+  evidence.checks.push('Display Debugger preserves the child and its parent context; parent menu transfer remains available while its target command is suspended in the child');
   const origin = await browser.evaluate('performance.timeOrigin');
   await browser.send('Page.reload');
   await browser.waitFor(`performance.timeOrigin !== ${origin} && document.readyState === 'complete'`);
   await browser.waitFor(`connected && !busy && listenerDebugger?.depth === 2 && same(listenerDebugger.stop, ${text(child.stop)})`);
+  assert.equal(await browser.evaluate('activity'),'listener');
   await command(':Abort');
   await browser.waitFor(`listenerDebugger?.depth === 1 && same(listenerDebugger.stop, ${text(outer.stop)}) && !busy`);
   await frame(1);
@@ -711,11 +861,14 @@ try {
   evidence.checks.push('Restart reader inside interrupt 0 -> interrupt 1 -> child Abort -> interrupt 0 -> CONTINUE and original input');
   await save('completed');
 } catch (error) {
+  failure = error;
   evidence.failure = error.stack;
-  await save('failure');
-  await writeFile(join(output, 'failure-state.json'), await browser.evaluate('JSON.stringify(sessionStorage)'));
-  await writeFile(join(output, 'failure.txt'), await browser.evaluate('document.body.innerText'));
-  throw error;
+  const captures = await Promise.allSettled([
+    save('failure'),
+    browser.evaluate('JSON.stringify(sessionStorage)').then(value => writeFile(join(output, 'failure-state.json'), value)),
+    browser.evaluate('document.body.innerText').then(value => writeFile(join(output, 'failure.txt'), value))
+  ]);
+  finalizationFailures.push(...captures.filter(result => result.status === 'rejected').map(result => result.reason));
 } finally {
   try {
     await rememberStops();
@@ -772,14 +925,22 @@ try {
     assert.deepEqual(browser.errors.filter(error => !expected.includes(error) && !missingDefault.includes(error)), []);
   } catch (cleanupError) {
     evidence.cleanupFailure = cleanupError.stack;
-    throw cleanupError;
+    finalizationFailures.push(cleanupError);
   } finally {
     evidence.jobs = jobs;
     evidence.stops = [...ownedStops.entries()];
     evidence.errors = browser.errors;
-    evidence.httpFailures = await browser.evaluate("JSON.parse(sessionStorage.getItem('focused-test-http-failures') || '[]')");
-    await writeFile(join(output, 'result.json'), JSON.stringify(evidence, null, 2));
-    await browser.close();
+    try {
+      evidence.httpFailures = await browser.evaluate("JSON.parse(sessionStorage.getItem('focused-test-http-failures') || '[]')");
+    } catch (error) { finalizationFailures.push(error); }
+    try { await browser.close(); } catch (error) { finalizationFailures.push(error); }
+    evidence.finalizationFailures = finalizationFailures.map(error => error.stack || String(error));
+    evidence.passed = !failure && finalizationFailures.length === 0;
+    try {
+      await writeFile(join(output, 'result.json'), JSON.stringify(evidence, null, 2));
+    } catch (error) { finalizationFailures.push(error); }
   }
 }
+if (failure) throw failure;
+if (finalizationFailures.length) throw new AggregateError(finalizationFailures, 'Listener debugger evidence collection or cleanup failed');
 console.log(JSON.stringify(evidence, null, 2));

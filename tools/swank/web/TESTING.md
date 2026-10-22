@@ -154,6 +154,8 @@ node tools/swank/web/test-listener-debugger.mjs \
   http://127.0.0.1:8765/ /tmp/mezzano-listener-debugger-test
 ```
 
+Display Debugger tests exercise SPACE completion, contextual help, typed submission in both debugger inputs, inline and standalone menu selection, and edits made while the parse reply is held.  Transfers must preserve the exact stop, selected frame, evaluation mode, command counter, retained records, Inspector, and draft/cursor.  A suspended parent must permit this display-only command while its child owns the pending operation.  Lost-reply recovery, reload, and refresh must preserve the chosen activity without repeating navigation.  Six focus and page-bound checks cover initial transfer and refresh, child transfer, and Parent/Child links with another refresh.  These run within the complete Listener debugger suite against fresh x86-64 condition stops.  Saved-image restoration of this command remains untested.
+
 Explicit-argument tests invoke a restart with required parameters and no interactive function, reload during its input wait, interrupt that reader, abort an expression error, and complete the original evaluation.  A separate fixture evaluates a dynamically bound expression, returns multiple values, and counts argument evaluation and restart invocation across a discarded accepted submission reply and exact-request replay.  Both counts must remain one.  The driver also checks Arguments completion, default selection, the per-restart button, and subsequent Listener evaluation.
 
 `REPLAY_ITERATIONS` repeats the lost-reply argument restart, FINISH, and following Listener evaluation sequence.  It defaults to one.  Each repetition retains its request receipt and job identities in the result.

@@ -39,7 +39,7 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 | Area | Commands | Current status |
 |---|---|---|
 | Recovery | Abort; Proceed; Disable Aborts; Enable Aborts | Abort and Proceed are implemented.  Abort disabling remains planned. |
-| Help and display | Help; Display Debugger | Help lists implemented commands.  Display Debugger command remains planned.  Separate Web view exists. |
+| Help and display | Help; Display Debugger | Help lists implemented commands.  Display Debugger opens the same retained stop in the separate Web Debugger view. |
 | Frame movement | Top Of Stack; Bottom Of Stack; Next Frame; Previous Frame; Find Frame; Set Current Frame | Top, Bottom, Next, Previous, and Set Current Frame support guest-owned selection and available locals.  Find Frame searches associated function names and supports brief or detailed output.  Visibility filtering and detailed options for the other navigation commands remain planned. |
 | Frame inspection | Show Backtrace; Show Frame; Show Function; Show Arglist; Show Argument; Show Rest Argument; Show Local; Show Stack; Show Value | Show Function displays the associated function and assigns *.  Show Rest Argument displays the current rest parameter and assigns *.  Show Arglist displays the selected compiled function's lambda list.  Show Argument displays indexed or all current source parameters, assigning an indexed available value to * and its checked location to +.  Show Frame displays original supplied arguments, current source parameters, and available locals.  Backtrace and detailed frame options remain partial.  DBG:ARG and DBG:LOC read and write argument and local bindings.  Indexed commands expose checked locations in + for DBG:LOCATION-VALUE and Inspector modification.  Stack and value commands remain planned. |
 | Evaluation | Lisp forms in the selected frame | Implements live bindings, writes, and per-level history through ordinary debugger form input.  Tested in x86-64 compiled condition stops and Chromium. |
@@ -54,6 +54,10 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 | System integration | Edit Function; Mail Bug Report; Set Stack Size | Pending explicit Mezzano mappings. |
 
 The command reference must expand each entry with its supported arguments, omitted and mentioned defaults, selection rules, prompts, confirmation behavior, errors, and tests.  Genera keyboard accelerators need a documented browser mapping.  Editor, mail, instance-model, and stack-layout differences remain open scope decisions.  They remain in this inventory until implemented or explicitly excluded.
+
+### Debugger views
+
+The owning Listener displays its innermost retained stop inline.  :Display Debugger takes no arguments and opens that stop in the separate Web Debugger view.  It preserves selection, evaluation mode, history, Inspector results, nesting, and control ownership.  The command does not resume the stopped thread or create a retained debugger operation.  Typed submission consumes its matching input before switching.  Menu use preserves the draft and cursor.  Refresh, reload, and recovery of recorded results do not repeat the navigation.
 
 ### Delivery plan and acceptance
 

@@ -1128,10 +1128,12 @@ async function submit(stop, command, argument = null, metadata = {}) {
   await refresh();
 }
 async function selectStop(stop) {
+  const position = editorPosition($("debugger-command"));
   activateStop(stop);
   showActivity("debugger");
   await refresh();
   $("debugger-command").focus();
+  restoreEditorPosition(position);
 }
 function latestCommand(commandName) {
   return state.commands.findLast(command => same(command.stop, selectedStop) && command.command === commandName);
@@ -1260,7 +1262,7 @@ function debuggerAction(action) {
     (activity === "listener" ? $("source") : $("debugger-command")).focus();
   };
 }
-async function debuggerCommand(text, stop = selectedStop) {
+async function debuggerCommand(text, stop = selectedStop, completeInput = null) {
   const selected = stops.find(item => same(item.token, stop));
   if (!selected) throw new Error("Select a debugger stop first.");
   if (selected.info.state !== ":stopped") throw new Error("This debugger is " + label(selected.info.state) + ".");
@@ -1268,15 +1270,20 @@ async function debuggerCommand(text, stop = selectedStop) {
     action: "parse", context: "debugger"});
   if (plan.error) throw new Error(plan.error);
   if (!plan["complete-p"]) throw new Error(plan.prompt || "Complete the debugger command.");
-  if (typeof plan.operation !== "string") throw new Error("No executable debugger operation was returned.");
-  await submit(stop, plan.operation, plan.argument ?? null,
-    {display: plan.display, localIndex: plan["local-index"], source: text});
+  const displayDebugger = plan.command === ":display-debugger" && plan.display === ":debugger"
+    && plan.operation === undefined;
+  if (!displayDebugger) {
+    if (typeof plan.operation !== "string") throw new Error("No executable debugger operation was returned.");
+    await submit(stop, plan.operation, plan.argument ?? null,
+      {display: plan.display, localIndex: plan["local-index"], source: text});
+  }
+  completeInput?.();
+  if (displayDebugger) await selectStop(stop);
 }
 function queueDebuggerInput(editor, text, stop) {
   if (editorBlocked(editor)) return;
   const key = editorDraftKeys.get(editor);
-  return run(async () => {
-    await debuggerCommand(text, stop);
+  return run(() => debuggerCommand(text, stop, () => {
     if (editorDraftKeys.get(editor) === key && editor.value === text) {
       setEditor(editor, "", 0);
       clearAssistance(editor);
@@ -1284,7 +1291,7 @@ function queueDebuggerInput(editor, text, stop) {
       state.drafts[key] = {...state.drafts[key], text: "", start: 0, end: 0};
       save();
     }
-  });
+  }));
 }
 function queueDebuggerCommand() {
   return queueDebuggerInput($("debugger-command"), $("debugger-command").value, selectedStop);
@@ -1390,6 +1397,9 @@ function renderStops() {
       await refresh();
     })));
   } else {
+    const display = control(prefix + "display-debugger", ":Display Debugger", debuggerAction(() => debuggerCommand(":Display Debugger")));
+    display.disabled = info.state !== ":stopped";
+    menuChildren.push(display);
     const inspect = control(prefix + "condition", "Inspect Condition", debuggerAction(() => submit(selectedStop, "condition")));
     inspect.disabled = !available;
     menuChildren.push(inspect);

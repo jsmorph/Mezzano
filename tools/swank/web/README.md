@@ -29,7 +29,7 @@ Open `http://lispm.example.net:8765/` after forwarding the guest port through QE
 
 The browser has a 20-second fetch deadline.  Synchronous metadata and documentation requests can continue in the guest after a browser stops waiting.  Accepted evaluations and debugger commands retain their identities and results for recovery.
 
-`(mezzano.web:stop-server *web-server*)` stops the listener, cancels its accepted connections, and waits for its threads to finish.  Retained evaluations and debugger commands keep their existing threads and records.
+`(mezzano.web:stop-server *web-server*)` stops the listener, cancels its accepted connections, and waits for its threads to finish.  Retained evaluations and debugger commands keep their existing threads and records.  Shutdown signals the acceptor and waits for its TCP listener cleanup.  If that acceptor is stopped in the debugger, it must resume or unwind before shutdown can finish.
 
 The server reads only its explicit asset allowlist beneath `:root`.  A persistent deployment selects a pinned asset directory.  The [installation guide](../../../doc/installation.md#pinned-web-deployment) describes preparing that directory and coordinating guest and browser updates.
 
@@ -63,7 +63,7 @@ Interactive evaluations accept text and EOF through their input controls.  Inter
 
 ## Debugger
 
-The owning Listener displays a stopped evaluation inline.  Its Debugger action opens the same retained stop in the separate Debugger activity.  Both views use the guest command parser and display the stack, current frame, restart choices, and condition.  The browser requests these inspections in sequence when you select a stop or complete a step.  It requests the next inspection as soon as the preceding one completes and polls a pending result at the normal refresh interval.  Reload reuses retained results and brings the owning Listener's debugger input into view.  Within the same debugger context, refresh preserves a position chosen while reading earlier output.  A repeated inspection keeps its previous completed result visible while the new command is pending, provided its frame index still agrees with the guest's current frame.  Inspection and restart buttons are disabled while a debugger command is outstanding or a child stop is active.  The command input remains editable while stopped.  Rejected commands preserve the editor text and cursor.  The Debugger activity also lists stops.  Condition inspection and frame navigation are also available from the System Menu.  The debugger prompt accepts these commands:
+The owning Listener displays a stopped evaluation inline.  Its Debugger action and :Display Debugger command open the same retained stop in the separate Debugger activity.  The command takes no arguments and runs no operation in the stopped thread.  Typed submission consumes its matching command text before switching.  Menu use preserves the draft and cursor.  Edits made while command parsing is pending remain in the editor.  Refresh, reload, and retained-result recovery do not invoke this navigation.  Both views use the guest command parser and display the stack, current frame, restart choices, and condition.  The browser requests these inspections in sequence when you select a stop or complete a step.  It requests the next inspection as soon as the preceding one completes and polls a pending result at the normal refresh interval.  Reload reuses retained results and brings the owning Listener's debugger input into view.  Within the same debugger context, refresh preserves a position chosen while reading earlier output.  A repeated inspection keeps its previous completed result visible while the new command is pending, provided its frame index still agrees with the guest's current frame.  Inspection and restart buttons are disabled while a debugger command is outstanding or a child stop is active.  The command input remains editable while stopped.  Rejected commands preserve the editor text and cursor.  The Debugger activity also lists stops.  Condition inspection and frame navigation are also available from the System Menu.  The debugger prompt accepts these commands:
 
 | Command | Behavior |
 |---|---|
@@ -78,6 +78,7 @@ The owning Listener displays a stopped evaluation inline.  Its Debugger action o
 | `:Use Dynamic Environment` | Evaluates forms without the selected frame's lexical bindings. |
 | `:Use Lexical Environment` | Evaluates forms using the selected frame's lexical bindings. |
 | `:Help` | Displays the guest debugger command help. |
+| `:Display Debugger` | Opens this same stop in the separate Debugger activity, preserving selection, mode, history, Inspector results, and nesting. |
 | `:Show Backtrace` | Lists frames. |
 | `:Find Frame STRING` | Searches older callers after the selected frame.  :Reverse searches newer frames.  :Detailed adds locals and marked code. |
 | `:Set Current Frame N` | Selects a frame by its zero-based index and displays its locals. |

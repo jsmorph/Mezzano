@@ -96,6 +96,7 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 |---|---|
 | :Abort | Invokes the innermost CL:ABORT restart captured by this stop.  At a child caused by a debugger command, its command abort returns to the parent debugger. |
 | :Help | Lists the implemented guest debugger commands and descriptions. |
+| :Display Debugger | Opens this stop in the separate Web Debugger view, preserving its selected frame and evaluation state. |
 | :Reinvoke | Prepares current arguments and asks for confirmation before calling the selected activation's replacement. |
 | :Reinvoke :Original Args | Uses the original supplied sequence and omissions. |
 | :Reinvoke :New Args | Reads one expression supplying the new argument list. |
@@ -136,6 +137,8 @@ A stopped Listener uses its guest-reported innermost debugger stop and nesting p
 | :Show Local index | Displays one recorded local by its zero-based decimal index.  An available value becomes *, and + receives its checked location when declaration metadata is available. |
 | :Return | Reads one expression supplying all return values, displays them, and asks for confirmation before returning from the selected frame. |
 | :Show Proceed Options | Displays retained restart choices and marks the default CONTINUE.  Selecting a choice invokes its interactive function in the guest to obtain any arguments. |
+
+Display Debugger takes no arguments or keywords.  It switches views without running an operation in the stopped thread.  Typed submission consumes the matching command text before switching.  Menu selection preserves the draft and cursor.  Both views share the same stop, selected frame, evaluation mode, history, Inspector results, and nesting.  Refresh and retained-result recovery do not invoke this navigation command.
 
 Debugger operations run with application condition handlers disabled.  A handler established inside an evaluated expression still works.  Unhandled reader, evaluator, printer, and restart-function errors enter a child debugger.  Leaving the debugger restores the application's handlers for continuation and unwind cleanup.
 
@@ -181,7 +184,7 @@ Listener state survives connection closure.  Session release or a new boot retir
 | start-listener | name, source, and optional interactive.  Returns an ordinary retained job token. |
 | listener-assistance | source, cursor, action, optional context and presentation.  Returns input classification, replacement text and cursor, prompt, default, expected-type, help, candidates, complete-p, and error. |
 
-Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Debugger parse replies include operation and argument fields, and where applicable display.  Frame selection plans carry a decimal index or movement count.  Current-frame inspection carries NIL.  Find Frame carries (string detailed-p invisible-p reverse-p).  Show Local uses operation local with NIL for All or a nonnegative index.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
+Assistance actions are inspect, space, complete, help, parse, and insert.  Context is listener or debugger.  Insert requires a pathname presentation value.  Executable debugger parse replies include operation and argument fields, and where applicable display.  Display Debugger instead returns command :display-debugger and display :debugger, with no operation field.  Frame selection plans carry a decimal index or movement count.  Current-frame inspection carries NIL.  Find Frame carries (string detailed-p invisible-p reverse-p).  Show Local uses operation local with NIL for All or a nonnegative index.  The Proceed plan uses a NIL argument for the default selection or an integer for an indexed selection.  :Arguments Yes chooses invoke-restart-with-arguments.  The [SWANK protocol reference](https://github.com/jsmorph/slime/blob/debugging/contrib/swank-mezzano-debugger.md) gives the Lisp argument spelling.
 
 Job information adds :listener-result.  It is NIL for ordinary evaluation jobs.  A Listener result records :kind (:command or :form), optional :command, :effects, :presentations, and any command input :error.  An input error is printed and recorded.  Runtime conditions, including file and compiler errors, enter the retained debugger.
 
