@@ -540,7 +540,7 @@
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
           :function :rest-argument :compiled-code :instruction :lexical-environment
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
-          :standard-value-warnings :return :breakpoints :single-step)
+          :standard-value-warnings :return :throw :breakpoints :single-step)
          (when argument (service-error :unexpected-argument)))
         ((:set-breakpoint :clear-breakpoint)
          (unless (typep argument '(cons string (cons (integer 0 *) null)))
@@ -1835,6 +1835,20 @@ NIL with true availability denotes an absent global cell."
                                             "[unbound]"))))))))
       (unless found (write-line "No matching bindings." stream)))))
 
+(defun service-throw (stop)
+  (write-string "Catch tag (Lisp expression): " *query-io*)
+  (finish-output *query-io*)
+  (let ((tag (first (service-evaluate-input stop #'read-service-expression))))
+    (write-string "Throw values (Lisp expression): " *query-io*)
+    (finish-output *query-io*)
+    (let ((values (service-evaluate-input stop #'read-service-expression))
+          (tag-label (service-print tag)))
+      (format *query-io* "~&Catch tag: ~A~%~D value~:P:~{ ~A~}~%"
+              tag-label (length values) (mapcar #'service-print values))
+      (if (y-or-n-p "Throw to ~A?" tag-label)
+          (throw tag (values-list values))
+          "Throw cancelled."))))
+
 (defun service-return (stop)
   (let* ((index (service-stop-current-frame stop))
          (reference (%make-service-frame (service-handle stop)
@@ -1944,6 +1958,7 @@ NIL with true availability denotes an absent global cell."
     (:evaluate (service-evaluate stop (service-command-argument command)))
     (:single-step (service-single-step stop))
     (:return (service-return stop))
+    (:throw (service-throw stop))
     (:reinvoke (service-reinvoke stop (service-command-argument command)))
     ((:set-breakpoint :clear-breakpoint :clear-all-breakpoints :breakpoints)
      (service-breakpoint-command (service-command-operation command)

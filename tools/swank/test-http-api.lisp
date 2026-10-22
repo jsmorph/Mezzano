@@ -99,7 +99,7 @@
                      (unless (eq source 'null) source))))
     (dolist (bad (list nil t 0 #() (object)))
       (rejected (lambda () (mezzano.web::command-argument :source-code bad session))))
-    (dolist (command '(:single-step :return :instruction :function :clear-inspection))
+    (dolist (command '(:single-step :return :throw :instruction :function :clear-inspection))
       (dolist (bad (list nil t 0 "" #() (object)))
         (rejected (lambda () (mezzano.web::command-argument command bad session)))))
     (dolist (command '(:set-breakpoint :clear-breakpoint))

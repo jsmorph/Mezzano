@@ -81,7 +81,7 @@
     ("invoke-restart" . :invoke-restart)
     ("invoke-restart-interactively" . :invoke-restart-interactively)
     ("invoke-restart-with-arguments" . :invoke-restart-with-arguments)
-    ("evaluate" . :evaluate) ("abort" . :abort) ("return" . :return)
+    ("evaluate" . :evaluate) ("abort" . :abort) ("return" . :return) ("throw" . :throw)
     ("reinvoke" . :reinvoke) ("help" . :help) ("inspect" . :inspect)
     ("modify" . :modify) ("describe-object" . :describe-object)
     ("clear-inspection" . :clear-inspection) ("arglist" . :arglist)

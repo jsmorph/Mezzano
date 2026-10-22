@@ -417,6 +417,17 @@ Host acceptance passed 35 Python tests and seven checks each in the existing int
 
 The focused product check passed 26 excerpts across the debugger, Command Processor, and Web guides after catalog refresh, plus Peek processes, SPACE/Tab completion, and Listener 42.  It released two jobs and its session.  Functional and product browser error lists were empty.  Evidence is /tmp/web-reinvoke-native-restored and /tmp/web-reinvoke-product-restored.  Earlier runs preserve a diagnosed stale-contrib publication failure and an SSH-forward exit with unknown cause.  Neither changed the accepted driver or product parser.
 
+## Throw
+
+The native-backed Throw driver creates two owned DEBUG 3/SAFETY 3/SPEED 1 targets with catch tags and cleanup counters.  It exercises Listener and standalone debugger completion/help/menu, zero/one/two-value cancellation previews, reader/value/missing-catch child Abort, lexical/dynamic input, tag-reader and confirmation reload, discarded accepted input with exact request replay, three-value transfer, closed-history recovery, original Proceed, cleanup and the next Listener evaluation.  Reload restores the Listener view.  The driver explicitly selects the separate Debugger when testing that view.
+
+```sh
+node tools/swank/web/test-throw.mjs \
+  http://127.0.0.1:8765/ /tmp/mezzano-throw-test
+```
+
+Use a fresh output directory.  The driver preserves its first failure and any separate evidence/cleanup failures, releases only its recorded jobs/stops/session, and checks protected stop records.  Native acceptance is described in the [guest test guide](../TESTING.md#throw-command).  All six groups passed on the dedicated x86-64 guest, with seven reviewed captures, no page/HTTP/finalization errors, and release of three owned jobs, five stops, and the session.  Three prior attempts preserve driver navigation/reload/closed-state errors separately.  Throw across a guest image restart remains untested.
+
 ## Single Step Web tests
 
 The host state test executes the application's selection and input functions without a browser, HTTP server, or guest:

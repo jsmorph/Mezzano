@@ -60,6 +60,8 @@
        :help "Execute one supported machine instruction. Calls run to their return or nonlocal exit.")
       (:name "Return" :id :return
        :help "Return from the selected frame with the values of a prompted expression, after confirmation.")
+      (:name "Throw" :id :throw
+       :help "Prompt for a catch-tag expression and a values expression, then throw after confirmation.")
       (:name "Proceed" :id :proceed :type :restart
        :help "Invoke the default CONTINUE restart or a zero-based restart index. :Arguments requests a Lisp expression returning the argument list."
        :keywords (("Arguments" :boolean "No" "Yes")))
@@ -539,6 +541,7 @@
          (input-error ":Original Args and :New Args cannot both be Yes."))
        (list :operation "reinvoke" :argument (list original new))))
     (:return (list :operation "return"))
+    (:throw (list :operation "throw"))
     (:single-step (list :operation "single-step"))
     (:proceed
      (cond ((cdr (assoc "Arguments" keywords :test #'equal))
