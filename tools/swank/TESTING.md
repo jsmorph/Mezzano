@@ -298,7 +298,7 @@ The integer fixture's RUN includes 372 operand/flag cases and six compiled-body 
     (lispm-retained-integer-step-test::shift-case target depth)))
 ```
 
-The shared helper tests exact instruction locations and defined flags, raw register/memory state, replay, reference expiration, moving marker roots, code identity, final values, and cleanup.  SAR64 adds signed results and six-bit count masking with register/memory destinations, immediate/CL counts, negative/positive operands, and fixnum limits.  Counts include 0, 1, 4, 63, 64, and 65.  This focused native run passed on two-CPU x86-64 QEMU at SAFETY 3/DEBUG 3/SPEED 1.  It does not establish execution of the full combined RUN, browser interaction, saved-image restoration, or ARM64 support for SAR64.
+The shared helper tests exact instruction locations and defined flags, raw register/memory state, replay, reference expiration, moving marker roots, code identity, final values, and cleanup.  SAR64 adds signed results and six-bit count masking with register/memory destinations, immediate/CL counts, negative/positive operands, and fixnum limits.  Counts include 0, 1, 4, 63, 64, and 65.  This focused native run passed on two-CPU x86-64 QEMU at SAFETY 3/DEBUG 3/SPEED 1.  The separate [SAR64 browser test](web/TESTING.md#sar64-instruction-steps) passed two typed Listener cases.  Neither run establishes execution of the full combined RUN, saved-image restoration, fresh-cold execution, or ARM64 support for SAR64.
 
 ## Package condition stops
 

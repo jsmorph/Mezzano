@@ -430,6 +430,22 @@ The Listener case preserves multiline source with a semicolon comment.  The stan
 
 Use a fresh output directory.  The driver preserves its first failure and separate evidence/cleanup failures, releases only its recorded jobs/stops/session, and checks protected stop records.  All eight groups passed on x86-64 with twelve reviewed captures and no page/loading/HTTP/finalization errors.  Node and Chromium exited with status zero.  The driver released four jobs, nine stops, and its session.  Browser interaction held across an image restart remains untested.  The [guest test guide](../TESTING.md#throw-command) specifies the native and saved-command tests.
 
+## SAR64 instruction steps
+
+The native-backed driver uses the integer-step fixture from the [guest test guide](../TESTING.md#integer-instruction-steps).  Its two Listener cases execute typed :Single Step through a register/immediate SAR64 at zero prompts and a memory/CL SAR64 at two prompts.  The latter uses count 65 to check six-bit masking.  Both shift -3 to -2.
+
+Run the driver with a runtime configuration and a fresh output directory:
+
+```sh
+node tools/swank/web/test-sar64-step.mjs runtime-config.json /tmp/mezzano-sar64-test
+```
+
+The configuration must authorize execution, record native SAR64 acceptance, pin the runtime metadata, native guard, handoff, source manifest, book and auxiliary provenance, and provide process/native/asset guard commands.  Each guard runs before and after the cases.  The guest must already have the ordinary prerequisite fixtures loaded.
+
+The driver checks exact instruction PCs and displayed operands, current-generation inspection, defined flags, raw register/memory state through moving GC, unchanged code, exact accepted-ID replay, original values, and one cleanup.  It removes only owned points, symbols, jobs, stops, and its session.
+
+Both cases passed on two-CPU x86-64 QEMU with ordinary SAFETY 3/DEBUG 3/SPEED 1 fixtures.  Two captures were reviewed.  Node and Chromium exited zero.  All 198 responses succeeded, and browser, network, HTTP, and finalization error lists were empty.  Ten jobs, two stops, and the session were released.  These cases use the inline Listener debugger.  Standalone-Debugger interaction, SAR64 saved-image restoration, fresh-cold execution, and ARM64 remain untested.
+
 ## Single Step Web tests
 
 The host state test executes the application's selection and input functions without a browser, HTTP server, or guest:
