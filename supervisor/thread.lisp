@@ -558,6 +558,7 @@ Interrupts must be off and the global thread lock must be held."
 
 ;; This is seperate from thread-entry-trampoline so steppers can detect it.
 (defun thread-final-cleanup (return-values)
+  #+x86-64 (clear-thread-instruction-state (current-thread))
   (%run-on-wired-stack-without-interrupts (sp fp return-values)
     (let ((self (current-thread)))
       ;; FIXME: This should be done with the global lock held, but that makes

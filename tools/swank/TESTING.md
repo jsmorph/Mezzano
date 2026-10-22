@@ -278,6 +278,14 @@ Four THROW cases cross three or all seven selected activations, with zero/two pr
 
 All twenty-two activation cases and the visitor-collection check passed in Mezzano.  The same ordinary debug module also passed the existing frame-evaluation, Find Frame, and remote-service suites.  Their accounting of crossed records does not specify the product debugger's stop count or restart behavior for multiple crossed traps.  Product trap commands remain unimplemented.  This fixture has not tested clearing an armed trap during execution, thread termination, Snapshot restoration, fresh-cold execution, or ARM64.
 
+## Thread-owned instruction cleanup
+
+Use an otherwise idle dedicated x86-64 guest with CLEAR-THREAD-INSTRUCTION-STATE and the updated THREAD-FINAL-CLEANUP.  Compile/load the service, entry-argument, and hardware-breakpoint helpers, then compile/load `test-thread-instruction-cleanup.lisp` ordinarily at DEBUG 3/SAFETY 3/SPEED 1.  Reject compilation warnings or failure.  Run `(lispm-thread-instruction-cleanup-test:run)`.
+
+Four cases cover normal return and TERMINATE-THREAD at zero/two delimited prompts.  Each target owns an untriggered callback point, an ordinary private point, and a registered armed step request.  A second live thread retains its callback point and request, alongside an unrelated public point.  The fixture requires exited-thread points removed and its request cancelled, exact normal values, one cleanup, moving GC, unchanged code, public/other-thread preservation, idempotent clearing, and complete owned-resource release.  It then lets the control thread return and checks its cleanup independently.
+
+These lifecycle cases passed on two-CPU x86-64 QEMU with resident cleanup code and ordinary fixtures.  The 22-case exit-continuation fixture and hardware-breakpoint suite also passed after publication.  TF was not enabled for these registered cleanup-test requests.  Concurrent installation after the target's final cleanup, trapped TF delivery, saved-image execution of the new cleanup, fresh-cold execution, and ARM64 have separate or pending test requirements.
+
 ## Retained CALL steps
 
 Compile/load `test-retained-call-step.lisp` after the raw-step, hardware-breakpoint, managed-step, retained-step, and managed-call-return helpers.  Run `(lispm-retained-call-step-test:run)` in a dedicated two-CPU x86-64 guest at SAFETY 3/DEBUG 3/SPEED 1 with ordinary allocation.  Direct/indirect cases test normal and recursive returns, three values, blocked steps, replay, moving callback arguments, redefinition, other-thread filtering, public coincidence, full capacity, callee conditions, cancellation, and termination under zero/two prompts.  A later condition after Proceed must create a new record, and cleanup must release both that record and the old closed record and join the owned thread.  The LAP callers reserve a raw alignment word while retaining their RBP-8 state root in layout `#*1`.

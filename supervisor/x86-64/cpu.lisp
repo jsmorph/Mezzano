@@ -373,6 +373,42 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
         (when cleared (synchronize-instruction-breakpoints))))
     cleared))
 
+(defun clear-thread-instruction-state (thread)
+  (check-type thread thread)
+  (unless (with-pseudo-atomic
+            (or (find-instruction-step-request thread)
+                (and *instruction-breakpoint-slots*
+                     (loop for index below 4
+                           for point = (svref *instruction-breakpoint-slots* index)
+                           thereis (and (instruction-step-breakpoint-p point)
+                                        (eq (instruction-step-breakpoint-thread point) thread))))))
+    (return-from clear-thread-instruction-state (values 0 0)))
+  (let ((points 0) (requests 0))
+    (with-world-stopped
+      (when *instruction-breakpoint-slots*
+        (dotimes (index 4)
+          (let ((point (svref *instruction-breakpoint-slots* index)))
+            (when (and (instruction-step-breakpoint-p point)
+                       (eq (instruction-step-breakpoint-thread point) thread))
+              (setf (svref *instruction-breakpoint-slots* index) nil)
+              (incf points))))
+        (when (plusp points) (synchronize-instruction-breakpoints)))
+      (loop for previous = nil then current
+            for current = *instruction-step-requests*
+              then (instruction-step-request-next current)
+            while current
+            when (eq (instruction-step-request-thread current) thread)
+              do (if previous
+                     (setf (instruction-step-request-next previous)
+                           (instruction-step-request-next current))
+                     (setf *instruction-step-requests*
+                           (instruction-step-request-next current)))
+                 (setf (instruction-step-request-next current) nil
+                       (instruction-step-request-state current) :cancelled)
+                 (incf requests)
+                 (return)))
+    (values points requests)))
+
 (defun clear-function-instruction-breakpoints (function)
   (let ((count 0))
     (with-world-stopped

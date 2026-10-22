@@ -667,6 +667,8 @@ Managed TF delivery uses a resident request per stepping thread.  A matching tra
 
 Native x86-64 tests passed exact NOP, taken-branch and RET locations, initial program-frame selection, cleared TF, moving callback arguments, simultaneous target isolation, duplicate rejection, cancellation before arming and after trapping, original continuation, values, cleanup and zero/two prompts.  A full four-location public table, including a location at the stepped-to instruction, remained installed throughout managed TF delivery and continuation.  The retained-operation tests below describe saved-request coverage.  ARM64 execution remains untested.
 
+When an x86-64 thread exits normally or through TERMINATE-THREAD, THREAD-FINAL-CLEANUP removes its registered step request and private instruction points before publishing its join result.  The removal preserves public points and other threads' resources.  Native zero/two-prompt lifecycle tests passed for registered, untriggered resources, original values, one cleanup, and moving GC.  This test scope does not include concurrent installation after final cleanup begins or trapped TF delivery.  Saved-image and fresh-cold acceptance of this cleanup remain pending.
+
 ### Managed call-return delivery
 
 The internal supervisor function INSTALL-CALLBACK-INSTRUCTION-STEP-BREAKPOINT takes a compiled function, byte offset, thread, stack pointer, callback function, and callback argument.  Its resident descriptor extends the existing private return-location type.  It consumes one of the four shared hardware slots and preserves thread/stack matching and a coincident public location.
