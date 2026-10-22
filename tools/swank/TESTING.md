@@ -51,6 +51,12 @@ The DEBUG 3/SAFETY 3/SPEED 1 x86-64 condition-stop test checks command parsing, 
 
 Run the existing native HTTP argument tests and Python bridge tests after adapter changes.  Browser source interaction uses the existing frame-evaluation driver described in [Web interface tests](web/TESTING.md).  Fresh cold boot, source-record saved-image execution, cross-file compilation, other stopping states, and ARM64 require separate tests.
 
+For a saved-image test, call LISPM-SOURCE-DISPLAY-TEST:PREPARE-RESTORE-TEST with the same writable directory.  It parks an owned old activation, recompiles its name, removes both files, captures source results and selection/mode/history/Inspector identities, and closes its controller.  Release the preparation evaluation, require exactly that one known stop and zero Snapshot inhibition, then take a normal Snapshot and restart the same disk.
+
+Call LISPM-SOURCE-DISPLAY-TEST:FINISH-RESTORE-TEST without reloading the fixture.  It requires a changed boot, rejects expired controls and prior-boot replay without consuming an ID, checks retained old/current input and results before/after full GC, Proceeds through the original two values and one cleanup, releases the stop/thread/controller, and removes its definitions.  An inspected failed case can be released with LISPM-SOURCE-DISPLAY-TEST:CLEANUP-RESTORE-TEST.  That helper touches only the recorded target thread and owned names/files.
+
+The fixture's ordinary compilation, existing RUN, same-boot preparation/fresh display, and explicit Abort cleanup passed on x86-64.  Actual changed-boot FINISH remains untested.
+
 ## Desktop-disabled startup
 
 A desktop-disabled startup test uses a newly built image with `MEZZANO.INTERNALS::*DESKTOP-ENABLED*` NIL and a private source/dependency tree.  QEMU retains `-vga std -display none` because the core boot path requires a framebuffer.  After startup, check the global startup debugger value, the configuration flag, absence of the desktop variable and GUI/compositor packages, absence of loaded sound/media/USB systems, process enumeration, and arithmetic.  USB checks cover the `MEZZANO.DRIVER.USB` package and the loaded `mezzano-usb` ASDF systems.
