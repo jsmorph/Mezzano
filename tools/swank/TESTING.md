@@ -270,7 +270,9 @@ The DEBUG 3/SAFETY 3/SPEED 1 fixture selects an ordinary condition frame and eva
 
 Two additional cases arm seven selected recursive activations with one private hardware slot.  Each callback consumes the innermost record and arms the next outer return location.  They require seven callbacks in activation order, exact interrupted locations and stack pointers, moving GC at every callback, unchanged code, eight original values, and one caller cleanup under zero/two prompts.  Their join deadline is sixty seconds because each target forces seven full collections.
 
-All ten component cases passed in Mezzano.  They do not implement a trap command or test nonlocal exits, clearing during execution, thread termination with an armed trap, Snapshot restoration, fresh-cold execution, or ARM64.
+Four THROW cases cross three or all seven selected activations, with zero/two prompts between the catch and throwing frames.  A scoped test hook delegates other descriptors to the prior NLX hook, identifies exited continuations through the existing physical stack walker, and moves the private point to the actual notifier landing.  The callback accounts for every crossed record, then monitors the remaining outer normal returns.  Tests require one landing delivery, all seven records consumed once, exact landing location and stack pointer, moving GC, unchanged code, eight original values, the expected target effects, one caller cleanup, and exact prior-hook restoration.
+
+All fourteen component cases passed in Mezzano.  Their accounting of crossed records does not specify the product debugger's stop count or restart behavior for multiple crossed traps.  Product trap commands, clearing during execution, thread termination with an armed trap, Snapshot restoration, fresh-cold execution, and ARM64 remain untested.
 
 ## Retained CALL steps
 
