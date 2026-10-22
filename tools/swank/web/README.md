@@ -167,7 +167,7 @@ Command evaluation, printing, and normally returning restart functions execute w
 
 Printing a condition or value can enter a child stop.  Interrupting a running debugger command also creates a child stop, including when its parent came from an earlier interruption.  The owning Listener follows that child, and :Abort returns to its parent without continuing the original computation.  Parent Stop and Child Stop navigate the relationship in the separate Debugger while the parent command remains running.  Closed stops retain previously queried results until Release Stop.  If cleanup enters another debugger on the same thread, Current Stop selects the guest-supplied active stop.  This explicit action preserves the closed stop's displayed results until navigation.  Closing a stop clears its selected frame and backtrace highlight.  The last returned frame inspection remains labelled as a recorded frame from the closed stop.
 
-The Web debugger exposes condition, frame, local, and restart inspection, interruption, lexical frame evaluation and writes, object inspection and modification, and restart invocation with interactive or explicit arguments.  Selected-frame disassembly is available.  Source views remain unavailable.
+The Web debugger exposes condition, frame, local, and restart inspection, interruption, lexical frame evaluation and writes, object inspection and modification, and restart invocation with interactive or explicit arguments.  Selected-frame disassembly and retained compilation-input display are available.
 
 ### Debugger command input and output
 
