@@ -268,7 +268,9 @@ On an otherwise idle dedicated x86-64 guest, compile/load the debugger-service, 
 
 The DEBUG 3/SAFETY 3/SPEED 1 fixture selects an ordinary condition frame and evaluates its arming function on the stopped thread.  FRAME-RETURN-CONTEXT supplies the physical return boundary.  The existing callback breakpoint uses the derived caller function, instruction offset, thread, and post-return stack pointer.  Eight cases cover zero, one, three, and eight values under zero/two prompts.  Each requires one callback before caller cleanup, the exact interrupted caller location and stack pointer, moving GC while stopped, unchanged caller code, the original values, one cleanup, and release of owned threads, stops, controllers, and breakpoints.
 
-This component test passed in Mezzano.  It does not implement a trap command or test nonlocal exits, multiple armed activations, clearing during execution, thread termination with an armed trap, Snapshot restoration, fresh-cold execution, or ARM64.
+Two additional cases arm seven selected recursive activations with one private hardware slot.  Each callback consumes the innermost record and arms the next outer return location.  They require seven callbacks in activation order, exact interrupted locations and stack pointers, moving GC at every callback, unchanged code, eight original values, and one caller cleanup under zero/two prompts.  Their join deadline is sixty seconds because each target forces seven full collections.
+
+All ten component cases passed in Mezzano.  They do not implement a trap command or test nonlocal exits, clearing during execution, thread termination with an armed trap, Snapshot restoration, fresh-cold execution, or ARM64.
 
 ## Retained CALL steps
 
