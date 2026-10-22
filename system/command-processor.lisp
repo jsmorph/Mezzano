@@ -61,7 +61,8 @@
       (:name "Return" :id :return
        :help "Return from the selected frame with the values of a prompted expression, after confirmation.")
       (:name "Throw" :id :throw
-       :help "Prompt for a catch-tag expression and a values expression, then throw after confirmation.")
+       :source-argument t
+       :help "Evaluate a catch-tag expression and a values expression, then throw after confirmation. Omitted expressions are prompted for.")
       (:name "Proceed" :id :proceed :type :restart
        :help "Invoke the default CONTINUE restart or a zero-based restart index. :Arguments requests a Lisp expression returning the argument list."
        :keywords (("Arguments" :boolean "No" "Yes")))
@@ -152,7 +153,7 @@
 
 (defstruct lexeme value start end quoted-p)
 
-(defun tokenize (source)
+(defun tokenize (source &optional limit)
   (let ((position 0) (tokens nil))
     (loop
       (loop while (and (< position (length source)) (whitespacep (char source position)))
@@ -174,7 +175,9 @@
               (loop while (and (< position (length source))
                                (not (whitespacep (char source position)))) do (incf position))
               (push (make-lexeme :value (subseq source start position) :start start :end position)
-                    tokens)))))))
+                    tokens)))
+        (when (and limit (= (length tokens) limit))
+          (return (nreverse tokens)))))))
 
 (defun name-match-p (tokens name)
   (let ((parts (words name)))
@@ -284,10 +287,19 @@
              (t (or (and (plusp (length text)) (every #'digit-char-p text) (parse-integer text))
                     (input-error "Expected a nonnegative decimal integer, received ~S." text))))))))
 
-(defun command-tokens (source)
-  (let* ((text (trim-input source))
-         (start (if (and (plusp (length text)) (char= (char text 0) #\:)) 1 0)))
-    (tokenize (subseq text start))))
+(defun command-tokens (source &optional limit)
+  (let* ((text (string-left-trim '(#\Space #\Tab #\Newline #\Return) source))
+         (start (if (and (plusp (length text)) (char= (char text 0) #\:)) 1 0))
+         (text (subseq text start)))
+    (values (tokenize text limit) text)))
+
+(defun source-argument-command (source commands)
+  (multiple-value-bind (tokens text) (command-tokens source 1)
+    (let ((command (find-command tokens commands)))
+      (when (getf command :source-argument)
+        (let ((argument (string-left-trim '(#\Space #\Tab #\Newline #\Return)
+                                          (subseq text (lexeme-end (first tokens))))))
+          (values command (when (plusp (length argument)) argument)))))))
 
 (defun command-arguments (command listener)
   (or (getf command :arguments)
@@ -295,6 +307,9 @@
         (when type (list (list type (argument-default type listener)))))))
 
 (defun parse-command (source listener context)
+  (multiple-value-bind (command argument)
+      (source-argument-command source (if (eq context :debugger) *debugger-commands* *commands*))
+    (when command (return-from parse-command (values command argument nil))))
   (let* ((tokens (command-tokens source))
          (commands (if (eq context :debugger) *debugger-commands* *commands*)))
     (multiple-value-bind (command matches) (find-command tokens commands)
@@ -541,7 +556,7 @@
          (input-error ":Original Args and :New Args cannot both be Yes."))
        (list :operation "reinvoke" :argument (list original new))))
     (:return (list :operation "return"))
-    (:throw (list :operation "throw"))
+    (:throw (list :operation "throw" :argument argument))
     (:single-step (list :operation "single-step"))
     (:proceed
      (cond ((cdr (assoc "Arguments" keywords :test #'equal))
@@ -700,14 +715,16 @@
                           do (setf (getf response key) value)))
                   (return-from assistance response))))
             (let* ((commands (if (eq context :debugger) *debugger-commands* *commands*))
-                   (tokens (command-tokens prefix))
+                   (source-command (multiple-value-list (source-argument-command prefix commands)))
+                   (tokens (command-tokens prefix (when (first source-command) 1)))
                    (trailing (- (length prefix) (length (string-right-trim '(#\Space #\Tab #\Newline #\Return) prefix))))
                    (leader (if (or colonp (eq context :debugger)) ":" "")))
               (multiple-value-bind (command matches) (find-command tokens commands)
                 (unless matches (input-error "Unknown command. Use HELP to list the supported commands."))
                 (let* ((count (when command (length (words (getf command :name)))))
                        (namep (or (null command) (< (length tokens) count)
-                                  (and (= (length tokens) count) (zerop trailing)))))
+                                  (and (= (length tokens) count) (zerop trailing)
+                                       (null (second source-command))))))
                   (when namep
                     (when (eq action :insert) (input-error "Complete a command that accepts a pathname first."))
                     (let ((response (reply))
@@ -730,6 +747,15 @@
                           (when (plusp (length completion))
                             (replacement response (concatenate 'string leader completion
                                                                (if (every (lambda (option) (string= option completion)) options) " " ""))))))
+                      (return-from assistance response)))
+                  (when (getf command :source-argument)
+                    (when (eq action :insert) (input-error "A pathname argument is not expected here."))
+                    (let ((response (reply)))
+                      (setf (getf response :command) (getf command :id)
+                            (getf response :complete-p) t
+                            (getf response :expected-type) :lisp-source
+                            (getf response :prompt) "(catch-tag [form], or RETURN for prompts)"
+                            (getf response :help) (getf command :help))
                       (return-from assistance response)))
                   (let* ((state (argument-context command tokens listener action trailing leader))
                          (base (getf state :base))

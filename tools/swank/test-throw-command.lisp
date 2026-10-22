@@ -154,9 +154,9 @@
   (assert (zerop *probe*))
   t)
 
-(defun submit (stop lease)
+(defun submit (stop lease &optional source)
   (let ((id (getf (d:debugger-stop-information stop) :next-command-id)))
-    (d:submit-debugger-command lease id :throw)
+    (d:submit-debugger-command lease id :throw source)
     id))
 
 (defun waiting (stop id text)
@@ -177,11 +177,12 @@
 (defun confirm (stop lease id answer)
   (input stop lease id "(Y or N) " answer))
 
-(defun abort-child (state stop id type)
+(defun abort-child (state stop id type &optional reason)
   (let* ((child (test::await (lambda () (getf (d:debugger-stop-information stop) :child))))
          (lease (d:attach-debugger-stop child (probe-case-controller state)))
          (condition (d::service-stop-condition (d::service-handle-stop child))))
     (assert (typep condition type) () "~S" condition)
+    (when reason (assert (eq (d:debugger-service-error-reason condition) reason)))
     (assert (stringp (test::command child lease :condition)))
     (let ((abort-id (getf (d:debugger-stop-information child) :next-command-id)))
       (d:submit-debugger-command lease abort-id :abort)
@@ -200,28 +201,39 @@
       (assert (eq (getf (test::completed-command next id) :state) :unwound)))
     (frames::release-test-stop next (probe-case-controller state))))
 
-(defun check-transfer (source expected &key (depth 0) dynamic outer cleanup-mode collect-p)
+(defun check-transfer (source expected &key (depth 0) dynamic outer cleanup-mode collect-p inline)
   (call-with-case
    (lambda (state stop lease)
      (when dynamic (test::command stop lease :use-dynamic-environment))
-     (let ((id (submit stop lease)))
-       (tag-input stop lease id
-                  (cond (dynamic "(progn (incf (probe-case-tag-evaluations *case*)) *dynamic-tag*)")
-                        (outer "(progn (incf (probe-case-tag-evaluations state)) outer-tag)")
-                        (t "(progn (incf (probe-case-tag-evaluations state)) (values tag :ignored))")))
-       (values-input stop lease id
-                     (format nil "(progn (incf (probe-case-value-evaluations ~A)) ~A)"
-                             (if dynamic "*case*" "state") source))
+     (let* ((tag-source
+              (cond (dynamic "(progn (incf (probe-case-tag-evaluations *case*)) *dynamic-tag*)")
+                    (outer "(progn (incf (probe-case-tag-evaluations state)) outer-tag)")
+                    (t "(progn (incf (probe-case-tag-evaluations state)) (values tag :ignored))")))
+            (value-source (format nil "(progn (incf (probe-case-value-evaluations ~A)) ~A)"
+                                  (if dynamic "*case*" "state") source))
+            (inline-source (ecase inline
+                             ((nil) nil)
+                             (:tag (copy-seq tag-source))
+                             (:both (format nil "~A ; tag expression~% ~A" tag-source value-source))))
+            (accepted-source (when inline-source (copy-seq inline-source)))
+            (id (submit stop lease inline-source)))
+       (unless inline (tag-input stop lease id tag-source))
+       (unless (eq inline :both) (values-input stop lease id value-source))
        (waiting stop id "(Y or N) ")
        (assert (= (probe-case-tag-evaluations state) 1))
        (assert (= (probe-case-value-evaluations state) 1))
-       (d:submit-debugger-command lease id :throw)
+       (when inline-source
+         (setf (char inline-source 0) #\!)
+         (test::expect-error :request-conflict
+                             (lambda () (d:submit-debugger-command
+                                         lease id :throw (concatenate 'string accepted-source " ")))))
+       (d:submit-debugger-command lease id :throw (when accepted-source (copy-seq accepted-source)))
        (let ((values (seventh (d::service-stop-evaluation-history (d::service-handle-stop stop)))))
          (when collect-p (mezzano.extensions:gc :full t))
          (confirm stop lease id "y")
          (assert (eq (getf (test::completed-command stop id) :state) :unwound))
          (assert (eq (getf (d:debugger-stop-information stop) :state) :closed))
-         (d:submit-debugger-command lease id :throw)
+         (d:submit-debugger-command lease id :throw (when accepted-source (copy-seq accepted-source)))
          (when (eq cleanup-mode :error) (resolve-cleanup state stop))
          (test::await (lambda () (probe-case-done-p state)))
          (assert (equalp (probe-case-values state) expected))
@@ -273,7 +285,7 @@
          (d:supply-debugger-command-input lease id offset "" :eof t))
        (abort-child state stop id 'end-of-file))
      (let ((id (getf (d:debugger-stop-information stop) :next-command-id)))
-       (test::expect-error :unexpected-argument
+       (test::expect-error :invalid-throw-source
                            (lambda () (d:submit-debugger-command lease id :throw t)))
        (assert (= id (getf (d:debugger-stop-information stop) :next-command-id))))
      (let ((id (getf (d:debugger-stop-information stop) :next-command-id)))
@@ -303,6 +315,33 @@
      (assert (equal (probe-case-values state) '(42 :recovered))))
    :noisy-tag tag-p))
 
+(defun check-inline-recovery ()
+  (call-with-case
+   (lambda (state stop lease)
+     (let ((raw (d::service-handle-stop stop)))
+       (dolist (entry '(("\"unfinished" end-of-file nil)
+                        ("#.(error \"Read evaluation must remain disabled.\")" reader-error nil)
+                        ("(progn (incf (probe-case-tag-evaluations state)) tag) (progn (incf (probe-case-value-evaluations state)) 42) :extra"
+                         d:debugger-service-error :unexpected-throw-forms)))
+         (let ((history (copy-list (d::service-stop-evaluation-history raw)))
+               (id (submit stop lease (first entry))))
+           (abort-child state stop id (second entry) (third entry))
+           (assert (every #'eq history (d::service-stop-evaluation-history raw)))
+           (assert (zerop (probe-case-tag-evaluations state)))
+           (assert (zerop (probe-case-value-evaluations state)))))
+       (let ((id (submit stop lease "tag (values value \"two words\")")))
+         (confirm stop lease id "n")
+         (let ((result (test::completed-command stop id)))
+           (assert (eq (getf result :state) :returned))
+           (assert (string= (getf result :result) "Throw cancelled.")))
+         (assert (equal (seventh (d::service-stop-evaluation-history raw)) '(111 "two words")))
+         (assert (null (probe-case-events state))))
+       (let ((id (getf (d:debugger-stop-information stop) :next-command-id)))
+         (d:submit-debugger-command lease id :proceed)
+         (assert (eq (getf (test::completed-command stop id) :state) :unwound)))
+       (test::await (lambda () (probe-case-done-p state)))
+       (assert (equal (probe-case-values state) '(111 222 22)))))))
+
 (defun check-assistance ()
   (let ((listener (mezzano.command-processor:make-listener)))
     (let ((reply (mezzano.command-processor:assistance listener ":Th" 3 :space :context :debugger)))
@@ -313,9 +352,21 @@
       (assert (null (getf reply :argument))))
     (let ((reply (mezzano.command-processor:assistance listener ":Throw " 7 :help :context :debugger)))
       (assert (search "catch-tag expression" (getf reply :help))))
-    (dolist (source '(":Throw 42" ":Throw :All"))
-      (assert (getf (mezzano.command-processor:assistance
-                    listener source (length source) :parse :context :debugger) :error)))))
+    (dolist (tail '("42" ":All" "\"two words\" (values)" "(unfinished" "\"unfinished"
+                    "'name\\ " "|unfinished "
+                    "#.(error \"unread\")"))
+      (let* ((source (concatenate 'string ":Throw " tail))
+             (reply (mezzano.command-processor:assistance
+                     listener source (length source) :parse :context :debugger)))
+        (assert (not (getf reply :error)))
+        (assert (string= (getf reply :operation) "throw"))
+        (assert (string= (getf reply :argument) tail))
+        (dolist (action '(:help :inspect :complete :space))
+          (let ((reply (mezzano.command-processor:assistance
+                        listener source (length source) action :context :debugger)))
+            (assert (not (getf reply :error)))
+            (assert (string= (getf reply :text) source))
+            (assert (eq (getf reply :expected-type) :lisp-source))))))))
 
 (defun run ()
   (check-assistance)
@@ -331,6 +382,14 @@
   (check-recovery)
   (check-printer nil)
   (check-printer t)
+  (check-transfer "(values)" nil :inline :both)
+  (check-transfer "(+ value local *probe*)" '(355) :inline :tag)
+  (check-transfer "(values value local *probe* \"two words\")" '(111 222 22 "two words")
+                  :inline :both :depth 2 :collect-p t :cleanup-mode :error)
+  (check-transfer "(values (vector :value value) (list :value local))"
+                  '(#(:value 111) (:value 222)) :inline :both :depth 2 :collect-p t)
+  (check-transfer "*probe*" '(33) :inline :both :dynamic t)
+  (check-inline-recovery)
   (format t "PASS Throw values, catch identity, environments, replay, cancellation, child Abort, cleanup and recovery.~%")
   t)
 

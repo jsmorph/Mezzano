@@ -103,7 +103,7 @@
     ((:set-breakpoint :clear-breakpoint)
      (require-array argument 2 "Expected function source and a nonnegative PC.")
      (list (require-string (aref argument 0)) (require-integer (aref argument 1))))
-    ((:clear-all-breakpoints :source-code)
+    ((:clear-all-breakpoints :source-code :throw)
      (unless (eq argument 'null) (require-string argument)))
     (:find-frame
      (require-array argument 4 "Expected search string, Detailed, Invisible, and Reverse Booleans.")

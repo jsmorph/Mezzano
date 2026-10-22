@@ -518,7 +518,7 @@
            (previous (gethash id (service-stop-commands stop))))
       (when previous
         (unless (and (eq operation (service-command-operation previous))
-                     (if (member operation '(:evaluate :inspect :modify :bindings :special :reinvoke
+                     (if (member operation '(:evaluate :throw :inspect :modify :bindings :special :reinvoke
                                              :set-breakpoint :clear-breakpoint :clear-all-breakpoints :source-code :find-frame))
                          (equal argument (service-command-argument previous))
                          (eql argument (service-command-argument previous)))
@@ -540,7 +540,7 @@
         ((:frames :restarts :condition :abort :help :clear-inspection :arglist
           :function :rest-argument :compiled-code :instruction :lexical-environment
           :use-dynamic-environment :use-lexical-environment :toggle-evaluation-environment
-          :standard-value-warnings :return :throw :breakpoints :single-step)
+          :standard-value-warnings :return :breakpoints :single-step)
          (when argument (service-error :unexpected-argument)))
         ((:set-breakpoint :clear-breakpoint)
          (unless (typep argument '(cons string (cons (integer 0 *) null)))
@@ -548,6 +548,9 @@
         (:source-code
          (unless (typep argument '(or null string))
            (service-error :invalid-source-function)))
+        (:throw
+         (unless (typep argument '(or null string))
+           (service-error :invalid-throw-source)))
         (:clear-all-breakpoints
          (unless (typep argument '(or null string))
            (service-error :invalid-breakpoint-function)))
@@ -607,7 +610,7 @@
                                                                        (second argument)))
                                                        ((:set-breakpoint :clear-breakpoint)
                                                         (list (copy-seq (first argument)) (second argument)))
-                                                       ((:clear-all-breakpoints :source-code)
+                                                       ((:clear-all-breakpoints :source-code :throw)
                                                         (when argument (copy-seq argument)))
                                                        (:bindings (when argument
                                                                     (list (first argument)
@@ -1835,19 +1838,42 @@ NIL with true availability denotes an absent global cell."
                                             "[unbound]"))))))))
       (unless found (write-line "No matching bindings." stream)))))
 
-(defun service-throw (stop)
-  (write-string "Catch tag (Lisp expression): " *query-io*)
-  (finish-output *query-io*)
-  (let ((tag (first (service-evaluate-input stop #'read-service-expression))))
-    (write-string "Throw values (Lisp expression): " *query-io*)
-    (finish-output *query-io*)
-    (let ((values (service-evaluate-input stop #'read-service-expression))
-          (tag-label (service-print tag)))
-      (format *query-io* "~&Catch tag: ~A~%~D value~:P:~{ ~A~}~%"
-              tag-label (length values) (mapcar #'service-print values))
-      (if (y-or-n-p "Throw to ~A?" tag-label)
-          (throw tag (values-list values))
-          "Throw cancelled."))))
+(defun service-throw (stop source)
+  (let ((forms nil))
+    (let ((tag
+            (first
+             (service-evaluate-input
+              stop
+              (lambda ()
+                (when source
+                  (let ((*read-eval* nil))
+                    (with-input-from-string (stream source)
+                      (loop for form = (read stream nil stream)
+                            until (eq form stream)
+                            do (push form forms)
+                            when (= (length forms) 3)
+                              do (service-error :unexpected-throw-forms))))
+                  (setf forms (nreverse forms)))
+                (if forms (pop forms)
+                    (progn
+                      (write-string "Catch tag (Lisp expression): " *query-io*)
+                      (finish-output *query-io*)
+                      (read-service-expression))))))))
+      (let ((values
+              (service-evaluate-input
+               stop
+               (lambda ()
+                 (if forms (pop forms)
+                     (progn
+                       (write-string "Throw values (Lisp expression): " *query-io*)
+                       (finish-output *query-io*)
+                       (read-service-expression))))))
+            (tag-label (service-print tag)))
+        (format *query-io* "~&Catch tag: ~A~%~D value~:P:~{ ~A~}~%"
+                tag-label (length values) (mapcar #'service-print values))
+        (if (y-or-n-p "Throw to ~A?" tag-label)
+            (throw tag (values-list values))
+            "Throw cancelled.")))))
 
 (defun service-return (stop)
   (let* ((index (service-stop-current-frame stop))
@@ -1958,7 +1984,7 @@ NIL with true availability denotes an absent global cell."
     (:evaluate (service-evaluate stop (service-command-argument command)))
     (:single-step (service-single-step stop))
     (:return (service-return stop))
-    (:throw (service-throw stop))
+    (:throw (service-throw stop (service-command-argument command)))
     (:reinvoke (service-reinvoke stop (service-command-argument command)))
     ((:set-breakpoint :clear-breakpoint :clear-all-breakpoints :breakpoints)
      (service-breakpoint-command (service-command-operation command)
