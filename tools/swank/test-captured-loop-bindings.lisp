@@ -3,7 +3,7 @@
   (:local-nicknames (#:d #:mezzano.debug) (#:s #:mezzano.supervisor)
                     (#:i #:mezzano.internals) (#:c #:mezzano.compiler) (#:test #:lispm-service-test)
                     (#:frames #:lispm-frame-evaluation-test))
-  (:export #:diagnose #:run #:cleanup))
+  (:export #:diagnose #:run #:cleanup #:prepare-restore-test #:finish-restore-test))
 (in-package #:lispm-captured-loop-test)
 
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
@@ -63,6 +63,8 @@
 
 (defun cleanup ()
   (when *case*
+    (when (d::service-controller-closed-p (getf *case* :controller))
+      (setf (getf *case* :controller) (d:make-debugger-controller)))
     (loop for stops = (owned-stops) while stops
           do (frames::release-test-stop (first stops) (getf *case* :controller)))
     (when (getf *case* :thread)
@@ -145,12 +147,15 @@
       (d:release-debugger-stop lease)
       record)))
 
-(defun probe (target &optional (count 1) (sequence '(1)))
+(defun start-case (target sequence)
   (assert (null *case*))
   (let* ((state (vector nil nil 0 sequence nil nil nil nil nil))
          (controller (d:make-debugger-controller))
          (name (symbol-name (gensym "Captured binding test "))))
-    (setf *case* (list :state state :controller controller :thread nil :name name))
+    (setf *case* (list :state state :controller controller :thread nil :name name
+                      :saved-boot nil :old-stop nil :old-lease nil :old-frame nil
+                      :saved-binding nil :saved-value nil :saved-history nil
+                      :saved-selection nil))
     (setf (getf *case* :thread)
           (s:make-thread
            (lambda ()
@@ -162,14 +167,80 @@
                          (setf (aref state 1) (funcall target state))
                       (incf (aref state 2))))))))
            :name name))
-    (let ((records (loop repeat count collect (probe-stop target))))
-      (test::await (lambda () (nth-value 1 (s:thread-join (getf *case* :thread) nil))))
-      (assert (eq (aref state 1) (funcall (aref state 0))))
-      (assert (= (aref state 2) 1))
-      (dolist (entry (aref state 6))
-        (assert (eq (funcall (car entry)) (cdr entry))))
-      (cleanup)
-      records)))
+    *case*))
+
+(defun complete-case (target count)
+  (let ((records (loop repeat count collect (probe-stop target)))
+        (state (getf *case* :state)))
+    (test::await (lambda () (nth-value 1 (s:thread-join (getf *case* :thread) nil))))
+    (assert (eq (aref state 1) (funcall (aref state 0))))
+    (assert (= (aref state 2) 1))
+    (dolist (entry (aref state 6))
+      (assert (eq (funcall (car entry)) (cdr entry))))
+    (cleanup)
+    records))
+
+(defun probe (target &optional (count 1) (sequence '(1)))
+  (start-case target sequence)
+  (complete-case target count))
+
+(defun prepare-restore-test ()
+  (start-case #'nested-target '(1 2))
+  (let* ((stop (test::await (lambda () (test::stop-for-thread (getf *case* :name)))))
+         (controller (getf *case* :controller))
+         (lease (d:attach-debugger-stop stop controller))
+         (reference (frames::select-function stop lease #'nested-target))
+         (raw (d::service-handle-stop stop))
+         (frame (i::frame-raw-data (aref (d::service-stop-frames raw)
+                                       (d::service-stop-current-frame raw)))))
+    (test::command stop lease :evaluate "value")
+    (multiple-value-bind (function offset) (i::function-from-frame frame)
+      (let* ((scope (i::source-scope-at-offset function offset))
+             (binding (third (assoc 'value (getf scope :variables)))))
+        (assert binding)
+        (assert (= (length (nth 16 (i::function-debug-info function))) 2))
+        (assert (find binding (i::frame-locals frame :show-hidden t) :key #'fifth))
+        (setf (getf *case* :saved-binding) binding)))
+    (setf (getf *case* :saved-boot) (s:current-boot-id)
+          (getf *case* :old-stop) stop
+          (getf *case* :old-lease) lease
+          (getf *case* :old-frame) reference
+          (getf *case* :saved-value) (funcall (aref (getf *case* :state) 0))
+          (getf *case* :saved-history) (copy-list (d::service-stop-evaluation-history raw))
+          (getf *case* :saved-selection) (d::service-stop-current-frame raw))
+    (d:close-debugger-controller controller))
+  t)
+
+(defun finish-restore-test (&key (require-restored t))
+  (assert *case*)
+  (assert (eq (eq (getf *case* :saved-boot) (s:current-boot-id)) (not require-restored)))
+  (let* ((stop (test::stop-for-thread (getf *case* :name)))
+         (raw (d::service-handle-stop stop))
+         (next (getf (d:debugger-stop-information stop) :next-command-id))
+         (frame (i::frame-raw-data (aref (d::service-stop-frames raw)
+                                       (d::service-stop-current-frame raw)))))
+    (assert (= (d::service-stop-current-frame raw) (getf *case* :saved-selection)))
+    (assert (every #'eq (getf *case* :saved-history) (d::service-stop-evaluation-history raw)))
+    (assert (eq (getf *case* :saved-value) (funcall (aref (getf *case* :state) 0))))
+    (assert (find (getf *case* :saved-binding)
+                  (i::frame-locals frame :show-hidden t) :key #'fifth))
+    (when require-restored
+      (test::expect-error :expired-stop
+                          (lambda () (d:debugger-stop-information (getf *case* :old-stop))))
+      (test::expect-error :expired-stop
+                          (lambda () (d:submit-debugger-command (getf *case* :old-lease)
+                                                              next :condition)))
+      (test::expect-error :expired-stop
+                          (lambda () (d::check-service-frame (getf *case* :old-frame) raw))))
+    (assert (= next (getf (d:debugger-stop-information stop) :next-command-id)))
+    (setf (getf *case* :controller) (d:make-debugger-controller))
+    (let ((records (complete-case #'nested-target 6)))
+      (dolist (record records)
+        (assert (getf record :exact-storage-present))
+        (assert (getf (getf record :before-gc) :available-p))
+        (assert (getf (getf record :after-gc) :available-p))
+        (assert (getf record :shared-write-p)))
+      (values t records))))
 
 (defun diagnose ()
   (append (probe #'ordinary-target) (probe #'loop-target)))
