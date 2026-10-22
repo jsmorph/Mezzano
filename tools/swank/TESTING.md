@@ -262,6 +262,14 @@ The generic-frame fixture also searches each recognized associated generic funct
 
 Compile/load `test-retained-ordinary-step.lisp`, `test-retained-logical-step.lisp`, and `test-retained-argument-step.lisp` after the existing service, hardware-breakpoint, and retained-step helpers.  Use ordinary LOAD at SAFETY 3/DEBUG 3/SPEED 1 on a dedicated two-CPU x86-64 guest.  Run `(lispm-retained-argument-step-test:run)`.  Its 100 TEST32/SUB32/ADD32 cases include 48 ADD32 cases across five operand forms at zero/two prompts.  Checks cover exact PCs and defined flags, zero-extension, adjacent memory bytes, moving roots, accepted replay, expired references, unchanged code, original values, and cleanup.  Six compiled argument-count walks also run.  Browser and saved-state acceptance require their separate drivers.
 
+## Selected-frame exit continuation
+
+On an otherwise idle dedicated x86-64 guest, compile/load the debugger-service, frame-evaluation, entry-argument, and hardware-breakpoint helpers, then compile/load `test-frame-exit-context.lisp` with ordinary allocation and reject warnings or failure.  Call `(lispm-frame-exit-context-test:run)`.
+
+The DEBUG 3/SAFETY 3/SPEED 1 fixture selects an ordinary condition frame and evaluates its arming function on the stopped thread.  FRAME-RETURN-CONTEXT supplies the physical return boundary.  The existing callback breakpoint uses the derived caller function, instruction offset, thread, and post-return stack pointer.  Eight cases cover zero, one, three, and eight values under zero/two prompts.  Each requires one callback before caller cleanup, the exact interrupted caller location and stack pointer, moving GC while stopped, unchanged caller code, the original values, one cleanup, and release of owned threads, stops, controllers, and breakpoints.
+
+This component test passed in Mezzano.  It does not implement a trap command or test nonlocal exits, multiple armed activations, clearing during execution, thread termination with an armed trap, Snapshot restoration, fresh-cold execution, or ARM64.
+
 ## Retained CALL steps
 
 Compile/load `test-retained-call-step.lisp` after the raw-step, hardware-breakpoint, managed-step, retained-step, and managed-call-return helpers.  Run `(lispm-retained-call-step-test:run)` in a dedicated two-CPU x86-64 guest at SAFETY 3/DEBUG 3/SPEED 1 with ordinary allocation.  Direct/indirect cases test normal and recursive returns, three values, blocked steps, replay, moving callback arguments, redefinition, other-thread filtering, public coincidence, full capacity, callee conditions, cancellation, and termination under zero/two prompts.  A later condition after Proceed must create a new record, and cleanup must release both that record and the old closed record and join the owned thread.  The LAP callers reserve a raw alignment word while retaining their RBP-8 state root in layout `#*1`.
