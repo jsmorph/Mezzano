@@ -46,7 +46,7 @@ Each row groups commands from the manual for tracking.  Partial means that the c
 | Environment | Show Bindings; Show Catch Blocks; Show Condition Handlers; Show Lexical Environment; Show Special; Show Standard Value Warnings; Use Dynamic Environment; Use Lexical Environment | Show Lexical Environment displays inherited bindings from instruction scope metadata.  Show Bindings, Show Catch Blocks, and Show Condition Handlers inspect established x86-64 frames.  Use Dynamic Environment and Use Lexical Environment select evaluation context through guest operations and the Web editors.  Show Standard Value Warnings reports reader/printer controls corrected for debugger commands.  Show Special reads the selected Program frame's live special cell or the debugger's binding.  Streams inspection remains planned. |
 | Recovery choices | Show Proceed Options | Partial: lists captured restart names and reports, marking the default CONTINUE. |
 | Objects | Describe Last; Symeval In Last Instance | Describe Last and retained Inspector navigation and modification passed native x86-64, SWANK, and Chromium tests.  Symeval remains planned. |
-| Source and code | Analyze Frame; Show Source Code; Show Compiled Code; Show Instruction | Selected-frame compiled code and instruction display are implemented.  Their other arguments, Analyze Frame, and source display remain planned. |
+| Source and code | Analyze Frame; Show Source Code; Show Compiled Code; Show Instruction | Compiled-code and instruction display and retained compilation-input display are implemented for the selected frame.  Source locators, source-fragment actions, Analyze Frame, and the remaining code-display arguments remain planned. |
 | Frame execution | Reinvoke; Return; Throw | Return passed native x86-64, Chromium, and saved-image tests on the documented condition and hardware-stop scope.  Its one-expression value prompt differs from Genera.  Reinvoke passed native retained-command, prepared-confirmation restore, parked-frame restore, and Chromium interaction on the documented x86-64 scope.  Throw remains planned. |
 | Call and exit traps | Set Trap On Call; Clear Trap On Call; Proceed Trap On Call; Restart Trap On Call; Set Trap On Exit; Clear Trap On Exit | Planned. |
 | Conditions and monitoring | Enable Condition Tracing; Disable Condition Tracing; Monitor Variable; Unmonitor Variable; Show Monitored Locations | Planned. |
@@ -275,6 +275,26 @@ A miss reports that no older or newer frame name matches and preserves selection
 The native operation is `:find-frame` with `(string detailed-p invisible-p reverse-p)`.  Acceptance copies the string and option list.  Replay compares them with EQUAL.  Invalid shapes or an empty string reject `:invalid-frame-search`, and true Invisible rejects `:unsupported-invisible-frames`, without consuming a command ID.  A match returns `:index`, `:function`, `:arguments`, `:brief-p`, `:locals`, and `:code`.  A miss returns the unchanged `:index` and a `:message`.
 
 Native and browser acceptance covers x86-64 condition stops with targets compiled at DEBUG 3/SAFETY 3/SPEED 1.  A normal Snapshot/restart test preserved the selected recursive frame, completed brief/detailed command results, and all nine history objects.  Old controls and frame references expired.  Prior-boot replay rejected without consuming an ID.  Fresh backward/forward searches, detailed inspection, moving GC, original values, and one cleanup passed without reloading the fixture.  Reduced-debug targets, other stopping states, restoration during a running search, browser command recovery across restoration, and ARM64 remain untested.
+
+### Source code
+
+`:Show Source Code` displays retained compilation input for the selected frame's executing function.  It preserves that function version after its name is redefined.  `:Show Source Code FUNCTION-NAME` resolves the current global definition instead.  The name is one Lisp symbol or SETF function name, read in the debugger's current package with read-time evaluation disabled.  Typed names containing spaces use the Command Processor's quoted-string syntax:
+
+```lisp
+:Show Source Code
+:Show Source Code package:function
+:Show Source Code "(setf package:accessor)"
+```
+
+The header identifies the resolved function, input pathname, zero-based top-level form number, one-based starting line, and zero-based starting character within that line.  It then displays the recorded characters, including leading whitespace and comments.  A top-level form can contain several definitions or generate nested functions.  The displayed input therefore can cover more than the selected function.
+
+COMPILE-FILE retains this input in compiled-function metadata at DEBUG 1 or greater.  DEBUG 0 and functions compiled outside file compilation have no retained text.  A missing record reports `Retained source text unavailable for ...`.  Editing or removing the input file does not change an existing function's record.  The display uses that record without rereading the file.
+
+The command preserves selected frame, evaluation mode, all nine history values, Inspector state, and the stopped computation.  A malformed operand or metadata record, reader error, undefined function, or printer error uses the ordinary child debugger and command Abort.  An accepted command retains its original output across reply loss, replay, reload, redefinition, and stop closure.
+
+Genera's [Show Source Code](https://www.chai.uni-hamburg.de/~moeller/symbolics-info/documentation/Program-Development-Utilities.pdf#page=218) reads source from an editor buffer and supports mouse actions when compiled with source locators.  Mezzano retains file-compilation input in the function and reports that source locators are unavailable.  Source-to-PC mappings, source-fragment evaluation and breakpoints, editor-buffer lookup, More processing, output destinations, and Genera keyboard accelerators remain planned.
+
+The retained operation is `:source-code` with NIL or a raw function-name string.  Acceptance copies strings and compares replay operands with EQUAL.  Other argument types reject `:invalid-source-function` before consuming a command ID.  Native and browser tests use x86-64 DEBUG 3/SAFETY 3/SPEED 1 condition stops.  Retention tests separately cover native serial and parallel DEBUG 0/1/3 compilation.  Fresh cold boot, source-record saved-image execution, cross-file compiler execution, other stopping states, and ARM64 source execution remain untested.
 
 ### Functions and instructions
 

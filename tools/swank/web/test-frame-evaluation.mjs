@@ -18,6 +18,8 @@ const jobs = [];
 const ownedStops = new Map();
 const evidence = {marker, checks: []};
 let originalStops = [];
+let failure;
+const finalizationFailures = [];
 
 async function key(key, code, windowsVirtualKeyCode, modifiers = 0) {
   const generatedText = key === 'Enter' ? '\r' : key === ' ' ? ' ' : undefined;
@@ -100,15 +102,15 @@ async function selectTarget(selector = '#source', name = marker + '-TARGET') {
   await frame(index);
   return index;
 }
-async function codeCommand(operation, label, completion, menu = false) {
+async function codeCommand(operation, label, completion, menu = false, selector = '#source') {
   const previous = await browser.evaluate(`latestCommand(${text(operation)})?.id ?? -1`);
   if (menu) {
     await browser.click('#window-label');
     await clickText('#debugger-menu', label);
   } else {
-    await fill('#source', completion);
+    await fill(selector, completion);
     await key(' ', 'Space', 32);
-    await browser.waitFor(`document.querySelector('#source').value.trim() === ${text(label)} && !busy`);
+    await browser.waitFor(`document.querySelector(${text(selector)}).value.trim() === ${text(label)} && !busy`);
     await key('Enter', 'Enter', 13);
   }
   await browser.waitFor(`latestCommand(${text(operation)})?.id > ${previous}
@@ -927,16 +929,171 @@ try {
   evidence.lexicalEnvironment.continued = await completed(targetJob);
   assert.deepEqual(evidence.lexicalEnvironment.continued.values, ['37', '42', '37', 'T', '1']);
   evidence.checks.push('Inherited printer failure enters a child; typed Abort preserves parent selection/history, repair succeeds, and Proceed observes captured values after one cleanup');
-  const next = await start(`(progn (dolist (name '(${[...symbols, codeTarget, largeTarget, largeSink, largeLast, handlerTarget, ...controlSymbols, catchTarget, catchTag, ...lexicalSymbols].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
+  const sourceTarget = marker + '-SOURCE-TARGET', sourceHelper = marker + '-SOURCE-HELPER';
+  const sourceUnavailable = marker + '-SOURCE-UNAVAILABLE';
+  const sourcePath = 'SYS:HOME;' + marker + '-SOURCE.LISP', sourceOutput = 'SYS:HOME;' + marker + '-SOURCE.LLF';
+  symbols.push(sourceTarget, sourceHelper, sourceUnavailable);
+  const lispString = value => '"' + value.replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '"';
+  const sourceLiteral = 'Ω\t</pre><script data-source-probe>literal</script> ' + 'columns-'.repeat(35);
+  const sourceInput = `(progn
+  (defun ${sourceTarget} ()
+    (declare (optimize (debug 3) (safety 3) (speed 1)))
+    ;; ${sourceLiteral}
+    (cerror "Continue the owned source display test." "${marker} source display")
+    (values :old 1))
+  (defun ${sourceHelper} () :old-helper))`;
+  const replacementInput = `(progn
+  (defun ${sourceTarget} ()
+    (declare (optimize (debug 3) (safety 3) (speed 1)))
+    :current)
+  (defun ${sourceHelper} () :current-helper))`;
+  targetJob = await start(`(let ((*package* (find-package "CL-USER"))
+                               (source #p"${sourcePath}") (output #p"${sourceOutput}"))
+    (assert (not (probe-file source))) (assert (not (probe-file output)))
+    (assert (notany #'fboundp '(${sourceTarget} ${sourceHelper} ${sourceUnavailable})))
+    (unwind-protect
+         (progn
+           (with-open-file (stream source :direction :output :if-exists :error)
+             (write-string ${lispString(sourceInput)} stream))
+           (multiple-value-bind (file warnings failure) (compile-file source :output-file output)
+             (assert file) (assert (not warnings)) (assert (not failure)) (load file))
+           (compile '${sourceUnavailable} '(lambda () :no-file-source))
+           (${sourceTarget}))
+      (dolist (name '(${sourceTarget} ${sourceHelper} ${sourceUnavailable}))
+        (when (fboundp name) (fmakunbound name)) (unintern name))
+      (dolist (file (list source output)) (when (probe-file file) (delete-file file)))))`);
+  const sourceParent = await stopped(targetJob);
+  evidence.frame = await selectTarget('#source', sourceTarget);
+  await evaluation('(list :source-inspector)', ['(:SOURCE-INSPECTOR)']);
+  await command(':Inspect');
+  await browser.waitFor("returnedResult('inspect') && !stopCommandPending(selectedStop) && !busy");
+  await seedHistory();
+  const sourceState = await browser.evaluate(`({frame:stops.find(s=>same(s.token,selectedStop)).info['current-frame'],
+    mode:stops.find(s=>same(s.token,selectedStop)).info['evaluation-environment'],
+    inspector:document.querySelector('#stop-detail .inspector').textContent})`);
+  evidence.sourceCode = {stop:sourceParent.stop, input:sourceInput, replacement:replacementInput};
+  for (const activity of ['listener', 'debugger']) {
+    await switchActivity(activity);
+    const selector = activity === 'listener' ? '#source' : '#debugger-command';
+    await fill(selector, ':Show Source Code');
+    await key('F12', 'F12', 123);
+    await browser.waitFor(`document.querySelector(${text(activity === 'listener' ? '#listener-assistance' : '#debugger-assistance')}).textContent.toLowerCase().includes('source') && !busy`);
+    for (const menu of [false, true]) {
+      const value = await codeCommand('source-code', ':Show Source Code', ':Show Source C', menu, selector);
+      assert(value.startsWith('Compilation input for '));
+      assert(value.includes(sourceTarget) && value.includes(marker + '-SOURCE.LISP'));
+      assert(value.includes('Source locators unavailable.\n\n'));
+      assert(value.endsWith(sourceInput));
+      assert.equal(await browser.evaluate("document.querySelector('.source-code-result script')"), null);
+      if (evidence.sourceCode.original) assert.equal(value, evidence.sourceCode.original);
+      evidence.sourceCode.original = value;
+    }
+  }
+  await save('source-code-compilation-input');
+  evidence.checks.push('File-compiled source displays exact Unicode, tabs and markup-looking text through typed SPACE/help and menu commands in both debugger views');
+  await browser.send('Emulation.setDeviceMetricsOverride', {width:360,height:900,deviceScaleFactor:1,mobile:false});
+  evidence.sourceCode.layout = await browser.evaluate(`(() => {
+    const element=window.sourceCodeElement=[...document.querySelectorAll('.source-code-result')].at(-1);
+    element.scrollIntoView({block:'start'});element.scrollLeft=150;
+    const style=getComputedStyle(element);
+    return {whiteSpace:style.whiteSpace,overflow:style.overflowX,client:element.clientWidth,width:element.scrollWidth,
+      left:element.scrollLeft,page:document.querySelector('#page').scrollTop};
+  })()`);
+  assert.equal(evidence.sourceCode.layout.whiteSpace, 'pre');
+  assert.equal(evidence.sourceCode.layout.overflow, 'auto');
+  assert(evidence.sourceCode.layout.width > evidence.sourceCode.layout.client && evidence.sourceCode.layout.left > 0);
+  await browser.evaluate('run(refresh)');await browser.waitFor('!busy');
+  assert.deepEqual(await browser.evaluate(`({same:sourceCodeElement===[...document.querySelectorAll('.source-code-result')].at(-1),
+    text:sourceCodeElement.textContent,left:sourceCodeElement.scrollLeft,page:document.querySelector('#page').scrollTop})`),
+    {same:true,text:evidence.sourceCode.original,left:evidence.sourceCode.layout.left,page:evidence.sourceCode.layout.page});
+  await save('source-code-horizontal-scroll');
+  await browser.send('Emulation.clearDeviceMetricsOverride');
+  await switchActivity('listener');
+  const sourceReplacement = randomBytes(32).toString('hex');jobs.push(sourceReplacement);
+  await browser.evaluate(`mutate('start-evaluation', ${text({name:sourceReplacement,package:'CL-USER',source:`(progn
+    (assert (probe-file #p"${sourcePath}"))
+    (with-open-file (stream #p"${sourcePath}" :direction :output :if-exists :supersede)
+      (write-string ${lispString(replacementInput)} stream))
+    (multiple-value-bind (file warnings failure)
+        (compile-file #p"${sourcePath}" :output-file #p"${sourceOutput}")
+      (assert file) (assert (not warnings)) (assert (not failure)) (load file))
+    :source-definition-replaced)`})})`);
+  assert.deepEqual((await completed(sourceReplacement)).values, [':SOURCE-DEFINITION-REPLACED']);
+  assert.equal(await codeCommand('source-code', ':Show Source Code', ':Show Source C'), evidence.sourceCode.original);
+  await command(':Show Source Code ' + sourceTarget);
+  await browser.waitFor("returnedResult('source-code')?.endsWith(" + text(replacementInput) + ') && !busy');
+  evidence.sourceCode.current = await browser.evaluate("returnedResult('source-code')");
+  assert(evidence.sourceCode.current.includes(sourceTarget));
+  assert.notEqual(evidence.sourceCode.current, evidence.sourceCode.original);
+  await command(':Show Source Code ' + sourceUnavailable);
+  await browser.waitFor("returnedResult('source-code')?.startsWith('Retained source text unavailable for ') && !busy");
+  assert((await browser.evaluate("returnedResult('source-code')")).includes(sourceUnavailable));
+  evidence.checks.push('Selected executing source remains the old compilation input after its file/global definition change; an explicit name shows the current definition and COMPILE-only code reports unavailable');
+  await browser.evaluate(`(() => {
+    const original=window.fetch;
+    window.fetch=async(...args)=>{
+      const response=await original(...args),request=args[1]?.body&&JSON.parse(args[1].body);
+      if(request?.operation==='submit'&&request.arguments.command==='source-code'){
+        window.fetch=original;await response.arrayBuffer();throw new TypeError('Discarded accepted source-display reply');
+      }
+      return response;
+    };
+  })()`);
+  await fill('#source', ':Show Source Code ' + sourceTarget);await key('Enter', 'Enter', 13);
+  await browser.waitFor("!connected && !busy && state.pending.some(r=>r.operation==='submit'&&r.arguments.command==='source-code'&&r.status==='outcome unknown')");
+  const sourceReceipt = await browser.evaluate("state.pending.find(r=>r.operation==='submit'&&r.arguments.command==='source-code'&&r.status==='outcome unknown')");
+  await browser.click('#window-label');await browser.click('#resume-session');await browser.waitFor('connected && !busy');
+  assert.equal(await browser.evaluate('state.session'), evidence.session);
+  await switchActivity('requests');
+  await browser.evaluate(`[...document.querySelectorAll('#pending .command-row')].find(row=>row.textContent.includes(${text(JSON.stringify(sourceReceipt.arguments))})).querySelector('button').dataset.focusedTest='source-replay'`);
+  await browser.click('[data-focused-test="source-replay"]');
+  await browser.waitFor(`!state.pending.some(r=>r.id===${text(sourceReceipt.id)}) && !busy`);
+  await switchActivity('listener');
+  await browser.waitFor("returnedResult('source-code') === " + text(evidence.sourceCode.current) + ' && !busy');
+  assert.equal(await browser.evaluate("stops.find(s=>same(s.token,selectedStop)).info['next-command-id']"), sourceReceipt.arguments.id + 1);
+  evidence.sourceCode.replay = sourceReceipt;
+  const sourceIds = await browser.evaluate('state.commands.filter(c=>same(c.stop,selectedStop)).map(c=>c.id)');
+  const sourceNext = sourceReceipt.arguments.id + 1;
+  await browser.evaluate(`state.commands=state.commands.filter(c=>!(same(c.stop,selectedStop)&&c.id===${sourceReceipt.arguments.id}));save()`);
+  const sourceOrigin = await browser.evaluate('performance.timeOrigin');await browser.send('Page.reload');
+  await browser.waitFor(`performance.timeOrigin!==${sourceOrigin} && document.readyState==='complete' && connected && !busy`);
+  await stopped(targetJob);
+  await browser.waitFor("!nextHistoricalCommand() && !document.querySelector('#stop-detail .history-progress') && !busy",60);
+  assert.equal(await browser.evaluate("returnedResult('source-code')"), evidence.sourceCode.current);
+  assert.equal(await browser.evaluate("latestCommand('source-code').id"), sourceReceipt.arguments.id);
+  assert.equal(await browser.evaluate("Object.hasOwn(latestCommand('source-code'),'source')"), false);
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('.debugger-source-code .debugger-transcript')].at(-1).textContent"), '→ :Show Source Code');
+  assert.deepEqual(await browser.evaluate('state.commands.filter(c=>same(c.stop,selectedStop)).map(c=>c.id)'), sourceIds);
+  assert.equal(await browser.evaluate("stops.find(s=>same(s.token,selectedStop)).info['next-command-id']"), sourceNext);
+  assert.deepEqual(await browser.evaluate(`({frame:stops.find(s=>same(s.token,selectedStop)).info['current-frame'],
+    mode:stops.find(s=>same(s.token,selectedStop)).info['evaluation-environment'],
+    inspector:document.querySelector('#stop-detail .inspector').textContent})`), sourceState);
+  await evaluation('(values * + ++ +++ ** *** / // ///)', ['31', ...history]);
+  evidence.sourceCode.retained = await browser.evaluate("[...document.querySelectorAll('.source-code-result')].map(e=>e.textContent)");
+  await save('source-code-recovered');
+  await command(':Proceed');
+  assert.deepEqual((await completed(targetJob)).values, [':OLD','1']);
+  await switchActivity('debugger');
+  await browser.waitFor(`same(selectedStop,${text(sourceParent.stop)}) && stops.find(s=>same(s.token,selectedStop)).info.state===':closed' && !busy`);
+  assert.deepEqual(await browser.evaluate("[...document.querySelectorAll('.source-code-result')].map(e=>e.textContent)"), evidence.sourceCode.retained);
+  assert.equal(await browser.evaluate("document.querySelector('#debugger-command').disabled"), true);
+  assert.equal(await browser.evaluate("[...document.querySelectorAll('#debugger-menu button')].some(e=>e.textContent===':Show Source Code')"), false);
+  await save('source-code-closed');
+  await switchActivity('listener');
+  evidence.checks.push('Source text preserves refresh reading position, same-ID replay, descriptor-loss recovery, selection/mode/Inspector/nine histories and closed-stop output; original continuation and owned-file cleanup complete');
+  const next = await start(`(progn (assert (not (probe-file #p"${sourcePath}"))) (assert (not (probe-file #p"${sourceOutput}"))) (dolist (name '(${[...symbols, codeTarget, largeTarget, largeSink, largeLast, handlerTarget, ...controlSymbols, catchTarget, catchTag, ...lexicalSymbols].map(name => '"' + name + '"').join(' ')})) (assert (null (find-symbol name "CL-USER")))) (+ 20 22))`);
   assert.deepEqual((await completed(next)).values, ['42']);
   evidence.checks.push('Standalone debugger evaluates forms; Proceed observes immediate writes and distinct outer cell, closed stop retains printed history, definition cleanup and next Listener succeed');
 
 } catch (error) {
+  failure = error;
   evidence.failure = error.stack;
-  await save('failure');
-  await writeFile(join(output, 'failure-state.json'), await browser.evaluate('JSON.stringify(sessionStorage)'));
-  await writeFile(join(output, 'failure.txt'), await browser.evaluate('document.body.innerText'));
-  throw error;
+  const captures = await Promise.allSettled([
+    save('failure'),
+    browser.evaluate('JSON.stringify(sessionStorage)').then(value => writeFile(join(output, 'failure-state.json'), value)),
+    browser.evaluate('document.body.innerText').then(value => writeFile(join(output, 'failure.txt'), value))
+  ]);
+  finalizationFailures.push(...captures.filter(result => result.status === 'rejected').map(result => result.reason));
 } finally {
   try {
     await rememberStops();
@@ -989,14 +1146,22 @@ try {
     assert.deepEqual(browser.errors, []);
   } catch (cleanupError) {
     evidence.cleanupFailure = cleanupError.stack;
-    throw cleanupError;
+    finalizationFailures.push(cleanupError);
   } finally {
     evidence.jobs = jobs;
     evidence.stops = [...ownedStops.entries()];
     evidence.errors = browser.errors;
-    evidence.httpFailures = await browser.evaluate("JSON.parse(sessionStorage.getItem('frame-evaluation-http-failures') || '[]')");
-    await writeFile(join(output, 'result.json'), JSON.stringify(evidence, null, 2));
-    await browser.close();
+    try {
+      evidence.httpFailures = await browser.evaluate("JSON.parse(sessionStorage.getItem('frame-evaluation-http-failures') || '[]')");
+    } catch (error) { finalizationFailures.push(error); }
+    try { await browser.close(); } catch (error) { finalizationFailures.push(error); }
+    evidence.finalizationFailures = finalizationFailures.map(error => error.stack || String(error));
+    evidence.passed = !failure && finalizationFailures.length === 0;
+    try {
+      await writeFile(join(output, 'result.json'), JSON.stringify(evidence, null, 2));
+    } catch (error) { finalizationFailures.push(error); }
   }
 }
+if (failure) throw failure;
+if (finalizationFailures.length) throw new AggregateError(finalizationFailures, 'Frame evaluation evidence collection or cleanup failed');
 console.log(JSON.stringify(evidence, null, 2));

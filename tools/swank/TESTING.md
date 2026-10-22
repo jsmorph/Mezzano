@@ -41,7 +41,15 @@ Compile/load `test-retained-source.lisp` ordinarily, then call `(lispm-retained-
 
 Capture tests check exact consumed characters, Unicode/comments, read-time evaluation once, coordinates, and AST-copy identity.  Serial and forced-parallel COMPILE-FILE tests use DEBUG 0/1/3 with SAFETY 3/SPEED 1.  They check shared PROGN/nested-function records, compile-time functions, LAP, compiled-file reload, and old function/text identity after file replacement and redefinition.  Concurrent compilations and full GC check isolation and retention.  Printed character counts describe the fixture's metadata strings, not total compiler memory.
 
-Native x86-64 tests passed.  Recompile and run the existing AST-environment, parameter-context, and instruction-boundary fixtures after the update.  The parameter-context fixture requires the entry-argument helper first.  Source commands/browser behavior, fresh cold boot, saved-image execution, cross-file compiler execution, and ARM64 execution require separate tests.
+Native x86-64 tests passed.  Recompile and run the existing AST-environment, parameter-context, and instruction-boundary fixtures after the update.  The parameter-context fixture requires the entry-argument helper first.  Source-command and browser behavior use the separate source-display tests below.  Fresh cold boot, saved-image execution, cross-file compiler execution, and ARM64 execution require separate tests.
+
+## Source-code display
+
+Compile/load `test-source-display.lisp` ordinarily after the debugger-service, frame-evaluation, and retained-source fixtures.  Call `(lispm-source-display-test:run directory)` with an existing writable directory on a dedicated guest.  It owns two files and three function definitions and removes them during cleanup.
+
+The DEBUG 3/SAFETY 3/SPEED 1 x86-64 condition-stop test checks command parsing, SPACE completion, help, optional and quoted SETF names, exact recorded text and coordinates, and shared top-level input.  It redefines the active function, deletes the input/compiled files, collects, and distinguishes the retained executing definition from the current named definition.  Invalid argument types must reject before ID acceptance.  Mutating the caller's accepted function-name string must leave its copied operand unchanged.  A fresh equal string must replay the named result, and a different string must reject.  Reader, undefined-function, and malformed-metadata cases must enter child debuggers, support condition inspection and Abort, and retain their unwound results on replay.  Source display must preserve selection, evaluation mode, nine history identities, and Inspector references.  Proceed returns the original two values, runs one cleanup, and preserves completed source text until stop release.
+
+Run the existing native HTTP argument tests and Python bridge tests after adapter changes.  Browser source interaction uses the existing frame-evaluation driver described in [Web interface tests](web/TESTING.md).  Fresh cold boot, source-record saved-image execution, cross-file compilation, other stopping states, and ARM64 require separate tests.
 
 ## Desktop-disabled startup
 

@@ -1405,7 +1405,7 @@ function renderStops() {
     menuChildren.push(inspect);
     for (const name of [":Single Step", ":Return", ":Reinvoke", ":Reinvoke :Original Args", ":Reinvoke :New Args",
                         ":Show Backtrace", ":Show Proceed Options", ":Show Frame", ":Show Local All", ":Show Arglist", ":Show Argument", ":Show Rest Argument", ":Show Bindings", ":Show Condition Handlers", ":Show Catch Blocks",
-                        ":Show Function", ":Show Compiled Code", ":Show Instruction", ":Show Lexical Environment", ":Show Standard Value Warnings",
+                        ":Show Function", ":Show Compiled Code", ":Show Source Code", ":Show Instruction", ":Show Lexical Environment", ":Show Standard Value Warnings",
                         ":Next Frame", ":Previous Frame", ":Top Of Stack", ":Bottom Of Stack",
                         ":Inspect", ":Describe Last", ":Clear Inspector",
                         ":Clear All Breakpoints", ":Show Breakpoints",
@@ -1517,14 +1517,14 @@ function renderStops() {
       output = node("div", undefined, "debugger-description");
       output.append(node("pre", "→ " + (command.source ?? "Describe"), "debugger-transcript"),
         node("pre", result?.state === ":returned" ? result.result : status, "description-result"));
-    } else if (["single-step", "return", "reinvoke", "arglist", "argument", "local", "rest-argument", "bindings", "handlers", "catches", "function", "compiled-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
+    } else if (["single-step", "return", "reinvoke", "arglist", "argument", "local", "rest-argument", "bindings", "handlers", "catches", "function", "compiled-code", "source-code", "instruction", "lexical-environment", "standard-value-warnings", "special",
                 "set-breakpoint", "clear-breakpoint", "clear-all-breakpoints", "breakpoints",
                 "use-dynamic-environment", "use-lexical-environment", "toggle-evaluation-environment"].includes(command.command)) {
       const outputKey = prefix + "output:" + command.id;
       output = stopControls.get(outputKey) || node("div", undefined, "debugger-" + command.command);
       controls.set(outputKey, output);
       const name = {"single-step": ":Single Step", return: ":Return", reinvoke: ":Reinvoke", arglist: ":Show Arglist", argument: ":Show Argument", local: ":Show Local", "rest-argument": ":Show Rest Argument", bindings: ":Show Bindings", handlers: ":Show Condition Handlers",
-        catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code",
+        catches: ":Show Catch Blocks", function: ":Show Function", "compiled-code": ":Show Compiled Code", "source-code": ":Show Source Code",
         instruction: ":Show Instruction", "lexical-environment": ":Show Lexical Environment",
         "standard-value-warnings": ":Show Standard Value Warnings", special: ":Show Special",
         "set-breakpoint": ":Set Breakpoint", "clear-breakpoint": ":Clear Breakpoint",
