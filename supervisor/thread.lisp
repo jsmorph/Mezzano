@@ -556,9 +556,18 @@ Interrupts must be off and the global thread lock must be held."
       ;; Cleanup, terminate the thread.
       (thread-final-cleanup return-values))))
 
+#+x86-64
+(sys.int::defglobal *instruction-thread-exit-hook* nil)
+
 ;; This is seperate from thread-entry-trampoline so steppers can detect it.
 (defun thread-final-cleanup (return-values)
-  #+x86-64 (clear-thread-instruction-state (current-thread))
+  #+x86-64
+  (progn
+    (clear-thread-instruction-state (current-thread))
+    (let ((hook *instruction-thread-exit-hook*)
+          (priority (thread-priority (current-thread))))
+      (when (and hook (not (eq priority :supervisor)) (not (eq priority :idle)))
+        (funcall hook))))
   (%run-on-wired-stack-without-interrupts (sp fp return-values)
     (let ((self (current-thread)))
       ;; FIXME: This should be done with the global lock held, but that makes

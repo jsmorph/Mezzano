@@ -1,6 +1,7 @@
 (defpackage #:lispm-thread-instruction-cleanup-test
   (:use #:cl)
-  (:local-nicknames (#:i #:mezzano.internals)
+  (:local-nicknames (#:d #:mezzano.debug)
+                    (#:i #:mezzano.internals)
                     (#:s #:mezzano.supervisor)
                     (#:entry #:lispm-entry-arguments-test)
                     (#:test #:lispm-service-test)
@@ -113,14 +114,154 @@
       (setf *state* nil)))
   t)
 
+(defvar *step-case* nil)
+
+(defun exit-step-callee (state)
+  (setf (s:event-state (aref state 1)) t)
+  (s:event-wait (aref state 0))
+  (aref state 3))
+
+(i::define-lap-function exit-step-target ((state))
+  (:gc :no-frame :layout #*0)
+  (mezzano.lap.x86:push :rbp)
+  (:gc :no-frame :layout #*00)
+  (mezzano.lap.x86:mov64 :rbp :rsp)
+  (:gc :frame)
+  (mezzano.lap.x86:push :r8)
+  (:gc :frame :layout #*1)
+  (mezzano.lap.x86:push 0)
+  (mezzano.lap.x86:call (:named-call exit-step-callee))
+  (:gc :frame :layout #*1 :multiple-values 0)
+  (mezzano.lap.x86:leave)
+  (:gc :no-frame :layout #*0 :multiple-values 0)
+  (mezzano.lap.x86:ret))
+
+(defvar *delivery-step* nil)
+(defvar *delivery-original* nil)
+
+(defun delivery-barrier (step)
+  (if (and *step-case*
+           (eq (d::service-stop-thread (d::service-step-stop step))
+               (third *step-case*)))
+      (let ((state (first *step-case*)))
+        (setf *delivery-step* step
+              (s:event-state (aref state 1)) t)
+        (s:event-wait (aref state 0))
+        (funcall *delivery-original* step))
+      (funcall *delivery-original* step)))
+
+(defun cleanup-step-case ()
+  (let ((cleaned nil))
+    (unwind-protect
+         (progn
+           (when *step-case*
+             (destructuring-bind (state controller thread stop lease point) *step-case*
+               (declare (ignore state lease))
+               (when point (s::clear-instruction-breakpoint point))
+               (when thread
+                 (unless (nth-value 1 (s:thread-join thread nil)) (s:terminate-thread thread))
+                 (test::await (lambda () (nth-value 1 (s:thread-join thread nil)))))
+               (when stop
+                 (let* ((record (d::service-handle-stop stop))
+                        (condition (d::service-stop-condition record))
+                        (exit (when (typep condition 'i::instruction-trap)
+                                (i::instruction-trap-exit-function condition))))
+                   (when exit (funcall exit :unwind))
+                   (assert (eq (d::service-stop-state record) :closed))))
+               (loop for handle = (and thread (hw::thread-stop thread))
+                     while handle
+                     do (lispm-frame-evaluation-test::release-test-stop handle controller))
+               (d:close-debugger-controller controller)))
+           (setf cleaned t))
+      (when *delivery-original*
+        (setf (fdefinition 'd::service-deliver-step) *delivery-original*))
+      (when cleaned
+        (setf *delivery-original* nil *delivery-step* nil *step-case* nil))))
+  t)
+
+(defun step-exit-case (depth &optional (mode :call))
+  (assert (member mode '(:call :delivery)))
+  (assert (null *step-case*))
+  (assert (null *delivery-original*))
+  (assert (null *delivery-step*))
+  (let* ((state (vector (s:make-event) (s:make-event) 0 (vector :step-exit)))
+         (controller (d:make-debugger-controller))
+         (offset
+           (if (eq mode :delivery)
+               16
+               (mezzano.disassemble:inst-offset
+                (find-if
+                 (lambda (instruction)
+                   (and instruction
+                        (eq (mezzano.disassemble.x86-64::inst-opcode instruction)
+                            'mezzano.lap.x86:call)))
+                 (mezzano.disassemble:context-instructions
+                  (mezzano.disassemble:make-disassembler-context #'exit-step-target))))))
+         (point (s::install-instruction-breakpoint #'exit-step-target offset)))
+    (setf *step-case* (list state controller nil nil nil point))
+    (unwind-protect
+         (progn
+           (when (eq mode :delivery)
+             (setf *delivery-original* (fdefinition 'd::service-deliver-step)
+                   (fdefinition 'd::service-deliver-step) #'delivery-barrier))
+           (let* ((thread
+                    (s:make-thread
+                     (lambda ()
+                       (let ((d:*global-debugger* #'d::service-debugger)
+                             (*debugger-hook* #'d::service-debugger-hook))
+                         (unwind-protect
+                              (entry::with-prompts depth (lambda () (exit-step-target state)))
+                           (incf (aref state 2)))))
+                     :name "Owned step outside service wrapper"))
+                  (stop nil) (lease nil))
+             (setf (third *step-case*) thread
+                   stop (test::await (lambda () (hw::thread-stop thread)))
+                   lease (d:attach-debugger-stop stop controller)
+                   (fourth *step-case*) stop (fifth *step-case*) lease)
+             (assert (s::clear-instruction-breakpoint point))
+             (let ((identifier (getf (d:debugger-stop-information stop) :next-command-id)))
+               (d:submit-debugger-command lease identifier :single-step)
+               (assert (eq (getf (test::completed-command stop identifier) :state) :unwound)))
+             (test::await (lambda () (s:event-state (aref state 1))))
+             (test::await (lambda () (eq (s::thread-state thread) :sleeping)))
+             (assert (eq (getf (d:debugger-stop-information stop) :state) :stepping))
+             (assert (zerop (aref state 2)))
+             (if (eq mode :call)
+                 (assert (= (length (owned-points thread)) 1))
+                 (progn
+                   (assert *delivery-step*)
+                   (assert (null (owned-points thread)))
+                   (assert (null (s::find-instruction-step-request thread)))
+                   (assert (eq (s::instruction-step-request-state
+                                (d::service-step-request *delivery-step*))
+                               :delivered))))
+             (mezzano.extensions:gc :full t)
+             (s:terminate-thread thread)
+             (test::await (lambda () (nth-value 1 (s:thread-join thread nil))))
+             (assert (= (aref state 2) 1))
+             (assert (null (owned-points thread)))
+             (assert (null (s::find-instruction-step-request thread)))
+             (let ((status (getf (d:debugger-stop-information stop) :state)))
+               (format t "Thread exit outside wrapper: ~D prompts, ~S, stop ~S.~%"
+                       depth mode status)
+               (assert (eq status :closed)))))
+      (cleanup-step-case)))
+  t)
+
 (defun run ()
   (assert (null *state*))
+  (assert (null *step-case*))
   (assert (null (s::instruction-breakpoints)))
   (assert (notany #'identity s::*instruction-breakpoint-slots*))
   (assert (null s::*instruction-step-requests*))
   (dolist (depth '(0 2))
-    (dolist (terminatep '(nil t)) (run-case depth terminatep)))
+    (dolist (terminatep '(nil t)) (run-case depth terminatep))
+    (step-exit-case depth)
+    (step-exit-case depth :delivery))
   (assert (null *state*))
+  (assert (null *step-case*))
+  (assert (null *delivery-original*))
+  (assert (null *delivery-step*))
   (assert (notany #'identity s::*instruction-breakpoint-slots*))
   (assert (null s::*instruction-step-requests*))
   t)

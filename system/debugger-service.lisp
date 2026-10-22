@@ -2234,13 +2234,21 @@ NIL with true availability denotes an absent global cell."
   (declare (ignore previous-hook))
   (service-debugger condition))
 
+(defun service-cleanup-step ()
+  (let ((stop (service-stepping-stop)))
+    (when stop
+      (let* ((condition (service-stop-condition stop))
+             (exit (mezzano.internals::instruction-trap-exit-function condition)))
+        (when exit (funcall exit :unwind))
+        (unless (eq (service-stop-state stop) :closed)
+          (close-service-stop stop))))))
+
+#+x86-64
+(setf mezzano.supervisor::*instruction-thread-exit-hook* #'service-cleanup-step)
+
 (defun call-with-debugger-service (function)
   (let ((*debugger-hook* #'service-debugger-hook)
         (*global-debugger* #'service-debugger))
     (unwind-protect
          (funcall function)
-      (let ((stop (service-stepping-stop)))
-        (when stop
-          (let* ((condition (service-stop-condition stop))
-                 (exit (mezzano.internals::instruction-trap-exit-function condition)))
-            (when exit (funcall exit :unwind))))))))
+      (service-cleanup-step))))
