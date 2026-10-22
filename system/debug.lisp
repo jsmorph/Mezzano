@@ -1056,8 +1056,8 @@ executed, and the offset into it."
     (when fn
       (function-source-location fn))))
 
-(defun map-backtrace (fn)
-  #+x86-64
+#+x86-64
+(defun %map-backtrace-context (fn)
   (let* ((anchor (read-frame-pointer))
          (stack-pointer (+ anchor 16))
          (frame-pointer (memref-unsigned-byte-64 anchor))
@@ -1066,22 +1066,55 @@ executed, and the offset into it."
     (loop for depth from 0
           until (zerop (memref-unsigned-byte-64 pc-slot))
           do (funcall fn (make-frame :depth depth :fp anchor
-                                     :pc-slot pc-slot :interrupted-p interrupted-p))
-             (multiple-value-bind (next-sp next-fp next-pc next-slot link interruptp)
-                 (backtrace-next-frame
-                  (mezzano.supervisor:current-thread)
-                  stack-pointer frame-pointer
-                  (memref-unsigned-byte-64 pc-slot))
-               (when (or (zerop next-fp) (zerop next-pc)) (return))
-               (setf stack-pointer next-sp
-                     frame-pointer next-fp
-                     pc-slot next-slot
-                     interrupted-p interruptp)
-               (when link (setf anchor link)))))
+                                    :pc-slot pc-slot :interrupted-p interrupted-p)
+                      stack-pointer frame-pointer)
+             (mezzano.supervisor:with-pseudo-atomic
+               (multiple-value-bind (next-sp next-fp next-pc next-slot link interruptp)
+                   (backtrace-next-frame
+                    (mezzano.supervisor:current-thread)
+                    stack-pointer frame-pointer
+                    (memref-unsigned-byte-64 pc-slot))
+                 (when (or (zerop next-fp) (zerop next-pc)) (return))
+                 (setf stack-pointer next-sp
+                       frame-pointer next-fp
+                       pc-slot next-slot
+                       interrupted-p interruptp)
+                 (when link (setf anchor link)))))))
+
+(defun map-backtrace (fn)
+  #+x86-64
+  (%map-backtrace-context
+   (lambda (frame stack-pointer frame-pointer)
+     (declare (ignore stack-pointer frame-pointer))
+     (funcall fn frame)))
   #-x86-64
   (%map-backtrace
    (lambda (depth fp callee-save-regs)
      (funcall fn (make-frame :depth depth :fp fp :callee-save-regs callee-save-regs)))))
+
+(defun frame-return-location (frame)
+  "Return caller function, offset, SP, and unavailable reason on FRAME's thread."
+  (check-type frame frame)
+  #+x86-64
+  (block location
+    (%map-backtrace-context
+     (lambda (current stack-pointer frame-pointer)
+       (when (and (= (frame-fp current) (frame-fp frame))
+                  (eql (frame-pc-slot current) (frame-pc-slot frame)))
+         (return-from location
+           (mezzano.supervisor:with-pseudo-atomic
+             (multiple-value-bind (sp fp pc slot link interrupted-p)
+                 (backtrace-next-frame
+                  (mezzano.supervisor:current-thread) stack-pointer frame-pointer
+                  (memref-unsigned-byte-64 (frame-pc-slot current)))
+               (declare (ignore fp slot link interrupted-p))
+               (if (and (not (zerop pc)) (within-function-area-p pc))
+                   (multiple-value-bind (function offset) (return-address-to-function pc)
+                     (values function offset sp nil))
+                   (values nil nil nil :unavailable-return-address))))))))
+    (values nil nil nil :inactive-frame))
+  #-x86-64
+  (values nil nil nil :unsupported-architecture))
 
 (defun map-backtrace2 (fn)
   (%map-backtrace2

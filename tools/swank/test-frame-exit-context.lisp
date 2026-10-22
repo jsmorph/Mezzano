@@ -10,6 +10,21 @@
 (declaim (optimize (debug 3) (safety 3) (speed 1)))
 (defvar *case* nil)
 
+(declaim (notinline target frameless-body))
+
+(defun frameless-body (marker state)
+  (target marker state 3))
+
+(i::define-lap-function frameless-target ((marker state))
+  (:gc :no-frame :layout #*0)
+  (mezzano.lap.x86:push 0)
+  (:gc :no-frame :layout #*00)
+  (mezzano.lap.x86:call (:named-call frameless-body))
+  (:gc :no-frame :layout #*00 :multiple-values 0)
+  (mezzano.lap.x86:add64 :rsp 8)
+  (:gc :no-frame :layout #*0 :multiple-values 0)
+  (mezzano.lap.x86:ret))
+
 (defun target (marker state count)
   (cerror "Return from the owned target." "Owned frame-exit target.")
   (incf (aref state 0))
@@ -40,28 +55,36 @@
     (setf (getf entry :at-exit) t)
     (cerror "Resume the original return." "Owned frame-exit callback.")))
 
-(defun arm-selected-exit ()
+(defun arm-selected-exit (&optional (target-function #'target) frameless)
   (let* ((entry *case*) (record (getf entry :record))
          (stop d::*service-current-stop*)
          (frame (aref (d::service-stop-frames stop) (d::service-stop-current-frame stop))))
     (assert (eq stop (d::service-handle-stop (fourth record))))
     (assert (eq (s:current-thread) (third record)))
-    (assert (eq (nth-value 1 (i::frame-function frame)) #'target))
-    (multiple-value-bind (fp head reason) (i::frame-return-context frame)
-      (declare (ignore head))
+    (assert (eq (nth-value 1 (i::frame-function frame)) target-function))
+    (multiple-value-bind (function offset sp reason) (i::frame-return-location frame)
       (assert (null reason))
-      (multiple-value-bind (function offset)
-          (s:with-pseudo-atomic
-            (i::safe-return-address-to-function (i::memref-unsigned-byte-64 fp 1)))
-        (d::service-validate-instruction-breakpoint-location function offset)
-        (setf (getf entry :return-function) function
-              (getf entry :return-offset) offset
-              (getf entry :return-sp) (+ fp 16)
-              (getf entry :caller-bytes) (hw::code-bytes function))
-        (s:without-footholds
-          (setf (getf entry :point)
-                (s::install-callback-instruction-step-breakpoint
-                 function offset (third record) (+ fp 16) #'exit-callback entry))))))
+      (multiple-value-bind (fp head old-reason) (i::frame-return-context frame)
+        (declare (ignore head))
+        (if frameless
+            (assert (eq old-reason :frameless-frame))
+            (progn
+              (assert (null old-reason))
+              (assert (= sp (+ fp 16)))
+              (multiple-value-bind (old-function old-offset)
+                  (s:with-pseudo-atomic
+                    (i::safe-return-address-to-function (i::memref-unsigned-byte-64 fp 1)))
+                (assert (eq function old-function))
+                (assert (= offset old-offset))))))
+      (d::service-validate-instruction-breakpoint-location function offset)
+      (setf (getf entry :return-function) function
+            (getf entry :return-offset) offset
+            (getf entry :return-sp) sp
+            (getf entry :caller-bytes) (hw::code-bytes function))
+      (s:without-footholds
+        (setf (getf entry :point)
+              (s::install-callback-instruction-step-breakpoint
+               function offset (third record) sp #'exit-callback entry)))))
   t)
 
 (defun proceed (stop lease)
@@ -82,8 +105,10 @@
     (setf *case* nil))
   t)
 
-(defun case-test (count depth)
-  (let* ((record (hw::make-case (lambda (marker state) (target marker state count)) 0 depth))
+(defun case-test (count depth &optional frameless)
+  (let* ((record (hw::make-case
+                  (if frameless #'frameless-target
+                      (lambda (marker state) (target marker state count))) 0 depth))
          (state (first record)) (controller (second record)) (thread (third record)))
     (setf *case* (list :record record :point nil :return-function nil :return-offset nil
                       :return-sp nil :caller-bytes nil :calls 0 :at-exit nil))
@@ -91,9 +116,12 @@
          (let* ((stop (test::await (lambda () (hw::thread-stop thread))))
                 (lease (d:attach-debugger-stop stop controller)))
            (setf (fourth record) stop (fifth record) lease)
-           (frames::select-function stop lease #'target)
+           (frames::select-function stop lease (if frameless #'frameless-target #'target))
+           (when frameless (test::command stop lease :use-dynamic-environment))
            (assert (equal (test::command stop lease :evaluate
-                                         "(lispm-frame-exit-context-test::arm-selected-exit)")
+                                         (if frameless
+                                             "(lispm-frame-exit-context-test::arm-selected-exit #'lispm-frame-exit-context-test::frameless-target t)"
+                                             "(lispm-frame-exit-context-test::arm-selected-exit)"))
                           '("T")))
            (assert (getf *case* :point))
            (proceed stop lease)
@@ -119,7 +147,8 @@
              (assert (every (lambda (value) (eq value (aref state 3))) (aref state 2)))
              (assert (= (getf *case* :calls) 1))))
       (cleanup)))
-  (format t "PASS selected-frame exit context with ~D values and ~D prompts.~%" count depth)
+  (format t "PASS selected-frame exit context: ~D values, ~D prompts, frameless ~S.~%"
+          count depth frameless)
   t)
 
 (defun recursive-target (marker state depth)
@@ -178,6 +207,12 @@
                      (s:with-pseudo-atomic
                        (i::safe-return-address-to-function (i::memref-unsigned-byte-64 fp 1)))
                    (d::service-validate-instruction-breakpoint-location function offset)
+                   (multiple-value-bind (new-function new-offset sp new-reason)
+                       (i::frame-return-location frame)
+                     (assert (null new-reason))
+                     (assert (eq function new-function))
+                     (assert (= offset new-offset))
+                     (assert (= sp (+ fp 16))))
                    (push (list function offset (+ fp 16) (hw::code-bytes function)) contexts))))
     (assert (= (length contexts) 7))
     (setf (getf entry :pending) (nreverse contexts))
@@ -346,13 +381,30 @@
   (format t "PASS nonlocal exit continuations: catch ~D, ~D prompts.~%" catch-level prompts)
   t)
 
+(defun check-visitor-collection ()
+  (let* ((marker (vector :visitor-collection))
+         (address (i::lisp-object-address marker)) (collected nil))
+    (i::map-backtrace
+     (lambda (frame)
+       (declare (ignore frame))
+       (unless collected
+         (assert (not s::*pseudo-atomic*))
+         (mezzano.extensions:gc :full t)
+         (assert (/= address (i::lisp-object-address marker)))
+         (setf collected t))))
+    (assert collected))
+  (format t "PASS collection inside the backtrace visitor.~%")
+  t)
+
 (defun run ()
   (assert (null *case*))
   (assert (null (d:debugger-stops :include-closed t)))
   (assert (null (s::instruction-breakpoints)))
   (assert (null s::*instruction-step-requests*))
+  (check-visitor-collection)
   (dolist (count '(0 1 3 8))
     (dolist (depth '(0 2)) (case-test count depth)))
+  (dolist (depth '(0 2)) (case-test 3 depth t))
   (dolist (depth '(0 2)) (ordered-case-test depth))
   (dolist (catch-level '(3 -1))
     (dolist (depth '(0 2)) (nlx-case-test catch-level depth)))
