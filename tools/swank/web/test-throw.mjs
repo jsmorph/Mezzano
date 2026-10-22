@@ -10,7 +10,7 @@ const output=resolve(process.argv[3]??'/tmp/mezzano-throw');
 await mkdir(output,{recursive:false});
 const browser=await openBrowser('about:blank');
 const q=JSON.stringify, marker='WEB-THROW-'+randomBytes(6).toString('hex').toUpperCase();
-const names=[marker+'-INLINE',marker+'-STANDALONE'],jobs=[],owned=new Map();
+const names=[marker+'-INLINE',marker+'-STANDALONE',marker+'-INLINE-SOURCE'],jobs=[],owned=new Map();
 const evidence={marker,checks:[]},secondary=[];
 let failure,parent,job,frameIndex;
 const ready=()=>browser.waitFor('connected && !busy');
@@ -73,8 +73,10 @@ function fixture(name){return `(unwind-protect
   (assert (not (fboundp '${name})))
   (defun ${name} ()
    (declare (optimize (debug 3) (safety 3) (speed 1)))
-   (let ((tag (list :owned-tag)) (tag-count 0) (value-count 0) (cleanup-count 0))
-    (declare (type fixnum tag-count value-count cleanup-count))
+   (let ((tag (list :owned-tag)) (tag-count 0) (value-count 0) (cleanup-count 0)
+         (inline-tag-count 0) (inline-value-count 0))
+    (declare (type fixnum tag-count value-count cleanup-count inline-tag-count inline-value-count)
+             (ignorable inline-tag-count inline-value-count))
     (let ((answer (multiple-value-list
       (catch tag
        (unwind-protect
@@ -98,7 +100,9 @@ async function begin(name,separate=false){
 }
 async function command(source){
  const id=(await request('information',{stop:parent}))['next-command-id'];
- await enter(await editor(),source);
+ const selector=await editor();await fill(selector,source);
+ assert.equal(await browser.evaluate(`document.querySelector(${q(selector)}).value`),source);
+ await key('Enter','Enter',13);
  await browser.waitFor(`state.commands.some(c=>same(c.stop,${q(parent)})&&c.id===${id}) && !busy`,60);return id;
 }
 async function result(id,stop=parent){
@@ -136,6 +140,25 @@ async function help(){
  const selector=await editor();await fill(selector,':Throw');await key('F12','F12',123);
  const box=selector==='#source'?'#listener-assistance':'#debugger-assistance';
  await browser.waitFor(`document.querySelector(${q(box)}).textContent.toLowerCase().includes('throw') && !busy`);
+}
+async function inlineAssistance(){
+ const selector=await editor(),box=selector==='#source'?'#listener-assistance':'#debugger-assistance';
+ const source=':Throw "unfinished';await fill(selector,source);await key('F12','F12',123);
+ const prompt=`document.querySelector(${q(box+' .argument-prompt')})`;
+ await browser.waitFor(`${prompt}?.dataset.expectedType===':lisp-source' && !busy`);
+ assert.equal(await browser.evaluate(`document.querySelector(${q(selector)}).value`),source);
+ assert((await browser.evaluate(`document.querySelector(${q(box)}).textContent`)).includes('Omitted expressions are prompted for.'));
+ await key(' ','Space',32);
+ await browser.waitFor(`${prompt}?.dataset.expectedType===':lisp-source' && !busy`);
+ assert.equal(await browser.evaluate(`document.querySelector(${q(selector)}).value`),source+' ');
+ const cursor=await browser.evaluate(`document.querySelector(${q(selector)}).selectionStart`);
+ assert.equal(cursor,(source+' ').length);
+ evidence.assistance??=[];evidence.assistance.push({activity:await browser.evaluate('activity'),source:source+' ',cursor});
+}
+async function inlineCommand(source,expectedPrompt='(Y or N) '){
+ const text=':Throw '+source,id=await command(text);
+ assert.deepEqual(await browser.evaluate(`(()=>{const c=state.commands.find(c=>same(c.stop,${q(parent)})&&c.id===${id});return [c.command,c.argument,c.source]})()`),['throw',source,text]);
+ await prompt(id,expectedPrompt);return id;
 }
 async function operands(id,tag,values,summary){
  await send(id,tag);await prompt(id,'Throw values (Lisp expression): ');
@@ -206,6 +229,25 @@ try{
  await shot('inline-zero-values-confirmation',id);await cancel(id);
  await evaluate('(values tag-count value-count cleanup-count)',['1','1','0']);
  evidence.checks.push('Inline SPACE/help and zero-value cancellation preserve selected frame; tag primary/value expressions execute once without program cleanup');
+ await inlineAssistance();
+ const commentedSource='(progn (incf inline-tag-count) (values tag :ignored)) ; primary catch tag\n'+
+  '(progn (incf inline-value-count) (values "two words" "Ω" "<tag>")) #| trailing comment |#';
+ id=await inlineCommand(commentedSource);
+ assert((await browser.evaluate(ioQuery(id)+'.text')).includes('Catch tag: (:OWNED-TAG)\n3 values: "two words" "Ω" "<tag>"\n'));
+ await shot('inline-source-confirmation',id);await cancel(id);
+ id=await inlineCommand('(progn (incf inline-tag-count) (values tag :ignored))','Throw values (Lisp expression): ');
+ await send(id,'(progn (incf inline-value-count) (values))');await prompt(id,'(Y or N) ');
+ assert((await browser.evaluate(ioQuery(id)+'.text')).includes('0 values:\n'));await cancel(id);
+ await evaluate('(values inline-tag-count inline-value-count tag-count value-count cleanup-count)',['2','2','1','1','0']);
+ for(const [source,pattern] of [
+  ['"unfinished',/end.of.file|EOF|end of input|end of stream/i],
+  ['#.(progn (incf inline-tag-count) tag)',/READ-EVAL|read-time|Cannot #\./i],
+  ['(progn (incf inline-tag-count) tag) (progn (incf inline-value-count) :unwanted) :third',/unexpected.throw.forms/i]
+ ]){
+  id=await command(':Throw '+source);await abortChild(id,pattern);
+  await evaluate('(values inline-tag-count inline-value-count tag-count value-count cleanup-count)',['2','2','1','1','0']);
+ }
+ evidence.checks.push('Listener inline source retains strings, comments and unfinished-quote SPACE/help; omitted values prompt, cancellation and reader/third-form child Abort preserve the original catch without unwanted effects');
  id=await throwCommand();await send(id,'#.(error "Read-time Throw tag must not run.")');await abortChild(id,/READ-EVAL|read-time|Cannot #\./i);
  id=await throwCommand();await send(id,'tag');await prompt(id,'Throw values (Lisp expression): ');await send(id,`(error "${marker} values error")`);await abortChild(id,new RegExp(marker+' values error'));
  id=await throwCommand();await operands(id,'(list :missing-catch)','(values :missing-value)','1 value: :MISSING-VALUE\n');await send(id,'y');await abortChild(id,/catch|throw/i);
@@ -253,6 +295,36 @@ try{
  assert.equal((await request('information',{stop:parent}))['next-command-id'],next);
  await browser.evaluate(`document.querySelector('.debugger-throw[data-command-id="${id}"]').scrollIntoView({block:'end'})`);await shot('closed-throw-recovered');
  evidence.checks.push('Closed Throw retains canonical caption and UNWOUND history after descriptor loss/reload without a new command');
+ await begin(names[2],true);await inlineAssistance();
+ const inlineSource='(progn (incf inline-tag-count) (values tag :ignored)) #| retained source |# '+
+  '(progn (incf inline-value-count) (let ((payload (vector :inline "two words" "Ω"))) '+
+  '(mezzano.extensions:gc :full t) (values payload "two words" "<tag>" inline-tag-count inline-value-count))) #| end |#';
+ id=(await request('information',{stop:parent}))['next-command-id'];
+ await browser.evaluate(`(()=>{const original=window.fetch;window.fetch=async(...args)=>{
+ const response=await original(...args),request=args[1]?.body&&JSON.parse(args[1].body);
+ if(response.ok&&request?.operation==='submit'&&request.arguments.command==='throw'&&request.arguments.id===${id}){
+  window.fetch=original;await response.arrayBuffer();throw new TypeError('Discarded accepted inline Throw submit reply');}return response;};})()`);
+ const inlineEditor=await editor();await fill(inlineEditor,':Throw '+inlineSource);
+ assert.equal(await browser.evaluate(`document.querySelector(${q(inlineEditor)}).value`),':Throw '+inlineSource);
+ await key('Enter','Enter',13);
+ await browser.waitFor("!connected && !busy && state.pending.some(r=>r.operation==='submit'&&r.arguments.command==='throw'&&r.status==='outcome unknown')");
+ const inlineReceipt=await browser.evaluate("state.pending.find(r=>r.operation==='submit'&&r.arguments.command==='throw'&&r.status==='outcome unknown')");
+ assert.equal(inlineReceipt.arguments.id,id);assert.equal(inlineReceipt.arguments.argument,inlineSource);
+ assert.equal(inlineReceipt.source,':Throw '+inlineSource);
+ await browser.click('#window-label');await browser.click('#resume-session');await ready();
+ assert.equal(await browser.evaluate('state.session'),evidence.session);await activity('requests');
+ await browser.evaluate(`[...document.querySelectorAll('#pending .command-row')].find(row=>row.textContent.includes(${q(JSON.stringify(inlineReceipt.arguments))})).querySelector('button').dataset.throwTest='inline-replay'`);
+ await browser.click('[data-throw-test="inline-replay"]');await browser.waitFor(`!state.pending.some(r=>r.id===${q(inlineReceipt.id)}) && !busy`);await activity('debugger');
+ await prompt(id,'(Y or N) ');
+ assert((await browser.evaluate(ioQuery(id)+'.text')).includes('5 values: #(:INLINE "two words" "Ω") "two words" "<tag>" 1 1\n'));
+ const inlineNext=(await request('information',{stop:parent}))['next-command-id'];assert.equal(inlineNext,id+1);
+ await reloadReader(id,'y');await shot('inline-source-transfer-reloaded',id);await send(id,'y');
+ await finished(job,['#(:INLINE "two words" "Ω")','"two words"','"<tag>"','1','1','0','0','1']);
+ assert.equal((await result(id)).state,':unwound');
+ assert.equal(await request('submit',{stop:parent,id,command:'throw',argument:inlineSource}),id);
+ assert.equal((await request('information',{stop:parent}))['next-command-id'],inlineNext);
+ evidence.inlineReplay=inlineReceipt;
+ evidence.checks.push('Standalone inline Throw survives full GC, discarded accepted-submit reply, exact replay and confirmation reload; all values and once-only counters reach the catch with one cleanup');
  await activity('listener');const clean=await start(`(progn ${names.map(name=>'(assert (null (find-symbol '+q(name)+' :cl-user)))').join(' ')} 42)`);await finished(clean,['42']);
  evidence.checks.push('Original continuation and successful Throw release their unique functions; next Listener returns42');
 }catch(error){
