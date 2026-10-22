@@ -9209,3 +9209,12 @@ Current available host memory exceeds 5.5 GiB.  Require at least 4.5 GiB before 
 - [ ] Save/restart the accepted candidate, verify retained state, and remove redundant owned build artifacts after independently verifying their archives.
 
 The existing source-restoration acceptance remains valid.  Two internal compiler paragraphs still listed source saved-image execution as untested.  Update those statements to reference the passed x86-64 condition-stop restoration while retaining the untested cold/cross/ARM64 scope.
+
+
+### Fresh source image built and launched
+
+The b064ec02 private cross-build passed with 223 fresh target files, 509.91 CPU seconds, and a 1909444608-byte peak.  The monitor retained at least 4.4 GiB of available host memory.  The five-GiB image header, protocol 0/26, x86-64 architecture, logged entry/thread/NIL/stack addresses, source and configuration hashes, and independent working-copy hash all passed.  Cold image SHA-256 f73d72395b6208cc7748cdf1e0bb49cf91f979ef1622c230e753b3874df4d588.  Evidence: cold-source-20261022/build-result.json.  Its private source-only HOME contains 4778 files/56484013 bytes and matching Slime 24d8cbe8.  No dependency was added.
+
+Before candidate launch, the accepted Source Code guest passed its complete clean guard and a normal Snapshot in 34.57 seconds.  Its exact unit was stopped, and its original working image was retained read-only, SHA-256 c35d475f2ea1d335a91d019cda647993e6e7fc8e6137b8064f342f400bc528af.  No duplicate preservation image or archive was created.  Evidence: cold-source-20261022/preserved-runtime/stopped-image.json.  The fresh candidate is PID 1171631/start 107900033, unit mezzano-cold-source-20261022.service, on 4026/1255/8780/8781 with the existing four-GiB/two-CPU/five-GiB-no-swap limits.  The protected user worlds remained unchanged.  First boot and native acceptance are in progress, and this candidate is not yet accepted.
+
+The new core/source and native-fixture drivers passed native READ without execution before the accepted guest was stopped.  The Web agent prepared the unchanged 31-group driver with disabled execution gates and no guest access.  Native source, HTTP/catalog, and complete clean/provenance checks must pass before browser ownership is handed over.
