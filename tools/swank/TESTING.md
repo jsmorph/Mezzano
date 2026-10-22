@@ -55,7 +55,7 @@ Compile/load `test-startup-restore.lisp` ordinarily after the service fixture.  
 
 After the actual post-boot worker stops, call `(lispm-startup-restore-test:resolve-stop :abort)` or `(lispm-startup-restore-test:resolve-stop :continue)`.  The helper checks the actual restore status, worker, condition, frames, restart reports, ordered effects, worker sleep and inhibition count.  It releases the stop and controller.  Continue also restores the original hook registries and init-file pathname.
 
-Abort leaves startup incomplete and inhibition one.  To test recovery, stop the test VM, restore its verified pre-error checkpoint, restart, and choose Continue at the new boot-worker stop.  Early-hook Abort and checkpoint recovery through Continue passed on x86-64 QEMU without fixture reload.  Actual ordinary/late/init-file and browser cases remain untested.
+Abort leaves startup incomplete and inhibition one.  To test recovery, stop the test VM, restore its verified pre-error checkpoint, restart, and choose Continue at the new boot-worker stop.  Early-hook Abort and checkpoint recovery through Continue passed on x86-64 QEMU without fixture reload.  Actual ordinary-hook Web Abort and checkpoint recovery through Proceed passed in Chromium, including Peek selection, visible condition/frames/restarts, typed commands, Listener status checks, and owned-resource release.  Both browser runs used the unchanged compiled fixture.  Actual late-hook and init-file cases remain untested.
 
 ## Stack-guard collection
 
