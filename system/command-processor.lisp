@@ -51,6 +51,8 @@
   (append
     '((:name "Abort" :id :abort :help "Invoke this stop's innermost ABORT restart.")
       (:name "Help" :id :help :help "List the supported debugger commands.")
+      (:name "Display Debugger" :id :display-debugger
+       :help "Open this stop in the separate Debugger view.")
       (:name "Reinvoke" :id :reinvoke
        :help "Reinvoke the selected frame using current arguments after confirmation. :New Args prompts for a list. :Original Args uses the original supplied sequence."
        :keywords (("New Args" :boolean "No" "Yes") ("Original Args" :boolean "No" "Yes")))
@@ -542,6 +544,7 @@
            ((eq argument :default) (list :operation "proceed" :argument nil))
            (t (list :operation "invoke-restart-interactively" :argument argument))))
     (:help (list :operation "help"))
+    (:display-debugger (list :display :debugger))
     (:inspect (list :operation "inspect" :display :inspector))
     (:describe-last (list :operation "describe-object" :display :description))
     (:clear-inspector (list :operation "clear-inspection" :display :inspector))
