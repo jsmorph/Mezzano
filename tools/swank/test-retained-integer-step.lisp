@@ -81,26 +81,36 @@
 
 (defmacro define-shift-targets ()
   (let ((forms nil) (targets nil))
-    (dolist (kind '(:register-immediate :register-cl :memory-immediate :memory-cl))
-      (loop for (word count) in
-            (append (loop for count in '(0 1 4 31 32 33)
-                          collect (list #x12345678FFFFFFFD count))
-                    (when (member kind '(:register-immediate :memory-cl))
-                      '((#x1234567800000002 1)))
-                    '((#x1234567800000001 1)))
-            for index from 0
-            do (let* ((name (intern (format nil "SHR32-~A-~D" kind index)))
-                      (memory-p (member kind '(:memory-immediate :memory-cl)))
-                      (cl-p (member kind '(:register-cl :memory-cl))))
-                 (push `(define-target ,name
-                            ((lap:mov64 :rax ,word) (lap:mov64 :rdx 0))
-                          (,@(when cl-p `((lap:mov32 :ecx ,count)))
-                           (lap:shr32 ,(if memory-p '(:rbp -24) :eax)
+    (dolist (opcode '(lap:shr32 lap:sar64))
+      (dolist (kind '(:register-immediate :register-cl :memory-immediate :memory-cl))
+        (loop for (word count) in
+              (ecase opcode
+                (lap:shr32
+                 (append (loop for count in '(0 1 4 31 32 33)
+                               collect (list #x12345678FFFFFFFD count))
+                         (when (member kind '(:register-immediate :memory-cl))
+                           '((#x1234567800000002 1)))
+                         '((#x1234567800000001 1))))
+                (lap:sar64
+                 (append (loop for count in '(0 1 4 63 64 65) collect (list -3 count))
+                         (list '(2 1) '(1 1) (list most-positive-fixnum 1)
+                               (list most-negative-fixnum 1)))))
+              for index from 0
+              do (let* ((name (intern (format nil "~A-~A-~D" opcode kind index)))
+                        (memory-p (member kind '(:memory-immediate :memory-cl)))
+                        (cl-p (member kind '(:register-cl :memory-cl)))
+                        (wide-p (eq opcode 'lap:sar64)))
+                   (push `(define-target ,name
+                              ((lap:mov64 :rax ,word) (lap:mov64 :rdx 0))
+                            (,@(when cl-p `((lap:mov32 :ecx ,count)))
+                             (,opcode ,(if memory-p '(:rbp -24) (if wide-p :rax :eax))
                                       ,(if cl-p :cl count)))
-                          (,@(when memory-p '((lap:mov32 :eax (:rbp -24))))
-                           (lap:shl64 :rax ,i::+n-fixnum-bits+)
-                           (lap:mov64 (:r8 -1) :rax))) forms)
-                 (push `(list #',name ,kind ,word ,count) targets))))
+                            (,@(when memory-p
+                                 (if wide-p '((lap:mov64 :rax (:rbp -24)))
+                                     '((lap:mov32 :eax (:rbp -24)))))
+                             (lap:shl64 :rax ,i::+n-fixnum-bits+)
+                             (lap:mov64 (:r8 -1) :rax))) forms)
+                   (push `(list #',name ',opcode ,kind ,word ,count) targets)))))
     `(progn ,@(nreverse forms)
             (defparameter *shift-targets* (list ,@(nreverse targets))))))
 
@@ -179,7 +189,7 @@
              (funcall check record nil)
              (ordinary::step-instruction record opcode)
              (funcall check record t)
-             (when (eq opcode 'lap:shr32)
+             (when (member opcode '(lap:shr32 lap:sar64))
                (let* ((marker (aref (first record) 3))
                       (address (i::lisp-object-address marker)))
                  (mezzano.extensions:gc :full t)
@@ -208,23 +218,28 @@
        (logical::word-value result)))))
 
 (defun shift-case (target depth)
-  (destructuring-bind (function kind initial count) target
+  (destructuring-bind (function opcode kind initial count) target
     (let* ((memory-p (member kind '(:memory-immediate :memory-cl)))
-           (amount (logand count 31))
-           (a (ldb (byte 32 0) initial))
+           (width (ecase opcode (lap:shr32 32) (lap:sar64 64)))
+           (amount (logand count (1- width)))
+           (a (if (= width 64) initial (ldb (byte width 0) initial)))
            (result (ash a (- amount)))
+           (raw-initial (ldb (byte 64 0) initial))
+           (raw-result (ldb (byte width 0) result))
            (mask (cond ((zerop amount) #x8D5) ((= amount 1) #x8C5) (t #xC5)))
            (flags (if (zerop amount) #x845
-                      (logior (result-flags result 32)
+                      (logior (result-flags raw-result width)
                               (if (logbitp (1- amount) a) 1 0)
-                              (if (and (= amount 1) (logbitp 31 a)) #x800 0)))))
+                              (if (and (eq opcode 'lap:shr32) (= amount 1)
+                                       (logbitp 31 a)) #x800 0)))))
       (with-operand-case
-       function 'lap:shr32 depth :hardware-breakpoint
+       function opcode depth :hardware-breakpoint
        (lambda (record stepped)
          (assert (= (logical::registers record)
-                    (if (and stepped (not memory-p)) result initial)))
+                    (if (and stepped (not memory-p)) raw-result raw-initial)))
          (assert (= (raw-word record :rbp -24)
-                    (if (and stepped memory-p) (dpb result (byte 32 0) initial) initial)))
+                    (if (and stepped memory-p)
+                        (dpb raw-result (byte width 0) raw-initial) raw-initial)))
          (assert (= (logand (nth-value 1 (logical::registers record)) mask)
                     (if stepped flags (logand #x845 mask)))))
        result))))
@@ -308,7 +323,8 @@
 
 (defun run ()
   (assert (= (length *byte-targets*) 52))
-  (assert (= (length *shift-targets*) 30))
+  (assert (= (count 'lap:shr32 *shift-targets* :key #'second) 30))
+  (assert (= (count 'lap:sar64 *shift-targets* :key #'second) 40))
   (assert (= (length *conditional-targets*) 32))
   (assert (null (d:debugger-stops :include-closed t)))
   (dolist (target *byte-targets*)
@@ -331,5 +347,5 @@
   (assert (null (d:debugger-stops :include-closed t)))
   (assert (null s::*instruction-step-requests*))
   (assert (notany #'identity s::*instruction-breakpoint-slots*))
-  (format t "PASS 292 operand/flag cases and six complete compiled normal-body walks.~%")
+  (format t "PASS 372 operand/flag cases and six complete compiled normal-body walks.~%")
   t)

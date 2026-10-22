@@ -286,6 +286,20 @@ Repeat the forced retained CALL cancellation/termination cases and the raw step-
 
 The browser fixture `test-web-single-step.lisp` uses the Listener's own evaluation thread.  Compile/load it ordinarily after the nonlocal fixture.  The browser controls blocked CALL, RET, and escaping RETURN-FROM cases, including draft preservation, reload, stale-reference actions, fresh instruction display, accepted-ID replay, Proceed, exact values, and owned-resource cleanup.  Source and isolated client tests do not establish guest/HTTP/Chromium acceptance.
 
+## Integer instruction steps
+
+On a dedicated x86-64 guest with the debugger service and frame-evaluation helpers loaded, compile/load these ordinary fixtures in order: `test-entry-arguments.lisp`, `test-hardware-breakpoint.lisp`, `test-breakpoint-management.lisp`, `test-native-single-step.lisp`, `test-step-over.lisp`, `test-managed-step.lisp`, `test-retained-step.lisp`, `test-retained-ordinary-step.lisp`, `test-retained-logical-step.lisp`, `test-retained-argument-step.lisp`, and `test-retained-integer-step.lisp`.  Reject compilation warnings or failure.
+
+The integer fixture's RUN includes 372 operand/flag cases and six compiled-body walks.  Focused shift acceptance executes thirty SHR32 targets and forty SAR64 targets at zero and two prompts, for 140 cases.
+
+```lisp
+(dolist (target lispm-retained-integer-step-test::*shift-targets*)
+  (dolist (depth '(0 2))
+    (lispm-retained-integer-step-test::shift-case target depth)))
+```
+
+The shared helper tests exact instruction locations and defined flags, raw register/memory state, replay, reference expiration, moving marker roots, code identity, final values, and cleanup.  SAR64 adds signed results and six-bit count masking with register/memory destinations, immediate/CL counts, negative/positive operands, and fixnum limits.  Counts include 0, 1, 4, 63, 64, and 65.  This focused native run passed on two-CPU x86-64 QEMU at SAFETY 3/DEBUG 3/SPEED 1.  It does not establish execution of the full combined RUN, browser interaction, saved-image restoration, or ARM64 support for SAR64.
+
 ## Package condition stops
 
 Compile/load the current package-lock function and TEST-PACKAGE-LOCK-DEBUGGER.LISP ordinarily at SAFETY 3/DEBUG 3/SPEED 1, then call (lispm-package-lock-debugger-test::run).  It requires the service, frame-evaluation and managed-step helpers.  Four cases signal ERROR or STORAGE-CONDITION under the package mutex and use Continue or Abort.  A separate thread must acquire that mutex while the target remains stopped.  Continue verifies reacquisition, and both exits check one cleanup and release their owned stops.  Then run python3 tools/swank/test-package-lock-debugger.py --port PORT against the dedicated guest.  Its compiled Lisp function exhausts the stack under the package mutex.  The host client requires SLDB entry, sends its normal protocol Abort, and checks a positive unwind-cleanup count and fresh evaluation through a new connection.  It also requires empty retained stop/job tables and resets its counter.  These tests passed on x86-64 at SAFETY 3/DEBUG 3/SPEED 1.
