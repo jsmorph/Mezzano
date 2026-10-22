@@ -429,15 +429,15 @@
     (setf *restore-state* nil))
   t)
 
-(defun prepare-restore-test ()
+(defun prepare-restore-test (&key inline-p)
   (assert (null *restore-state*))
   (assert (null *case*))
-  (setf *restore-state* (list :boot (s:current-boot-id) :cases nil))
+  (setf *restore-state* (list :boot (s:current-boot-id) :inline-p inline-p :cases nil))
   (dolist (phase '(:tag :values :confirmation))
     (let* ((state (make-case))
            (entry (list :case state :phase phase
                         :old-stop nil :old-lease nil :old-frame nil :id nil :index nil
-                        :mode nil :history nil :input nil :output nil
+                        :mode nil :history nil :input nil :output nil :source nil
                         :tag-source "(progn (incf (probe-case-tag-evaluations state)) tag)"
                         :value-source "(progn (incf (probe-case-value-evaluations state)) (values (vector tag value) (cons outer-tag local) *probe*))")))
       (push entry (getf *restore-state* :cases))
@@ -445,14 +445,23 @@
           (start-case state (if (eq phase :tag) 0 2) nil t)
         (let* ((raw (d::service-handle-stop stop))
                (frame (getf (nth index (test::command stop lease :frames)) :frame))
-               (id (submit stop lease)))
-          (waiting stop id "Catch tag (Lisp expression): ")
+               (source (when inline-p
+                         (ecase phase
+                           (:tag nil)
+                           (:values (copy-seq (getf entry :tag-source)))
+                           (:confirmation (format nil "~A~%~A"
+                                                  (getf entry :tag-source)
+                                                  (getf entry :value-source))))))
+               (id (submit stop lease source)))
+          (when (or (not inline-p) (eq phase :tag))
+            (waiting stop id "Catch tag (Lisp expression): "))
           (unless (eq phase :tag)
-            (tag-input stop lease id (getf entry :tag-source))
-            (waiting stop id "Throw values (Lisp expression): "))
+            (unless inline-p (tag-input stop lease id (getf entry :tag-source)))
+            (unless (and inline-p (eq phase :confirmation))
+              (waiting stop id "Throw values (Lisp expression): ")))
           (if (eq phase :confirmation)
               (progn
-                (values-input stop lease id (getf entry :value-source))
+                (unless inline-p (values-input stop lease id (getf entry :value-source)))
                 (waiting stop id "(Y or N) "))
               (d:supply-debugger-command-input
                lease id (getf (d:debugger-command-result stop id) :input-length) "("))
@@ -467,12 +476,13 @@
                 (getf entry :mode) (d::service-stop-evaluation-environment raw)
                 (getf entry :history) (copy-list (d::service-stop-evaluation-history raw))
                 (getf entry :input) (saved-input stop id)
-                (getf entry :output) (d:debugger-command-output stop id 0))
+                (getf entry :output) (d:debugger-command-output stop id 0)
+                (getf entry :source) (when source (copy-seq source)))
           (assert (eq entry (first (getf *restore-state* :cases))))
           (assert (null (probe-case-events state)))
           (d:close-debugger-controller (probe-case-controller state))))))
   (setf (getf *restore-state* :cases) (nreverse (getf *restore-state* :cases)))
-  (format t "Prepared Throw tag reader, value reader and confirmation with consumed input.~%")
+  (format t "Prepared Throw ~:[prompted~;inline~] tag/value readers and confirmation with consumed input.~%" inline-p)
   t)
 
 (defun finish-restore-test (&key (require-restored t))
@@ -501,14 +511,17 @@
                  (test::expect-error :expired-stop
                                      (lambda () (d::check-service-frame (getf entry :old-frame) raw)))
                  (test::expect-error :request-conflict
-                                     (lambda () (d:submit-debugger-command lease id :throw))))
-               (unless require-restored (d:submit-debugger-command lease id :throw))
+                                     (lambda () (d:submit-debugger-command lease id :throw (getf entry :source)))))
+               (unless require-restored (d:submit-debugger-command lease id :throw (getf entry :source)))
                (assert (= next (getf (d:debugger-stop-information stop) :next-command-id)))
                (assert (= (getf entry :index) (d::service-stop-current-frame raw)))
                (assert (eq (getf entry :mode) (d::service-stop-evaluation-environment raw)))
                (assert (every #'eq (getf entry :history) (d::service-stop-evaluation-history raw)))
                (assert (string= input (saved-input stop id)))
                (assert (string= (getf entry :output) (d:debugger-command-output stop id 0)))
+               (assert (equal (getf entry :source)
+                              (d::service-command-argument
+                               (gethash id (d::service-stop-commands raw)))))
                (assert (consumed-input-p stop id))
                (assert (eq (getf (d:debugger-command-result stop id) :current-boot-p) (not require-restored)))
                (assert (= (d:supply-debugger-command-input lease id 0 input) (length input)))
