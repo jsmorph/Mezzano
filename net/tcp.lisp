@@ -136,25 +136,24 @@ Set to a value near 2^32 to test SND sequence number wrapping.")
                              +ip-wildcard+
                              (mezzano.network.ip:ipv4-interface-address
                               (nth-value 1 (mezzano.network.ip:ipv4-route local-ip))))))
-    (mezzano.supervisor:with-mutex (*tcp-listener-lock*)
-      (let* ((local-port (cond ((eql local-port +port-wildcard+)
-                                ;; find a suitable port number
-                                (loop :for local-port := (+ (random 32768) 32768)
-                                      :unless (get-tcp-listener-without-lock source-address local-port)
-                                      :do (return local-port)))
-                               ((get-tcp-listener-without-lock source-address local-port)
-                                (error "Server already listening on port ~D" local-port))
-                               (t
-                                local-port)))
-             (listener (make-instance 'tcp-listener
-                                      :pending-connections (make-hash-table :test 'equalp :synchronized t)
-                                      :connections (mezzano.sync:make-mailbox
-                                                    :name "TCP Listener")
-                                      :backlog backlog
-                                      :local-port local-port
-                                      :local-ip source-address)))
-        (push listener *tcp-listeners*)
-        listener))))
+    (or (mezzano.supervisor:with-mutex (*tcp-listener-lock*)
+          (unless (and (not (eql local-port +port-wildcard+))
+                       (get-tcp-listener-without-lock source-address local-port))
+            (let* ((local-port (if (eql local-port +port-wildcard+)
+                                  (loop :for local-port := (+ (random 32768) 32768)
+                                        :unless (get-tcp-listener-without-lock source-address local-port)
+                                        :do (return local-port))
+                                  local-port))
+                   (listener (make-instance 'tcp-listener
+                                            :pending-connections (make-hash-table :test 'equalp :synchronized t)
+                                            :connections (mezzano.sync:make-mailbox
+                                                          :name "TCP Listener")
+                                            :backlog backlog
+                                            :local-port local-port
+                                            :local-ip source-address)))
+              (push listener *tcp-listeners*)
+              listener)))
+        (error "Server already listening on port ~D" local-port))))
 
 (defun tcp-accept (listener &key (wait-p t) element-type external-format)
   (let ((connection (mezzano.sync:mailbox-receive

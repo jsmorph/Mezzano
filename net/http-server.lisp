@@ -355,8 +355,6 @@
     (sup:with-mutex ((server-lock server))
       (setf (server-stopping-p server) t
             (sup:event-state (server-shutdown server)) t))
-    (unless (nth-value 1 (sup:thread-join (server-thread server) nil))
-      (sup:terminate-thread (server-thread server)))
     (sup:thread-join (server-thread server))
     (let ((connections
             (sup:with-mutex ((server-lock server))

@@ -25,6 +25,16 @@ Live publication must load the matching SWANK contrib after a core service chang
 
 The instruction-position and saved-register tests target x86-64.  Compiler tests select the policies they exercise.  The default running compiler policy is `(safety 3 debug 3 speed 1)` and the image bootstrap policy is `(safety 3 debug 1 speed 1)`.  These tests do not establish ARM64, bare-metal, supervisor-trap, or arbitrary-suspension support.
 
+## HTTP listener lifecycle
+
+Compile/load `test-http-listener-lifecycle.lisp` ordinarily after the HTTP service and debugger-service fixture, then call `LISPM-HTTP-LISTENER-LIFECYCLE-TEST:RUN`.  It checks that a bind-conflict error is signalled outside the TCP listener mutex and preserves the existing listener.  An owned thread enters the retained debugger on that conflict, supports frame/condition inspection and Abort, runs one cleanup, and releases its stop.
+
+The shutdown test holds an owned acceptor in its listener-close cleanup, then calls STOP-SERVER from another thread.  Shutdown must wait for that cleanup, release the listener, and leave the acceptor's cleanup uninterrupted.  The test restores its scoped CLOSE-TCP-LISTENER definition and releases only its own listener/server state.  Run it on a dedicated guest.  The fixture targets x86-64 at SAFETY 3/DEBUG 3/SPEED 1.  BASELINE records the mutex and cleanup outcomes for comparison with earlier implementations.  Run the existing `LISPM-HTTP-SERVER-TEST:RUN-TESTS` suite after the correction as well.
+
+## Display Debugger
+
+Compile/load `test-display-debugger.lisp` with ordinary allocation after the debugger-service fixture, then call `(lispm-display-debugger-test:run)`.  It checks the display-only command plan, SPACE completion, help, argument and Listener-context rejection.  Repeated assistance while an owned condition stop is active must preserve its selected frame, evaluation mode, all nine history identities, and next command ID.  Proceed must return the original value, run one cleanup, and release the stop.  The fixture uses x86-64 SAFETY 3/DEBUG 3/SPEED 1.  Browser tests cover view navigation and retained input separately.
+
 ## Desktop-disabled startup
 
 A desktop-disabled startup test uses a newly built image with `MEZZANO.INTERNALS::*DESKTOP-ENABLED*` NIL and a private source/dependency tree.  QEMU retains `-vga std -display none` because the core boot path requires a framebuffer.  After startup, check the global startup debugger value, the configuration flag, absence of the desktop variable and GUI/compositor packages, absence of loaded sound/media/USB systems, process enumeration, and arithmetic.  USB checks cover the `MEZZANO.DRIVER.USB` package and the loaded `mezzano-usb` ASDF systems.
