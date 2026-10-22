@@ -34,6 +34,8 @@
     (assert (equal (ok (r:open-session a owner-a)) a))
     (rejected :session-name-used (r:open-session a owner-b))
     (rejected :connection-attached (r:open-session b owner-a))
+    (rejected :connection-attached (r:transient-request b :open-session nil owner-a))
+    (assert (eq (r::session-owner (r::current-session a)) owner-a))
     (rejected :session-attached (r:resume-session a owner-b))
     (rejected :wrong-connection (r:request a owner-b :jobs nil))
     (rejected :wrong-connection (r:request a nil :jobs nil))

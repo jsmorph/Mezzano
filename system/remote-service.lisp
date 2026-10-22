@@ -407,15 +407,14 @@
           (reject :wrong-connection))
         (dispatch session operation arguments)))))
 
-(defun transient-request (name operation arguments)
+(defun transient-request (name operation arguments &optional (owner (list :transient)))
   (reply
     (with-lock
       (when (and (member operation '(:open-session :resume-session)) arguments)
         (reject :unexpected-arguments))
-      (let* ((owner (list :transient))
-             (session (if (eq operation :open-session)
-                          (create-session name owner)
-                          (reconnect-session name owner))))
+      (let ((session (if (eq operation :open-session)
+                         (create-session name owner)
+                         (reconnect-session name owner))))
         (unwind-protect
              (if (member operation '(:open-session :resume-session))
                  (session-name session)
