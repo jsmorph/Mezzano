@@ -1454,17 +1454,18 @@ NIL with true availability denotes an absent global cell."
                  (unless (some (lambda (record) (member target (cdr record) :test #'eq)) aborts)
                    (push target crossed))))
       (setf (service-exit-traps-aborts traps)
-            (remove-if-not (lambda (record) (service-exit-target-pending-p (car record) frame)) aborts)
-            (service-exit-traps-pending traps) pending)
-      (service-prune-exit-aborts traps)
+            (remove-if-not (lambda (record) (service-exit-target-pending-p (car record) frame)) aborts))
       (if (or crossed (service-exit-traps-crossed traps))
-          (multiple-value-bind (function offset)
-              (mezzano.supervisor:with-pseudo-atomic
-                (mezzano.internals::return-address-to-function
-                 (mezzano.internals::memref-unsigned-byte-64 frame 1)))
-            (service-rearm-exit-traps traps function offset (+ frame 16))
-            (setf (service-exit-traps-crossed traps)
-                  (append (service-exit-traps-crossed traps) (nreverse crossed))))
+          (progn
+            (setf (service-exit-traps-pending traps) pending)
+            (service-prune-exit-aborts traps)
+            (multiple-value-bind (function offset)
+                (mezzano.supervisor:with-pseudo-atomic
+                  (mezzano.internals::return-address-to-function
+                   (mezzano.internals::memref-unsigned-byte-64 frame 1)))
+              (service-rearm-exit-traps traps function offset (+ frame 16))
+              (setf (service-exit-traps-crossed traps)
+                    (append (service-exit-traps-crossed traps) (nreverse crossed)))))
           (service-update-exit-targets traps pending)))))
 
 #+x86-64

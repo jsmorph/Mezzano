@@ -131,7 +131,11 @@ Compile/load `test-exit-trap-abort.lisp` ordinarily after the ordered-manager fi
 
 Passing NIL to RUN records further exit stops without requiring bypass.  That diagnostic preceded the implementation and observed one additional stop containing all six remaining targets in every case.  Default RUN requires bypass.  The existing manager child-command test additionally requires an abandoned command's Abort record to expire while preserving the original targets and hardware descriptor.
 
-The eight cases and the extended manager child-command checks passed natively on two-CPU x86-64 QEMU at DEBUG 3/SAFETY 3/SPEED 1.  Partial Abort, returning/error restarts, application cleanup, superseding transfers, armed/saved state, fresh-cold and ARM64 require separate acceptance.
+The eight cases and the extended manager child-command checks passed natively on two-CPU x86-64 QEMU at DEBUG 3/SAFETY 3/SPEED 1.
+
+Compile/load `test-exit-trap-abort-lifetime.lisp` ordinarily after that fixture, then call `(lispm-exit-trap-abort-lifetime-test::run)`.  Twenty cases passed at the same policy.  Eight partial-Abort cases place the restart in the fourth of seven recursive activations, bypass two younger pending targets, and preserve four individual outer return stops.  Eight returning RESTART-BIND cases preserve two returned values and all six remaining traps.  Restart-function and interactive-argument errors enter child debuggers.  Aborting those failed commands must expire their invocation records while preserving the enclosing targets and point.  A later ordinary THROW must produce its normal two-target batch and four outer return stops.  Cases run at zero/two prompts with moving GC, three unrelated public points, saved flags, code identity, eight final heap identities, one cleanup, and complete release.
+
+The first partial case exposed premature pending-list assignment before the updater compared old/new heads.  The unchanged compiled fixture passed after moving assignment into the correct branch.  The root, manager, selected-update, frame-transfer, nonlocal-step, prefix and retained-step suites also passed with that correction.  Application cleanup, superseding transfers, armed/saved state, fresh-cold and ARM64 require separate acceptance.
 
 ## Selected exit-trap updates
 
