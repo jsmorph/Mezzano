@@ -572,6 +572,8 @@ A separate saved-image test cancelled those confirmations and saved the same par
 
 ### Internal transfer
 
+`MEZZANO.INTERNALS::RETURN-FROM-FRAME` takes a live eligible frame and a finite list of return values.  It validates the boundary and value count, then copies the values-list spine before unwinding.  The copy preserves each value object's identity and permits transfer from a stack-allocated list spine.
+
 `MEZZANO.INTERNALS::REINVOKE-FRAME` takes a live eligible frame, a function object, and a finite argument list shorter than CALL-ARGUMENTS-LIMIT.  It validates the function, list, and Return boundary before unwinding.  It copies the argument-list spine, preserving argument identities, so replacement execution can reuse stack storage that held a dynamic-extent spine.  The replacement runs after cleanup with the original caller's dynamic bindings.  Its multiple values return through that caller's original continuation.
 
 Native x86-64 tests at DEBUG 3, SAFETY 3, SPEED 1 cover differing arities, closures, the 499-argument limit, stack-allocated argument-list storage, cleanup and replacement errors, boundary guards, continuation prompts, heap identity, and concurrent full GC.  The internal helper receives its function object explicitly.  Retained-command and prepared-confirmation acceptance are stated above.  ARM64 execution remains untested.
@@ -579,6 +581,8 @@ Native x86-64 tests at DEBUG 3, SAFETY 3, SPEED 1 cover differing arities, closu
 The internal callable resolver uses explicit compiler provenance to select a current global definition or retain an exact local/anonymous closure.  It preserves current trace wrappers, rejects a missing or macro replacement before unwinding, and reports unavailable provenance for older or lower-policy code.  Trace entry callbacks use DEBUG 3 and retain exact-callable provenance when their constructor compiles at DEBUG 0 or 1.  A compiled function installed under an alias retains its source identity.  Native x86-64 tests cover current redefinition, trace entry display-name collisions, global closures, SETF/CAS names, compiled aliases, cleanup, full GC, and nested prompts.  Both target emitters have metadata tests.
 
 Frame transfers retain ordinary Common Lisp dynamic-extent requirements.  The callable and argument or returned objects must remain valid after the unwind.  Native x86-64 tests verify caller-owned stack conses, vectors, and lexical closures through Return/Reinvoke, cleanup, full GC, and nested prompts.  Objects allocated inside an unwound dynamic-extent scope expire with that scope.  Copying a list spine preserves that spine's storage.  General promotion of its payload objects is unsupported.
+
+On x86-64, Return and Reinvoke establish the selected stack and preserve values, callable, arguments, and the detached stack before notifying the existing nonlocal-exit hook.  The internal exit-trap manager stops for discarded younger activations at that helper, before caller effects or replacement execution.  The selected activation's pending return boundary remains armed.  Native tests passed both transfers at zero/two prompts, with moving GC at each stop, stack-allocated input-list spines, eight value identities, saved flags, and unrelated public breakpoints.  Product Call/Exit commands, saved armed managers, fresh-cold execution of this change, and ARM64 remain pending.
 
 ### Current argument construction
 

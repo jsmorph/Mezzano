@@ -123,7 +123,17 @@ Assertions cover inactive-frame validation before installation, unchanged table 
 
 Native x86-64 tests passed at DEBUG 3/SAFETY 3/SPEED 1.  The managed call-return suite passed in the same run.  The nonlocal-step suite, twenty-six prefix cases and retained-step suite passed after adding the documented resident test prerequisite, without reloading the manager.  Compile `test-nlx-step-resident.lisp` after its ordinary fixture, then load its compiled output with `:WIRED T`.  Its function-local declaration selects DEBUG 1/SAFETY 3/SPEED 1.
 
-The manager accepts an ordered frame list internally.  Product commands, merging, explicit Abort bypass, Return/Reinvoke integration, armed/saved manager state, fresh-cold and ARM64 execution remain separate work.
+The manager accepts an ordered frame list internally.  Product commands, merging, explicit Abort bypass, whole-stack boundaries, armed/saved manager state, fresh-cold and ARM64 execution remain separate work.
+
+## Exit traps during frame transfer
+
+Compile/load `test-exit-trap-transfer.lisp` ordinarily after the ordered-manager fixture and its dependencies, then call `(lispm-exit-trap-transfer-test::run)`.  It uses seven recursive trapped activations, selects the fourth for Return/Reinvoke, and fills the other three hardware slots with unrelated public breakpoints.  Four cases cover both transfers at zero/two prompts.  The value/argument list spines must reside on the target stack.
+
+Each case requires five stops: three discarded younger activations at the transfer helper before caller or replacement effects, the selected activation's return, and the three outer returns.  Assertions check exact PC/SP/RF and selected frame, pending/crossed counts, moving GC at every stop, eight original value identities, replacement and cleanup counts, unchanged code and unrelated points, every saved flag, and complete owned-resource release.
+
+The unchanged compiled fixture passed after the ordinary helper update on native x86-64 at DEBUG 3/SAFETY 3/SPEED 1.  Its explicit diagnostic `(run nil)` characterizes the earlier helper implementation and requires a missing early notification.  Those four earlier cases produced one late seven-activation batch after three caller effects.  This diagnostic is expected to fail once the helper correction is loaded.
+
+After the change, the existing internal Return/Reinvoke, retained Return/Reinvoke, native interrupted-frame/FPU and caller-owned lifetime suites passed.  They cover value conventions, argument validation, stack conses/vectors/closures in surviving callers, superseding cleanup, replacement errors, concurrent full GC, retained input/replay/recovery, and nested interruptions and prompts.  The eight manager cases, thirty-four nonlocal-step cases, twenty-six prefix cases and retained-step suite also passed with the changed helpers.  Saved armed-manager, fresh-cold and ARM64 execution remain untested.
 
 ## Transport and guest tests
 
