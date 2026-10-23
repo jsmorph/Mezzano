@@ -139,9 +139,13 @@ The first partial case exposed premature pending-list assignment before the upda
 
 Eight additional cleanup cases passed with the same prompt-depth settings.  Cleanup during partial Abort preserves the invocation record and target identities through an observed compiled nonlocal BLOCK transfer.  Its continuable condition opens a new root debugger, supports condition/frame/restart inspection and evaluation, moves the marker through GC, and Continues the original Abort.  Aborting an evaluated child command preserves the older in-flight Abort record and point.  A cleanup THROW to an older catch supersedes the original destination, leaves its Abort clause unexecuted, and preserves two outer return traps.  The four combinations check the physical invocation key, exact trap/effect order, flags/code/public points, final values, one cleanup, and complete release.
 
-The notifier observer delegates to the prior hook and restores it before the cleanup condition.  RUN now executes twenty-eight cases.  The twenty earlier cases also passed with the extension.  Production definitions were unchanged, and the prior broad-control acceptance remains separate.
+The notifier observer delegates to the prior hook and restores it before the cleanup condition.  Twenty-eight cases passed with that extension.  Production definitions were unchanged, and the prior broad-control acceptance remains separate.
 
-Set/Clear during cleanup, armed/saved state, terminal whole-stack boundaries, public commands, fresh-cold and ARM64 require separate acceptance.
+Six further cases passed with the same prompt-depth settings.  From the cleanup debugger, selected Clear removes an outer target and then the pending head, prunes both from the saved Abort record, preserves its invocation key, and requires the three remaining outer stops in their original effect order.  Repeated Set on still-marked frames preserves target and private-point identities.  Adding a trap on the newly active cleanup helper produces its own normal-return stop before the original Abort continues, retaining the older record and six targets.  The fixture records that helper's actual caller, object-relative return offset, SP and residency, and checks code bytes and exact armed locations.  Clear All releases pending/crossed targets, the private point and Abort records, while retaining three unrelated public points.  These cases check moving GC, saved flags, eight original values, one cleanup and complete owned release.
+
+RUN now executes thirty-four cases.  The preceding twenty-eight also passed with the extension.  Only the ordinary test module changed.  Prior broad native and Document Examiner browser acceptance remain separate.
+
+Readding a cleared original activation during the same Abort, armed/saved state, terminal whole-stack boundaries, public commands, fresh-cold and ARM64 require separate acceptance.
 
 ## Selected exit-trap updates
 
