@@ -44,7 +44,7 @@
                 collect (cons function (hw::code-bytes function))))
     (assert (eq (d::service-find-exit-traps) (manager-case-traps entry)))
     (let ((before (copy-seq s::*instruction-breakpoint-slots*)))
-      (test::expect-error :exit-traps-already-installed (lambda () (d::service-install-exit-traps frames)))
+      (assert (eq (manager-case-traps entry) (d::service-install-exit-traps frames)))
       (assert (every #'eq before s::*instruction-breakpoint-slots*))))
   t)
 

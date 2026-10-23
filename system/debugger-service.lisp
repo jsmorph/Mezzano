@@ -1302,22 +1302,88 @@ NIL with true availability denotes an absent global cell."
         (service-clear-exit-traps traps))))
 
 #+x86-64
+(defun service-frame-exit-target (frame)
+  (multiple-value-bind (function offset sp reason)
+      (mezzano.internals::frame-return-location frame)
+    (when reason (service-error reason))
+    (service-validate-instruction-breakpoint-location function offset t)
+    (make-service-exit-target
+     :function (nth-value 1 (frame-function frame))
+     :caller function :offset offset :stack-pointer sp)))
+
+(defun service-exit-target-equal-p (left right)
+  (and (eq (service-exit-target-caller left) (service-exit-target-caller right))
+       (= (service-exit-target-offset left) (service-exit-target-offset right))
+       (= (service-exit-target-stack-pointer left) (service-exit-target-stack-pointer right))))
+
+#+x86-64
+(defun service-order-exit-targets (targets)
+  (let ((remaining (copy-list targets)) (ordered nil))
+    (when remaining
+      (mezzano.internals::%map-backtrace-context
+       (lambda (frame stack-pointer frame-pointer)
+         (multiple-value-bind (function offset sp)
+             (mezzano.supervisor:with-pseudo-atomic
+               (multiple-value-bind (sp fp pc slot link interrupted-p)
+                   (mezzano.internals::backtrace-next-frame
+                    (mezzano.supervisor:current-thread) stack-pointer frame-pointer
+                    (mezzano.internals::memref-unsigned-byte-64
+                     (mezzano.internals::frame-pc-slot frame)))
+                 (declare (ignore fp slot link interrupted-p))
+                 (when (and (not (zerop pc)) (mezzano.internals::within-function-area-p pc))
+                   (multiple-value-bind (function offset)
+                       (mezzano.internals::return-address-to-function pc)
+                     (values function offset sp)))))
+           (when function
+             (let ((target
+                     (find-if
+                      (lambda (target)
+                        (and (eq function (service-exit-target-caller target))
+                             (= offset (service-exit-target-offset target))
+                             (= sp (service-exit-target-stack-pointer target))))
+                      remaining)))
+               (when target
+                 (push target ordered)
+                 (setf remaining (remove target remaining :test #'eq)))))))))
+    (when remaining (service-error :inactive-frame))
+    (nreverse ordered)))
+
+#+x86-64
+(defun service-update-exit-targets (traps targets)
+  (if targets
+      (progn
+        (unless (eq (first targets) (first (service-exit-traps-pending traps)))
+          (let ((target (first targets)))
+            (service-rearm-exit-traps traps (service-exit-target-caller target)
+                                     (service-exit-target-offset target)
+                                     (service-exit-target-stack-pointer target))))
+        (setf (service-exit-traps-pending traps) targets))
+      (service-clear-exit-traps traps))
+  traps)
+
+#+x86-64
 (defun service-install-exit-traps (frames)
   (unless frames (service-error :missing-exit-trap-frame))
-  (when (service-find-exit-traps) (service-error :exit-traps-already-installed))
-  (let ((targets
-          (loop for frame in frames
-                collect
-                (multiple-value-bind (function offset sp reason)
-                    (mezzano.internals::frame-return-location frame)
-                  (when reason (service-error reason))
-                  (service-validate-instruction-breakpoint-location function offset t)
-                  (make-service-exit-target
-                   :function (nth-value 1 (frame-function frame))
-                   :caller function :offset offset :stack-pointer sp)))))
-    (let ((traps (make-service-exit-traps :pending targets)))
-      (service-arm-next-exit-trap traps)
-      traps)))
+  (let* ((requested (mapcar #'service-frame-exit-target frames))
+         (traps (or (service-find-exit-traps) (make-service-exit-traps)))
+         (targets (copy-list (service-exit-traps-pending traps))))
+    (dolist (target requested)
+      (unless (member target targets :test #'service-exit-target-equal-p)
+        (push target targets)))
+    (service-update-exit-targets traps (service-order-exit-targets targets))))
+
+#+x86-64
+(defun service-remove-exit-traps (frames)
+  (unless frames (service-error :missing-exit-trap-frame))
+  (let ((requested (mapcar #'service-frame-exit-target frames))
+        (traps (service-find-exit-traps)))
+    (when traps
+      (service-update-exit-targets
+       traps
+       (service-order-exit-targets
+        (remove-if (lambda (target) (member target requested :test #'service-exit-target-equal-p))
+                   (service-exit-traps-pending traps))))))
+  t)
 
 #+x86-64
 (defun service-exit-target-pending-p (target frame)

@@ -75,6 +75,26 @@
          (i::reinvoke-frame (fourth frames) #'replacement arguments)))))
   (error "The frame transfer returned to its command."))
 
+(defun check-current-boundary ()
+  (let* ((traps (m::manager-case-traps (transfer-case-entry *case*)))
+         (pending (copy-list (d::service-exit-traps-pending traps)))
+         (point (d::service-exit-traps-point traps))
+         (slots (copy-seq s::*instruction-breakpoint-slots*))
+         (stop d::*service-current-stop*)
+         (frame (aref (d::service-stop-frames stop) (d::service-stop-current-frame stop))))
+    (assert (eq (d::service-exit-target-function (first pending)) #'target))
+    (multiple-value-bind (function offset sp reason) (i::frame-return-location frame)
+      (assert (null reason))
+      (assert (eq function (d::service-exit-target-caller (first pending))))
+      (assert (= offset (d::service-exit-target-offset (first pending))))
+      (assert (= sp (d::service-exit-target-stack-pointer (first pending)))))
+    (assert (eq traps (d::service-install-exit-traps (list frame frame))))
+    (assert (= (length pending) (length (d::service-exit-traps-pending traps))))
+    (assert (every #'eq pending (d::service-exit-traps-pending traps)))
+    (assert (eq point (d::service-exit-traps-point traps)))
+    (assert (every #'eq slots s::*instruction-breakpoint-slots*)))
+  t)
+
 (defun arrival (entry)
   (let ((thread (third (m::manager-case-record entry))))
     (test::await
@@ -146,6 +166,9 @@
                             (assert (eq function (ecase mode (:return #'i::%return-values-from-frame)
                                                            (:reinvoke #'i::%reinvoke-frame)))))))
                       (test::command next next-lease :use-dynamic-environment)
+                      (when (and require-notifications (zerop phase))
+                        (assert (equal (test::command next next-lease :evaluate
+                                                      "(lispm-exit-trap-transfer-test::check-current-boundary)") '("T"))))
                       (assert (equal (test::command next next-lease :evaluate
                                                     "(lispm-exit-trap-manager-test::verify-stop-context)") '("T")))
                       (let ((address (i::lisp-object-address (first values))))
