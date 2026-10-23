@@ -41,6 +41,8 @@
              (setf stepping t)))
       (let ((function (instruction-trap-exit-function condition)))
         (when function (funcall function (if stepping :resume :unwind))))))
+  #+x86-64
+  (prepare-instruction-debugger-return)
   nil)
 
 (defun debug-info-name (info)
@@ -1091,6 +1093,30 @@ executed, and the offset into it."
   (%map-backtrace
    (lambda (depth fp callee-save-regs)
      (funcall fn (make-frame :depth depth :fp fp :callee-save-regs callee-save-regs)))))
+
+#+x86-64
+(defun prepare-instruction-debugger-return ()
+  (let ((thread (mezzano.supervisor:current-thread)))
+    (%map-backtrace-context
+     (lambda (frame stack-pointer frame-pointer)
+       (declare (ignore frame-pointer))
+       (when (frame-interrupted-p frame)
+         (mezzano.supervisor:with-pseudo-atomic
+           (let ((slots mezzano.supervisor::*instruction-breakpoint-slots*)
+                 (pc-slot (frame-pc-slot frame)))
+             (when slots
+               (dotimes (index 4)
+                 (let ((point (svref slots index)))
+                   (when (and (mezzano.supervisor::instruction-step-breakpoint-p point)
+                              (eq (mezzano.supervisor::instruction-step-breakpoint-thread point)
+                                  thread)
+                              (= (mezzano.supervisor::instruction-breakpoint-address point)
+                                 (memref-unsigned-byte-64 pc-slot))
+                              (= (mezzano.supervisor::instruction-step-breakpoint-stack-pointer point)
+                                 stack-pointer))
+                     (setf (memref-unsigned-byte-64 pc-slot 2)
+                           (logandc2 (memref-unsigned-byte-64 pc-slot 2) #x10000))))))))))))
+  nil)
 
 (defun frame-return-location (frame)
   "Return caller function, offset, SP, and unavailable reason on FRAME's thread."
