@@ -10,7 +10,7 @@
 (defvar *case* nil)
 (defstruct (prefix-case (:constructor make-prefix-case (record hook public kind depth selection)))
   record hook public kind depth selection point context landing selected-function initial-flags observed
-  (calls 0) notifications return-observations original-return extra-points (mode :deliver) other-thread)
+  (calls 0) notifications return-observations original-return extra-points (mode :deliver) other-thread condition)
 
 (defun hardware-target (marker state)
   (incf (aref state 0))
@@ -66,7 +66,10 @@
                    (when (eq (prefix-case-mode entry) :coincident)
                      (list (prefix-case-public entry)))))
     (setf (prefix-case-observed entry) (subseq expected 0 3))
-    (cerror "Resume the owned continuation." "Owned debugger-prefix exit callback.")))
+    (let ((condition (make-condition 'd::activation-exit-trap
+                                     :functions (list (prefix-case-selected-function entry)))))
+      (setf (prefix-case-condition entry) condition)
+      (i::%invoke-instruction-debugger condition))))
 
 (defun arm ()
   (let* ((entry *case*) (record (prefix-case-record entry))
@@ -176,7 +179,7 @@
                 (prefix-case-original-return entry))))))
   t)
 
-(defun case-test (kind depth selection &optional (mode :deliver))
+(defun case-test (kind depth selection &optional (mode :deliver) (outcome :proceed))
   (assert (null *case*))
   (assert (member kind '(:hardware :condition)))
   (assert (member selection '(:first :service :interrupt-return)))
@@ -230,29 +233,59 @@
              (assert (/= address (i::lisp-object-address marker))))
            (context::proceed stop lease)
            (when deliveryp
-            (let* ((outcome
+            (let* ((arrival
                     (test::await
                      (lambda ()
                        (or (new-stop thread stop)
                            (when (nth-value 1 (s:thread-join thread nil)) :joined)))))
-                  (exit (unless (eq outcome :joined) outcome)))
+                  (exit (unless (eq arrival :joined) arrival)))
              (assert (= (prefix-case-calls *case*) 1))
              (assert exit)
              (let ((exit-lease (d:attach-debugger-stop exit controller)))
-               (assert (search "Owned debugger-prefix exit callback."
-                               (test::command exit exit-lease :condition)))
+               (assert (search "Exit trap after " (test::command exit exit-lease :condition)))
+               (let* ((object (d::service-handle-stop exit))
+                      (condition (d::service-stop-condition object)))
+                 (assert (eq condition (prefix-case-condition *case*)))
+                 (assert (typep condition 'd::activation-exit-trap))
+                 (assert (eq (i::instruction-trap-kind condition) :activation-exit))
+                 (assert (equal (d::activation-exit-trap-functions condition)
+                                (list (prefix-case-selected-function *case*))))
+                 (multiple-value-bind (function offset index reason) (d::service-instruction-trap-context object)
+                   (assert (null reason))
+                   (assert (= index (d::service-stop-current-frame object)))
+                   (assert (eq function (first (prefix-case-observed *case*))))
+                   (assert (= offset (second (prefix-case-observed *case*))))))
                (let* ((marker (aref state 3)) (address (i::lisp-object-address marker)))
                  (mezzano.extensions:gc :full t)
                  (assert (/= address (i::lisp-object-address marker))))
                (dolist (location (remove nil (list (prefix-case-context *case*) (prefix-case-landing *case*))))
                  (assert (equalp (fourth location) (hw::code-bytes (first location)))))
-               (context::proceed exit exit-lease))))
+               (ecase outcome
+                 (:proceed (context::proceed exit exit-lease))
+                 (:abort
+                  (let ((id (getf (d:debugger-stop-information exit) :next-command-id)))
+                    (d:submit-debugger-command exit-lease id :abort)
+                    (assert (eq (getf (test::completed-command exit id) :state) :unwound))))
+                 (:step
+                  (destructuring-bind (function offset sp) (prefix-case-observed *case*)
+                    (declare (ignore sp))
+                    (let ((instruction
+                            (mezzano.disassemble:instruction-at
+                             (mezzano.disassemble:make-disassembler-context function) offset)))
+                      (assert instruction)
+                      (lispm-retained-step-test::step-command
+                       exit exit-lease function (+ offset (mezzano.disassemble:inst-size instruction)))))
+                  (context::proceed exit exit-lease))))))
            (test::await (lambda () (nth-value 1 (s:thread-join thread nil))))
-           (assert (= (aref state 0) 1))
            (assert (= (aref state 1) 1))
-           (assert (null (aref state 4)))
-           (assert (= (length (aref state 2)) 3))
-           (assert (every (lambda (value) (eq value (aref state 3))) (aref state 2)))
+           (if (eq outcome :abort)
+               (progn (assert (zerop (aref state 0)))
+                      (assert (eq (aref state 4) :aborted))
+                      (assert (null (aref state 2))))
+               (progn (assert (= (aref state 0) 1))
+                      (assert (null (aref state 4)))
+                      (assert (= (length (aref state 2)) 3))
+                      (assert (every (lambda (value) (eq value (aref state 3))) (aref state 2)))))
            (assert (eq (d::service-stop-state (d::service-handle-stop stop)) :closed))
            (assert (= (prefix-case-calls *case*) (if deliveryp 1 0)))
            (check-return-flags *case* (if (and deliveryp
@@ -266,8 +299,8 @@
              (assert (eq (s::instruction-step-breakpoint-breakpoint
                           (prefix-case-point *case*)) point))
              (assert (find point s::*instruction-breakpoint-slots*)))
-           (format t "PASS prefix delivery: ~S, ~D prompts, ~S, ~S, redirected ~S.~%"
-                   kind depth selection mode (not (null (prefix-case-landing *case*)))))
+           (format t "PASS prefix case: ~S, ~D prompts, ~S, ~S, ~S, redirected ~S.~%"
+                   kind depth selection mode outcome (not (null (prefix-case-landing *case*)))))
       (cleanup))
     (assert (eq s::*instruction-step-nlx-hook* hook)))
   t)
@@ -281,7 +314,9 @@
       (dolist (selection '(:first :service)) (case-test kind depth selection)))
     (case-test :hardware depth :interrupt-return)
     (dolist (mode '(:coincident :cancel :capacity :other-thread :wrong-sp :wrong-pc))
-      (case-test :hardware depth :interrupt-return mode)))
+      (case-test :hardware depth :interrupt-return mode))
+    (dolist (outcome '(:abort :step))
+      (case-test :hardware depth :interrupt-return :deliver outcome)))
   (assert (null *case*))
   (assert (null (d:debugger-stops :include-closed t)))
   (assert (notany #'identity s::*instruction-breakpoint-slots*))

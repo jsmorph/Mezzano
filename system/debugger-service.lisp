@@ -6,6 +6,14 @@
              (format stream "Debugger service request failed: ~S."
                      (debugger-service-error-reason condition)))))
 
+(define-condition activation-exit-trap (mezzano.internals::instruction-trap)
+  ((functions :initarg :functions :reader activation-exit-trap-functions))
+  (:default-initargs :kind :activation-exit)
+  (:report (lambda (condition stream)
+             (format stream "Exit trap after ~{~S~^, ~}."
+                     (mapcar #'mezzano.internals::function-name
+                             (activation-exit-trap-functions condition))))))
+
 (defstruct (service-controller (:constructor %make-service-controller))
   boot closed-p)
 
@@ -1053,7 +1061,7 @@ NIL with true availability denotes an absent global cell."
                           (= (mezzano.supervisor::instruction-breakpoint-offset point) offset))
                (return-from service-instruction-trap-context
                  (values nil nil nil :mismatched-instruction-context)))))
-          ((:breakpoint-instruction :single-step))
+          ((:breakpoint-instruction :single-step :activation-exit))
           (otherwise
            (return-from service-instruction-trap-context
              (values nil nil nil :unsupported-instruction-trap-kind))))

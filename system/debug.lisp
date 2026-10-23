@@ -12,24 +12,27 @@
    (exit-function :initform nil :accessor instruction-trap-exit-function)))
 
 (defun invoke-instruction-debugger (kind &optional breakpoint)
-  (let ((condition
-          (ecase kind
-            (:instruction-breakpoint
-             #+x86-64
-             (make-condition 'instruction-trap :kind kind :breakpoint breakpoint
-                             :format-control "Instruction breakpoint at ~S +#x~X."
-                             :format-arguments
-                             (list (mezzano.supervisor::instruction-breakpoint-function breakpoint)
-                                   (mezzano.supervisor::instruction-breakpoint-offset breakpoint)))
-             #-x86-64
-             (error "Hardware instruction traps are unsupported on this architecture."))
-            (:breakpoint-instruction
-             (make-condition 'instruction-trap :kind kind
-                             :format-control "Breakpoint instruction."))
-            (:single-step
-             (make-condition 'instruction-trap :kind kind
-                             :format-control "Single step."))))
-        (stepping nil))
+  (%invoke-instruction-debugger
+   (ecase kind
+     (:instruction-breakpoint
+      #+x86-64
+      (make-condition 'instruction-trap :kind kind :breakpoint breakpoint
+                      :format-control "Instruction breakpoint at ~S +#x~X."
+                      :format-arguments
+                      (list (mezzano.supervisor::instruction-breakpoint-function breakpoint)
+                            (mezzano.supervisor::instruction-breakpoint-offset breakpoint)))
+      #-x86-64
+      (error "Hardware instruction traps are unsupported on this architecture."))
+     (:breakpoint-instruction
+      (make-condition 'instruction-trap :kind kind
+                      :format-control "Breakpoint instruction."))
+     (:single-step
+      (make-condition 'instruction-trap :kind kind
+                      :format-control "Single step.")))))
+
+(defun %invoke-instruction-debugger (condition)
+  (check-type condition instruction-trap)
+  (let ((stepping nil))
     (unwind-protect
          (restart-case
              (with-simple-restart (continue "Continue the interrupted computation.")
