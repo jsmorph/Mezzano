@@ -1255,7 +1255,7 @@ NIL with true availability denotes an absent global cell."
 
 (defstruct service-exit-target function caller offset stack-pointer)
 
-(defstruct service-exit-traps pending crossed point)
+(defstruct service-exit-traps pending crossed point aborts)
 
 #+x86-64
 (defun service-find-exit-traps ()
@@ -1276,7 +1276,8 @@ NIL with true availability denotes an absent global cell."
       (mezzano.supervisor::clear-instruction-breakpoint (service-exit-traps-point traps)))
     (setf (service-exit-traps-point traps) nil
           (service-exit-traps-pending traps) nil
-          (service-exit-traps-crossed traps) nil))
+          (service-exit-traps-crossed traps) nil
+          (service-exit-traps-aborts traps) nil))
   t)
 
 #+x86-64
@@ -1349,6 +1350,13 @@ NIL with true availability denotes an absent global cell."
     (nreverse ordered)))
 
 #+x86-64
+(defun service-prune-exit-aborts (traps)
+  (setf (service-exit-traps-aborts traps)
+        (loop for (boundary . targets) in (service-exit-traps-aborts traps)
+              for remaining = (intersection targets (service-exit-traps-pending traps) :test #'eq)
+              when remaining collect (cons boundary remaining))))
+
+#+x86-64
 (defun service-update-exit-targets (traps targets)
   (if targets
       (progn
@@ -1357,7 +1365,8 @@ NIL with true availability denotes an absent global cell."
             (service-rearm-exit-traps traps (service-exit-target-caller target)
                                      (service-exit-target-offset target)
                                      (service-exit-target-stack-pointer target))))
-        (setf (service-exit-traps-pending traps) targets))
+        (setf (service-exit-traps-pending traps) targets)
+        (service-prune-exit-aborts traps))
       (service-clear-exit-traps traps))
   traps)
 
@@ -1406,22 +1415,57 @@ NIL with true availability denotes an absent global cell."
                  (when (or (zerop next-fp) (zerop next-pc)) (return nil))
                  (setf sp next-sp fp next-fp slot next-slot))))))
 
+(defun service-invoke-restart (restart interactive-p &optional arguments)
+  #-x86-64
+  (if interactive-p
+      (invoke-restart-interactively restart)
+      (apply #'invoke-restart restart arguments))
+  #+x86-64
+  (let ((boundary
+          (when (eq (restart-name restart) 'abort)
+            (let ((fp (mezzano.internals::read-frame-pointer)))
+              (multiple-value-bind (function offset)
+                  (mezzano.supervisor:with-pseudo-atomic
+                    (mezzano.internals::return-address-to-function
+                     (mezzano.internals::memref-unsigned-byte-64 fp 1)))
+                (make-service-exit-target :caller function :offset offset
+                                          :stack-pointer (+ fp 16))))))
+        (returned nil))
+    (unwind-protect
+         (multiple-value-prog1
+             (if interactive-p
+                 (invoke-restart-interactively restart)
+                 (apply #'invoke-restart restart arguments))
+           (setf returned t))
+      (when (and boundary (not returned))
+        (let ((traps (service-find-exit-traps)))
+          (when (and traps (service-exit-traps-pending traps))
+            (push (cons boundary (copy-list (service-exit-traps-pending traps)))
+                  (service-exit-traps-aborts traps))))))))
+
 #+x86-64
 (defun service-exit-traps-nlx-entry (traps point frame)
   (when (eq point (service-exit-traps-point traps))
     (let ((crossed nil)
-          (pending (service-exit-traps-pending traps)))
+          (pending (service-exit-traps-pending traps))
+          (aborts (service-exit-traps-aborts traps)))
       (loop while (and pending (not (service-exit-target-pending-p (first pending) frame)))
-            do (push (pop pending) crossed))
-      (when crossed
-        (multiple-value-bind (function offset)
-            (mezzano.supervisor:with-pseudo-atomic
-              (mezzano.internals::return-address-to-function
-               (mezzano.internals::memref-unsigned-byte-64 frame 1)))
-          (service-rearm-exit-traps traps function offset (+ frame 16))
-          (setf (service-exit-traps-pending traps) pending
-                (service-exit-traps-crossed traps)
-                (append (service-exit-traps-crossed traps) (nreverse crossed))))))))
+            do (let ((target (pop pending)))
+                 (unless (some (lambda (record) (member target (cdr record) :test #'eq)) aborts)
+                   (push target crossed))))
+      (setf (service-exit-traps-aborts traps)
+            (remove-if-not (lambda (record) (service-exit-target-pending-p (car record) frame)) aborts)
+            (service-exit-traps-pending traps) pending)
+      (service-prune-exit-aborts traps)
+      (if (or crossed (service-exit-traps-crossed traps))
+          (multiple-value-bind (function offset)
+              (mezzano.supervisor:with-pseudo-atomic
+                (mezzano.internals::return-address-to-function
+                 (mezzano.internals::memref-unsigned-byte-64 frame 1)))
+            (service-rearm-exit-traps traps function offset (+ frame 16))
+            (setf (service-exit-traps-crossed traps)
+                  (append (service-exit-traps-crossed traps) (nreverse crossed))))
+          (service-update-exit-targets traps pending)))))
 
 #+x86-64
 (defun service-deliver-exit-trap (traps)
@@ -1429,6 +1473,7 @@ NIL with true availability denotes an absent global cell."
                      (list (pop (service-exit-traps-pending traps))))))
     (assert (every #'service-exit-target-p crossed))
     (setf (service-exit-traps-crossed traps) nil)
+    (service-prune-exit-aborts traps)
     (service-arm-next-exit-trap traps)
     (mezzano.internals::%invoke-instruction-debugger
      (make-condition 'activation-exit-trap
@@ -2201,11 +2246,11 @@ NIL with true availability denotes an absent global cell."
     (:abort
      (let ((restart (find 'abort (service-stop-restarts stop) :key #'restart-name)))
        (unless restart (service-error :no-abort-restart))
-       (mapcar #'service-print (multiple-value-list (invoke-restart restart)))))
+       (mapcar #'service-print (multiple-value-list (service-invoke-restart restart nil)))))
     (:proceed
      (mapcar #'service-print
              (multiple-value-list
-              (invoke-restart-interactively (service-restart stop nil)))))
+              (service-invoke-restart (service-restart stop nil) t))))
     (:invoke-restart-with-arguments
      (let ((restart (service-restart stop (service-command-argument command))))
        (write-string "Restart arguments (Lisp expression returning a list): " *query-io*)
@@ -2215,7 +2260,7 @@ NIL with true availability denotes an absent global cell."
          (unless (list-length arguments)
            (error "Restart arguments must be a finite proper list."))
          (mapcar #'service-print
-                 (multiple-value-list (apply #'invoke-restart restart arguments))))))
+                 (multiple-value-list (service-invoke-restart restart nil arguments))))))
     (:restarts
      (loop with default = (find 'continue (service-stop-restarts stop) :key #'restart-name)
            for restart in (service-stop-restarts stop)
@@ -2273,11 +2318,9 @@ NIL with true availability denotes an absent global cell."
     ((:invoke-restart :invoke-restart-interactively)
      (mapcar #'service-print
              (multiple-value-list
-              (funcall (if (eq (service-command-operation command) :invoke-restart-interactively)
-                           #'invoke-restart-interactively
-                           #'invoke-restart)
-                       (nth (service-command-argument command)
-                            (service-stop-restarts stop))))))))
+              (service-invoke-restart
+               (nth (service-command-argument command) (service-stop-restarts stop))
+               (eq (service-command-operation command) :invoke-restart-interactively)))))))
 
 (defun run-service-command (stop command)
   (let ((mezzano.internals::*active-handlers* nil))

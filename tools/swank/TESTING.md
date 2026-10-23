@@ -123,7 +123,15 @@ Assertions cover inactive-frame validation before installation, unchanged table 
 
 Native x86-64 tests passed at DEBUG 3/SAFETY 3/SPEED 1.  The managed call-return suite passed in the same run.  The nonlocal-step suite, twenty-six prefix cases and retained-step suite passed after adding the documented resident test prerequisite, without reloading the manager.  Compile `test-nlx-step-resident.lisp` after its ordinary fixture, then load its compiled output with `:WIRED T`.  Its function-local declaration selects DEBUG 1/SAFETY 3/SPEED 1.
 
-The internal installer accepts live frames in any order, merges their return boundaries with existing targets, and orders the result through the existing backtrace walker.  Repeated Set preserves existing target and hardware-descriptor identities.  The selected remover releases matching boundaries and frees the owned slot when the last target is removed.  Product commands, explicit Abort bypass, whole-stack boundaries, armed/saved manager state, fresh-cold and ARM64 execution remain separate work.
+The internal installer accepts live frames in any order, merges their return boundaries with existing targets, and orders the result through the existing backtrace walker.  Repeated Set preserves existing target and hardware-descriptor identities.  The selected remover releases matching boundaries and frees the owned slot when the last target is removed.  The explicit Abort tests below cover the manager bypass.  Product commands, whole-stack boundaries, armed/saved manager state, fresh-cold and ARM64 execution remain separate work.
+
+## Explicit Abort exit-trap tests
+
+Compile/load `test-exit-trap-abort.lisp` ordinarily after the ordered-manager fixture and its dependencies, then call `(lispm-exit-trap-abort-test::run)`.  Eight cases trap seven recursive activations, continue the first exit stop, then invoke the saved application Abort restart through the command, direct restart, interactive restart, or explicit-argument operation at zero/two prompts.  Each case requires zero further exit stops, no pending targets or invocation records, unchanged code and unrelated public points, moving GC, preserved saved flags, one application effect, and one cleanup.
+
+Passing NIL to RUN records further exit stops without requiring bypass.  That diagnostic preceded the implementation and observed one additional stop containing all six remaining targets in every case.  Default RUN requires bypass.  The existing manager child-command test additionally requires an abandoned command's Abort record to expire while preserving the original targets and hardware descriptor.
+
+The eight cases and the extended manager child-command checks passed natively on two-CPU x86-64 QEMU at DEBUG 3/SAFETY 3/SPEED 1.  Partial Abort, returning/error restarts, application cleanup, superseding transfers, armed/saved state, fresh-cold and ARM64 require separate acceptance.
 
 ## Selected exit-trap updates
 

@@ -115,6 +115,7 @@
       (d:release-debugger-stop child-lease))
     (assert (eq point (d::service-exit-traps-point (manager-case-traps entry))))
     (assert (every #'eq pending (d::service-exit-traps-pending (manager-case-traps entry))))
+    (assert (null (d::service-exit-traps-aborts (manager-case-traps entry))))
     (assert (eq (getf (d:debugger-stop-information parent) :state) :stopped)))
   t)
 
