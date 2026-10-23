@@ -10510,3 +10510,9 @@ Publish the committed 8098fbd5 guide to its existing auxiliary path through the 
 The committed 8098fbd5 test guide is deployed in its existing private auxiliary path, SHA-256 bd01d1bf1d2fce04f460a8c9f17d6fe4ad8229de6bd8d13d2d16fbd4b51e1d45.  Root verified the exact one-file manifest change, unchanged catalog/browser group and every non-documentation field.  Complete before/after native, 2350-file source, compiled/provenance, protected-process and forty-asset checks passed.  All sixteen catalog books remained unchanged.  The publication loaded zero Lisp definitions and performed no catalog reload or service action.
 
 The preserved observer has SHA-256 def88ab94a52bd7dae75ef4067e25525aef48025daf09f61ccb01d0b85465369.  Publication receipt SHA-256 7fdff45c93301a474a77c89c00e1e9c3703e4d60120cba370cf084b9e41848d3.  Current runtime metadata SHA-256 c50c190903c0a32471c756a26b7f7c64192c01a147f4ea7d93ef9a477773a235.  The prior native acceptance and failed partial-Abort evidence remain separate and unchanged.  No guide deployment remains pending for this increment.
+
+### Abort fixture prompt-depth clarification
+
+Source review distinguishes the lifetime fixture's two prompt boundaries.  HW::CALLER passes depth to WITH-PROMPTS around the full call, and TARGET passes the same depth inside its activation-three Abort boundary.  The fixture uses depth 0 or 2 at both locations.  Its depth-2 case installs two prompts at each boundary.  Earlier “zero/two prompts” labels identify that shared fixture parameter rather than a total across the whole call.  The separate eight root-Abort cases have only the caller wrapper.
+
+The test guide now states the per-boundary configuration.  Lisp source, compiled functions, test expectations, native outcomes and historical receipts remain unchanged.  Product-documentation scope will use ordinary and nested-prompt stacks.  Republish this guide through the existing auxiliary-only procedure after committing it.
