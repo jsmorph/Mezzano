@@ -1253,9 +1253,126 @@ NIL with true availability denotes an absent global cell."
                (when (or (zerop next-fp) (zerop next-pc)) (return nil))
                (setf sp next-sp fp next-fp slot next-slot interrupted-p interruptp)))))))
 
+(defstruct service-exit-target function caller offset stack-pointer)
+
+(defstruct service-exit-traps pending crossed point)
+
+#+x86-64
+(defun service-find-exit-traps ()
+  (mezzano.supervisor:with-pseudo-atomic
+    (when mezzano.supervisor::*instruction-breakpoint-slots*
+      (loop for point across mezzano.supervisor::*instruction-breakpoint-slots*
+            when (and (mezzano.supervisor::callback-instruction-step-breakpoint-p point)
+                      (eq (mezzano.supervisor::instruction-step-breakpoint-thread point)
+                          (mezzano.supervisor:current-thread))
+                      (service-exit-traps-p
+                       (mezzano.supervisor::callback-instruction-step-breakpoint-argument point)))
+              return (mezzano.supervisor::callback-instruction-step-breakpoint-argument point)))))
+
+#+x86-64
+(defun service-clear-exit-traps (traps)
+  (mezzano.supervisor:without-footholds
+    (when (service-exit-traps-point traps)
+      (mezzano.supervisor::clear-instruction-breakpoint (service-exit-traps-point traps)))
+    (setf (service-exit-traps-point traps) nil
+          (service-exit-traps-pending traps) nil
+          (service-exit-traps-crossed traps) nil))
+  t)
+
+#+x86-64
+(defun service-rearm-exit-traps (traps function offset sp)
+  (mezzano.supervisor:without-footholds
+    (let ((point (service-exit-traps-point traps)))
+      (setf (service-exit-traps-point traps)
+            (if point
+                (or (mezzano.supervisor::replace-callback-instruction-step-breakpoint
+                     point function offset sp)
+                    (service-error :exit-trap-cancelled))
+                (mezzano.supervisor::install-callback-instruction-step-breakpoint
+                 function offset (mezzano.supervisor:current-thread) sp
+                 #'service-deliver-exit-trap traps :rearm t))))))
+
+#+x86-64
+(defun service-arm-next-exit-trap (traps)
+  (let ((target (first (service-exit-traps-pending traps))))
+    (if target
+        (service-rearm-exit-traps traps (service-exit-target-caller target)
+                                 (service-exit-target-offset target)
+                                 (service-exit-target-stack-pointer target))
+        (service-clear-exit-traps traps))))
+
+#+x86-64
+(defun service-install-exit-traps (frames)
+  (unless frames (service-error :missing-exit-trap-frame))
+  (when (service-find-exit-traps) (service-error :exit-traps-already-installed))
+  (let ((targets
+          (loop for frame in frames
+                collect
+                (multiple-value-bind (function offset sp reason)
+                    (mezzano.internals::frame-return-location frame)
+                  (when reason (service-error reason))
+                  (service-validate-instruction-breakpoint-location function offset t)
+                  (make-service-exit-target
+                   :function (nth-value 1 (frame-function frame))
+                   :caller function :offset offset :stack-pointer sp)))))
+    (let ((traps (make-service-exit-traps :pending targets)))
+      (service-arm-next-exit-trap traps)
+      traps)))
+
+#+x86-64
+(defun service-exit-target-pending-p (target frame)
+  (mezzano.supervisor:with-pseudo-atomic
+    (let ((sp (+ frame 16))
+          (fp (mezzano.internals::memref-unsigned-byte-64 frame))
+          (slot (+ frame 8)))
+      (loop for pc = (mezzano.internals::memref-unsigned-byte-64 slot)
+            until (zerop pc)
+            do (multiple-value-bind (function offset)
+                   (mezzano.internals::return-address-to-function pc)
+                 (when (and (= sp (service-exit-target-stack-pointer target))
+                            (eq function (service-exit-target-caller target))
+                            (= offset (service-exit-target-offset target)))
+                   (return t)))
+               (multiple-value-bind (next-sp next-fp next-pc next-slot link interrupted-p)
+                   (mezzano.internals::backtrace-next-frame
+                    (mezzano.supervisor:current-thread) sp fp pc)
+                 (declare (ignore link interrupted-p))
+                 (when (or (zerop next-fp) (zerop next-pc)) (return nil))
+                 (setf sp next-sp fp next-fp slot next-slot))))))
+
+#+x86-64
+(defun service-exit-traps-nlx-entry (traps point frame)
+  (when (eq point (service-exit-traps-point traps))
+    (let ((crossed nil)
+          (pending (service-exit-traps-pending traps)))
+      (loop while (and pending (not (service-exit-target-pending-p (first pending) frame)))
+            do (push (pop pending) crossed))
+      (when crossed
+        (multiple-value-bind (function offset)
+            (mezzano.supervisor:with-pseudo-atomic
+              (mezzano.internals::return-address-to-function
+               (mezzano.internals::memref-unsigned-byte-64 frame 1)))
+          (service-rearm-exit-traps traps function offset (+ frame 16))
+          (setf (service-exit-traps-pending traps) pending
+                (service-exit-traps-crossed traps)
+                (append (service-exit-traps-crossed traps) (nreverse crossed))))))))
+
+#+x86-64
+(defun service-deliver-exit-trap (traps)
+  (let ((crossed (or (service-exit-traps-crossed traps)
+                     (list (pop (service-exit-traps-pending traps))))))
+    (assert (every #'service-exit-target-p crossed))
+    (setf (service-exit-traps-crossed traps) nil)
+    (service-arm-next-exit-trap traps)
+    (mezzano.internals::%invoke-instruction-debugger
+     (make-condition 'activation-exit-trap
+                     :functions (mapcar #'service-exit-target-function crossed)))))
+
 #+x86-64
 (defun service-nlx-entry (point frame)
   (let ((step (mezzano.supervisor::callback-instruction-step-breakpoint-argument point)))
+    (when (service-exit-traps-p step)
+      (return-from service-nlx-entry (service-exit-traps-nlx-entry step point frame)))
     (when (and (service-step-p step)
                (eq (service-step-state step) :running)
                (eq (service-step-breakpoint step) point)

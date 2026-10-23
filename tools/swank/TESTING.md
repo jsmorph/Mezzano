@@ -115,6 +115,16 @@ Compile/load `test-rearming-nested.lisp` ordinarily afterward, then call `(lispm
 
 Native x86-64 tests passed for the sixteen basic cases and two nested cases.  After normal Snapshot/restart, all eighteen cases, twenty-six prefix cases, the hardware/retained-step suites, and twenty-two continuation cases plus visitor GC passed without reloading their implementation or fixtures.  The test verified the saved function objects and resident publication roots.  No callback was armed at Snapshot.  Armed-resource, fresh-cold and ARM64 execution remain separate tests.
 
+## Ordered exit-trap manager tests
+
+Compile/load `test-exit-trap-manager.lisp` ordinarily after the hardware-breakpoint, frame-evaluation, frame-exit-context and prefix helpers, then call `(lispm-exit-trap-manager-test::run)`.  The fixture exercises the internal manager with seven recursive activations, one private hardware slot and three unrelated public points.  Eight cases cover normal returns, command-child Abort preserving outer traps, an inner catch crossing three activations, and an outer catch crossing all seven, at zero/two prompts.
+
+Assertions cover inactive-frame validation before installation, unchanged table identities after capacity/duplicate-manager rejection, exact delivering PC/SP/RF, typed-stop frame selection, next-boundary rearming before the stop, moving GC, unchanged code, eight original values, effects and cleanup.  The RF observer requires preservation of every saved flag on return from the typed stop.
+
+Native x86-64 tests passed at DEBUG 3/SAFETY 3/SPEED 1.  The managed call-return suite passed in the same run.  The nonlocal-step suite, twenty-six prefix cases and retained-step suite passed after adding the documented resident test prerequisite, without reloading the manager.  Compile `test-nlx-step-resident.lisp` after its ordinary fixture, then load its compiled output with `:WIRED T`.  Its function-local declaration selects DEBUG 1/SAFETY 3/SPEED 1.
+
+The manager accepts an ordered frame list internally.  Product commands, merging, explicit Abort bypass, Return/Reinvoke integration, armed/saved manager state, fresh-cold and ARM64 execution remain separate work.
+
 ## Transport and guest tests
 
 The variable-definition fixture is `test-variable-definitions.lisp`.  Compile/load it with ordinary allocation and call `(lispm-variable-definition-test:run source)` with a fresh writable source pathname.  It tests DEFVAR, DEFPARAMETER, and DEFGLOBAL with fresh symbols: lexical initializer scope, dynamic bindings, conditional initialization, NIL, omitted values, documentation, warning-free DEBUG 0/1/3 compilation, and serial COMPILE-FILE/load semantics.  The optional source pathname enables the file tests.  Calling RUN without it repeats the non-file cases, including after full GC.  The native tests cover x86-64 at SAFETY 3/SPEED 1.  Fresh cold-image startup and ARM64 require separate tests.
