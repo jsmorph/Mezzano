@@ -1111,6 +1111,7 @@ executed, and the offset into it."
                (dotimes (index 4)
                  (let ((point (svref slots index)))
                    (when (and (mezzano.supervisor::instruction-step-breakpoint-p point)
+                              (not (mezzano.supervisor::instruction-step-breakpoint-delivering-p point))
                               (eq (mezzano.supervisor::instruction-step-breakpoint-thread point)
                                   thread)
                               (= (mezzano.supervisor::instruction-breakpoint-address point)

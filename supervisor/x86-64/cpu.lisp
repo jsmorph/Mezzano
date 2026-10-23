@@ -159,6 +159,18 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
   (callback nil :read-only t)
   (argument nil :read-only t))
 
+(defstruct (rearming-instruction-step-breakpoint
+             (:include callback-instruction-step-breakpoint)
+             (:area :wired)
+             (:constructor %make-rearming-instruction-step-breakpoint
+                 (function offset address thread stack-pointer callback argument))))
+
+(defvar *delivering-instruction-step-breakpoints* nil)
+
+(defun instruction-step-breakpoint-delivering-p (point)
+  (loop for current in *delivering-instruction-step-breakpoints*
+        thereis (eq point current)))
+
 (defstruct (instruction-step-request
              (:area :wired)
              (:constructor %make-instruction-step-request (thread function argument)))
@@ -267,14 +279,15 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
     thread stack-pointer)))
 
 (defun install-callback-instruction-step-breakpoint
-    (function offset thread stack-pointer callback argument)
+    (function offset thread stack-pointer callback argument &key rearm)
   (check-type thread thread)
   (check-type stack-pointer fixnum)
   (check-type callback function)
   (when (eq (thread-priority thread) :supervisor)
     (error "Instruction stepping requires an ordinary thread."))
   (%install-instruction-breakpoint
-   (%make-callback-instruction-step-breakpoint
+   (funcall (if rearm #'%make-rearming-instruction-step-breakpoint
+                #'%make-callback-instruction-step-breakpoint)
     function offset (+ (logand (sys.int::lisp-object-address function) -16) offset)
     thread stack-pointer callback argument)))
 
@@ -293,7 +306,8 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
               (dotimes (index 4)
                 (let ((point (svref slots index)))
                   (when (and (callback-instruction-step-breakpoint-p point)
-                             (eq (instruction-step-breakpoint-thread point) thread))
+                             (eq (instruction-step-breakpoint-thread point) thread)
+                             (not (instruction-step-breakpoint-delivering-p point)))
                     (funcall hook point frame))))))))))
   (values))
 
@@ -307,7 +321,9 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
                (<= 16 offset (1- (sys.int::function-code-size function))))
     (error "Invalid private step landing offset ~S." offset))
   (let ((replacement
-          (%make-callback-instruction-step-breakpoint
+          (funcall (if (rearming-instruction-step-breakpoint-p old)
+                       #'%make-rearming-instruction-step-breakpoint
+                       #'%make-callback-instruction-step-breakpoint)
            function offset (+ (logand (sys.int::lisp-object-address function) -16) offset)
            (instruction-step-breakpoint-thread old) stack-pointer
            (callback-instruction-step-breakpoint-callback old)
@@ -323,9 +339,21 @@ The bootloader is loaded to #x7C00, so #x7000 should be safe.")
     (when replaced replacement)))
 
 (defun deliver-callback-instruction-step-breakpoint (breakpoint)
-  (when (clear-instruction-breakpoint breakpoint)
-    (funcall (callback-instruction-step-breakpoint-callback breakpoint)
-             (callback-instruction-step-breakpoint-argument breakpoint))))
+  (if (rearming-instruction-step-breakpoint-p breakpoint)
+      (when (with-pseudo-atomic
+              (and *instruction-breakpoint-slots*
+                   (loop for index below 4
+                         thereis (eq (svref *instruction-breakpoint-slots* index)
+                                     breakpoint))))
+        (let ((*delivering-instruction-step-breakpoints*
+                (cons breakpoint *delivering-instruction-step-breakpoints*)))
+          (unwind-protect
+               (funcall (callback-instruction-step-breakpoint-callback breakpoint)
+                        (callback-instruction-step-breakpoint-argument breakpoint))
+            (clear-instruction-breakpoint breakpoint))))
+      (when (clear-instruction-breakpoint breakpoint)
+        (funcall (callback-instruction-step-breakpoint-callback breakpoint)
+                 (callback-instruction-step-breakpoint-argument breakpoint)))))
 
 (defun %install-instruction-breakpoint (breakpoint)
   (let ((function (instruction-breakpoint-function breakpoint))

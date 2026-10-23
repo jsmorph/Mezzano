@@ -107,6 +107,12 @@ Before replacing resident definitions live, retain their old function objects un
 
 The debug-level-3 compilation of PAGER-ALLOCATE-PAGE retains calls to BYTE-POSITION and BYTE-SIZE.  Those functions occupy pageable memory.  Paging can therefore fault inside the pager after a live replacement built with the application policy.  Loading the caller into wired memory alone leaves those callees pageable.  Kernel replacement review must check generated calls as well as the replacement's allocation area.  A fresh image build and a boot under memory pressure test the compiled kernel and its callees together.
 
+## Rearming callback delivery
+
+Compile/load `test-rearming-step.lisp` ordinarily after the hardware-breakpoint, retained-step, prefix and frame-exit-context fixtures.  Call `(lispm-rearming-step-test::run)` on a dedicated x86-64 guest with the matching supervisor and instruction debugger.  The twelve cases run at zero/two prompts with SAFETY 3/DEBUG 3/SPEED 1.  They check default one-shot delivery, held-slot delivery, exact-slot replacement while all four slots are occupied, Abort, termination and cancellation before ownership.  Assertions cover descriptor identity, exact PC/SP, RF and other flags, moving GC, code bytes, original values and cleanup.  CLEANUP releases stopped command scopes before waiting for termination.
+
+Native tests passed, followed by the existing hardware-breakpoint, retained-step, twenty-six prefix and twenty-two continuation cases plus visitor GC.  Nested delivery, saved-image and fresh-cold execution remain separate tests.  The [development journal](devnotes.md) retains the earlier structure-layout failure and the corrected fixture identity assertion.
+
 ## Transport and guest tests
 
 The variable-definition fixture is `test-variable-definitions.lisp`.  Compile/load it with ordinary allocation and call `(lispm-variable-definition-test:run source)` with a fresh writable source pathname.  It tests DEFVAR, DEFPARAMETER, and DEFGLOBAL with fresh symbols: lexical initializer scope, dynamic bindings, conditional initialization, NIL, omitted values, documentation, warning-free DEBUG 0/1/3 compilation, and serial COMPILE-FILE/load semantics.  The optional source pathname enables the file tests.  Calling RUN without it repeats the non-file cases, including after full GC.  The native tests cover x86-64 at SAFETY 3/SPEED 1.  Fresh cold-image startup and ARM64 require separate tests.
