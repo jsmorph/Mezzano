@@ -4,6 +4,8 @@ Mezzano supports extensions to `defstruct` for controlling the memory layout of 
 
 ## Initialization and compiled references
 
+Included structures preserve each inherited slot’s physical location.  Parent accessors read the same field in a child after compilation and file loading.
+
 Read-only slots receive their initial values during construction.  When a structure gains a read-only slot, existing instances receive its initform value during layout migration.  Ordinary slot writes and CAS retain their read-only checks.
 
 Explicit structure-class literals resolve their names through `find-class` when loaded and require an existing class.  Compiled layout and instance-header constants reuse the existing named class.  If that class is absent, they reconstruct its saved structure definition and missing parents before obtaining the layout.  Loading a layout or header constant preserves an existing definition.  Explicit `defstruct` forms define or redefine the class.

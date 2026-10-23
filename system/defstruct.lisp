@@ -501,7 +501,10 @@
                                           :align (structure-slot-definition-align x)
                                           :dcas-sibling (structure-slot-definition-dcas-sibling x)
                                           :documentation (structure-slot-definition-documentation x)))
-                                  (structure-definition-slots included-structure)))))
+                                  (stable-sort (copy-list (structure-definition-slots included-structure))
+                                               #'< :key (lambda (slot)
+                                                          (mezzano.runtime::location-offset
+                                                           (structure-slot-definition-location slot))))))))
     (dolist (is included-slot-descriptions)
       (let* ((slot-name (first is))
              (def (assoc slot-name included-slots)))
