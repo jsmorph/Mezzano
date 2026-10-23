@@ -10516,3 +10516,11 @@ The preserved observer has SHA-256 def88ab94a52bd7dae75ef4067e25525aef48025daf09
 Source review distinguishes the lifetime fixture's two prompt boundaries.  HW::CALLER passes depth to WITH-PROMPTS around the full call, and TARGET passes the same depth inside its activation-three Abort boundary.  The fixture uses depth 0 or 2 at both locations.  Its depth-2 case installs two prompts at each boundary.  Earlier “zero/two prompts” labels identify that shared fixture parameter rather than a total across the whole call.  The separate eight root-Abort cases have only the caller wrapper.
 
 The test guide now states the per-boundary configuration.  Lisp source, compiled functions, test expectations, native outcomes and historical receipts remain unchanged.  Product-documentation scope will use ordinary and nested-prompt stacks.  Republish this guide through the existing auxiliary-only procedure after committing it.
+
+Publish the committed 08200c3f prompt-depth clarification through the same auxiliary-only procedure: one guide path bd01d1bf to5311a1c4, unchanged sixteen catalog books/browser group, complete before/after native/source/compiled/protected/asset checks, zero definitions or service actions.
+
+### Prompt-depth guide clarification published
+
+The committed 08200c3f test guide is deployed in its existing private auxiliary path, SHA-256 5311a1c4c5a7b6e39071ba77521dba0de997f50938a0b051b3cef0565428f3ed.  Root verified the exact one-file manifest change, unchanged catalog/browser group and every non-documentation field.  Complete before/after native, 2350-file source, compiled/provenance, protected-process and forty-asset checks passed.  All sixteen catalog books remained unchanged.  The publication loaded zero Lisp definitions and performed no catalog reload or service action.
+
+The preserved observer has SHA-256 b210415f78109d227433f083fd9f23f82759a8d9f0f28d0f6c81fb0d100da76e.  Publication receipt SHA-256 c394e1f55b7d30f7d3c07825e9df76f07c3ce86e3be73b2844a7578e7eb65a99.  Current runtime metadata SHA-256 1e8f54aa8b77afec4f44d0571a0ff7405b92eb6716e68ea4fdbf429ee42f1bb6.  The prompt wording now distinguishes both configured boundaries.  Lisp source, native acceptance and original failure evidence remain unchanged.  No guide deployment remains pending for this increment.
