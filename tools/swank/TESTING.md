@@ -282,7 +282,7 @@ The debugger-prefix fixture is `test-frame-exit-prefix.lisp`.  On the same dedic
 
 Two coincident-point cases retain the public point at the same PC as the private point.  They require the private record to retain the exact coincident public descriptor, one pre-effect callback, the public slot still installed, and completion after Continue.
 
-Ten further cases retain the public point while cancelling the private point, rejecting installation into a full table, or installing a private point with another thread, SP, or PC.  They require unchanged saved flags, no callback, the original values, and one cleanup.  The fixture restores its observer and NLX hook and terminates/joins an owned live target before releasing its records.  After this fixture, run the hardware-breakpoint, retained-step, and continuation suites.  Saved-code restart and fresh-cold acceptance require separate runs.
+Ten further cases retain the public point while cancelling the private point, rejecting installation into a full table, or installing a private point with another thread, SP, or PC.  They require unchanged saved flags, no callback, the original values, and one cleanup.  The fixture restores its observer and NLX hook and terminates/joins an owned live target before releasing its records.  After this fixture, run the hardware-breakpoint, retained-step, and continuation suites.  The unified twenty-two-case RUN, hardware-breakpoint and retained-step suites, and twenty-two continuation cases plus visitor GC passed after a normal clean Snapshot and same-disk restart without compilation or LOAD.  This tests saved code on two-CPU x86-64 QEMU.  An armed prefix point across Snapshot, fresh-cold execution, and ARM64 remain untested.
 
 ## Thread-owned instruction cleanup
 
